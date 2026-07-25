@@ -65,9 +65,9 @@ logs:
 migrate:
     cd services/platform && uv run alembic upgrade head
 
-# Run Next.js against the local API (M1 slice 5).
+# Run the Next.js app against the local API.
 dev:
-    @echo "just dev: not until M1 slice 5 (web shell)."
+    pnpm --filter @cw/web dev
 
 # Load the canonical synthetic demo case (M3A).
 seed:

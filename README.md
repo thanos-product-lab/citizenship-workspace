@@ -60,9 +60,34 @@ uv sync
 uv run ruff check . && uv run mypy . && uv run pytest
 ```
 
+## Authentication & environment
+
+Auth uses [Clerk](https://clerk.com): the web app signs the user in and sends the
+session JWT as a bearer token, and the API verifies it against Clerk's JWKS.
+Create a Clerk application, then add the keys (all gitignored):
+
+`apps/web/.env.local`
+
+```
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_...
+CLERK_SECRET_KEY=sk_test_...
+NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
+```
+
+`services/platform/.env`
+
+```
+CLERK_ISSUER=https://<your-instance>.clerk.accounts.dev
+# optional: restrict the accepted authorized party (azp)
+CLERK_AUTHORIZED_PARTIES=http://localhost:3000
+```
+
+The API derives the JWKS URL from the issuer. With the API up (`just up`) and
+`just dev` running the web app, open http://localhost:3000, sign in, and the
+shell shows your account from `/api/v1/me`.
+
 ## Status
 
-Milestone 1 — platform foundation. This slice establishes the monorepo skeleton
-and strict tooling spine (lint + typecheck green across both stacks, in CI).
-Runtime services, the web shell, auth, and deployment land in subsequent M1
-slices; the domain model begins at M2.
+Milestone 1 — platform foundation. The tooling spine, backend service, contract
+pipeline, design tokens, and an authenticated Next.js shell (Clerk + JWKS) are in
+place. Deployment is the last M1 slice; the domain model begins at M2.

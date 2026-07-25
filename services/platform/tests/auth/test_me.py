@@ -45,3 +45,18 @@ def test_me_rejects_unknown_kid(
     monkeypatch.setattr(jwks, "get_signing_key", raise_unknown)
     resp = client.get("/api/v1/me", headers={"Authorization": f"Bearer {make_token(key)}"})
     assert resp.status_code == 401
+
+
+def test_me_fails_closed_when_issuer_unconfigured(
+    key: RSAPrivateKey, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A valid signature must not be accepted when no issuer is configured."""
+    app.dependency_overrides[get_settings] = lambda: Settings(clerk_issuer="")
+    monkeypatch.setattr(jwks, "get_signing_key", lambda _token: key.public_key())
+    try:
+        resp = TestClient(app).get(
+            "/api/v1/me", headers={"Authorization": f"Bearer {make_token(key)}"}
+        )
+        assert resp.status_code == 401
+    finally:
+        app.dependency_overrides.clear()

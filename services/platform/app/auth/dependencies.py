@@ -53,6 +53,10 @@ def get_current_user(
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> CurrentUser:
+    # Fail closed, explicitly: without a configured issuer we cannot verify the
+    # `iss` claim, so refuse all tokens rather than accept unverified ones.
+    if not settings.clerk_issuer:
+        raise _UNAUTHORIZED
     if credentials is None or not credentials.credentials:
         raise _UNAUTHORIZED
     token = credentials.credentials
