@@ -27,6 +27,9 @@ class Settings(BaseSettings):
     # Comma-separated allow-list of `azp` values (e.g. "http://localhost:3000").
     clerk_authorized_parties: str = ""
 
+    # Comma-separated browser origins allowed to call the API (CORS).
+    cors_allow_origins: str = "http://localhost:3000"
+
     @property
     def resolved_jwks_url(self) -> str:
         if self.clerk_jwks_url:

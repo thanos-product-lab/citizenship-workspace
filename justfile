@@ -65,6 +65,10 @@ logs:
 migrate:
     cd services/platform && uv run alembic upgrade head
 
+# Run the FastAPI app locally with reload (reads services/platform/.env).
+api:
+    cd services/platform && uv run uvicorn app.main:app --reload --port 8000
+
 # Run the Next.js app against the local API.
 dev:
     pnpm --filter @cw/web dev

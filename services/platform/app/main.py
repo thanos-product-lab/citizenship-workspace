@@ -2,6 +2,7 @@
 
 import structlog
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes import router as api_router
 from app.core.config import get_settings
@@ -15,6 +16,13 @@ def create_app() -> FastAPI:
     configure_logging(settings)
 
     app = FastAPI(title="Citizenship Platform", version="0.1.0")
+    origins = [o.strip() for o in settings.cors_allow_origins.split(",") if o.strip()]
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=origins,
+        allow_methods=["*"],
+        allow_headers=["Authorization", "Content-Type"],
+    )
     app.add_middleware(TraceIdMiddleware)
     app.include_router(health_router)
     app.include_router(api_router)
