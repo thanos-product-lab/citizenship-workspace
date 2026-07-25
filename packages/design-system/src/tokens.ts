@@ -1,0 +1,145 @@
+/**
+ * Semantic token maps.
+ *
+ * Raw values live in tokens.css as CSS custom properties. This module maps
+ * domain states to those variables **plus a non-colour glyph and a label** —
+ * because colour must never be the only signal (CLAUDE.md §6, WCAG 2.2). Glyph
+ * names are stable identifiers resolved to real icons by the components in M4.
+ */
+
+// --- Requirement conclusion (DOMAIN_MODEL_RFC §30.2) ---
+
+export const conclusionStates = [
+  "supported",
+  "incomplete",
+  "inconsistent",
+  "near_threshold",
+  "requires_judgement",
+  "professional_review_recommended",
+  "not_currently_satisfied",
+  "not_yet_assessed",
+] as const;
+
+export type ConclusionState = (typeof conclusionStates)[number];
+
+export interface StatusToken {
+  /** CSS custom property for the colour (text/icon), AA-verified on its surface. */
+  readonly colorVar: string;
+  /** CSS custom property for the soft badge surface. */
+  readonly surfaceVar: string;
+  /** Non-colour indicator — colour is never the only signal. */
+  readonly glyph: string;
+  /** Short human label. */
+  readonly label: string;
+}
+
+export const statusTokens: Record<ConclusionState, StatusToken> = {
+  supported: {
+    colorVar: "--cw-status-supported",
+    surfaceVar: "--cw-status-supported-surface",
+    glyph: "check",
+    label: "Supported",
+  },
+  incomplete: {
+    colorVar: "--cw-status-incomplete",
+    surfaceVar: "--cw-status-incomplete-surface",
+    glyph: "dashed-circle",
+    label: "Incomplete",
+  },
+  inconsistent: {
+    colorVar: "--cw-status-inconsistent",
+    surfaceVar: "--cw-status-inconsistent-surface",
+    glyph: "conflict",
+    label: "Inconsistent",
+  },
+  near_threshold: {
+    colorVar: "--cw-status-near-threshold",
+    surfaceVar: "--cw-status-near-threshold-surface",
+    glyph: "gauge",
+    label: "Near threshold",
+  },
+  requires_judgement: {
+    colorVar: "--cw-status-requires-judgement",
+    surfaceVar: "--cw-status-requires-judgement-surface",
+    glyph: "scale",
+    label: "Requires judgement",
+  },
+  professional_review_recommended: {
+    colorVar: "--cw-status-professional-review",
+    surfaceVar: "--cw-status-professional-review-surface",
+    glyph: "shield",
+    label: "Professional review recommended",
+  },
+  not_currently_satisfied: {
+    colorVar: "--cw-status-not-satisfied",
+    surfaceVar: "--cw-status-not-satisfied-surface",
+    glyph: "minus-circle",
+    label: "Not currently satisfied",
+  },
+  not_yet_assessed: {
+    colorVar: "--cw-status-not-assessed",
+    surfaceVar: "--cw-status-not-assessed-surface",
+    glyph: "dash",
+    label: "Not yet assessed",
+  },
+};
+
+// --- Currency (orthogonal to conclusion; CLAUDE.md §2.4) ---
+
+export const currencyStates = ["current", "stale", "superseded", "provisional"] as const;
+
+export type CurrencyState = (typeof currencyStates)[number];
+
+export interface CurrencyToken {
+  /** null for `current`, which needs no adornment. */
+  readonly colorVar: string | null;
+  readonly glyph: string;
+  readonly label: string;
+}
+
+export const currencyTokens: Record<CurrencyState, CurrencyToken> = {
+  current: { colorVar: null, glyph: "dot", label: "Current" },
+  stale: { colorVar: "--cw-currency-stale", glyph: "clock", label: "Stale" },
+  superseded: { colorVar: "--cw-currency-superseded", glyph: "history", label: "Superseded" },
+  provisional: { colorVar: "--cw-currency-provisional", glyph: "preview", label: "Provisional" },
+};
+
+// --- Provenance (how a value came to be; UI/UX §3.4, §18.5) ---
+
+export const provenanceKinds = [
+  "ai_proposed",
+  "user_confirmed",
+  "user_corrected",
+  "system_calculated",
+  "evidence_supported",
+  "conflicting",
+  "stale",
+  "unavailable",
+] as const;
+
+export type ProvenanceKind = (typeof provenanceKinds)[number];
+
+export interface ProvenanceToken {
+  readonly colorVar: string;
+  readonly glyph: string;
+  readonly label: string;
+}
+
+export const provenanceTokens: Record<ProvenanceKind, ProvenanceToken> = {
+  ai_proposed: { colorVar: "--cw-provenance-ai-proposed", glyph: "proposed", label: "AI proposed" },
+  user_confirmed: { colorVar: "--cw-provenance-user-confirmed", glyph: "check", label: "Confirmed" },
+  user_corrected: { colorVar: "--cw-provenance-user-corrected", glyph: "pencil", label: "Corrected" },
+  system_calculated: {
+    colorVar: "--cw-provenance-system-calculated",
+    glyph: "equals",
+    label: "Calculated",
+  },
+  evidence_supported: {
+    colorVar: "--cw-provenance-evidence-supported",
+    glyph: "paperclip",
+    label: "Evidence",
+  },
+  conflicting: { colorVar: "--cw-provenance-conflicting", glyph: "conflict", label: "Conflicting" },
+  stale: { colorVar: "--cw-provenance-stale", glyph: "clock", label: "Stale" },
+  unavailable: { colorVar: "--cw-provenance-unavailable", glyph: "slash", label: "Unavailable" },
+};

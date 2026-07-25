@@ -1,3 +1,3 @@
-// Placeholder. The design-token layer (colour ramp, type scale, spacing, status
-// and provenance tokens) lands in M1 slice 4, per DESIGN_SYSTEM_FOUNDATIONS.md.
-export const DESIGN_SYSTEM_PLACEHOLDER = true as const;
+// Design tokens: import "@cw/design-system/tokens.css" for the CSS custom
+// properties; import from here for the typed semantic maps.
+export * from "./tokens";

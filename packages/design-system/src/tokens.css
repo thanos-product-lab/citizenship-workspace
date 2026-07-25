@@ -1,0 +1,187 @@
+/*
+ * Evidence-First Citizenship Workspace — design tokens.
+ *
+ * Single source of truth for colour, type, spacing, and surface values. The
+ * semantic maps (which requirement conclusion / provenance kind uses which
+ * token, plus its non-colour glyph) live in tokens.ts and reference these
+ * variables by name — never re-declaring the raw values.
+ *
+ * Colour never carries meaning alone: every status pairs a hue with a glyph and
+ * a label in tokens.ts. See DESIGN_SYSTEM_FOUNDATIONS.md.
+ */
+
+:root {
+  color-scheme: light dark;
+
+  /* --- Neutral ramp (cool slate; the calm foundation) --- */
+  --cw-neutral-50: #f7f9f9;
+  --cw-neutral-100: #eef1f2;
+  --cw-neutral-200: #e0e5e7;
+  --cw-neutral-300: #c8d0d3;
+  --cw-neutral-400: #98a3a8;
+  --cw-neutral-500: #6a757b;
+  --cw-neutral-600: #505a60;
+  --cw-neutral-700: #3c454a;
+  --cw-neutral-800: #262d31;
+  --cw-neutral-900: #161b1e;
+  --cw-neutral-950: #0c1012;
+
+  /* --- Primary ramp (one confident teal accent) --- */
+  --cw-primary-50: #edf7f4;
+  --cw-primary-100: #d5ece6;
+  --cw-primary-200: #acd9cf;
+  --cw-primary-300: #79c1b2;
+  --cw-primary-400: #45a291;
+  --cw-primary-500: #278475;
+  --cw-primary-600: #1c695c;
+  --cw-primary-700: #17544a;
+  --cw-primary-800: #13403a;
+  --cw-primary-900: #0e2d29;
+
+  /* --- Semantic status bases (text/icon on light surfaces) --- */
+  --cw-status-supported: #1f7a4d;
+  --cw-status-incomplete: #2160a0;
+  --cw-status-inconsistent: #a5481a;
+  --cw-status-near-threshold: #8a6300;
+  --cw-status-requires-judgement: #6a4a9c;
+  --cw-status-professional-review: #9a3d6b;
+  --cw-status-not-satisfied: #b3261e;
+  --cw-status-not-assessed: var(--cw-neutral-600);
+
+  /* Soft surfaces derive from base + surface, so they re-theme automatically. */
+  --cw-status-supported-surface: color-mix(in oklab, var(--cw-status-supported) 12%, var(--cw-surface));
+  --cw-status-incomplete-surface: color-mix(in oklab, var(--cw-status-incomplete) 12%, var(--cw-surface));
+  --cw-status-inconsistent-surface: color-mix(in oklab, var(--cw-status-inconsistent) 12%, var(--cw-surface));
+  --cw-status-near-threshold-surface: color-mix(in oklab, var(--cw-status-near-threshold) 12%, var(--cw-surface));
+  --cw-status-requires-judgement-surface: color-mix(in oklab, var(--cw-status-requires-judgement) 12%, var(--cw-surface));
+  --cw-status-professional-review-surface: color-mix(in oklab, var(--cw-status-professional-review) 12%, var(--cw-surface));
+  --cw-status-not-satisfied-surface: color-mix(in oklab, var(--cw-status-not-satisfied) 12%, var(--cw-surface));
+  --cw-status-not-assessed-surface: color-mix(in oklab, var(--cw-status-not-assessed) 12%, var(--cw-surface));
+
+  /* --- Currency (orthogonal to conclusion; see CLAUDE.md §2.4) --- */
+  --cw-currency-stale: var(--cw-status-near-threshold);
+  --cw-currency-superseded: var(--cw-neutral-500);
+  --cw-currency-provisional: var(--cw-primary-600);
+
+  /* --- Provenance accents (AI-proposed vs confirmed vs calculated, …) --- */
+  --cw-provenance-ai-proposed: var(--cw-primary-600);
+  --cw-provenance-user-confirmed: var(--cw-status-supported);
+  --cw-provenance-user-corrected: var(--cw-status-incomplete);
+  --cw-provenance-system-calculated: var(--cw-neutral-600);
+  --cw-provenance-evidence-supported: var(--cw-primary-700);
+  --cw-provenance-conflicting: var(--cw-status-inconsistent);
+  --cw-provenance-stale: var(--cw-status-near-threshold);
+  --cw-provenance-unavailable: var(--cw-neutral-400);
+
+  /* --- Role tokens (what components reference; these flip in dark mode) --- */
+  --cw-bg: var(--cw-neutral-50);
+  --cw-surface: #ffffff;
+  --cw-surface-sunken: var(--cw-neutral-100);
+  --cw-border: var(--cw-neutral-200);
+  --cw-border-strong: var(--cw-neutral-300);
+  --cw-text: var(--cw-neutral-900);
+  --cw-text-muted: var(--cw-neutral-600);
+  --cw-text-subtle: var(--cw-neutral-500);
+  --cw-accent: var(--cw-primary-600);
+  --cw-accent-hover: var(--cw-primary-700);
+  --cw-accent-contrast: #ffffff;
+  --cw-focus: var(--cw-primary-500);
+
+  /* --- Typography --- */
+  --cw-font-sans: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  /* Tabular monospace for dates, thresholds, and calculation breakdowns. */
+  --cw-font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", "Menlo", monospace;
+
+  --cw-text-xs: 0.75rem;
+  --cw-text-sm: 0.875rem;
+  --cw-text-base: 1rem;
+  --cw-text-lg: 1.125rem;
+  --cw-text-xl: 1.25rem;
+  --cw-text-2xl: 1.5rem;
+  --cw-text-3xl: 1.875rem;
+  --cw-text-4xl: 2.25rem;
+
+  --cw-leading-tight: 1.2;
+  --cw-leading-snug: 1.35;
+  --cw-leading-normal: 1.55;
+
+  --cw-weight-regular: 400;
+  --cw-weight-medium: 500;
+  --cw-weight-semibold: 600;
+
+  /* --- Spacing (4px base) --- */
+  --cw-space-1: 0.25rem;
+  --cw-space-2: 0.5rem;
+  --cw-space-3: 0.75rem;
+  --cw-space-4: 1rem;
+  --cw-space-5: 1.25rem;
+  --cw-space-6: 1.5rem;
+  --cw-space-8: 2rem;
+  --cw-space-10: 2.5rem;
+  --cw-space-12: 3rem;
+  --cw-space-16: 4rem;
+
+  /* --- Radius (soft, not pill) --- */
+  --cw-radius-sm: 0.25rem;
+  --cw-radius-md: 0.5rem;
+  --cw-radius-lg: 0.75rem;
+  --cw-radius-xl: 1rem;
+
+  /* --- Elevation (minimal; prefer borders over shadows) --- */
+  --cw-shadow-sm: 0 1px 2px rgba(12, 16, 18, 0.06);
+  --cw-shadow-md: 0 4px 12px rgba(12, 16, 18, 0.08);
+
+  --cw-focus-ring: 0 0 0 2px var(--cw-surface), 0 0 0 4px var(--cw-focus);
+}
+
+/* --- Dark theme: system preference, unless explicitly set to light --- */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --cw-status-supported: #6cc79a;
+    --cw-status-incomplete: #7db4ef;
+    --cw-status-inconsistent: #e0925f;
+    --cw-status-near-threshold: #d8b25a;
+    --cw-status-requires-judgement: #b49ce0;
+    --cw-status-professional-review: #e08cb4;
+    --cw-status-not-satisfied: #ef8a82;
+    --cw-status-not-assessed: var(--cw-neutral-400);
+
+    --cw-bg: var(--cw-neutral-950);
+    --cw-surface: var(--cw-neutral-900);
+    --cw-surface-sunken: var(--cw-neutral-950);
+    --cw-border: var(--cw-neutral-800);
+    --cw-border-strong: var(--cw-neutral-700);
+    --cw-text: var(--cw-neutral-100);
+    --cw-text-muted: var(--cw-neutral-400);
+    --cw-text-subtle: #7e888e;
+    --cw-accent: var(--cw-primary-400);
+    --cw-accent-hover: var(--cw-primary-300);
+    --cw-accent-contrast: var(--cw-neutral-950);
+    --cw-focus: var(--cw-primary-400);
+  }
+}
+
+/* --- Dark theme: explicit opt-in (wins over the media query) --- */
+:root[data-theme="dark"] {
+  --cw-status-supported: #6cc79a;
+  --cw-status-incomplete: #7db4ef;
+  --cw-status-inconsistent: #e0925f;
+  --cw-status-near-threshold: #d8b25a;
+  --cw-status-requires-judgement: #b49ce0;
+  --cw-status-professional-review: #e08cb4;
+  --cw-status-not-satisfied: #ef8a82;
+  --cw-status-not-assessed: var(--cw-neutral-400);
+
+  --cw-bg: var(--cw-neutral-950);
+  --cw-surface: var(--cw-neutral-900);
+  --cw-surface-sunken: var(--cw-neutral-950);
+  --cw-border: var(--cw-neutral-800);
+  --cw-border-strong: var(--cw-neutral-700);
+  --cw-text: var(--cw-neutral-100);
+  --cw-text-muted: var(--cw-neutral-400);
+  --cw-text-subtle: #7e888e;
+  --cw-accent: var(--cw-primary-400);
+  --cw-accent-hover: var(--cw-primary-300);
+  --cw-accent-contrast: var(--cw-neutral-950);
+  --cw-focus: var(--cw-primary-400);
+}

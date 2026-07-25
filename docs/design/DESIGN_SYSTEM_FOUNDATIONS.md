@@ -2,37 +2,154 @@
 
 ### Status
 
-**NOT YET WRITTEN — blocks Milestone 4**
+Proposed for implementation
+Version: 0.1 — **token foundation** (M1 slice 4)
 
-Placeholder. `IMPLEMENTATION_ROADMAP.md` §2.1 gates M4 on this document.
+This document specifies the token layer: colour, typography, spacing, surfaces,
+and the status / provenance vocabularies. It is deliberately scoped to tokens —
+component specifications (`RequirementStatus`, `ExplanationStack`, …) follow in
+**M4**, built on these tokens. The implementation lives in
+`packages/design-system` (`src/tokens.css` = values, `src/tokens.ts` = the typed
+semantic maps). See `Evidence_First_Citizenship_Workspace_UI_UX.md` §13 for the
+direction this makes concrete.
 
 ---
 
-## What this document must contain
+## 1. Principles
 
-Enough specificity that the product cannot be mistaken for a default shadcn
-dashboard — which is an explicit MVP quality gate, not a preference.
+- **Calm, not sterile.** Strong hierarchy, generous spacing, a restrained neutral
+  foundation, one confident accent. Not a floating-card dashboard.
+- **Not default shadcn.** A teal accent over cool-slate neutrals, domain-meaning
+  status tokens, and typographic emphasis on dates and calculations — the product
+  must not read as stock shadcn/zinc.
+- **Colour is never the only signal.** Every status and provenance token pairs a
+  hue with a **glyph and a label** (`tokens.ts`). This is a WCAG 2.2 requirement,
+  not a preference.
+- **One source of truth per concern.** Raw values live once in `tokens.css`;
+  `tokens.ts` references variables by name and never re-declares a hex.
 
-- **Colour:** restrained neutral foundation, one confident primary accent, muted
-  semantic colours. Status tokens for each requirement conclusion. No
-  traffic-light dashboards, no neon, no purposeless gradients.
-- **Typography:** type scale, numeric treatment, date formatting, line lengths.
-  Dates, thresholds and calculations get deliberate emphasis — they are the
-  content.
-- **Spacing and surfaces:** soft borders, minimal shadows, spacious panels,
-  page-level structure. Not an interface made entirely of floating cards.
-- **Status tokens:** every conclusion state paired with a non-colour indicator.
-  Colour alone is never the signal.
-- **Provenance vocabulary:** distinct visual treatment for AI-proposed,
-  user-confirmed, user-corrected, system-calculated, evidence-supported,
-  conflicting, stale, and unavailable.
+---
 
-See `Evidence_First_Citizenship_Workspace_UI_UX.md` §13 for the direction this
-must make concrete.
+## 2. Colour
 
-## Note on timing
+### 2.1 Ramps
 
-`IMPLEMENTATION_ROADMAP.md` M1 flags design tokens as the one part of the
-foundation milestone worth spending time on: visual direction is expensive to
-retrofit. Write the token layer in week 1 even though the full document is not
-needed until M4.
+- **Neutral** (`--cw-neutral-50 … 950`): cool slate — the calm foundation for
+  backgrounds, surfaces, borders, and text.
+- **Primary** (`--cw-primary-50 … 900`): a single confident teal accent. Used for
+  actions, focus, and the "provisional / preview" and "AI-proposed" provenance.
+
+### 2.2 Role tokens
+
+Components reference **roles**, not ramp steps, so theming flips for free:
+`--cw-bg`, `--cw-surface`, `--cw-surface-sunken`, `--cw-border`,
+`--cw-border-strong`, `--cw-text`, `--cw-text-muted`, `--cw-text-subtle`,
+`--cw-accent`, `--cw-accent-hover`, `--cw-accent-contrast`, `--cw-focus`.
+
+### 2.3 Contrast
+
+All foreground/background pairings target **WCAG 2.2 AA** (≥ 4.5:1 for text,
+≥ 3:1 for icons and large text), verified in both light and dark themes —
+including each status colour on its own tinted badge surface. The three edge
+cases found during authoring (`inconsistent` and `not_yet_assessed` badges in
+light; `--cw-text-subtle` in dark) were adjusted until they passed 4.5:1.
+
+---
+
+## 3. Status tokens (requirement conclusion)
+
+Colour + glyph + label for each conclusion state. Hues are muted and
+distinguishable; no traffic-light dashboard.
+
+| State | Intent (hue) | Glyph | Colour var |
+|---|---|---|---|
+| Supported | subdued green | `check` | `--cw-status-supported` |
+| Incomplete | neutral blue | `dashed-circle` | `--cw-status-incomplete` |
+| Inconsistent | burnt orange | `conflict` | `--cw-status-inconsistent` |
+| Near threshold | amber | `gauge` | `--cw-status-near-threshold` |
+| Requires judgement | violet | `scale` | `--cw-status-requires-judgement` |
+| Professional review recommended | plum | `shield` | `--cw-status-professional-review` |
+| Not currently satisfied | restrained red | `minus-circle` | `--cw-status-not-satisfied` |
+| Not yet assessed | neutral grey | `dash` | `--cw-status-not-assessed` |
+
+Each has a matching `…-surface` token (a 12% tint over the current surface, so it
+re-themes automatically) for badges and panels.
+
+### 3.1 Currency (separate axis)
+
+Currency is **orthogonal** to conclusion (CLAUDE.md §2.4): a result can be
+`Supported` *and* `Stale`. Never fold them into one token.
+
+| Currency | Glyph | Colour var |
+|---|---|---|
+| Current | `dot` | — (no adornment) |
+| Stale | `clock` | `--cw-currency-stale` (amber) |
+| Superseded | `history` | `--cw-currency-superseded` (grey) |
+| Provisional | `preview` | `--cw-currency-provisional` (teal) |
+
+---
+
+## 4. Provenance vocabulary
+
+How a value came to be — the product's core trust signal. Distinct treatment for
+each, so an AI proposal is never mistaken for a confirmed fact.
+
+| Kind | Glyph | Colour var |
+|---|---|---|
+| AI proposed | `proposed` | `--cw-provenance-ai-proposed` |
+| User confirmed | `check` | `--cw-provenance-user-confirmed` |
+| User corrected | `pencil` | `--cw-provenance-user-corrected` |
+| System calculated | `equals` | `--cw-provenance-system-calculated` |
+| Evidence supported | `paperclip` | `--cw-provenance-evidence-supported` |
+| Conflicting | `conflict` | `--cw-provenance-conflicting` |
+| Stale | `clock` | `--cw-provenance-stale` |
+| Unavailable | `slash` | `--cw-provenance-unavailable` |
+
+AI-proposed values additionally carry a dashed treatment in M4 components, so the
+distinction survives greyscale.
+
+---
+
+## 5. Typography
+
+- **Sans** (`--cw-font-sans`): Inter, with a system fallback stack.
+- **Mono** (`--cw-font-mono`): IBM Plex Mono — for **dates, thresholds, and
+  calculation breakdowns**, set with `font-variant-numeric: tabular-nums` so
+  figures align. Dates and calculations are the content; they get deliberate
+  emphasis.
+- **Scale**: `--cw-text-xs … --cw-text-4xl` (0.75 → 2.25rem).
+- **Leading**: `--cw-leading-tight | snug | normal`.
+- **Weights**: `--cw-weight-regular | medium | semibold` (400/500/600).
+
+---
+
+## 6. Spacing, radius, elevation
+
+- **Spacing** (`--cw-space-1 … 16`): 4px base scale.
+- **Radius** (`--cw-radius-sm … xl`): soft, never pill.
+- **Elevation**: prefer borders to shadows; only `--cw-shadow-sm` and
+  `--cw-shadow-md`, both soft. `--cw-focus-ring` is a two-layer ring using the
+  surface and focus colours so it reads on any background.
+
+---
+
+## 7. Theming
+
+Light by default; dark via the system preference
+(`@media (prefers-color-scheme: dark)`) unless overridden, and via an explicit
+`:root[data-theme="dark"]` / `[data-theme="light"]` opt-in that always wins. Role
+tokens and status bases are re-declared for dark with lighter, AA-verified hues;
+ramps are absolute and shared.
+
+---
+
+## 8. Consuming the tokens
+
+```ts
+import "@cw/design-system/tokens.css";                 // CSS custom properties
+import { statusTokens, provenanceTokens } from "@cw/design-system";
+```
+
+In M4 the Tailwind theme maps these variables to utilities; components read role
+and status tokens, never raw ramp steps or hard-coded hexes. `tokens.ts` is the
+single typed bridge between domain states and their visual treatment.
