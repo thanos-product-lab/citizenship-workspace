@@ -31,6 +31,8 @@ def configure_logging(settings: Settings) -> None:
     structlog.configure(
         processors=[*shared_processors, renderer],
         wrapper_class=structlog.make_filtering_bound_logger(logging.INFO),
-        logger_factory=structlog.PrintLoggerFactory(file=sys.stdout),
+        # Logs go to stderr so stdout stays clean for data (e.g. the OpenAPI
+        # export in `just api-client`). Matches uvicorn's default stream.
+        logger_factory=structlog.PrintLoggerFactory(file=sys.stderr),
         cache_logger_on_first_use=True,
     )
