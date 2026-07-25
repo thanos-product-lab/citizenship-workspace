@@ -23,7 +23,7 @@ lint:
 # Strict type-check everything (tsc + mypy).
 typecheck:
     pnpm run typecheck
-    cd services/platform && uv run mypy .
+    cd services/platform && uv run mypy
 
 # All tests (frontend + backend).
 test: test-fe test-be
@@ -48,17 +48,25 @@ test-fe:
 
 # --- not yet implemented (land in the noted slice/milestone) ---
 
-# Bring up local infra: postgres, redis, minio, api, worker (M1 slice 2).
+# Bring up local infra + services (postgres, redis, minio, api, worker).
 up:
-    @echo "just up: not until M1 slice 2 (Docker Compose)."
+    docker compose up --build -d
+
+# Stop and remove local services.
+down:
+    docker compose down
+
+# Follow local service logs.
+logs:
+    docker compose logs -f
+
+# Apply database migrations (alembic upgrade head).
+migrate:
+    cd services/platform && uv run alembic upgrade head
 
 # Run Next.js against the local API (M1 slice 5).
 dev:
     @echo "just dev: not until M1 slice 5 (web shell)."
-
-# alembic upgrade head (M1 slice 2).
-migrate:
-    @echo "just migrate: not until M1 slice 2 (Alembic baseline)."
 
 # Load the canonical synthetic demo case (M3A).
 seed:
