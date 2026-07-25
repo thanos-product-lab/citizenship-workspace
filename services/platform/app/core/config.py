@@ -19,6 +19,22 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+psycopg://citizenship:citizenship@localhost:5432/citizenship"
     redis_url: str = "redis://localhost:6379/0"
 
+    # Clerk auth. Empty by default so the app imports without secrets (tests,
+    # OpenAPI export, CI); verification fails closed when unconfigured.
+    clerk_issuer: str = ""
+    clerk_jwks_url: str = ""
+    clerk_audience: str | None = None
+    # Comma-separated allow-list of `azp` values (e.g. "http://localhost:3000").
+    clerk_authorized_parties: str = ""
+
+    @property
+    def resolved_jwks_url(self) -> str:
+        if self.clerk_jwks_url:
+            return self.clerk_jwks_url
+        if self.clerk_issuer:
+            return f"{self.clerk_issuer.rstrip('/')}/.well-known/jwks.json"
+        return ""
+
 
 @lru_cache
 def get_settings() -> Settings:
