@@ -83,9 +83,11 @@ api-client:
     cd services/platform && uv run python -m scripts.export_openapi > ../../packages/api-client/generated/openapi.json
     pnpm exec openapi-typescript packages/api-client/generated/openapi.json -o packages/api-client/generated/schema.d.ts
 
-# Playwright end-to-end (M1 slice 6).
+# Playwright smoke test against a deployed (or local) URL.
+# First install browsers: pnpm --filter @cw/web exec playwright install chromium
+# Set SMOKE_BASE_URL / SMOKE_API_URL to target a deployment.
 e2e:
-    @echo "just e2e: not until M1 slice 6 (deploy + smoke)."
+    pnpm --filter @cw/web exec playwright test
 
 # AI evaluation suite — NOT run on every commit (M8).
 eval:

@@ -8,6 +8,7 @@ export default tseslint.config(
       "**/node_modules/**",
       "**/dist/**",
       "**/.next/**",
+      "**/next-env.d.ts",
       "**/coverage/**",
       // Generated from the FastAPI OpenAPI schema — never hand-linted or edited.
       "packages/api-client/generated/**",

@@ -153,3 +153,8 @@ __pycache__/
 .ruff_cache/
 .pytest_cache/
 .hypothesis/
+
+# Playwright
+test-results/
+playwright-report/
+blob-report/
