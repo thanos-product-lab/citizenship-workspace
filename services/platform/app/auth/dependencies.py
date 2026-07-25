@@ -13,6 +13,7 @@ The security-sensitive rules live in `decode_clerk_jwt`:
 from typing import Annotated, Any
 
 import jwt
+import structlog
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
@@ -21,6 +22,7 @@ from app.auth.schemas import CurrentUser
 from app.core.config import Settings, get_settings
 
 _bearer = HTTPBearer(auto_error=False)
+_log = structlog.get_logger()
 
 _UNAUTHORIZED = HTTPException(
     status_code=status.HTTP_401_UNAUTHORIZED,
@@ -56,18 +58,23 @@ def get_current_user(
     # Fail closed, explicitly: without a configured issuer we cannot verify the
     # `iss` claim, so refuse all tokens rather than accept unverified ones.
     if not settings.clerk_issuer:
+        _log.warning("auth.rejected", reason="clerk_issuer_unset")
         raise _UNAUTHORIZED
     if credentials is None or not credentials.credentials:
+        _log.info("auth.rejected", reason="missing_bearer")
         raise _UNAUTHORIZED
     token = credentials.credentials
     try:
         signing_key = jwks.get_signing_key(token)
         claims = decode_clerk_jwt(token, signing_key, settings)
     except (jwt.PyJWTError, jwt.PyJWKClientError) as exc:
+        # reason/detail describe the failure type only — never the token or PII.
+        _log.info("auth.rejected", reason=exc.__class__.__name__, detail=str(exc))
         raise _UNAUTHORIZED from exc
 
     sub = claims.get("sub")
     if not isinstance(sub, str):
+        _log.info("auth.rejected", reason="missing_subject")
         raise _UNAUTHORIZED
     sid = claims.get("sid")
     email = claims.get("email")
