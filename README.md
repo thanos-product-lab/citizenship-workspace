@@ -86,8 +86,13 @@ The API derives the JWKS URL from the issuer. With the API up (`just up`) and
 `just dev` running the web app, open http://localhost:3000, sign in, and the
 shell shows your account from `/api/v1/me`.
 
+## Deployment
+
+See [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) — web to Vercel, API + worker +
+Postgres + Redis to Railway, both auto-deploying from `main`.
+
 ## Status
 
 Milestone 1 — platform foundation. The tooling spine, backend service, contract
-pipeline, design tokens, and an authenticated Next.js shell (Clerk + JWKS) are in
-place. Deployment is the last M1 slice; the domain model begins at M2.
+pipeline, design tokens, an authenticated Next.js shell (Clerk + JWKS), and the
+deploy configuration are in place. The domain model begins at M2.
