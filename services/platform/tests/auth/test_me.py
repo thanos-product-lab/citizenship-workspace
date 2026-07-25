@@ -16,9 +16,15 @@ def key() -> RSAPrivateKey:
     return generate_keypair()
 
 
+def _isolated_settings(issuer: str) -> Settings:
+    # Explicit fields override any local .env (init kwargs win), keeping tests
+    # independent of the developer's environment.
+    return Settings(clerk_issuer=issuer, clerk_audience=None, clerk_authorized_parties="")
+
+
 @pytest.fixture
 def client() -> Iterator[TestClient]:
-    app.dependency_overrides[get_settings] = lambda: Settings(clerk_issuer=ISSUER)
+    app.dependency_overrides[get_settings] = lambda: _isolated_settings(ISSUER)
     yield TestClient(app)
     app.dependency_overrides.clear()
 
@@ -51,7 +57,7 @@ def test_me_fails_closed_when_issuer_unconfigured(
     key: RSAPrivateKey, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A valid signature must not be accepted when no issuer is configured."""
-    app.dependency_overrides[get_settings] = lambda: Settings(clerk_issuer="")
+    app.dependency_overrides[get_settings] = lambda: _isolated_settings("")
     monkeypatch.setattr(jwks, "get_signing_key", lambda _token: key.public_key())
     try:
         resp = TestClient(app).get(

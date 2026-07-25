@@ -14,8 +14,14 @@ def key() -> RSAPrivateKey:
     return generate_keypair()
 
 
-def make_settings(**overrides: str) -> Settings:
-    return Settings(clerk_issuer=ISSUER, **overrides)
+def make_settings(*, clerk_authorized_parties: str = "") -> Settings:
+    # Explicit fields override any local .env (init kwargs win), keeping tests
+    # deterministic regardless of the developer's environment.
+    return Settings(
+        clerk_issuer=ISSUER,
+        clerk_audience=None,
+        clerk_authorized_parties=clerk_authorized_parties,
+    )
 
 
 def test_valid_token_decodes(key: RSAPrivateKey) -> None:
