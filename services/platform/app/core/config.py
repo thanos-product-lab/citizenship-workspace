@@ -2,6 +2,7 @@
 
 from functools import lru_cache
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -29,6 +30,15 @@ class Settings(BaseSettings):
 
     # Comma-separated browser origins allowed to call the API (CORS).
     cors_allow_origins: str = "http://localhost:3000"
+
+    @field_validator("database_url")
+    @classmethod
+    def _use_psycopg_driver(cls, value: str) -> str:
+        # Managed Postgres (Railway/Fly) hands out a bare postgresql:// URL;
+        # SQLAlchemy needs the psycopg driver named explicitly.
+        if value.startswith("postgresql://"):
+            return value.replace("postgresql://", "postgresql+psycopg://", 1)
+        return value
 
     @property
     def resolved_jwks_url(self) -> str:
