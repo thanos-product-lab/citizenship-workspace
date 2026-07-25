@@ -7,10 +7,12 @@ payload="$(cat)"
 path="$(printf '%s' "$payload" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("tool_input",{}).get("file_path",""))' 2>/dev/null || true)"
 [ -z "$path" ] && exit 0
 
-# 1. Generated API client — regenerate, never hand-edit.
+# 1. Generated API client artifacts — regenerate, never hand-edit.
+#    Only packages/api-client/generated/** is generated; the package scaffolding
+#    (package.json, tsconfig, src/) is authored and editable.
 case "$path" in
-  */packages/api-client/*)
-    echo "BLOCKED: packages/api-client is generated from the FastAPI OpenAPI schema." >&2
+  */packages/api-client/generated/*)
+    echo "BLOCKED: packages/api-client/generated is produced from the FastAPI OpenAPI schema." >&2
     echo "Change the FastAPI route or Pydantic schema, then run 'just api-client'." >&2
     exit 2 ;;
 esac

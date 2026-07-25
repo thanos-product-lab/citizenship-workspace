@@ -69,8 +69,9 @@ All four reviewers exist in `agents/`. Run the ones the change touches.
 
 ## Hook behaviour
 
-`protect-immutables.sh` **blocks** edits to: `packages/api-client/**` (generated),
-committed Alembic migrations, and the two source-of-truth RFCs
+`protect-immutables.sh` **blocks** edits to: `packages/api-client/generated/**`
+(the generated OpenAPI client; the package scaffolding around it is authored and
+editable), committed Alembic migrations, and the two source-of-truth RFCs
 (`DETERMINISTIC_RULES_SPEC.md`, `DOMAIN_MODEL_RFC.md`). Uncommitted migrations are
 editable by design — you need to be able to fix a revision before it ships. To
 change a protected RFC, agree the change first (an ADR in `docs/decisions/`), then

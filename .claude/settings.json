@@ -20,7 +20,7 @@
       "Read(.env)",
       "Read(.env.*)",
       "Read(**/secrets/**)",
-      "Edit(packages/api-client/**)"
+      "Edit(packages/api-client/generated/**)"
     ]
   },
   "hooks": {
