@@ -1,0 +1,30 @@
+@import "tailwindcss";
+
+/* Bridge the design-system tokens into Tailwind's theme so utilities
+   (bg-bg, text-text, font-mono, …) resolve to our variables. Component-level
+   usage arrives in M4; the shell styles from the CSS variables directly. */
+@theme {
+  --color-bg: var(--cw-bg);
+  --color-surface: var(--cw-surface);
+  --color-border: var(--cw-border);
+  --color-text: var(--cw-text);
+  --color-text-muted: var(--cw-text-muted);
+  --color-accent: var(--cw-accent);
+  --color-accent-contrast: var(--cw-accent-contrast);
+
+  --font-sans: var(--cw-font-sans);
+  --font-mono: var(--cw-font-mono);
+}
+
+html,
+body {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--cw-bg);
+  color: var(--cw-text);
+  font-family: var(--cw-font-sans);
+  -webkit-font-smoothing: antialiased;
+}
