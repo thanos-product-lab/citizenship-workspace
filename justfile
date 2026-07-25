@@ -32,9 +32,10 @@ test: test-fe test-be
 test-be:
     cd services/platform && uv run pytest
 
-# Hypothesis property suite for the deterministic rules (DETERMINISTIC_RULES_SPEC.md §10).
 # Exits 0 when the rule tests do not exist yet (pre-M3B) so the PostToolUse hook
 # does not error.
+
+# Hypothesis property suite for the deterministic rules (DETERMINISTIC_RULES_SPEC.md §10).
 test-rules:
     @if [ -d services/platform/tests/rules ]; then \
         cd services/platform && uv run pytest tests/rules -m property -q; \
@@ -72,9 +73,11 @@ dev:
 seed:
     @echo "just seed: not until M3A (synthetic demo case)."
 
-# Regenerate packages/api-client from the FastAPI OpenAPI schema (M1 slice 3).
+# Regenerate packages/api-client from the FastAPI OpenAPI schema.
 api-client:
-    @echo "just api-client: not until M1 slice 3 (contract pipeline)."
+    mkdir -p packages/api-client/generated
+    cd services/platform && uv run python -m scripts.export_openapi > ../../packages/api-client/generated/openapi.json
+    pnpm exec openapi-typescript packages/api-client/generated/openapi.json -o packages/api-client/generated/schema.d.ts
 
 # Playwright end-to-end (M1 slice 6).
 e2e:

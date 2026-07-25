@@ -65,3 +65,28 @@ jobs:
       - run: uv run ruff check .
       - run: uv run mypy
       - run: uv run pytest
+
+  contract:
+    name: OpenAPI client drift
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version-file: services/platform/.python-version
+      - name: Sync backend deps
+        working-directory: services/platform
+        run: uv sync
+      - name: Regenerate the client from the live schema
+        run: |
+          mkdir -p packages/api-client/generated
+          (cd services/platform && uv run python -m scripts.export_openapi) > packages/api-client/generated/openapi.json
+          pnpm exec openapi-typescript packages/api-client/generated/openapi.json -o packages/api-client/generated/schema.d.ts
+      - name: Fail if the committed client is out of date
+        run: git diff --exit-code -- packages/api-client/generated

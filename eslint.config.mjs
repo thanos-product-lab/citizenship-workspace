@@ -10,7 +10,7 @@ export default tseslint.config(
       "**/.next/**",
       "**/coverage/**",
       // Generated from the FastAPI OpenAPI schema — never hand-linted or edited.
-      "packages/api-client/**",
+      "packages/api-client/generated/**",
     ],
   },
   js.configs.recommended,
