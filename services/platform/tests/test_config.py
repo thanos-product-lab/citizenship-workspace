@@ -1,8 +1,13 @@
 from app.core.config import Settings
 
 
-def test_bare_postgres_url_gets_psycopg_driver() -> None:
+def test_bare_postgresql_url_gets_psycopg_driver() -> None:
     settings = Settings(database_url="postgresql://u:p@host:5432/db")
+    assert settings.database_url == "postgresql+psycopg://u:p@host:5432/db"
+
+
+def test_heroku_style_postgres_url_gets_psycopg_driver() -> None:
+    settings = Settings(database_url="postgres://u:p@host:5432/db")
     assert settings.database_url == "postgresql+psycopg://u:p@host:5432/db"
 
 

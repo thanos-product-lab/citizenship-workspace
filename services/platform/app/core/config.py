@@ -34,10 +34,12 @@ class Settings(BaseSettings):
     @field_validator("database_url")
     @classmethod
     def _use_psycopg_driver(cls, value: str) -> str:
-        # Managed Postgres (Railway/Fly) hands out a bare postgresql:// URL;
-        # SQLAlchemy needs the psycopg driver named explicitly.
-        if value.startswith("postgresql://"):
-            return value.replace("postgresql://", "postgresql+psycopg://", 1)
+        # Managed Postgres (Railway/Fly) hands out a bare postgres:// or
+        # postgresql:// URL; SQLAlchemy needs the psycopg driver named explicitly
+        # (and rejects the bare postgres:// scheme outright).
+        for prefix in ("postgresql://", "postgres://"):
+            if value.startswith(prefix):
+                return "postgresql+psycopg://" + value[len(prefix) :]
         return value
 
     @property
