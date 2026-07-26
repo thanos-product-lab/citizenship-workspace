@@ -11,7 +11,12 @@ from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
+# Import model modules for their side effect: registering tables on Base.metadata
+# so autogenerate and `target_metadata` see the full schema.
+import app.cases.domain
+import app.shared.records  # noqa: F401  (registration side effect)
 from app.core.config import get_settings
+from app.shared.db import Base
 
 config = context.config
 config.set_main_option("sqlalchemy.url", get_settings().database_url)
@@ -21,7 +26,7 @@ if config.config_file_name is not None:
     with contextlib.suppress(Exception):
         fileConfig(config.config_file_name)
 
-target_metadata = None
+target_metadata = Base.metadata
 
 
 def run_migrations_offline() -> None:
