@@ -33,16 +33,14 @@ describe("RouteOnboarding", () => {
   it("starts blank when no draft has been saved", async () => {
     get.mockResolvedValue({ data: null, error: undefined });
     render(<RouteOnboarding caseId="c1" />);
-    await waitFor(() =>
-      expect(screen.getByRole("heading", { name: /your route/i })).toBeInTheDocument(),
-    );
-    expect(screen.getByLabelText(/date of birth/i)).toHaveValue("");
+    // The heading is present in every state; wait for a ready-state control.
+    expect(await screen.findByLabelText(/date of birth/i)).toHaveValue("");
   });
 
   it("resumes previously saved answers", async () => {
     get.mockResolvedValue({ data: savedDraft, error: undefined });
     render(<RouteOnboarding caseId="c1" />);
-    await waitFor(() => expect(screen.getByLabelText(/date of birth/i)).toHaveValue("1990-05-01"));
+    expect(await screen.findByLabelText(/date of birth/i)).toHaveValue("1990-05-01");
     expect(screen.getByLabelText(/current immigration status/i)).toHaveValue("ILR");
   });
 
@@ -50,9 +48,8 @@ describe("RouteOnboarding", () => {
     get.mockResolvedValue({ data: null, error: undefined });
     put.mockResolvedValue({ data: savedDraft, error: undefined, response: { status: 200 } });
     render(<RouteOnboarding caseId="c1" />);
-    await waitFor(() => screen.getByRole("heading", { name: /your route/i }));
 
-    fireEvent.change(screen.getByLabelText(/current immigration status/i), {
+    fireEvent.change(await screen.findByLabelText(/current immigration status/i), {
       target: { value: "ILR" },
     });
     fireEvent.click(screen.getByRole("button", { name: /save answers/i }));
@@ -68,9 +65,8 @@ describe("RouteOnboarding", () => {
     get.mockResolvedValue({ data: null, error: undefined });
     put.mockResolvedValue({ data: undefined, error: { detail: "x" }, response: { status: 409 } });
     render(<RouteOnboarding caseId="c1" />);
-    await waitFor(() => screen.getByRole("heading", { name: /your route/i }));
 
-    fireEvent.click(screen.getByRole("button", { name: /save answers/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /save answers/i }));
     await waitFor(() =>
       expect(screen.getByRole("alert")).toHaveTextContent(/changed elsewhere/i),
     );
