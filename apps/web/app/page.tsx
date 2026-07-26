@@ -1,6 +1,6 @@
 import { UserButton } from "@clerk/nextjs";
 
-import { CurrentUserPanel } from "@/features/current-user/CurrentUserPanel";
+import { CasesPanel } from "@/features/cases/CasesPanel";
 
 export default function HomePage() {
   return (
@@ -19,11 +19,12 @@ export default function HomePage() {
       </header>
 
       <section style={{ paddingTop: "var(--cw-space-8)" }}>
-        <h1 style={{ fontSize: "var(--cw-text-2xl)", margin: 0 }}>Your case</h1>
+        <h1 style={{ fontSize: "var(--cw-text-2xl)", margin: 0 }}>Your workspace</h1>
         <p style={{ color: "var(--cw-text-muted)", marginTop: "var(--cw-space-2)" }}>
-          The workspace shell. Requirements, timeline, and evidence arrive in later milestones.
+          Each case prepares one UK naturalisation readiness assessment. Route onboarding,
+          requirements, and evidence arrive as you build the case.
         </p>
-        <CurrentUserPanel />
+        <CasesPanel />
       </section>
     </main>
   );
