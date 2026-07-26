@@ -11,14 +11,22 @@ So "state written but no outbox row" is structurally impossible, not merely
 discouraged. `emit()` writes the event, its outbox twin, and the audit entry in one
 call, so the three can never drift apart.
 
-Optimistic concurrency (SQLAlchemy `version_id_col`) surfaces here too: a stale
-`revision` raises `StaleDataError` on flush, which we translate to the domain-level
-`ConcurrencyConflict` (→ HTTP 409), never a silent overwrite.
+Optimistic concurrency surfaces here too, in two shapes, both translated to the
+domain-level `ConcurrencyConflict` (→ HTTP 409) so no concurrent writer is ever
+silently lost:
+
+- a stale `revision` on an UPDATE raises `StaleDataError` (SQLAlchemy `version_id_col`);
+- a concurrent *first* INSERT of a unique aggregate raises a unique-violation
+  `IntegrityError` (Postgres SQLSTATE 23505) — the "someone created it first" race.
+
+Any other `IntegrityError` (a NULL/FK/check violation) is a programming error, not a
+conflict, so it propagates unchanged rather than masquerading as a 409.
 """
 
 import uuid
 from typing import Any
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.exc import StaleDataError
 
@@ -26,6 +34,8 @@ from app.shared.errors import ConcurrencyConflict, StateWithoutEventError
 from app.shared.messaging import DomainEvent
 from app.shared.records import AuditEntryRecord, DomainEventRecord, OutboxEventRecord
 from app.shared.trace import current_trace_id
+
+_UNIQUE_VIOLATION = "23505"  # Postgres SQLSTATE for a unique-constraint violation
 
 # Rows the unit of work treats as infrastructure. A commit touching anything else
 # without an emitted event is the failure the guard catches.
@@ -98,6 +108,13 @@ class UnitOfWork:
         except StaleDataError as exc:
             self.session.rollback()
             raise ConcurrencyConflict() from exc
+        except IntegrityError as exc:
+            self.session.rollback()
+            if getattr(exc.orig, "sqlstate", None) == _UNIQUE_VIOLATION:
+                # Two writers raced to create the same unique aggregate; the loser
+                # gets a conflict, symmetric with the stale-revision UPDATE case.
+                raise ConcurrencyConflict() from exc
+            raise  # a real integrity bug — do not disguise it as a 409
 
     def _has_business_state_change(self) -> bool:
         changed = [*self.session.new, *self.session.dirty, *self.session.deleted]
