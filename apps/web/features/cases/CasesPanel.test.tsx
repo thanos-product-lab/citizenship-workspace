@@ -85,7 +85,8 @@ describe("CasesPanel", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /create case/i }));
     await waitFor(() =>
-      expect(screen.getByText(/give your case a name/i)).toBeInTheDocument(),
+      // role="alert" so a screen reader hears it even though focus isn't on the input.
+      expect(screen.getByRole("alert")).toHaveTextContent(/give your case a name/i),
     );
     expect(post).not.toHaveBeenCalled();
   });
