@@ -39,6 +39,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/cases/{case_id}/route-profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Route Profile */
+        get: operations["get_route_profile_api_v1_cases__case_id__route_profile_get"];
+        /** Save Route Profile */
+        put: operations["save_route_profile_api_v1_cases__case_id__route_profile_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/me": {
         parameters: {
             query?: never;
@@ -162,6 +180,54 @@ export interface components {
             /** Status */
             status: string;
         };
+        /** RouteProfileDraftInput */
+        RouteProfileDraftInput: {
+            /** Date Of Birth */
+            date_of_birth?: string | null;
+            /** Expected Revision */
+            expected_revision?: number | null;
+            /** Married To British Citizen */
+            married_to_british_citizen?: boolean | null;
+            /** May Already Be British */
+            may_already_be_british?: boolean | null;
+            /** Status Granted On */
+            status_granted_on?: string | null;
+            status_type?: components["schemas"]["StatusType"] | null;
+        };
+        /** RouteProfileResponse */
+        RouteProfileResponse: {
+            /**
+             * Case Id
+             * Format: uuid
+             */
+            case_id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Date Of Birth */
+            date_of_birth: string | null;
+            /** Married To British Citizen */
+            married_to_british_citizen: boolean | null;
+            /** May Already Be British */
+            may_already_be_british: boolean | null;
+            /** Review State */
+            review_state: string;
+            /** Revision */
+            revision: number;
+            /** Status Granted On */
+            status_granted_on: string | null;
+            /** Status Type */
+            status_type: string | null;
+            /** Version Number */
+            version_number: number;
+        };
+        /**
+         * StatusType
+         * @enum {string}
+         */
+        StatusType: "ILR" | "ILE" | "EU_SETTLED_STATUS" | "OTHER" | "UNKNOWN";
         /** ValidationError */
         ValidationError: {
             /** Context */
@@ -255,6 +321,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CaseResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_route_profile_api_v1_cases__case_id__route_profile_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RouteProfileResponse"] | null;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    save_route_profile_api_v1_cases__case_id__route_profile_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RouteProfileDraftInput"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RouteProfileResponse"];
                 };
             };
             /** @description Validation Error */
