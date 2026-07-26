@@ -53,8 +53,24 @@ that cannot pass today.
 ### Related deferred items surfaced by the same review (tracked, not silent)
 
 - **Optimistic-concurrency 409 is wired but unexercised** — `version_id_col` only
-  acts on `UPDATE`, and Slice 1 is insert-only. The first mutating command (route
-  confirm, Slice 3) must ship with a real stale-revision → 409 integration test.
+  acts on `UPDATE`, and Slice 1 is insert-only. *Resolved in Slice 2:* the draft-save
+  UPDATE now has a real stale-revision → 409 integration test, and a concurrent
+  first-INSERT unique-violation is translated to 409 in the unit of work
+  (`_UNIQUE_VIOLATION`), also tested.
+- **Case-lifecycle write guard is a read-then-commit TOCTOU (Slice 2, R2)** —
+  `save_draft` reads `case.lifecycle_status` from the object loaded by
+  `require_case_access`, but the optimistic-concurrency token guards the *route
+  profile*, not the *case*. A deletion that flips the case to `DELETION_PENDING`
+  concurrently would not abort an in-flight draft write, so a write could land on a
+  case mid-deletion. The deletion path does not exist yet, so the window is currently
+  unreachable. The deletion slice must close it — lock/re-check the case row on write
+  (`SELECT … FOR UPDATE`, or a lifecycle guard under the case's own optimistic token),
+  or ensure case deletion removes route-profile rows inside its own transaction — so
+  §11's "block writes → delete" ordering cannot be raced.
+- **Read path ignores lifecycle state** — `get_case` returns a case regardless of
+  `lifecycle_status`. When `request_deletion` / hard delete lands (Slice 4), the read
+  path must exclude `DELETION_PENDING` / `DELETED` cases (or deletion must remove the
+  rows). Deletion is terminal (§11).
 - **Read path ignores lifecycle state** — `get_case` returns a case regardless of
   `lifecycle_status`. When `request_deletion` / hard delete lands (Slice 4), the read
   path must exclude `DELETION_PENDING` / `DELETED` cases (or deletion must remove the
