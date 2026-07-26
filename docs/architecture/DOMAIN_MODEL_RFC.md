@@ -1962,6 +1962,7 @@ Initial events:
 
 ```text
 CaseCreated
+RouteProfileDraftSaved
 RouteProfileConfirmed
 RouteSupportEvaluated
 ProposedApplicationDateSelected
