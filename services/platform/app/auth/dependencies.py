@@ -24,6 +24,11 @@ from app.core.config import Settings, get_settings
 _bearer = HTTPBearer(auto_error=False)
 _log = structlog.get_logger()
 
+# Tolerance for clock skew between Clerk (the issuer) and this server, applied to
+# exp/iat/nbf. Without it, a server clock a few seconds behind rejects freshly
+# issued tokens with ImmatureSignatureError ("token not yet valid (iat)").
+_CLOCK_SKEW_LEEWAY_SECONDS = 60
+
 _UNAUTHORIZED = HTTPException(
     status_code=status.HTTP_401_UNAUTHORIZED,
     detail="Invalid or missing authentication",
@@ -39,6 +44,7 @@ def decode_clerk_jwt(token: str, signing_key: Any, settings: Settings) -> dict[s
         algorithms=["RS256"],
         issuer=settings.clerk_issuer or None,
         audience=settings.clerk_audience,
+        leeway=_CLOCK_SKEW_LEEWAY_SECONDS,
         options={
             "require": ["exp", "iat"],
             "verify_iss": bool(settings.clerk_issuer),

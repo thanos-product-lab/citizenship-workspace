@@ -35,6 +35,18 @@ def test_expired_rejected(key: RSAPrivateKey) -> None:
         decode_clerk_jwt(token, key.public_key(), make_settings())
 
 
+def test_small_clock_skew_is_tolerated(key: RSAPrivateKey) -> None:
+    # Server clock behind the issuer: an iat slightly in the future is accepted.
+    token = make_token(key, iat=datetime.now(UTC) + timedelta(seconds=30))
+    assert decode_clerk_jwt(token, key.public_key(), make_settings())["sub"] == "user_123"
+
+
+def test_large_clock_skew_rejected(key: RSAPrivateKey) -> None:
+    token = make_token(key, iat=datetime.now(UTC) + timedelta(minutes=5))
+    with pytest.raises(jwt.ImmatureSignatureError):
+        decode_clerk_jwt(token, key.public_key(), make_settings())
+
+
 def test_wrong_issuer_rejected(key: RSAPrivateKey) -> None:
     token = make_token(key, iss="https://evil.example")
     with pytest.raises(jwt.InvalidIssuerError):
