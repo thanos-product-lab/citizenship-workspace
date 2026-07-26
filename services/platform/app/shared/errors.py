@@ -36,3 +36,8 @@ def register_exception_handlers(app: FastAPI) -> None:
             status_code=status.HTTP_409_CONFLICT,
             content={"detail": "The record changed since you loaded it; reload and retry."},
         )
+
+    @app.exception_handler(IllegalTransition)
+    async def _illegal_transition(_request: Request, exc: IllegalTransition) -> JSONResponse:
+        # 409: the aggregate is in a state that conflicts with the requested command.
+        return JSONResponse(status_code=status.HTTP_409_CONFLICT, content={"detail": str(exc)})
