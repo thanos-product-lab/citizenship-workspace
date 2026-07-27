@@ -18,16 +18,36 @@ const savedDraft = {
 
 const get = vi.fn();
 const put = vi.fn();
-const client = { GET: get, PUT: put }; // stable reference, mirrors useMemo'd hook
+const post = vi.fn();
+const client = { GET: get, PUT: put, POST: post }; // stable ref, mirrors useMemo'd hook
 
 vi.mock("@/lib/api", () => ({ useApiClient: () => client }));
 
 import { RouteOnboarding } from "./RouteOnboarding";
 
+function decision(overrides: Record<string, unknown>) {
+  return {
+    data: {
+      support_status: "SUPPORTED",
+      lifecycle_status: "ACTIVE",
+      conclusion: "SUPPORTED",
+      summary_code: "ROUTE_STANDARD_CONFIRMED",
+      confirmed_version_number: 2,
+      rule_set: "2026.07.0",
+      semantic_version: "1.0.0",
+      requirements: [],
+      ...overrides,
+    },
+    error: undefined,
+    response: { status: 200 },
+  };
+}
+
 describe("RouteOnboarding", () => {
   beforeEach(() => {
     get.mockReset();
     put.mockReset();
+    post.mockReset();
   });
 
   it("starts blank when no draft has been saved", async () => {
@@ -69,6 +89,67 @@ describe("RouteOnboarding", () => {
     fireEvent.click(await screen.findByRole("button", { name: /save answers/i }));
     await waitFor(() =>
       expect(screen.getByRole("alert")).toHaveTextContent(/changed elsewhere/i),
+    );
+  });
+
+  it("confirms a supported route, shows the set-up outcome, and hides the form", async () => {
+    get.mockResolvedValue({ data: savedDraft, error: undefined });
+    put.mockResolvedValue({ data: { ...savedDraft, revision: 3 }, error: undefined });
+    post.mockResolvedValue(decision({}));
+    render(<RouteOnboarding caseId="c1" />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /confirm route/i }));
+
+    expect(await screen.findByRole("heading", { name: /your case is set up/i })).toBeInTheDocument();
+    // The form is gone once the route is supported (the case is now active).
+    expect(screen.queryByLabelText(/date of birth/i)).not.toBeInTheDocument();
+    // Confirm saved the on-screen answers first, then asked for the decision.
+    expect(put).toHaveBeenCalled();
+    expect(post).toHaveBeenCalledWith("/api/v1/cases/{case_id}/route-profile/confirm", {
+      params: { path: { case_id: "c1" } },
+      body: { expected_revision: 3 },
+    });
+  });
+
+  it("shows a stop outcome for the spouse route and keeps the form for editing", async () => {
+    get.mockResolvedValue({ data: savedDraft, error: undefined });
+    put.mockResolvedValue({ data: { ...savedDraft, revision: 3 }, error: undefined });
+    post.mockResolvedValue(
+      decision({
+        support_status: "UNSUPPORTED",
+        lifecycle_status: "DRAFT",
+        conclusion: "PROFESSIONAL_REVIEW_RECOMMENDED",
+        summary_code: "ROUTE_SPOUSE_UNSUPPORTED",
+      }),
+    );
+    render(<RouteOnboarding caseId="c1" />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /confirm route/i }));
+
+    expect(await screen.findByRole("heading", { name: /spouse route/i })).toBeInTheDocument();
+    expect(screen.getByLabelText(/date of birth/i)).toBeInTheDocument(); // still editable
+  });
+
+  it("reports missing answers when confirming an incomplete profile", async () => {
+    get.mockResolvedValue({ data: savedDraft, error: undefined });
+    put.mockResolvedValue({ data: { ...savedDraft, revision: 3 }, error: undefined });
+    post.mockResolvedValue({
+      data: undefined,
+      error: { missing_fields: ["married_to_british_citizen"] },
+      response: { status: 422 },
+    });
+    render(<RouteOnboarding caseId="c1" />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /confirm route/i }));
+    await waitFor(() =>
+      expect(screen.getByRole("alert")).toHaveTextContent(/spouse-route question/i),
+    );
+    // The named field is flagged invalid, not just mentioned in a banner.
+    await waitFor(() =>
+      expect(screen.getByLabelText(/spouse or civil partner/i)).toHaveAttribute(
+        "aria-invalid",
+        "true",
+      ),
     );
   });
 });

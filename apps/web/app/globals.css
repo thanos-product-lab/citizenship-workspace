@@ -28,3 +28,11 @@ body {
   font-family: var(--cw-font-sans);
   -webkit-font-smoothing: antialiased;
 }
+
+/* One consistent, on-brand focus ring for keyboard users across every control,
+   using the design-system token instead of the browser default outline. */
+:focus-visible {
+  outline: none;
+  box-shadow: var(--cw-focus-ring);
+  border-radius: var(--cw-radius-md);
+}

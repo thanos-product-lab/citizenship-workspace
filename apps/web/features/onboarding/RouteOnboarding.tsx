@@ -7,9 +7,11 @@ import type { ReactElement, ReactNode } from "react";
 import { useApiClient } from "@/lib/api";
 
 type RouteProfile = components["schemas"]["RouteProfileResponse"];
+type RouteSupport = components["schemas"]["RouteSupportResponse"];
 type StatusType = components["schemas"]["StatusType"];
 type LoadState = "loading" | "error" | "ready";
 type SaveState = "idle" | "saving" | "saved" | "conflict" | "error";
+type ConfirmState = "idle" | "confirming" | "incomplete" | "conflict" | "error";
 
 const STATUS_OPTIONS: { value: StatusType; label: string }[] = [
   { value: "ILR", label: "Indefinite leave to remain (ILR)" },
@@ -18,6 +20,23 @@ const STATUS_OPTIONS: { value: StatusType; label: string }[] = [
   { value: "OTHER", label: "Something else" },
   { value: "UNKNOWN", label: "I’m not sure" },
 ];
+
+const FIELD_LABEL: Record<string, string> = {
+  date_of_birth: "date of birth",
+  status_type: "immigration status",
+  status_granted_on: "when your status was granted",
+  married_to_british_citizen: "the spouse-route question",
+  may_already_be_british: "the British-citizen question",
+};
+
+// Missing-answer key → the control's DOM id, so a 422 can flag and focus the field.
+const FIELD_ID: Record<string, string> = {
+  date_of_birth: "dob",
+  status_type: "status",
+  status_granted_on: "granted",
+  married_to_british_citizen: "spouse",
+  may_already_be_british: "already-british",
+};
 
 // Tri-state yes/no: "" is unanswered, distinct from a deliberate "No".
 type TriState = "" | "yes" | "no";
@@ -58,15 +77,11 @@ function fromProfile(p: RouteProfile): FormAnswers {
 }
 
 /**
- * Route-scope onboarding for one case. Loads any saved draft so a returning user
- * resumes where they left off, then saves the whole answer set on submit. No
- * support outcome is shown here — that arrives with the confirm step in a later
- * slice; this slice only captures and resumes answers.
- *
- * Accessibility (matching the Slice 1 patterns): the heading is present in every
- * state so there is always something to land on, and focus moves to it after a
- * user-initiated retry/reload; save status lives in a persistent polite live
- * region (saving/saved) with conflict/error as assertive alerts.
+ * Route-scope onboarding for one case: capture answers, save/resume, and confirm.
+ * Confirming saves the on-screen answers first (so the confirmed version matches
+ * what the user sees) then asks the server for the route-support decision, which
+ * is rendered as a supported / not-supported / needs-review outcome. The server
+ * owns the decision; this component only displays what it returns.
  */
 export function RouteOnboarding({ caseId }: { caseId: string }) {
   const api = useApiClient();
@@ -74,7 +89,11 @@ export function RouteOnboarding({ caseId }: { caseId: string }) {
   const [revision, setRevision] = useState<number | null>(null);
   const [state, setState] = useState<LoadState>("loading");
   const [saveState, setSaveState] = useState<SaveState>("idle");
+  const [confirmState, setConfirmState] = useState<ConfirmState>("idle");
+  const [missing, setMissing] = useState<string[]>([]);
+  const [decision, setDecision] = useState<RouteSupport | null>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
+  const outcomeRef = useRef<HTMLHeadingElement>(null);
 
   const load = useCallback(
     (opts?: { focusHeadingOnDone?: boolean }) => {
@@ -105,35 +124,88 @@ export function RouteOnboarding({ caseId }: { caseId: string }) {
 
   useEffect(() => load(), [load]);
 
-  async function handleSubmit(event: React.FormEvent) {
-    event.preventDefault();
-    setSaveState("saving");
-    const { data, error, response } = await api.PUT("/api/v1/cases/{case_id}/route-profile", {
+  // Move focus to the outcome once a decision arrives, so it is announced and a
+  // keyboard user lands on the result rather than staying on the confirm button.
+  useEffect(() => {
+    if (decision) outcomeRef.current?.focus();
+  }, [decision]);
+
+  function answersBody() {
+    return {
+      date_of_birth: answers.date_of_birth || null,
+      status_type: answers.status_type || null,
+      status_granted_on: answers.status_granted_on || null,
+      married_to_british_citizen: fromTri(answers.married_to_british_citizen),
+      may_already_be_british: fromTri(answers.may_already_be_british),
+    };
+  }
+
+  async function save(): Promise<{ revision: number } | null> {
+    const { data, response } = await api.PUT("/api/v1/cases/{case_id}/route-profile", {
       params: { path: { case_id: caseId } },
-      body: {
-        date_of_birth: answers.date_of_birth || null,
-        status_type: answers.status_type || null,
-        status_granted_on: answers.status_granted_on || null,
-        married_to_british_citizen: fromTri(answers.married_to_british_citizen),
-        may_already_be_british: fromTri(answers.may_already_be_british),
-        expected_revision: revision,
-      },
+      body: { ...answersBody(), expected_revision: revision },
     });
     if (data) {
       setRevision(data.revision);
-      setSaveState("saved");
-      return;
+      return { revision: data.revision };
     }
     setSaveState(response?.status === 409 ? "conflict" : "error");
-    void error;
+    return null;
+  }
+
+  async function handleSubmit(event: React.FormEvent) {
+    event.preventDefault();
+    setSaveState("saving");
+    if (await save()) setSaveState("saved");
+  }
+
+  async function handleConfirm() {
+    setConfirmState("confirming");
+    // Save what's on screen first, so the confirmed version matches the form.
+    const saved = await save();
+    if (!saved) {
+      setConfirmState("idle");
+      return;
+    }
+    const { data, error, response } = await api.POST(
+      "/api/v1/cases/{case_id}/route-profile/confirm",
+      { params: { path: { case_id: caseId } }, body: { expected_revision: saved.revision } },
+    );
+    if (data) {
+      setDecision(data);
+      setConfirmState("idle");
+      // A non-supported case stays a DRAFT; refresh the revision so the user can
+      // edit and re-confirm. (A supported case is now active — the form is hidden.)
+      if (data.support_status !== "SUPPORTED") load();
+      return;
+    }
+    if (response?.status === 422) {
+      const body = error as { missing_fields?: string[] } | undefined;
+      const fields = body?.missing_fields ?? [];
+      setMissing(fields);
+      setConfirmState("incomplete");
+      // Send the user straight to the first field that needs an answer.
+      const firstKey = fields[0];
+      const firstId = firstKey ? FIELD_ID[firstKey] : undefined;
+      if (firstId) queueMicrotask(() => document.getElementById(firstId)?.focus());
+      return;
+    }
+    setConfirmState(response?.status === 409 ? "conflict" : "error");
   }
 
   function update<K extends keyof FormAnswers>(key: K, value: FormAnswers[K]) {
     setAnswers((prev) => ({ ...prev, [key]: value }));
     setSaveState("idle");
+    setConfirmState("idle");
   }
 
   const today = todayLocal();
+  const supported = decision?.support_status === "SUPPORTED";
+  const showForm = state === "ready" && !supported;
+  // A field is flagged invalid only while an unresolved "incomplete" confirm names
+  // it; editing any field resets confirmState to idle, clearing the flags.
+  const invalid = (key: string): true | undefined =>
+    confirmState === "incomplete" && missing.includes(key) ? true : undefined;
 
   return (
     <section style={{ marginTop: "var(--cw-space-6)" }}>
@@ -160,7 +232,9 @@ export function RouteOnboarding({ caseId }: { caseId: string }) {
         </div>
       )}
 
-      {state === "ready" && (
+      {decision && <OutcomePanel decision={decision} headingRef={outcomeRef} />}
+
+      {showForm && (
         <form onSubmit={handleSubmit} style={{ marginTop: "var(--cw-space-6)" }}>
           <div style={{ display: "grid", gap: "var(--cw-space-6)" }}>
             <Field id="dob" label="Date of birth">
@@ -169,6 +243,7 @@ export function RouteOnboarding({ caseId }: { caseId: string }) {
                 type="date"
                 value={answers.date_of_birth}
                 max={today}
+                aria-invalid={invalid("date_of_birth")}
                 onChange={(e) => update("date_of_birth", e.target.value)}
                 style={inputStyle}
               />
@@ -178,6 +253,7 @@ export function RouteOnboarding({ caseId }: { caseId: string }) {
               <select
                 id="status"
                 value={answers.status_type}
+                aria-invalid={invalid("status_type")}
                 onChange={(e) => update("status_type", e.target.value as StatusType | "")}
                 style={inputStyle}
               >
@@ -196,6 +272,7 @@ export function RouteOnboarding({ caseId }: { caseId: string }) {
                 type="date"
                 value={answers.status_granted_on}
                 max={today}
+                aria-invalid={invalid("status_granted_on")}
                 onChange={(e) => update("status_granted_on", e.target.value)}
                 style={inputStyle}
               />
@@ -209,6 +286,7 @@ export function RouteOnboarding({ caseId }: { caseId: string }) {
               <YesNoSelect
                 id="spouse"
                 value={answers.married_to_british_citizen}
+                aria-invalid={invalid("married_to_british_citizen")}
                 onChange={(v) => update("married_to_british_citizen", v)}
               />
             </Field>
@@ -221,6 +299,7 @@ export function RouteOnboarding({ caseId }: { caseId: string }) {
               <YesNoSelect
                 id="already-british"
                 value={answers.may_already_be_british}
+                aria-invalid={invalid("may_already_be_british")}
                 onChange={(v) => update("may_already_be_british", v)}
               />
             </Field>
@@ -235,8 +314,16 @@ export function RouteOnboarding({ caseId }: { caseId: string }) {
               flexWrap: "wrap",
             }}
           >
-            <button type="submit" disabled={saveState === "saving"} style={buttonStyle}>
+            <button type="submit" disabled={saveState === "saving"} style={secondaryButtonStyle}>
               {saveState === "saving" ? "Saving…" : "Save answers"}
+            </button>
+            <button
+              type="button"
+              onClick={handleConfirm}
+              disabled={confirmState === "confirming"}
+              style={buttonStyle}
+            >
+              {confirmState === "confirming" ? "Checking…" : "Confirm route"}
             </button>
             {/* Persistent polite region: swaps text rather than mounting on demand. */}
             <span role="status" aria-live="polite" style={{ color: "var(--cw-text-muted)" }}>
@@ -251,13 +338,128 @@ export function RouteOnboarding({ caseId }: { caseId: string }) {
                 </button>
               </span>
             )}
-            {saveState === "error" && (
+            {(saveState === "error" || confirmState === "error") && (
               <span role="alert" style={{ color: "var(--cw-status-not-satisfied)" }}>
-                Could not save. Please try again.
+                Something went wrong. Please try again.
+              </span>
+            )}
+            {confirmState === "conflict" && (
+              <span role="alert" style={{ color: "var(--cw-status-not-satisfied)" }}>
+                These answers changed elsewhere; reload before confirming.
+              </span>
+            )}
+            {confirmState === "incomplete" && (
+              <span role="alert" style={{ color: "var(--cw-status-not-satisfied)" }}>
+                Please answer {missing.map((m) => FIELD_LABEL[m] ?? m).join(", ")} before confirming.
               </span>
             )}
           </div>
         </form>
+      )}
+    </section>
+  );
+}
+
+type Tone = "supported" | "unsupported" | "review";
+
+interface OutcomeView {
+  tone: Tone;
+  label: string;
+  heading: string;
+  body: string;
+}
+
+const TONE_SURFACE: Record<Tone, string> = {
+  supported: "var(--cw-status-supported-surface)",
+  unsupported: "var(--cw-status-not-satisfied-surface)",
+  review: "var(--cw-status-requires-judgement-surface)",
+};
+
+function outcomeView(decision: RouteSupport): OutcomeView {
+  switch (decision.summary_code) {
+    case "ROUTE_STANDARD_CONFIRMED":
+      return {
+        tone: "supported",
+        label: "Supported",
+        heading: "Your case is set up",
+        body: "This workspace supports the standard five-year route. You can start building your case.",
+      };
+    case "ROUTE_SPOUSE_UNSUPPORTED":
+      return {
+        tone: "unsupported",
+        label: "Not supported",
+        heading: "This prototype doesn’t cover the spouse route",
+        body: "Applying as the spouse or civil partner of a British citizen follows a different route that this prototype doesn’t handle.",
+      };
+    case "ROUTE_MAY_BE_BRITISH":
+      return {
+        tone: "review",
+        label: "Needs review",
+        heading: "You may already be a British citizen",
+        body: "If you are already British you may not need to naturalise at all. This needs a person to check before going further.",
+      };
+    default: {
+      // ROUTE_PREREQUISITES_UNMET — distinguish age from status for a useful message.
+      const adult = decision.requirements.find((r) => r.requirement_key === "route.adult_applicant");
+      if (adult && adult.conclusion !== "SUPPORTED") {
+        return {
+          tone: "unsupported",
+          label: "Not supported",
+          heading: "This route is for adult applicants",
+          body: "Naturalisation is for applicants aged 18 or over. Under-18s follow a registration route this prototype doesn’t cover.",
+        };
+      }
+      return {
+        tone: "unsupported",
+        label: "Not supported",
+        heading: "Your status isn’t supported here",
+        body: "The standard route needs indefinite leave to remain, indefinite leave to enter, or EU settled status.",
+      };
+    }
+  }
+}
+
+function OutcomePanel({
+  decision,
+  headingRef,
+}: {
+  decision: RouteSupport;
+  headingRef: React.RefObject<HTMLHeadingElement | null>;
+}) {
+  const view = outcomeView(decision);
+  return (
+    <section
+      aria-labelledby="outcome-heading"
+      style={{
+        marginTop: "var(--cw-space-6)",
+        padding: "var(--cw-space-5)",
+        background: TONE_SURFACE[view.tone],
+        border: "1px solid var(--cw-border)",
+        borderRadius: "var(--cw-radius-md)",
+      }}
+    >
+      {/* Text label carries the status — never colour alone — and is folded into
+          the heading's accessible name so it's spoken when focus lands here. */}
+      <p
+        id="outcome-label"
+        style={{ margin: 0, fontSize: "var(--cw-text-sm)", fontWeight: "var(--cw-weight-semibold)" }}
+      >
+        {view.label}
+      </p>
+      <h2
+        id="outcome-heading"
+        ref={headingRef}
+        tabIndex={-1}
+        aria-describedby="outcome-label"
+        style={{ margin: "var(--cw-space-2) 0 0", fontSize: "var(--cw-text-xl)" }}
+      >
+        {view.heading}
+      </h2>
+      <p style={{ margin: "var(--cw-space-2) 0 0" }}>{view.body}</p>
+      {view.tone === "supported" && (
+        <a href="/" style={{ display: "inline-block", marginTop: "var(--cw-space-4)", ...buttonStyle }}>
+          Go to your workspace
+        </a>
       )}
     </section>
   );
@@ -312,6 +514,7 @@ function YesNoSelect({
   value: TriState;
   onChange: (v: TriState) => void;
   "aria-describedby"?: string;
+  "aria-invalid"?: true | undefined;
 }) {
   return (
     <select
@@ -342,6 +545,17 @@ const buttonStyle: React.CSSProperties = {
   background: "var(--cw-accent)",
   color: "var(--cw-accent-contrast)",
   border: "none",
+  borderRadius: "var(--cw-radius-md)",
+  fontWeight: "var(--cw-weight-medium)",
+  cursor: "pointer",
+  textDecoration: "none",
+};
+
+const secondaryButtonStyle: React.CSSProperties = {
+  padding: "var(--cw-space-2) var(--cw-space-4)",
+  background: "var(--cw-surface)",
+  color: "inherit",
+  border: "1px solid var(--cw-border-strong)",
   borderRadius: "var(--cw-radius-md)",
   fontWeight: "var(--cw-weight-medium)",
   cursor: "pointer",
