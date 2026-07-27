@@ -57,27 +57,29 @@ that cannot pass today.
   UPDATE now has a real stale-revision → 409 integration test, and a concurrent
   first-INSERT unique-violation is translated to 409 in the unit of work
   (`_UNIQUE_VIOLATION`), also tested.
-- **Case-lifecycle write guard is a read-then-commit TOCTOU (Slice 2, R2)** —
-  `save_draft` reads `case.lifecycle_status` from the object loaded by
-  `require_case_access`, but the optimistic-concurrency token guards the *route
-  profile*, not the *case*. A deletion that flips the case to `DELETION_PENDING`
-  concurrently would not abort an in-flight draft write, so a write could land on a
-  case mid-deletion. The deletion path does not exist yet, so the window is currently
-  unreachable. The deletion slice must close it — lock/re-check the case row on write
-  (`SELECT … FOR UPDATE`, or a lifecycle guard under the case's own optimistic token),
-  or ensure case deletion removes route-profile rows inside its own transaction — so
-  §11's "block writes → delete" ordering cannot be raced.
-- **Read path ignores lifecycle state** — `get_case` returns a case regardless of
-  `lifecycle_status`. When `request_deletion` / hard delete lands (Slice 4), the read
-  path must exclude `DELETION_PENDING` / `DELETED` cases (or deletion must remove the
-  rows). Deletion is terminal (§11).
-- **Read path ignores lifecycle state** — `get_case` returns a case regardless of
-  `lifecycle_status`. When `request_deletion` / hard delete lands (Slice 4), the read
-  path must exclude `DELETION_PENDING` / `DELETED` cases (or deletion must remove the
-  rows). Deletion is terminal (§11).
+- **Case-lifecycle write guard is a read-then-commit TOCTOU (R2)** — a write command
+  read `case.lifecycle_status` from the object loaded by `require_case_access`, while
+  the optimistic-concurrency token guarded the *route profile*, not the *case*.
+  *Resolved in Slice 4:* both `request_deletion` and the write commands
+  (`save_draft` / `confirm`) take a `SELECT … FOR UPDATE` lock on the case row
+  (`CaseRepository.get_for_update`) and re-check lifecycle, so a write serialises
+  behind a concurrent deletion and cannot land on a case that has become
+  `DELETION_PENDING`.
+- **Read path ignores lifecycle state** — *Resolved in Slice 4:* `get_case` returns
+  None for a `DELETED` case (never served, even before the purge worker removes the
+  row); `DELETION_PENDING` remains readable by design, shown as a pending state with
+  writes blocked.
 - **`email` from the JWT must never be persisted** — `CurrentUser` carries it but it
   is currently never stored, logged, or placed in a payload. Keep it out of
   `safe_metadata` and log lines as the code grows.
+- **Terminal purge (`CompleteCaseDeletion`) is deferred (Slice 4)** — M2's `DELETE`
+  moves the case to `DELETION_PENDING` and emits `CaseDeletionRequested` to the
+  outbox; it does **not** yet hard-delete case-scoped records or stored files. The
+  purge belongs to the milestone that builds the outbox worker (and matters only once
+  evidence files exist, M4+): consume the outbox event, delete route-profile rows,
+  memberships, and the case row within one transaction, retain only a non-identifying
+  deletion audit (§11), and transition to `DELETED`. Until then a deleted case sits in
+  `DELETION_PENDING`, readable but frozen.
 
 ## Invariants touched
 
