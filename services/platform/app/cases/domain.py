@@ -128,6 +128,16 @@ class ApplicationCase(Base):
         self._lifecycle_status = LifecycleStatus.DELETION_PENDING.value
         self.deletion_requested_at = at
 
+    def record_route_support(self, support: "SupportStatus") -> None:
+        """Record the route-support outcome and, if supported, activate the case.
+
+        This is the *only* caller of `activate()`: a case becomes assessable only
+        when onboarding resolves to a supported route. A non-supported outcome sets
+        the status and leaves the case in DRAFT so onboarding can be revised."""
+        self._support_status = support.value
+        if support is SupportStatus.SUPPORTED:
+            self.activate()
+
 
 class CaseMembership(Base):
     __tablename__ = "case_memberships"
@@ -163,3 +173,40 @@ class CaseCreated(DomainEvent):
     def payload(self) -> dict[str, Any]:
         # Narrow, non-identifying fields only (§38.1): no title, no user free text.
         return {"case_id": str(self.aggregate_id), "route_key": self.route_key}
+
+
+@dataclass(frozen=True)
+class RouteSupportEvaluated(DomainEvent):
+    """The route-support decision recorded against a case. Carries the conclusions,
+    summary code, and rule-set version so the outcome is reproducible without any
+    persisted assessment result (ADR-0004) — and no answer values (§38.1)."""
+
+    support_status: str
+    composite_conclusion: str
+    adult_conclusion: str
+    status_conclusion: str
+    summary_code: str | None
+    route_profile_version_id: str
+    reference_date: str
+    rule_set: str
+    semantic_version: str
+
+    aggregate_type: ClassVar[str] = "ApplicationCase"
+    event_type: ClassVar[str] = "RouteSupportEvaluated"
+
+    def payload(self) -> dict[str, Any]:
+        # Self-contained provenance (ADR-0004): the exact input version evaluated
+        # and the reference date used, so the decision is reproducible from this
+        # one event without correlating others.
+        return {
+            "case_id": str(self.aggregate_id),
+            "support_status": self.support_status,
+            "composite_conclusion": self.composite_conclusion,
+            "adult_conclusion": self.adult_conclusion,
+            "status_conclusion": self.status_conclusion,
+            "summary_code": self.summary_code,
+            "route_profile_version_id": self.route_profile_version_id,
+            "reference_date": self.reference_date,
+            "rule_set": self.rule_set,
+            "semantic_version": self.semantic_version,
+        }
