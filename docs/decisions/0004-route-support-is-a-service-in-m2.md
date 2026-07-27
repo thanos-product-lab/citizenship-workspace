@@ -61,6 +61,16 @@ depends on other results' conclusions.
   `SUPPORTED → SUPPORTED`; `REQUIRES_JUDGEMENT (may-be-British) → REQUIRES_REVIEW`;
   spouse route and unmet prerequisites (under-18, unsupported status) `→ UNSUPPORTED`;
   unconfirmed profile `→ NOT_EVALUATED`. A case only reaches `ACTIVE` on `SUPPORTED`.
+- **M3A tracking:** `route.adult_applicant` needs an application date (RULES_SPEC §7.1).
+  At M2 the service passes `date.today()` as the reference (the clock read stays in
+  the service, not the pure rule) and records it in the `RouteSupportEvaluated` event.
+  When M3A introduces the proposed application date, the adult rule's caller must
+  switch from `today()` to that date, and the §8 dependency edge (adult → application
+  date) becomes real. This is the reminder.
+- **Provenance is self-contained:** `RouteSupportEvaluated` records the evaluated
+  `route_profile_version_id`, the `reference_date`, the three conclusions, and the
+  rule set + version — so the M2 decision is reproducible from the single event, the
+  structural shape that becomes `AssessmentInputLink` + `RuleVersion` at M3B.
 
 ## Invariants touched
 
