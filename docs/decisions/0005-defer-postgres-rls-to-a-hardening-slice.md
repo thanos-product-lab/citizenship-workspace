@@ -79,7 +79,11 @@ that cannot pass today.
   evidence files exist, M4+): consume the outbox event, delete route-profile rows,
   memberships, and the case row within one transaction, retain only a non-identifying
   deletion audit (§11), and transition to `DELETED`. Until then a deleted case sits in
-  `DELETION_PENDING`, readable but frozen.
+  `DELETION_PENDING`, readable but frozen. **Retention window:** while pending, the
+  confirmed route-profile answers (date of birth, status type/date) remain readable to
+  the owner; the purge worker must consume the `CaseDeletionRequested` outbox row
+  promptly and that latency should be bounded and monitored so this window is short,
+  not open-ended.
 
 ## Invariants touched
 
