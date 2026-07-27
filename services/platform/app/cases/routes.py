@@ -39,3 +39,14 @@ def get_case(
     case: Annotated[ApplicationCase, Depends(require_case_access)],
 ) -> CaseResponse:
     return CaseResponse.from_domain(case)
+
+
+@router.delete("/{case_id}", response_model=CaseResponse)
+def delete_case(
+    case: Annotated[ApplicationCase, Depends(require_case_access)],
+    session: Annotated[Session, Depends(get_db)],
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+) -> CaseResponse:
+    """Request deletion: the case enters DELETION_PENDING and the purge is queued."""
+    deleted = service.request_deletion(session, case=case, user=user)
+    return CaseResponse.from_domain(deleted)

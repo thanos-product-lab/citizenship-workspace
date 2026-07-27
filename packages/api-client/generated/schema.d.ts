@@ -33,7 +33,11 @@ export interface paths {
         get: operations["get_case_api_v1_cases__case_id__get"];
         put?: never;
         post?: never;
-        delete?: never;
+        /**
+         * Delete Case
+         * @description Request deletion: the case enters DELETION_PENDING and the purge is queued.
+         */
+        delete: operations["delete_case_api_v1_cases__case_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -358,6 +362,37 @@ export interface operations {
         };
     };
     get_case_api_v1_cases__case_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CaseResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_case_api_v1_cases__case_id__delete: {
         parameters: {
             query?: never;
             header?: never;

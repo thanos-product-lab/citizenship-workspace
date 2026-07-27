@@ -34,6 +34,7 @@ from app.applicants.domain import (
 from app.applicants.repository import RouteProfileRepository
 from app.applicants.schemas import RouteProfileDraftInput
 from app.auth.schemas import CurrentUser
+from app.cases import service as cases_service
 from app.cases.domain import ApplicationCase, LifecycleStatus, RouteSupportEvaluated, SupportStatus
 from app.requirements.domain import Conclusion
 from app.requirements.route_rules import RouteSupportDecision, evaluate_route_support
@@ -83,7 +84,7 @@ def get_draft(
 def save_draft(
     session: Session, *, case: ApplicationCase, user: CurrentUser, answers: RouteProfileDraftInput
 ) -> tuple[RouteProfile, RouteProfileVersion]:
-    _require_draft_case(case, "route onboarding is not editable")
+    _require_draft_case(session, case, "route onboarding is not editable")
 
     profile = RouteProfileRepository.get_for_case(session, case.id)
     if profile is None:
@@ -117,7 +118,7 @@ def save_draft(
 def confirm_route_profile(
     session: Session, *, case: ApplicationCase, user: CurrentUser, expected_revision: int | None
 ) -> ConfirmOutcome:
-    _require_draft_case(case, "the case is not open for confirmation")
+    _require_draft_case(session, case, "the case is not open for confirmation")
 
     profile = RouteProfileRepository.get_for_case(session, case.id)
     if profile is None or profile.current_version_id is None:
@@ -187,9 +188,14 @@ def confirm_route_profile(
 # --- helpers ---------------------------------------------------------------
 
 
-def _require_draft_case(case: ApplicationCase, message: str) -> None:
-    if case.lifecycle_status is not LifecycleStatus.DRAFT:
-        raise IllegalTransition(f"{message} while the case is {case.lifecycle_status}")
+def _require_draft_case(session: Session, case: ApplicationCase, message: str) -> None:
+    """Lock the case row and confirm it is still a DRAFT before writing. The lock
+    serialises against a concurrent deletion so a write cannot land on a case that
+    has since become DELETION_PENDING (ADR-0005 R2)."""
+    locked = cases_service.lock_writable_case(session, case.id)
+    status = locked.lifecycle_status if locked is not None else case.lifecycle_status
+    if status is not LifecycleStatus.DRAFT:
+        raise IllegalTransition(f"{message} while the case is {status}")
 
 
 def _editable_draft(

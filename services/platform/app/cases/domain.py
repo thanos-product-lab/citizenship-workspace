@@ -176,6 +176,18 @@ class CaseCreated(DomainEvent):
 
 
 @dataclass(frozen=True)
+class CaseDeletionRequested(DomainEvent):
+    """Deletion requested; the case is now DELETION_PENDING and blocks writes. The
+    outbox twin queues the eventual purge of case-scoped records and stored files."""
+
+    aggregate_type: ClassVar[str] = "ApplicationCase"
+    event_type: ClassVar[str] = "CaseDeletionRequested"
+
+    def payload(self) -> dict[str, Any]:
+        return {"case_id": str(self.aggregate_id)}
+
+
+@dataclass(frozen=True)
 class RouteSupportEvaluated(DomainEvent):
     """The route-support decision recorded against a case. Carries the conclusions,
     summary code, and rule-set version so the outcome is reproducible without any

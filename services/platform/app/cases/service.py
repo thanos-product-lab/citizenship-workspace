@@ -7,11 +7,18 @@ its `CaseCreated` event.
 """
 
 import uuid
+from datetime import UTC, datetime
 
 from sqlalchemy.orm import Session
 
 from app.auth.schemas import CurrentUser
-from app.cases.domain import ApplicationCase, CaseCreated, CaseMembership
+from app.cases.domain import (
+    ApplicationCase,
+    CaseCreated,
+    CaseDeletionRequested,
+    CaseMembership,
+    LifecycleStatus,
+)
 from app.cases.repository import CaseRepository, MembershipRepository
 from app.shared.unit_of_work import UnitOfWork
 
@@ -51,4 +58,37 @@ def get_case(session: Session, *, case_id: uuid.UUID, user: CurrentUser) -> Appl
         return None
     if not MembershipRepository.is_active_member(session, case_id, user.user_id):
         return None
+    if case.lifecycle_status is LifecycleStatus.DELETED:
+        # A deleted case is gone — never serve it, even before the purge worker
+        # removes the row (defence for the terminal state; ADR-0005).
+        return None
     return case
+
+
+def lock_writable_case(session: Session, case_id: uuid.UUID) -> ApplicationCase | None:
+    """Lock the case row for a write command. Callers hold the lock for the rest of
+    the transaction, so a concurrent deletion serialises behind them (ADR-0005 R2)."""
+    return CaseRepository.get_for_update(session, case_id)
+
+
+def request_deletion(
+    session: Session, *, case: ApplicationCase, user: CurrentUser
+) -> ApplicationCase:
+    """Move the case to DELETION_PENDING and queue the purge. Idempotency: a case
+    already pending/deleted raises IllegalTransition (→ 409) from the aggregate."""
+    locked = CaseRepository.get_for_update(session, case.id)
+    if locked is None:  # vanished between the access check and the lock
+        raise LookupError("case not found")
+    locked.request_deletion(at=datetime.now(UTC))
+
+    uow = UnitOfWork(session, actor_id=user.user_id)
+    uow.emit(
+        CaseDeletionRequested(aggregate_id=locked.id),
+        case_id=locked.id,
+        action="case.deletion_requested",
+        target_type="ApplicationCase",
+        target_id=locked.id,
+    )
+    uow.commit()
+    session.refresh(locked)
+    return locked

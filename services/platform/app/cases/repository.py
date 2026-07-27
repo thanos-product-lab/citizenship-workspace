@@ -19,6 +19,13 @@ class CaseRepository:
         return session.get(ApplicationCase, case_id)
 
     @staticmethod
+    def get_for_update(session: Session, case_id: uuid.UUID) -> ApplicationCase | None:
+        """Row-locking read (`SELECT … FOR UPDATE`). A write command locks the case
+        so a concurrent deletion cannot flip its lifecycle mid-write (ADR-0005 R2)."""
+        stmt = select(ApplicationCase).where(ApplicationCase.id == case_id).with_for_update()
+        return session.scalar(stmt)
+
+    @staticmethod
     def add(session: Session, case: ApplicationCase) -> None:
         session.add(case)
 
