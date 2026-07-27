@@ -24,7 +24,7 @@ from app.auth.dependencies import get_current_user
 from app.auth.schemas import CurrentUser
 from app.cases.dependencies import require_case_access
 from app.cases.domain import ApplicationCase
-from app.shared.db import get_db
+from app.shared.tenant import get_tenant_session
 
 router = APIRouter(prefix="/api/v1/cases/{case_id}/route-profile", tags=["route-profile"])
 
@@ -32,7 +32,7 @@ router = APIRouter(prefix="/api/v1/cases/{case_id}/route-profile", tags=["route-
 @router.get("", response_model=RouteProfileResponse | None)
 def get_route_profile(
     case: Annotated[ApplicationCase, Depends(require_case_access)],
-    session: Annotated[Session, Depends(get_db)],
+    session: Annotated[Session, Depends(get_tenant_session)],
 ) -> RouteProfileResponse | None:
     result = service.get_draft(session, case=case)
     if result is None:
@@ -45,7 +45,7 @@ def get_route_profile(
 def save_route_profile(
     body: RouteProfileDraftInput,
     case: Annotated[ApplicationCase, Depends(require_case_access)],
-    session: Annotated[Session, Depends(get_db)],
+    session: Annotated[Session, Depends(get_tenant_session)],
     user: Annotated[CurrentUser, Depends(get_current_user)],
 ) -> RouteProfileResponse:
     profile, version = service.save_draft(session, case=case, user=user, answers=body)
@@ -56,7 +56,7 @@ def save_route_profile(
 def confirm_route_profile(
     body: ConfirmRequest,
     case: Annotated[ApplicationCase, Depends(require_case_access)],
-    session: Annotated[Session, Depends(get_db)],
+    session: Annotated[Session, Depends(get_tenant_session)],
     user: Annotated[CurrentUser, Depends(get_current_user)],
 ) -> RouteSupportResponse:
     outcome = service.confirm_route_profile(

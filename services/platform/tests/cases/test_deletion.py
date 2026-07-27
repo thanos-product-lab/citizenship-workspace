@@ -14,6 +14,7 @@ from app.cases import service
 from app.cases.domain import ApplicationCase, CaseMembership, LifecycleStatus
 from app.shared.db import get_sessionmaker
 from app.shared.records import DomainEventRecord, OutboxEventRecord
+from app.shared.tenant import set_tenant
 from tests.conftest import as_user
 
 pytestmark = pytest.mark.integration
@@ -90,9 +91,10 @@ def test_lock_reads_fresh_lifecycle_despite_a_stale_cached_instance(db_session: 
     db_session.commit()
     assert case.lifecycle_status is LifecycleStatus.DRAFT  # cached as DRAFT
 
-    # A concurrent deleter (separate session) flips the row to DELETION_PENDING.
+    # A concurrent deleter (separate session, same tenant) flips the row.
     other = get_sessionmaker()()
     try:
+        set_tenant(other, "user_a")  # RLS: the deleter must own the row it updates
         other.execute(
             update(ApplicationCase)
             .where(ApplicationCase.id == case.id)

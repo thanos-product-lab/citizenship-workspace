@@ -17,6 +17,7 @@ from app.auth.dependencies import get_current_user
 from app.auth.schemas import CurrentUser
 from app.main import app
 from app.shared.db import Base, get_db, get_sessionmaker
+from app.shared.tenant import set_tenant
 
 
 @pytest.fixture(scope="session")
@@ -31,10 +32,16 @@ def _schema() -> Iterator[None]:
 @pytest.fixture
 def db_session(_schema: None) -> Iterator[Session]:
     session = get_sessionmaker()()
+    # RLS is on (migration 0004): direct-DB tests need a tenant to read/write case
+    # rows. Default to user_a; API requests set their own tenant per request, and
+    # cross-tenant tests set it explicitly. TRUNCATE (owner privilege) ignores RLS.
+    set_tenant(session, "user_a")
     try:
         yield session
     finally:
         session.rollback()
+        # TRUNCATE needs owner privilege; drop out of the app_rls role set by set_tenant.
+        session.execute(text("RESET ROLE"))
         for table in reversed(Base.metadata.sorted_tables):
             session.execute(text(f'TRUNCATE TABLE "{table.name}" RESTART IDENTITY CASCADE'))
         session.commit()

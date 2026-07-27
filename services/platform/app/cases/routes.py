@@ -11,7 +11,7 @@ from app.cases import service
 from app.cases.dependencies import require_case_access
 from app.cases.domain import ApplicationCase
 from app.cases.schemas import CaseResponse, CreateCaseRequest
-from app.shared.db import get_db
+from app.shared.tenant import get_tenant_session
 
 router = APIRouter(prefix="/api/v1/cases", tags=["cases"])
 
@@ -19,7 +19,7 @@ router = APIRouter(prefix="/api/v1/cases", tags=["cases"])
 @router.post("", status_code=status.HTTP_201_CREATED, response_model=CaseResponse)
 def create_case(
     body: CreateCaseRequest,
-    session: Annotated[Session, Depends(get_db)],
+    session: Annotated[Session, Depends(get_tenant_session)],
     user: Annotated[CurrentUser, Depends(get_current_user)],
 ) -> CaseResponse:
     case = service.create_case(session, user=user, title=body.title)
@@ -28,7 +28,7 @@ def create_case(
 
 @router.get("", response_model=list[CaseResponse])
 def list_cases(
-    session: Annotated[Session, Depends(get_db)],
+    session: Annotated[Session, Depends(get_tenant_session)],
     user: Annotated[CurrentUser, Depends(get_current_user)],
 ) -> list[CaseResponse]:
     return [CaseResponse.from_domain(c) for c in service.list_cases(session, user=user)]
@@ -44,7 +44,7 @@ def get_case(
 @router.delete("/{case_id}", response_model=CaseResponse)
 def delete_case(
     case: Annotated[ApplicationCase, Depends(require_case_access)],
-    session: Annotated[Session, Depends(get_db)],
+    session: Annotated[Session, Depends(get_tenant_session)],
     user: Annotated[CurrentUser, Depends(get_current_user)],
 ) -> CaseResponse:
     """Request deletion: the case enters DELETION_PENDING and the purge is queued."""
