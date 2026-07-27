@@ -293,6 +293,12 @@ set `2026.07.0`.
 age_at_application = years between date_of_birth and application_date
 ```
 
+**[PRODUCT]** Age attainment for a 29 February birth uses the UK convention — the
+applicant attains the next year of age on **1 March** in a non-leap year, not 28
+February. This deliberately differs from the §4.1 `relativedelta` clamping used for
+qualifying-period *window* arithmetic (which clamps to 28 February): window
+boundaries and age attainment are separate computations.
+
 | Condition | Conclusion |
 |---|---|
 | `age ≥ 18` | `SUPPORTED` |
