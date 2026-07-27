@@ -1,8 +1,13 @@
 # ADR-0005: App-level ownership is the M2 control; Postgres RLS is deferred to a tracked hardening slice
 
-**Status:** Accepted
+**Status:** Accepted — RLS deferral **resolved by [ADR-0006](0006-postgres-rls-via-a-non-superuser-role.md)** (RLS hardening slice)
 **Date:** 2026-07-26
 **Milestone:** M2 (Supported Case Setup), Slice 1
+
+> **Update (2026-07-27):** The RLS hardening slice landed. RLS is now enabled and
+> forced on the four case-scoped tables, enforced by switching to a non-superuser
+> role per request, and covered by a row-level isolation test — see ADR-0006. The
+> "resolve before the M2 gate" commitment below is met; RLS is no longer a blocker.
 
 ## Context
 
