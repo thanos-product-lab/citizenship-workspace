@@ -31,8 +31,16 @@ Prerequisites: a Railway account, a Vercel account, and your Clerk keys.
    uv run celery -A worker.celery_app.celery_app worker --loglevel info
    ```
    Give it `DATABASE_URL` and `REDIS_URL` (same references). No domain / health
-   check needed.
-5. **Migrations** — run once (the baseline is empty but this readies M2):
+   check needed. **Clear its Pre-Deploy Command** (Settings → Deploy) so the worker
+   does not also run migrations — the API's pre-deploy owns them (see below), and two
+   services running `alembic upgrade head` at once can race on a migration-bearing
+   deploy.
+5. **Migrations run automatically.** `railway.json` sets the API's
+   `deploy.preDeployCommand` to `uv run alembic upgrade head`, so every API deploy
+   applies pending migrations (in the built image, with `DATABASE_URL`) *before* the
+   new version serves traffic; a failed migration fails the deploy rather than
+   booting against a stale schema. This creates the M2 schema and the `app_rls` RLS
+   role (ADR-0006). To apply migrations out of band you can still run:
    ```
    railway run --service <api-service> uv run alembic upgrade head
    ```
