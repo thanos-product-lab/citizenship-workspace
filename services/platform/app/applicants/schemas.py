@@ -31,6 +31,31 @@ class RouteProfileDraftInput(BaseModel):
         return value
 
 
+class ConfirmRequest(BaseModel):
+    # Optimistic-concurrency token: the profile revision the client last saw.
+    expected_revision: int | None = None
+
+
+class RequirementOutcomeResponse(BaseModel):
+    requirement_key: str
+    conclusion: str
+    summary_code: str | None
+
+
+class RouteSupportResponse(BaseModel):
+    """The route-support decision. Carries the composite outcome and each upstream
+    requirement outcome so the UI can explain *why* — provenance, not just a verdict."""
+
+    support_status: str
+    lifecycle_status: str
+    conclusion: str
+    summary_code: str | None
+    confirmed_version_number: int
+    rule_set: str
+    semantic_version: str
+    requirements: list[RequirementOutcomeResponse]
+
+
 class RouteProfileResponse(BaseModel):
     case_id: uuid.UUID
     version_number: int

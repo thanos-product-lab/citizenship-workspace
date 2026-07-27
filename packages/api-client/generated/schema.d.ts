@@ -57,6 +57,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/cases/{case_id}/route-profile/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Confirm Route Profile */
+        post: operations["confirm_route_profile_api_v1_cases__case_id__route_profile_confirm_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/me": {
         parameters: {
             query?: never;
@@ -142,6 +159,11 @@ export interface components {
              */
             updated_at: string;
         };
+        /** ConfirmRequest */
+        ConfirmRequest: {
+            /** Expected Revision */
+            expected_revision?: number | null;
+        };
         /** CreateCaseRequest */
         CreateCaseRequest: {
             /** Title */
@@ -179,6 +201,15 @@ export interface components {
             };
             /** Status */
             status: string;
+        };
+        /** RequirementOutcomeResponse */
+        RequirementOutcomeResponse: {
+            /** Conclusion */
+            conclusion: string;
+            /** Requirement Key */
+            requirement_key: string;
+            /** Summary Code */
+            summary_code: string | null;
         };
         /** RouteProfileDraftInput */
         RouteProfileDraftInput: {
@@ -222,6 +253,29 @@ export interface components {
             status_type: string | null;
             /** Version Number */
             version_number: number;
+        };
+        /**
+         * RouteSupportResponse
+         * @description The route-support decision. Carries the composite outcome and each upstream
+         *     requirement outcome so the UI can explain *why* — provenance, not just a verdict.
+         */
+        RouteSupportResponse: {
+            /** Conclusion */
+            conclusion: string;
+            /** Confirmed Version Number */
+            confirmed_version_number: number;
+            /** Lifecycle Status */
+            lifecycle_status: string;
+            /** Requirements */
+            requirements: components["schemas"]["RequirementOutcomeResponse"][];
+            /** Rule Set */
+            rule_set: string;
+            /** Semantic Version */
+            semantic_version: string;
+            /** Summary Code */
+            summary_code: string | null;
+            /** Support Status */
+            support_status: string;
         };
         /**
          * StatusType
@@ -387,6 +441,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RouteProfileResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    confirm_route_profile_api_v1_cases__case_id__route_profile_confirm_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConfirmRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RouteSupportResponse"];
                 };
             };
             /** @description Validation Error */

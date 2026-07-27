@@ -13,7 +13,13 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from app.applicants import service
-from app.applicants.schemas import RouteProfileDraftInput, RouteProfileResponse
+from app.applicants.schemas import (
+    ConfirmRequest,
+    RequirementOutcomeResponse,
+    RouteProfileDraftInput,
+    RouteProfileResponse,
+    RouteSupportResponse,
+)
 from app.auth.dependencies import get_current_user
 from app.auth.schemas import CurrentUser
 from app.cases.dependencies import require_case_access
@@ -44,3 +50,33 @@ def save_route_profile(
 ) -> RouteProfileResponse:
     profile, version = service.save_draft(session, case=case, user=user, answers=body)
     return RouteProfileResponse.from_domain(profile, version)
+
+
+@router.post("/confirm", response_model=RouteSupportResponse)
+def confirm_route_profile(
+    body: ConfirmRequest,
+    case: Annotated[ApplicationCase, Depends(require_case_access)],
+    session: Annotated[Session, Depends(get_db)],
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+) -> RouteSupportResponse:
+    outcome = service.confirm_route_profile(
+        session, case=case, user=user, expected_revision=body.expected_revision
+    )
+    d = outcome.decision
+    return RouteSupportResponse(
+        support_status=outcome.support.value,
+        lifecycle_status=outcome.case.lifecycle_status.value,
+        conclusion=d.composite.conclusion.value,
+        summary_code=d.composite.summary_code,
+        confirmed_version_number=outcome.confirmed.version_number,
+        rule_set=d.rule_set,
+        semantic_version=d.semantic_version,
+        requirements=[
+            RequirementOutcomeResponse(
+                requirement_key=o.requirement_key,
+                conclusion=o.conclusion.value,
+                summary_code=o.summary_code,
+            )
+            for o in d.outcomes
+        ],
+    )

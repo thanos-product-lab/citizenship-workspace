@@ -21,6 +21,14 @@ class IllegalTransition(DomainError):
     """A lifecycle transition was attempted that the state machine forbids."""
 
 
+class ProfileIncomplete(DomainError):
+    """A profile was confirmed before its required answers were all provided."""
+
+    def __init__(self, missing_fields: list[str]) -> None:
+        self.missing_fields = missing_fields
+        super().__init__(f"missing required answers: {', '.join(missing_fields)}")
+
+
 class StateWithoutEventError(RuntimeError):
     """A unit of work tried to commit business state without emitting a domain event.
 
@@ -41,3 +49,11 @@ def register_exception_handlers(app: FastAPI) -> None:
     async def _illegal_transition(_request: Request, exc: IllegalTransition) -> JSONResponse:
         # 409: the aggregate is in a state that conflicts with the requested command.
         return JSONResponse(status_code=status.HTTP_409_CONFLICT, content={"detail": str(exc)})
+
+    @app.exception_handler(ProfileIncomplete)
+    async def _profile_incomplete(_request: Request, exc: ProfileIncomplete) -> JSONResponse:
+        # 422: the request is well-formed but the profile cannot yet be confirmed.
+        return JSONResponse(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            content={"detail": str(exc), "missing_fields": exc.missing_fields},
+        )

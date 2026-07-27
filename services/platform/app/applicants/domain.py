@@ -86,13 +86,38 @@ class RouteProfileVersion(Base):
     supersedes_version_id: Mapped[uuid.UUID | None] = mapped_column()
 
     @classmethod
-    def new_draft(cls, *, route_profile_id: uuid.UUID, created_by: str) -> "RouteProfileVersion":
+    def new_draft(
+        cls,
+        *,
+        route_profile_id: uuid.UUID,
+        created_by: str,
+        version_number: int = 1,
+        supersedes_version_id: uuid.UUID | None = None,
+    ) -> "RouteProfileVersion":
         return cls(
             id=uuid.uuid4(),
             route_profile_id=route_profile_id,
-            version_number=1,
+            version_number=version_number,
             review_state=ReviewState.DRAFT.value,
             created_by=created_by,
+            supersedes_version_id=supersedes_version_id,
+        )
+
+    def confirmed_copy(self, *, created_by: str) -> "RouteProfileVersion":
+        """Snapshot this draft as a new immutable CONFIRMED version (§9.4: confirming
+        creates a version, never an update; CONFIRMED versions are immutable)."""
+        return RouteProfileVersion(
+            id=uuid.uuid4(),
+            route_profile_id=self.route_profile_id,
+            version_number=self.version_number + 1,
+            date_of_birth=self.date_of_birth,
+            status_type=self.status_type,
+            status_granted_on=self.status_granted_on,
+            married_to_british_citizen=self.married_to_british_citizen,
+            may_already_be_british=self.may_already_be_british,
+            review_state=ReviewState.CONFIRMED.value,
+            created_by=created_by,
+            supersedes_version_id=self.id,
         )
 
     @property
@@ -123,4 +148,21 @@ class RouteProfileDraftSaved(DomainEvent):
             "route_profile_id": str(self.aggregate_id),
             "version_number": self.version_number,
             "answered_fields": list(self.answered_fields),
+        }
+
+
+@dataclass(frozen=True)
+class RouteProfileConfirmed(DomainEvent):
+    version_number: int
+    version_id: str
+
+    aggregate_type: ClassVar[str] = "RouteProfile"
+    event_type: ClassVar[str] = "RouteProfileConfirmed"
+
+    def payload(self) -> dict[str, Any]:
+        # Identifiers only; the confirmed answers stay in the version row, not here.
+        return {
+            "route_profile_id": str(self.aggregate_id),
+            "version_number": self.version_number,
+            "version_id": self.version_id,
         }

@@ -57,6 +57,23 @@
         "title": "CaseResponse",
         "type": "object"
       },
+      "ConfirmRequest": {
+        "properties": {
+          "expected_revision": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Revision"
+          }
+        },
+        "title": "ConfirmRequest",
+        "type": "object"
+      },
       "CreateCaseRequest": {
         "properties": {
           "title": {
@@ -153,6 +170,36 @@
           "checks"
         ],
         "title": "ReadyResponse",
+        "type": "object"
+      },
+      "RequirementOutcomeResponse": {
+        "properties": {
+          "conclusion": {
+            "title": "Conclusion",
+            "type": "string"
+          },
+          "requirement_key": {
+            "title": "Requirement Key",
+            "type": "string"
+          },
+          "summary_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary Code"
+          }
+        },
+        "required": [
+          "requirement_key",
+          "conclusion",
+          "summary_code"
+        ],
+        "title": "RequirementOutcomeResponse",
         "type": "object"
       },
       "RouteProfileDraftInput": {
@@ -323,6 +370,65 @@
           "revision"
         ],
         "title": "RouteProfileResponse",
+        "type": "object"
+      },
+      "RouteSupportResponse": {
+        "description": "The route-support decision. Carries the composite outcome and each upstream\nrequirement outcome so the UI can explain *why* \u2014 provenance, not just a verdict.",
+        "properties": {
+          "conclusion": {
+            "title": "Conclusion",
+            "type": "string"
+          },
+          "confirmed_version_number": {
+            "title": "Confirmed Version Number",
+            "type": "integer"
+          },
+          "lifecycle_status": {
+            "title": "Lifecycle Status",
+            "type": "string"
+          },
+          "requirements": {
+            "items": {
+              "$ref": "#/components/schemas/RequirementOutcomeResponse"
+            },
+            "title": "Requirements",
+            "type": "array"
+          },
+          "rule_set": {
+            "title": "Rule Set",
+            "type": "string"
+          },
+          "semantic_version": {
+            "title": "Semantic Version",
+            "type": "string"
+          },
+          "summary_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary Code"
+          },
+          "support_status": {
+            "title": "Support Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "support_status",
+          "lifecycle_status",
+          "conclusion",
+          "summary_code",
+          "confirmed_version_number",
+          "rule_set",
+          "semantic_version",
+          "requirements"
+        ],
+        "title": "RouteSupportResponse",
         "type": "object"
       },
       "StatusType": {
@@ -619,6 +725,64 @@
           }
         ],
         "summary": "Save Route Profile",
+        "tags": [
+          "route-profile"
+        ]
+      }
+    },
+    "/api/v1/cases/{case_id}/route-profile/confirm": {
+      "post": {
+        "operationId": "confirm_route_profile_api_v1_cases__case_id__route_profile_confirm_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Case Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfirmRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouteSupportResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Confirm Route Profile",
         "tags": [
           "route-profile"
         ]
