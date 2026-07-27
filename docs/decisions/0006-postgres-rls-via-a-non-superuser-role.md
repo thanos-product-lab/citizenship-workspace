@@ -95,9 +95,13 @@ tracked residual risks, none a live vulnerability:
   of `get_tenant_session`; (b) any environment that connects as a superuser loses the
   backstop entirely.
   - **In place now:** an application **boot check** (`app/main.py` lifespan +
-    `connection_is_superuser`) refuses to start a *deployed* environment whose login
-    role is a superuser, and warns in local. This makes "prod must connect as a
-    non-superuser" an enforced requirement, not just documentation.
+    `connection_is_superuser`) **warns** when the login role is a superuser. It does
+    *not* refuse to boot: managed Postgres (Railway) connects as its default
+    superuser owner, and hard-failing there crashed the deploy on the first push (the
+    app's real queries are still RLS-enforced via per-request `SET ROLE app_rls`, so
+    a superuser login role degrades only the "forgot `SET ROLE`" backstop, not the
+    enforcement path). A hard boot check only becomes correct once a dedicated
+    non-superuser login role exists (Option A).
   - **Not yet closed:** demoting the local/CI role is **impossible** — `citizenship`
     is the initdb *bootstrap superuser*, and Postgres forbids removing SUPERUSER from
     it (`the bootstrap superuser must have the SUPERUSER attribute`). So the "forgot

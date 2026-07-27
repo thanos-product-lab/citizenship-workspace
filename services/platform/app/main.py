@@ -22,17 +22,17 @@ _log = structlog.get_logger()
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
-    # RLS defence-in-depth only holds if the login role is a non-superuser (a superuser
-    # bypasses RLS even under FORCE). Refuse to run a deployed environment as a
-    # superuser; in local/CI the role is a throwaway superuser the migration demotes,
-    # so only warn (ADR-0006, R1).
-    settings = get_settings()
+    # RLS is enforced per request via `SET ROLE app_rls`, which applies even when the
+    # DB login role is a superuser. But a superuser login role means a query that
+    # *forgot* to SET ROLE would bypass RLS, so the fail-closed backstop is not fully
+    # enforced. Managed Postgres (e.g. Railway) connects as a superuser, so we warn
+    # loudly rather than refuse to boot; a hard guarantee needs a dedicated
+    # non-superuser login role (ADR-0006 R1, Option A).
     if connection_is_superuser():
-        detail = "DB login role is a superuser: RLS defence-in-depth is not enforced"
-        if settings.environment == "local":
-            _log.warning("rls.login_role_superuser", detail=detail)
-        else:
-            raise RuntimeError(detail)
+        _log.warning(
+            "rls.login_role_superuser",
+            detail="DB login role is a superuser; RLS backstop relies on per-request SET ROLE only",
+        )
     yield
 
 
