@@ -232,7 +232,7 @@ export function RouteOnboarding({ caseId }: { caseId: string }) {
         </div>
       )}
 
-      {decision && <OutcomePanel decision={decision} headingRef={outcomeRef} />}
+      {decision && <OutcomePanel decision={decision} caseId={caseId} headingRef={outcomeRef} />}
 
       {showForm && (
         <form onSubmit={handleSubmit} style={{ marginTop: "var(--cw-space-6)" }}>
@@ -421,9 +421,11 @@ function outcomeView(decision: RouteSupport): OutcomeView {
 
 function OutcomePanel({
   decision,
+  caseId,
   headingRef,
 }: {
   decision: RouteSupport;
+  caseId: string;
   headingRef: React.RefObject<HTMLHeadingElement | null>;
 }) {
   const view = outcomeView(decision);
@@ -457,7 +459,10 @@ function OutcomePanel({
       </h2>
       <p style={{ margin: "var(--cw-space-2) 0 0" }}>{view.body}</p>
       {view.tone === "supported" && (
-        <a href="/" style={{ display: "inline-block", marginTop: "var(--cw-space-4)", ...buttonStyle }}>
+        <a
+          href={`/cases/${caseId}`}
+          style={{ display: "inline-block", marginTop: "var(--cw-space-4)", ...buttonStyle }}
+        >
           Go to your workspace
         </a>
       )}
