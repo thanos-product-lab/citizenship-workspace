@@ -23,27 +23,43 @@ export function CaseWorkspace({ caseId }: { caseId: string }) {
   const [state, setState] = useState<LoadState>("loading");
   const headingRef = useRef<HTMLHeadingElement>(null);
 
-  const load = useCallback(() => {
-    setState("loading");
-    let active = true;
-    void api
-      .GET("/api/v1/cases/{case_id}", { params: { path: { case_id: caseId } } })
-      .then(({ data, error, response }) => {
-        if (!active) return;
-        if (data) {
-          setCaseData(data);
-          setState("ready");
-        } else {
-          setState(response?.status === 404 ? "notfound" : "error");
-        }
-        void error;
-      });
-    return () => {
-      active = false;
-    };
-  }, [api, caseId]);
+  const load = useCallback(
+    (opts?: { focusHeadingOnDone?: boolean }) => {
+      setState("loading");
+      let active = true;
+      void api
+        .GET("/api/v1/cases/{case_id}", { params: { path: { case_id: caseId } } })
+        .then(({ data, error, response }) => {
+          if (!active) return;
+          if (data) {
+            setCaseData(data);
+            setState("ready");
+          } else {
+            setState(response?.status === 404 ? "notfound" : "error");
+          }
+          if (opts?.focusHeadingOnDone) headingRef.current?.focus();
+          void error;
+        });
+      return () => {
+        active = false;
+      };
+    },
+    [api, caseId],
+  );
 
   useEffect(() => load(), [load]);
+
+  // Move focus to the case heading when a user action transitions the case into
+  // deletion-pending, so the confirm button that unmounts doesn't drop focus to
+  // <body>. Guarded so opening an already-pending case on load doesn't steal focus.
+  const prevLifecycle = useRef<string | null>(null);
+  useEffect(() => {
+    const lifecycle = caseData?.lifecycle_status ?? null;
+    if (lifecycle === "DELETION_PENDING" && prevLifecycle.current !== null) {
+      headingRef.current?.focus();
+    }
+    prevLifecycle.current = lifecycle;
+  }, [caseData?.lifecycle_status]);
 
   if (state === "loading") {
     return (
@@ -68,7 +84,7 @@ export function CaseWorkspace({ caseId }: { caseId: string }) {
     return (
       <div role="alert">
         <p style={{ color: "var(--cw-status-not-satisfied)" }}>We couldn’t load this case.</p>
-        <button type="button" onClick={() => load()} style={buttonStyle}>
+        <button type="button" onClick={() => load({ focusHeadingOnDone: true })} style={buttonStyle}>
           Try again
         </button>
       </div>
@@ -142,7 +158,6 @@ function WorkspaceShell({
           {["Overview", "Requirements", "Timeline", "Evidence"].map((section) => (
             <li
               key={section}
-              aria-disabled="true"
               style={{
                 padding: "var(--cw-space-3) var(--cw-space-4)",
                 background: "var(--cw-surface-sunken)",
@@ -174,9 +189,14 @@ function DeleteCaseControl({
   const [state, setState] = useState<DeleteState>("idle");
   const confirmRef = useRef<HTMLButtonElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const prevState = useRef<DeleteState>("idle");
 
+  // Focus post-render (the target must be mounted): opening the confirm lands on
+  // "Delete permanently"; cancelling back to idle returns focus to the trigger.
   useEffect(() => {
     if (state === "confirming") confirmRef.current?.focus();
+    else if (prevState.current === "confirming" && state === "idle") triggerRef.current?.focus();
+    prevState.current = state;
   }, [state]);
 
   async function doDelete() {
@@ -197,17 +217,22 @@ function DeleteCaseControl({
     >
       {state === "confirming" ? (
         <div role="group" aria-label="Confirm deletion" style={{ display: "grid", gap: "var(--cw-space-3)" }}>
-          <p style={{ margin: 0 }}>Delete this case? This can’t be undone.</p>
+          <p id="delete-warning" style={{ margin: 0 }}>
+            Delete this case? This can’t be undone.
+          </p>
           <div style={{ display: "flex", gap: "var(--cw-space-3)", flexWrap: "wrap" }}>
-            <button ref={confirmRef} type="button" onClick={doDelete} style={dangerButtonStyle}>
+            <button
+              ref={confirmRef}
+              type="button"
+              onClick={doDelete}
+              aria-describedby="delete-warning"
+              style={dangerButtonStyle}
+            >
               Delete permanently
             </button>
             <button
               type="button"
-              onClick={() => {
-                setState("idle");
-                triggerRef.current?.focus();
-              }}
+              onClick={() => setState("idle")}
               style={secondaryButtonStyle}
             >
               Cancel

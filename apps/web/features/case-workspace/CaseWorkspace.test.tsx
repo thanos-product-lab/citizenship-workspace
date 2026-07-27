@@ -83,6 +83,8 @@ describe("CaseWorkspace", () => {
     expect(del).toHaveBeenCalledWith("/api/v1/cases/{case_id}", {
       params: { path: { case_id: "c1" } },
     });
+    // Focus lands on the pending heading, not lost to <body>.
+    expect(screen.getByRole("heading", { name: "My case" })).toHaveFocus();
   });
 
   it("can cancel the delete confirmation", async () => {
@@ -91,8 +93,9 @@ describe("CaseWorkspace", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: /delete case/i }));
     fireEvent.click(await screen.findByRole("button", { name: /cancel/i }));
+    // Cancelling returns focus to the trigger rather than dropping it to <body>.
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: /delete case/i })).toBeInTheDocument(),
+      expect(screen.getByRole("button", { name: /delete case/i })).toHaveFocus(),
     );
     expect(del).not.toHaveBeenCalled();
   });
