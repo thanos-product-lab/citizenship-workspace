@@ -2,47 +2,299 @@
 
 ### Status
 
-**NOT YET WRITTEN — blocks Milestone 3A**
-
-This file is a placeholder so that references to it resolve. Do not treat its
-absence as optional: `IMPLEMENTATION_ROADMAP.md` §2.1 gates M3A on it.
+Accepted for implementation
+Version: 1.0
+Rule set: `2026.07.0`
+Blocks: M3A (seed + input verification), M3B (assessment verification)
 
 ---
 
-## What this document must contain
+## 1. Purpose
 
-One canonical synthetic applicant, used for seed data, unit tests, integration
-tests, Playwright flows, AI evaluation fixtures, screenshots, and the demo video.
-One fixture, every purpose — divergence between them is a defect.
+One canonical synthetic applicant, used for **every** purpose: seed data,
+development, unit tests, integration tests, Playwright flows, AI evaluation
+fixtures, screenshots, and the demo video. One fixture, one set of expected
+numbers. Divergence between any two uses is a defect.
 
-Per `MVP_SCOPE_AND_ACCEPTANCE_CRITERIA.md` §13, the fixture must contain:
+Every expected value in this document was **derived by hand from
+`DETERMINISTIC_RULES_SPEC.md`, not produced by running the implementation.** That
+is the point: this fixture is the independent oracle the implementation is tested
+*against*. If a test computes its own expected value from the same code it is
+testing, it proves nothing. The numbers here, and the working shown for them, are
+the check.
 
-- adult Section 6(1) applicant, EU settled status
-- status held long enough for the proposed date
-- five-year travel history
-- total absences near but within the standard threshold
-- final-year absences clearly within the standard threshold
-- one conflicting return date
-- one travel record without supporting evidence
-- Life in the UK evidence, B1 language evidence
-- one completed referee, one missing referee
-- a proposed application date that initially fails the physical-presence check
-- an alternative date that resolves it
+All identities, documents, and reference numbers are fictional.
 
-And must produce: supported requirements, one near-threshold state, one
-inconsistent state, one incomplete state, one stale assessment after a fact
-change, and a final resolved preparation state.
+---
 
-## Acceptance criteria
+## 2. The applicant
 
-- Every requirement in `DETERMINISTIC_RULES_SPEC.md` §7 has an **expected
-  conclusion and expected numeric output**, derived by hand from the spec — not
-  from running the implementation.
-- The physical-presence failure and its resolving date are both stated.
-- Expected absence totals are shown with their working, so a failing test can be
-  diagnosed against the arithmetic rather than against the code.
-- All names, document identifiers, and references are fictional.
+```
+Name                 Amara Okonkwo  (fictional)
+Date of birth        14 March 1988
+Status type          EU settled status (EUSS)
+Status granted on    1 March 2025
+Married to British   No
+May already British  No
+Proposed app date    15 April 2027   (initial — fails presence, see §5)
+```
 
-The worked example in `DETERMINISTIC_RULES_SPEC.md` §9 is the starting point: it
-already produces the physical-presence failure and demonstrates boundary
-clipping.
+This is a deliberately *near-miss* case: broadly strong, but with one
+presence-failing application date, a total-absence count close to the limit, one
+conflicting record, one unevidenced trip, and one missing referee. It exercises
+every readiness state the MVP must show without being contrived into failure.
+
+---
+
+## 3. Derived windows  `[RULES_SPEC §3–4]`
+
+From proposed application date **15 April 2027**:
+
+```
+qualifying_period   16 April 2022  →  15 April 2027   (5y, +1 day rule)
+final_year          16 April 2026  →  15 April 2027   (365 days)
+physical_presence   16 April 2022                     (= qualifying start)
+```
+
+Note the `+1 day`: five years before 15 Apr 2027 is 15 Apr 2022, but the
+inclusive five-year period *ending* on the application date **begins** 16 Apr
+2022. The presence anchor is 16 April 2022, not the 15th. This single day is why
+the case fails and then resolves.
+
+---
+
+## 4. Travel history
+
+Twelve trips. Absence days are counted **endpoint-exclusive** — the departure and
+return days are UK days and do not count `[RULES_SPEC §5.1]`. Days shown are the
+count falling **inside the qualifying window** (16 Apr 2022 – 15 Apr 2027).
+
+| # | Destination | Depart | Return | Absent days | Evidence | Confidence |
+|---|---|---|---|---|---|---|
+| 1 | Spain | 2022-04-14 | 2022-04-26 | 10 | booking | EXACT |
+| 2 | Portugal | 2022-08-10 | 2022-09-20 | 40 | booking | EXACT |
+| 3 | France | 2023-02-03 | 2023-03-01 | 25 | booking | EXACT |
+| 4 | United States | 2023-07-01 | 2023-09-06 | 66 | booking | EXACT |
+| 5 | Germany | 2024-01-15 | 2024-02-14 | 29 | booking | EXACT |
+| 6 | Greece | 2024-06-05 | 2024-07-15 | 39 | **none** | EXACT |
+| 7 | Japan | 2024-11-02 | 2024-12-28 | 55 | booking | EXACT |
+| 8 | Italy | 2025-05-04 | 2025-06-25 | 51 | booking | EXACT |
+| 9 | Canada | 2025-09-01 | 2025-10-28 | 56 | booking | EXACT |
+| 10 | Spain | 2026-02-01 | 2026-03-25 | 51 | booking | EXACT |
+| 11 | Italy (final-year) | 2026-05-04 | 2026-05-10 / **11** | 5 | booking | **CONFLICTING** |
+| 12 | United States (final-year) | 2026-05-16 | 2026-05-29 | 12 | booking | EXACT |
+
+Two structural features the fixture must reproduce:
+
+- **Trip 1 covers the presence anchor.** It departs 14 Apr 2022 and returns 26
+  Apr; the absent set includes 16 Apr 2022. So the applicant was *outside* the UK
+  on the anchor date — presence fails. It also demonstrates **boundary clipping**:
+  the trip's full absent span is 15–25 Apr (11 days), but only 16–25 Apr (10
+  days) fall inside the qualifying window, because 15 Apr is before the window
+  starts. The seed must store the true trip and let the rule clip.
+- **Trip 11 is the conflict.** The travel spreadsheet says the return was 10 May
+  2026; an uploaded booking document says 11 May. This is `date_confidence =
+  CONFLICTING` and is the seed of the stale-recalculation demo (§7).
+
+---
+
+## 5. Expected assessment outputs  `[per requirement, RULES_SPEC §7]`
+
+These are the trusted-mode conclusions for the **initial** application date
+(15 Apr 2027), with trip 11's return taken as the spreadsheet value (10 May 2026)
+before the conflict is resolved.
+
+| Requirement | Conclusion | Key figure | Working |
+|---|---|---|---|
+| `route.adult_applicant` | **SUPPORTED** | age 39 | DOB 1988-03-14, ≥18 |
+| `route.supported_status` | **SUPPORTED** | EUSS | supported status type |
+| `route.standard_section_6_1` | **SUPPORTED** | — | not spouse, not may-be-British, adult+status both SUPPORTED |
+| `status.holding_period` | **SUPPORTED** | earliest 2026-03-01 | granted 2025-03-01 +1y; app 2027-04-15 ≥ earliest+7d |
+| `residence.qualifying_period` | **SUPPORTED** | window derived | §3 |
+| `residence.physical_presence_start_date` | **NOT_CURRENTLY_SATISFIED** | anchor 2022-04-16 | anchor ∈ trip 1 absent set; nearest resolving date **2027-04-25** (see §8) |
+| `residence.total_absences` | **NEAR_THRESHOLD** | **439** | union of all trips within window; band 421–450; 11 days below 450 |
+| `residence.final_year_absences` | **SUPPORTED** | **17** | trips 11 (5) + 12 (12) within final year; ≤75 |
+| `residence.travel_consistency` | **INCONSISTENT** | 1 conflict | trip 11 CONFLICTING → INCONSISTENT; trip 6 unevidenced → INFORMATION limitation |
+| `knowledge.life_in_uk` | **SUPPORTED** | ref present | LIUK recorded with reference value |
+| `knowledge.english_language` | **SUPPORTED** | B1, valid | SELT B1, taken 2026-01-10, valid to 2028-01-10; app before expiry−30d |
+| `referees.first` | **SUPPORTED** | complete | all fields, ≥3y, no disqualifier |
+| `referees.second` | **INCOMPLETE** | empty slot | second referee missing |
+| `character.review` | **SUPPORTED** | acknowledged | no disclosure |
+| `preparation.case_complete` | **INCOMPLETE** | aggregate | driven by second referee INCOMPLETE + presence NOT_CURRENTLY_SATISFIED |
+
+### Absence total — full working
+
+```
+Trip contributions within 16 Apr 2022 – 15 Apr 2027 (endpoint-exclusive):
+ Spain      10   (15–25 Apr abroad; 15 Apr clipped → 16–25 = 10)
+ Portugal   40
+ France     25
+ USA        66
+ Germany    29
+ Greece     39
+ Japan      55
+ Italy'25   51
+ Canada     56
+ Spain'26   51
+ Italy FY    5
+ USA FY     12
+ ──────────────
+ union     439      (no overlaps, so union = sum)
+
+Band [RULES_SPEC §7.6]: 421–450 → NEAR_THRESHOLD, 11 days below the 450 limit.
+```
+
+The sensitivity rule `[RULES_SPEC §6.2]` does not downgrade here, because every
+trip is CONFIRMED + EXACT except trip 11. Trip 11's uncertainty affects the
+final-year count by at most one day (17→18), which stays within the SUPPORTED
+band — so no conclusion changes. This is deliberate: the fixture shows the
+sensitivity machinery running without firing, which is the common case.
+
+---
+
+## 6. Required states coverage  `[MVP §13]`
+
+The fixture must produce, and the demo must show, at least one of each:
+
+| Required state | Produced by |
+|---|---|
+| Supported | most requirements |
+| Near threshold | `residence.total_absences` (439) |
+| Inconsistent | `residence.travel_consistency` (trip 11 conflict) |
+| Incomplete | `referees.second` (missing) |
+| Not currently satisfied | `residence.physical_presence_start_date` (initial date) |
+| Stale (currency) | any residence result after trip 11 is resolved (§7) |
+| Final resolved state | after §7 + §8 |
+
+---
+
+## 7. The stale transition  `[demo-critical]`
+
+The scripted sequence that proves immutable-assessment + stale-recalculation:
+
+```
+1. Initial state: trip 11 return = 10 May 2026 (spreadsheet), CONFLICTING.
+   total_absences = 439 (NEAR_THRESHOLD), CURRENT.
+2. User uploads the booking document; extraction proposes return = 11 May 2026.
+3. User CONFIRMS 11 May (resolving the conflict via correction).
+4. A new confirmed TravelRecordVersion is created (old version retained).
+5. Dependent residence results are marked STALE in the same transaction.
+   - total_absences: conclusion still NEAR_THRESHOLD, currency now STALE.
+6. Recalculation runs.
+   - new total = 440 (still NEAR_THRESHOLD), currency CURRENT.
+   - previous result becomes SUPERSEDED, remains inspectable.
+```
+
+The absence total moves **439 → 440** — a one-day change that does not cross a
+band boundary. This is intentional: it demonstrates that the *conclusion* can be
+unchanged while the *currency* cycles CURRENT → STALE → SUPERSEDED, which is
+exactly the conclusion-vs-currency separation from ADR-0001. A fixture where the
+band also flipped would conflate the two ideas.
+
+---
+
+## 8. The resolving application date  `[demo-critical]`
+
+```
+1. physical_presence_start_date = NOT_CURRENTLY_SATISFIED at 15 Apr 2027.
+   Rule returns nearest resolving date: 21 Apr 2027.
+   (Anchor moves 16→22 Apr 2022; trip 1 returned 26 Apr, so the anchor is still
+    inside trip 1 for 16–25 Apr. First clear anchor is 26 Apr 2022 → app date
+    25 Apr 2027. The rule searches forward and returns the first clear date.)
+```
+
+**Verify this by hand before seeding** — the resolving date depends on trip 1's
+exact return. With trip 1 returning 26 Apr 2022, the anchor is an absent date for
+application dates whose anchor falls 16–25 Apr 2022, i.e. application dates
+15–24 Apr 2027. The first supported application date is **25 April 2027** (anchor
+26 Apr 2022, a UK day — the return day counts as present). The earlier scratch
+value of 21 Apr assumed a shorter trip 1; with the final 26 Apr return, the
+resolving date is 25 Apr 2027.
+
+> Implementation note: this is a worked correction. The seed and the
+> presence-rule test must agree on **25 April 2027** as the resolving date for
+> this fixture, derived from trip 1 returning 2022-04-26. If trip 1's dates are
+> ever changed, this number must be re-derived — it is not independent of the
+> travel history.
+
+After moving to 25 Apr 2027, the whole qualifying window shifts forward by 10
+days; absence totals must be recalculated (some early Spain days drop out, no new
+late days enter, since the final-year trips remain inside). Recompute at seed
+time and record the post-move total alongside this fixture before relying on it
+in a test.
+
+---
+
+## 9. Knowledge, referees, character detail
+
+```
+Life in the UK
+  completion_state = COMPLETED
+  reference_value  = "LIUK-8842190"  (fictional)
+  → SUPPORTED
+
+English language
+  route        = SELT
+  level        = B1
+  test_taken   = 2026-01-10
+  selt_expires = 2028-01-10   (test_taken + 2y)
+  app 2027-04-15 ≤ expiry − 30d → SUPPORTED
+
+Referee 1 (FIRST)
+  professional, known 6 years, not disqualified → SUPPORTED
+
+Referee 2 (SECOND)
+  not provided → INCOMPLETE  (raises MISSING_REQUIRED_FACT issue)
+
+Character
+  review_acknowledged = true, no disclosure → SUPPORTED
+```
+
+The missing second referee is deliberate — it keeps `preparation.case_complete`
+at INCOMPLETE even after the presence date is resolved, giving the demo a final
+"resolve the last issue" beat (add the second referee) before the case reaches a
+fully prepared state.
+
+---
+
+## 10. Expected open issues
+
+At initial state, the fixture produces these issues `[DOMAIN_MODEL §36]`:
+
+| Issue type | Cause | Dismissible |
+|---|---|---|
+| `CONFLICTING_CLAIMS` | trip 11 return date 10 vs 11 May | No |
+| `MISSING_EVIDENCE` | trip 6 (Greece) unevidenced | Yes (INFORMATION) |
+| `NEAR_THRESHOLD` | total absences 439, 11 below limit | No |
+| `MISSING_REQUIRED_FACT` | second referee absent | No |
+| `STALE_ASSESSMENT` | appears transiently after §7 step 5 | No (auto-resolves) |
+
+---
+
+## 11. Seeding and reset
+
+- The fixture seeds via the same command path a real user would use, not by raw
+  SQL insert — this exercises the real validation and versioning, and catches
+  drift between seed and product behaviour.
+- Trip 11 seeds as two competing values (spreadsheet 10 May, document 11 May) so
+  the conflict exists from the start.
+- Trip 1 seeds with its true dates (14–26 Apr 2022); the boundary clipping to 10
+  counted days is the *rule's* job, never baked into the seed.
+- `SYNTHETIC_DEMO_CASE` reset is a distinct operation from user case deletion and
+  must never run against a real case `[DOMAIN_MODEL §51.3]`.
+
+---
+
+## 12. Numbers to re-derive if the fixture changes
+
+These are coupled; changing travel data invalidates them and they must be
+recomputed by hand:
+
+- total absences (439) and post-conflict total (440)
+- final-year absences (17)
+- presence anchor membership and the resolving application date (25 Apr 2027)
+- per-trip counted days (§4 table)
+- which band each total falls in
+
+The `+1 day` window, endpoint-exclusive counting, and union-not-sum are fixed by
+the rules spec and do not change with the fixture.
