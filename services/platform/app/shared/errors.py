@@ -29,6 +29,22 @@ class ProfileIncomplete(DomainError):
         super().__init__(f"missing required answers: {', '.join(missing_fields)}")
 
 
+class CaseNotActive(DomainError):
+    """A case-scoped command that needs an assessable case was issued against one
+    that is not ACTIVE (still DRAFT/onboarding, archived, or pending deletion).
+
+    Distinct from the ownership 404 on purpose: the case exists and is the caller's,
+    it is simply not yet ready for this input. That is a state the user must be able
+    to understand and act on (finish onboarding), not one to hide behind "not found".
+    Carries a stable `code` so the frontend can route the user back to onboarding."""
+
+    code = "CASE_NOT_ACTIVE"
+
+    def __init__(self, lifecycle_status: str) -> None:
+        self.lifecycle_status = lifecycle_status
+        super().__init__(f"this action needs an active case; the case is {lifecycle_status}")
+
+
 class StateWithoutEventError(RuntimeError):
     """A unit of work tried to commit business state without emitting a domain event.
 
@@ -49,6 +65,19 @@ def register_exception_handlers(app: FastAPI) -> None:
     async def _illegal_transition(_request: Request, exc: IllegalTransition) -> JSONResponse:
         # 409: the aggregate is in a state that conflicts with the requested command.
         return JSONResponse(status_code=status.HTTP_409_CONFLICT, content={"detail": str(exc)})
+
+    @app.exception_handler(CaseNotActive)
+    async def _case_not_active(_request: Request, exc: CaseNotActive) -> JSONResponse:
+        # 409: the case's lifecycle state conflicts with a command that needs an
+        # active case. Not a 404 — the case is real and owned; it is just not ready.
+        return JSONResponse(
+            status_code=status.HTTP_409_CONFLICT,
+            content={
+                "detail": str(exc),
+                "code": exc.code,
+                "lifecycle_status": exc.lifecycle_status,
+            },
+        )
 
     @app.exception_handler(ProfileIncomplete)
     async def _profile_incomplete(_request: Request, exc: ProfileIncomplete) -> JSONResponse:

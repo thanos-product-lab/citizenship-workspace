@@ -73,9 +73,7 @@ class ApplicationCase(Base):
     current_proposed_application_date_id: Mapped[uuid.UUID | None] = mapped_column()
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     deletion_requested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
@@ -114,9 +112,7 @@ class ApplicationCase(Base):
         A case may only become assessable once onboarding resolves to a supported
         route, so activation is refused from any state but DRAFT."""
         if self.lifecycle_status is not LifecycleStatus.DRAFT:
-            raise IllegalTransition(
-                f"cannot activate a case in {self.lifecycle_status} state"
-            )
+            raise IllegalTransition(f"cannot activate a case in {self.lifecycle_status} state")
         self._lifecycle_status = LifecycleStatus.ACTIVE.value
 
     def request_deletion(self, *, at: datetime) -> None:
@@ -127,6 +123,16 @@ class ApplicationCase(Base):
             )
         self._lifecycle_status = LifecycleStatus.DELETION_PENDING.value
         self.deletion_requested_at = at
+
+    def set_current_application_date(self, proposed_application_date_id: uuid.UUID) -> None:
+        """Point the case at its current proposed-application-date aggregate.
+
+        The case pointer is authoritative for "which proposed date is current"
+        (Domain §10.3); the aggregate's own `is_current` flag mirrors it. Residence
+        owns the date aggregate but reaches the case only through this method, so the
+        cross-module write stays a guarded aggregate operation — the same shape as
+        `record_route_support`, never a raw column poke from another module."""
+        self.current_proposed_application_date_id = proposed_application_date_id
 
     def record_route_support(self, support: "SupportStatus") -> None:
         """Record the route-support outcome and, if supported, activate the case.
@@ -146,9 +152,7 @@ class CaseMembership(Base):
     case_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("cases.id"), index=True)
     user_id: Mapped[str] = mapped_column(String(255), index=True)
     role: Mapped[str] = mapped_column(String(20))
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     __table_args__ = (UniqueConstraint("case_id", "user_id", name="uq_membership_case_user"),)
