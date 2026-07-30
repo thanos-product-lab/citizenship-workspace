@@ -23,10 +23,11 @@ from datetime import date, datetime
 from enum import StrEnum
 from typing import Any, ClassVar
 
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, String, func
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.shared.db import Base
+from app.shared.errors import IllegalTransition
 from app.shared.messaging import DomainEvent
 
 
@@ -146,3 +147,177 @@ class ProposedApplicationDateChanged(DomainEvent):
             "application_date": self.application_date,
             "source": self.source,
         }
+
+
+# --- TravelRecord ----------------------------------------------------------
+
+
+class TravelLifecycleStatus(StrEnum):
+    ACTIVE = "ACTIVE"
+    REMOVED = "REMOVED"
+
+
+class DateConfidence(StrEnum):
+    # Independent of review_state: a record can be CONFIRMED yet ESTIMATED. Both must
+    # hold (CONFIRMED + EXACT) for M3B to admit a record to a trusted total (§6.1).
+    EXACT = "EXACT"
+    ESTIMATED = "ESTIMATED"
+    CONFLICTING = "CONFLICTING"
+    UNKNOWN = "UNKNOWN"
+
+
+class TravelReviewState(StrEnum):
+    DRAFT = "DRAFT"
+    CONFIRMED = "CONFIRMED"
+    UNCERTAIN = "UNCERTAIN"
+
+
+class EntrySource(StrEnum):
+    MANUAL = "MANUAL"
+    CSV_IMPORT = "CSV_IMPORT"
+    CONFIRMED_CLAIM = "CONFIRMED_CLAIM"
+    CORRECTED_CLAIM = "CORRECTED_CLAIM"
+
+
+class TravelRecord(Base):
+    """One reported period outside the UK. The stable identity; the values live on its
+    immutable versions. Removal is a tombstone (lifecycle → REMOVED, §11.3), never a
+    hard delete — the row and every version stay inspectable."""
+
+    __tablename__ = "travel_records"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    case_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("cases.id"), index=True)
+    current_version_id: Mapped[uuid.UUID | None] = mapped_column()
+    # Private column: the tombstone transition below is the only writer (mirrors the
+    # ApplicationCase lifecycle pattern), so REMOVED has exactly one code path in.
+    _lifecycle_status: Mapped[str] = mapped_column("lifecycle_status", String(20))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+    revision: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    __mapper_args__ = {"version_id_col": revision}  # noqa: RUF012
+
+    @classmethod
+    def start(cls, *, case_id: uuid.UUID) -> "TravelRecord":
+        return cls(
+            id=uuid.uuid4(),
+            case_id=case_id,
+            _lifecycle_status=TravelLifecycleStatus.ACTIVE.value,
+            revision=1,
+        )
+
+    @property
+    def lifecycle_status(self) -> TravelLifecycleStatus:
+        return TravelLifecycleStatus(self._lifecycle_status)
+
+    def mark_removed(self) -> None:
+        """ACTIVE → REMOVED (a tombstone). Idempotency is refused, not silent: removing
+        an already-removed record raises rather than emitting a second removal."""
+        if self.lifecycle_status is TravelLifecycleStatus.REMOVED:
+            raise IllegalTransition("the travel record is already removed")
+        self._lifecycle_status = TravelLifecycleStatus.REMOVED.value
+
+
+class TravelRecordVersion(Base):
+    __tablename__ = "travel_record_versions"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    travel_record_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("travel_records.id"), index=True)
+    version_number: Mapped[int] = mapped_column(Integer)
+    destination_country_code: Mapped[str | None] = mapped_column(String(2))
+    destination_label: Mapped[str] = mapped_column(String(120))
+    # Raw trip endpoints as calendar DATEs (§6.2). Stored true, never pre-clipped or
+    # pre-counted: the M3B rules do endpoint-exclusive counting and window clipping
+    # from these values (RULES_SPEC §5). The DB CHECK guards departure <= return.
+    departure_date: Mapped[date] = mapped_column(Date)
+    return_date: Mapped[date] = mapped_column(Date)
+    date_confidence: Mapped[str] = mapped_column(String(20))
+    review_state: Mapped[str] = mapped_column(String(20))
+    entry_source: Mapped[str] = mapped_column(String(20))
+    notes: Mapped[str | None] = mapped_column(Text)
+    created_by: Mapped[str] = mapped_column(String(255))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    supersedes_version_id: Mapped[uuid.UUID | None] = mapped_column()
+
+    @classmethod
+    def build(
+        cls,
+        *,
+        travel_record_id: uuid.UUID,
+        version_number: int,
+        destination_label: str,
+        departure_date: date,
+        return_date: date,
+        date_confidence: DateConfidence,
+        review_state: TravelReviewState,
+        entry_source: EntrySource,
+        created_by: str,
+        destination_country_code: str | None = None,
+        notes: str | None = None,
+        supersedes_version_id: uuid.UUID | None = None,
+    ) -> "TravelRecordVersion":
+        return cls(
+            id=uuid.uuid4(),
+            travel_record_id=travel_record_id,
+            version_number=version_number,
+            destination_country_code=destination_country_code,
+            destination_label=destination_label,
+            departure_date=departure_date,
+            return_date=return_date,
+            date_confidence=date_confidence.value,
+            review_state=review_state.value,
+            entry_source=entry_source.value,
+            notes=notes,
+            created_by=created_by,
+            supersedes_version_id=supersedes_version_id,
+        )
+
+
+@dataclass(frozen=True)
+class _TravelEvent(DomainEvent):
+    """Shared payload for the travel lifecycle events. Deliberately structural: the
+    departure/return dates, destination, and notes are *not* carried — a movement
+    timeline is collectively sensitive, and no M3A consumer needs it in the event
+    stream (§38.1). The audit entry already records the exact target version id."""
+
+    version_number: int
+    date_confidence: str
+    review_state: str
+    entry_source: str
+
+    def payload(self) -> dict[str, Any]:
+        return {
+            "travel_record_id": str(self.aggregate_id),
+            "version_number": self.version_number,
+            "date_confidence": self.date_confidence,
+            "review_state": self.review_state,
+            "entry_source": self.entry_source,
+        }
+
+
+@dataclass(frozen=True)
+class TravelRecordCreated(_TravelEvent):
+    aggregate_type: ClassVar[str] = "TravelRecord"
+    event_type: ClassVar[str] = "TravelRecordCreated"
+
+
+@dataclass(frozen=True)
+class TravelRecordVersionCreated(_TravelEvent):
+    """A new immutable version appended by an edit (the previous version is retained)."""
+
+    aggregate_type: ClassVar[str] = "TravelRecord"
+    event_type: ClassVar[str] = "TravelRecordVersionCreated"
+
+
+@dataclass(frozen=True)
+class TravelRecordRemoved(DomainEvent):
+    """The record was tombstoned (lifecycle → REMOVED). Versions are untouched."""
+
+    aggregate_type: ClassVar[str] = "TravelRecord"
+    event_type: ClassVar[str] = "TravelRecordRemoved"
+
+    def payload(self) -> dict[str, Any]:
+        return {"travel_record_id": str(self.aggregate_id)}

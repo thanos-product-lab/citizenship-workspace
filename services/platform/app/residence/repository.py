@@ -1,11 +1,17 @@
-"""Persistence access for the proposed application date, exposed as domain intent."""
+"""Persistence access for residence inputs, exposed as domain intent."""
 
 import uuid
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.residence.domain import ProposedApplicationDate, ProposedApplicationDateVersion
+from app.residence.domain import (
+    ProposedApplicationDate,
+    ProposedApplicationDateVersion,
+    TravelLifecycleStatus,
+    TravelRecord,
+    TravelRecordVersion,
+)
 
 
 class ProposedApplicationDateRepository:
@@ -33,4 +39,42 @@ class ProposedApplicationDateRepository:
 
     @staticmethod
     def add_version(session: Session, version: ProposedApplicationDateVersion) -> None:
+        session.add(version)
+
+
+class TravelRecordRepository:
+    @staticmethod
+    def get(session: Session, travel_record_id: uuid.UUID) -> TravelRecord | None:
+        return session.get(TravelRecord, travel_record_id)
+
+    @staticmethod
+    def get_version(session: Session, version_id: uuid.UUID) -> TravelRecordVersion | None:
+        return session.get(TravelRecordVersion, version_id)
+
+    @staticmethod
+    def list_active_with_current_version(
+        session: Session, case_id: uuid.UUID
+    ) -> list[tuple[TravelRecord, TravelRecordVersion]]:
+        """Active (non-tombstoned) records with their current version, in departure
+        order — the accessible chronological table (MVP §8.4). Tombstones are excluded."""
+        stmt = (
+            select(TravelRecord, TravelRecordVersion)
+            .join(
+                TravelRecordVersion,
+                TravelRecord.current_version_id == TravelRecordVersion.id,
+            )
+            .where(
+                TravelRecord.case_id == case_id,
+                TravelRecord._lifecycle_status == TravelLifecycleStatus.ACTIVE.value,
+            )
+            .order_by(TravelRecordVersion.departure_date)
+        )
+        return [(record, version) for record, version in session.execute(stmt)]
+
+    @staticmethod
+    def add_record(session: Session, record: TravelRecord) -> None:
+        session.add(record)
+
+    @staticmethod
+    def add_version(session: Session, version: TravelRecordVersion) -> None:
         session.add(version)

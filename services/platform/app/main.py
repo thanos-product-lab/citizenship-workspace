@@ -16,6 +16,7 @@ from app.core.logging import configure_logging
 from app.core.middleware import TraceIdMiddleware
 from app.health.routes import router as health_router
 from app.residence.routes import router as application_dates_router
+from app.residence.routes import travel_records_router
 from app.shared.errors import register_exception_handlers
 
 _log = structlog.get_logger()
@@ -56,6 +57,7 @@ def create_app() -> FastAPI:
     app.include_router(cases_router)
     app.include_router(route_profile_router)
     app.include_router(application_dates_router)
+    app.include_router(travel_records_router)
 
     structlog.get_logger().info("app.startup", environment=settings.environment)
     return app

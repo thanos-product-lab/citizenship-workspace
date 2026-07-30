@@ -7,9 +7,10 @@ Both mount under `require_case_access`, so the ownership boundary is enforced th
 way as every case-scoped read/command. The ACTIVE-case gate lives in the service.
 """
 
+import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import get_current_user
@@ -17,10 +18,33 @@ from app.auth.schemas import CurrentUser
 from app.cases.dependencies import require_case_access
 from app.cases.domain import ApplicationCase
 from app.residence import service
-from app.residence.schemas import ProposedApplicationDateResponse, SelectApplicationDateInput
+from app.residence.schemas import (
+    ProposedApplicationDateResponse,
+    SelectApplicationDateInput,
+    TravelRecordEditInput,
+    TravelRecordInput,
+    TravelRecordResponse,
+)
+from app.residence.service import TravelRecordFields
 from app.shared.tenant import get_tenant_session
 
 router = APIRouter(prefix="/api/v1/cases/{case_id}/application-dates", tags=["application-dates"])
+
+travel_records_router = APIRouter(
+    prefix="/api/v1/cases/{case_id}/travel-records", tags=["travel-records"]
+)
+
+
+def _fields(body: TravelRecordInput) -> TravelRecordFields:
+    return TravelRecordFields(
+        destination_label=body.destination_label,
+        departure_date=body.departure_date,
+        return_date=body.return_date,
+        date_confidence=body.date_confidence,
+        review_state=body.review_state,
+        destination_country_code=body.destination_country_code,
+        notes=body.notes,
+    )
 
 
 @router.get("", response_model=ProposedApplicationDateResponse | None)
@@ -49,3 +73,62 @@ def select_application_date(
         expected_revision=body.expected_revision,
     )
     return ProposedApplicationDateResponse.from_domain(outcome.root, outcome.version)
+
+
+@travel_records_router.get("", response_model=list[TravelRecordResponse])
+def list_travel_records(
+    case: Annotated[ApplicationCase, Depends(require_case_access)],
+    session: Annotated[Session, Depends(get_tenant_session)],
+) -> list[TravelRecordResponse]:
+    outcomes = service.list_travel_records(session, case=case)
+    return [TravelRecordResponse.from_domain(o.record, o.version) for o in outcomes]
+
+
+@travel_records_router.post(
+    "", response_model=TravelRecordResponse, status_code=status.HTTP_201_CREATED
+)
+def add_travel_record(
+    body: TravelRecordInput,
+    case: Annotated[ApplicationCase, Depends(require_case_access)],
+    session: Annotated[Session, Depends(get_tenant_session)],
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+) -> TravelRecordResponse:
+    outcome = service.add_travel_record(session, case=case, user=user, fields=_fields(body))
+    return TravelRecordResponse.from_domain(outcome.record, outcome.version)
+
+
+@travel_records_router.patch("/{travel_record_id}", response_model=TravelRecordResponse)
+def edit_travel_record(
+    travel_record_id: uuid.UUID,
+    body: TravelRecordEditInput,
+    case: Annotated[ApplicationCase, Depends(require_case_access)],
+    session: Annotated[Session, Depends(get_tenant_session)],
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+) -> TravelRecordResponse:
+    outcome = service.edit_travel_record(
+        session,
+        case=case,
+        user=user,
+        travel_record_id=travel_record_id,
+        fields=_fields(body),
+        expected_revision=body.expected_revision,
+    )
+    return TravelRecordResponse.from_domain(outcome.record, outcome.version)
+
+
+@travel_records_router.delete("/{travel_record_id}", response_model=TravelRecordResponse)
+def remove_travel_record(
+    travel_record_id: uuid.UUID,
+    case: Annotated[ApplicationCase, Depends(require_case_access)],
+    session: Annotated[Session, Depends(get_tenant_session)],
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    expected_revision: Annotated[int | None, Query()] = None,
+) -> TravelRecordResponse:
+    outcome = service.remove_travel_record(
+        session,
+        case=case,
+        user=user,
+        travel_record_id=travel_record_id,
+        expected_revision=expected_revision,
+    )
+    return TravelRecordResponse.from_domain(outcome.record, outcome.version)

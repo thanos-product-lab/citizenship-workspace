@@ -45,6 +45,13 @@ class CaseNotActive(DomainError):
         super().__init__(f"this action needs an active case; the case is {lifecycle_status}")
 
 
+class TravelRecordNotFound(DomainError):
+    """A travel record referenced by id does not exist in this case. Raised (→ 404)
+    rather than leaking existence when the id is unknown *or* belongs to another of
+    the user's own cases — RLS hides other tenants, but not the caller's other cases,
+    so the case-ownership of a nested object is checked explicitly (Domain §3.1)."""
+
+
 class StateWithoutEventError(RuntimeError):
     """A unit of work tried to commit business state without emitting a domain event.
 
@@ -77,6 +84,15 @@ def register_exception_handlers(app: FastAPI) -> None:
                 "code": exc.code,
                 "lifecycle_status": exc.lifecycle_status,
             },
+        )
+
+    @app.exception_handler(TravelRecordNotFound)
+    async def _travel_record_not_found(
+        _request: Request, _exc: TravelRecordNotFound
+    ) -> JSONResponse:
+        # 404: unknown id, or an id from another case — indistinguishable on purpose.
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND, content={"detail": "Travel record not found"}
         )
 
     @app.exception_handler(ProfileIncomplete)

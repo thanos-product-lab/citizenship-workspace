@@ -12,6 +12,7 @@ raises `CaseNotActive` (→ 409 with a code), never a 404 — the case is real a
 it is just not ready, and the user needs to understand that rather than have it hidden.
 """
 
+import uuid
 from dataclasses import dataclass
 from datetime import date
 
@@ -22,15 +23,47 @@ from app.auth.schemas import CurrentUser
 from app.cases import service as cases_service
 from app.cases.domain import ApplicationCase, LifecycleStatus
 from app.residence.domain import (
+    DateConfidence,
+    EntrySource,
     ProposedApplicationDate,
     ProposedApplicationDateChanged,
     ProposedApplicationDateSelected,
     ProposedApplicationDateVersion,
+    TravelLifecycleStatus,
+    TravelRecord,
+    TravelRecordCreated,
+    TravelRecordRemoved,
+    TravelRecordVersion,
+    TravelRecordVersionCreated,
+    TravelReviewState,
 )
-from app.residence.repository import ProposedApplicationDateRepository
-from app.shared.errors import CaseNotActive, ConcurrencyConflict
+from app.residence.repository import (
+    ProposedApplicationDateRepository,
+    TravelRecordRepository,
+)
+from app.shared.errors import (
+    CaseNotActive,
+    ConcurrencyConflict,
+    IllegalTransition,
+    TravelRecordNotFound,
+)
 from app.shared.messaging import DomainEvent
 from app.shared.unit_of_work import UnitOfWork
+
+
+@dataclass(frozen=True)
+class TravelRecordFields:
+    """The full snapshot a manual create or edit writes into a new immutable version.
+    An edit is a whole-version replacement, not a partial patch — a version captures
+    the complete state so history stays self-contained."""
+
+    destination_label: str
+    departure_date: date
+    return_date: date
+    date_confidence: DateConfidence
+    review_state: TravelReviewState
+    destination_country_code: str | None = None
+    notes: str | None = None
 
 
 @dataclass(frozen=True)
@@ -143,4 +176,199 @@ def _advance_root(root: ProposedApplicationDate, version: ProposedApplicationDat
 def _check_revision(root: ProposedApplicationDate, expected: int | None) -> None:
     # Fast explicit conflict; version_id_col is the ultimate guard on commit.
     if expected is not None and expected != root.revision:
+        raise ConcurrencyConflict()
+
+
+# --- Travel records --------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class TravelRecordOutcome:
+    record: TravelRecord
+    version: TravelRecordVersion
+
+
+def list_travel_records(session: Session, *, case: ApplicationCase) -> list[TravelRecordOutcome]:
+    """Active travel records with their current version, chronological (MVP §8.4)."""
+    return [
+        TravelRecordOutcome(record=record, version=version)
+        for record, version in TravelRecordRepository.list_active_with_current_version(
+            session, case.id
+        )
+    ]
+
+
+def add_travel_record(
+    session: Session, *, case: ApplicationCase, user: CurrentUser, fields: TravelRecordFields
+) -> TravelRecordOutcome:
+    _require_active_writable_case(session, case)
+
+    record = TravelRecord.start(case_id=case.id)
+    TravelRecordRepository.add_record(session, record)
+    session.flush()
+    version = _build_version(
+        record_id=record.id, fields=fields, version_number=1, created_by=user.user_id
+    )
+    TravelRecordRepository.add_version(session, version)
+    _advance_record(record, version)
+
+    _emit_travel(
+        session,
+        user,
+        case_id=case.id,
+        event=TravelRecordCreated(
+            aggregate_id=record.id,
+            version_number=version.version_number,
+            date_confidence=version.date_confidence,
+            review_state=version.review_state,
+            entry_source=version.entry_source,
+        ),
+        action="residence.travel_record_created",
+        target_id=version.id,
+    )
+    session.refresh(record)
+    return TravelRecordOutcome(record=record, version=version)
+
+
+def edit_travel_record(
+    session: Session,
+    *,
+    case: ApplicationCase,
+    user: CurrentUser,
+    travel_record_id: uuid.UUID,
+    fields: TravelRecordFields,
+    expected_revision: int | None,
+) -> TravelRecordOutcome:
+    _require_active_writable_case(session, case)
+    record = _load_record_in_case(session, case, travel_record_id)
+    if record.lifecycle_status is not TravelLifecycleStatus.ACTIVE:
+        raise IllegalTransition("cannot edit a removed travel record")
+    _check_record_revision(record, expected_revision)
+
+    current = (
+        TravelRecordRepository.get_version(session, record.current_version_id)
+        if record.current_version_id is not None
+        else None
+    )
+    version = _build_version(
+        record_id=record.id,
+        fields=fields,
+        version_number=(current.version_number + 1) if current else 1,
+        created_by=user.user_id,
+        supersedes_version_id=current.id if current else None,
+    )
+    TravelRecordRepository.add_version(session, version)
+    _advance_record(record, version)
+
+    _emit_travel(
+        session,
+        user,
+        case_id=case.id,
+        event=TravelRecordVersionCreated(
+            aggregate_id=record.id,
+            version_number=version.version_number,
+            date_confidence=version.date_confidence,
+            review_state=version.review_state,
+            entry_source=version.entry_source,
+        ),
+        action="residence.travel_record_edited",
+        target_id=version.id,
+    )
+    session.refresh(record)
+    return TravelRecordOutcome(record=record, version=version)
+
+
+def remove_travel_record(
+    session: Session,
+    *,
+    case: ApplicationCase,
+    user: CurrentUser,
+    travel_record_id: uuid.UUID,
+    expected_revision: int | None,
+) -> TravelRecordOutcome:
+    _require_active_writable_case(session, case)
+    record = _load_record_in_case(session, case, travel_record_id)
+    _check_record_revision(record, expected_revision)
+    record.mark_removed()  # ACTIVE → REMOVED; raises if already removed (idempotency)
+
+    _emit_travel(
+        session,
+        user,
+        case_id=case.id,
+        event=TravelRecordRemoved(aggregate_id=record.id),
+        action="residence.travel_record_removed",
+        target_id=record.id,
+    )
+    session.refresh(record)
+    # The record keeps pointing at its last version so the tombstone stays inspectable.
+    assert record.current_version_id is not None  # a removed record retains its final version
+    version = TravelRecordRepository.get_version(session, record.current_version_id)
+    assert version is not None
+    return TravelRecordOutcome(record=record, version=version)
+
+
+def _build_version(
+    *,
+    record_id: uuid.UUID,
+    fields: TravelRecordFields,
+    version_number: int,
+    created_by: str,
+    supersedes_version_id: uuid.UUID | None = None,
+) -> TravelRecordVersion:
+    # Manual create and edit both write MANUAL-sourced versions; CSV_IMPORT and the
+    # claim sources arrive in Slice 3 / M5.
+    return TravelRecordVersion.build(
+        travel_record_id=record_id,
+        version_number=version_number,
+        destination_label=fields.destination_label,
+        departure_date=fields.departure_date,
+        return_date=fields.return_date,
+        date_confidence=fields.date_confidence,
+        review_state=fields.review_state,
+        entry_source=EntrySource.MANUAL,
+        created_by=created_by,
+        destination_country_code=fields.destination_country_code,
+        notes=fields.notes,
+        supersedes_version_id=supersedes_version_id,
+    )
+
+
+def _emit_travel(
+    session: Session,
+    user: CurrentUser,
+    *,
+    case_id: uuid.UUID,
+    event: DomainEvent,
+    action: str,
+    target_id: uuid.UUID,
+) -> None:
+    uow = UnitOfWork(session, actor_id=user.user_id)
+    uow.emit(
+        event,
+        case_id=case_id,
+        action=action,
+        target_type="TravelRecord",
+        target_id=target_id,
+    )
+    uow.commit()
+
+
+def _load_record_in_case(
+    session: Session, case: ApplicationCase, travel_record_id: uuid.UUID
+) -> TravelRecord:
+    """The record, only if it belongs to this case. RLS hides other tenants, but not
+    the caller's other cases, so the case link is checked here (Domain §3.1)."""
+    record = TravelRecordRepository.get(session, travel_record_id)
+    if record is None or record.case_id != case.id:
+        raise TravelRecordNotFound()
+    return record
+
+
+def _advance_record(record: TravelRecord, version: TravelRecordVersion) -> None:
+    record.current_version_id = version.id
+    flag_modified(record, "current_version_id")
+
+
+def _check_record_revision(record: TravelRecord, expected: int | None) -> None:
+    if expected is not None and expected != record.revision:
         raise ConcurrencyConflict()
