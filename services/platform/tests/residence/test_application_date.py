@@ -84,7 +84,9 @@ def test_first_selection_sets_the_authoritative_case_pointer(api: Api, db_sessio
     api("user_a").post(_url(case_id) + "/select", json={"application_date": "2027-04-15"})
 
     root = db_session.scalar(select(ProposedApplicationDate))
+    assert root is not None
     case = db_session.get(ApplicationCase, root.case_id)
+    assert case is not None
     # The case pointer (Domain §10.3 authoritative) targets the root; is_current mirrors it.
     assert case.current_proposed_application_date_id == root.id
     assert root.is_current is True
@@ -119,6 +121,7 @@ def test_changing_the_date_appends_an_immutable_version(api: Api, db_session: Se
 
     # Still exactly one root, still current, now pointing at v2.
     root = db_session.scalar(select(ProposedApplicationDate))
+    assert root is not None
     assert db_session.scalar(select(func.count()).select_from(ProposedApplicationDate)) == 1
     assert root.current_version_id == versions[1].id
     assert api("user_a").get(_url(case_id)).json()["application_date"] == "2027-04-25"
@@ -128,6 +131,7 @@ def test_dates_are_stored_as_calendar_dates(api: Api, db_session: Session) -> No
     case_id = _active_case(api, "user_a")
     api("user_a").post(_url(case_id) + "/select", json={"application_date": "2028-02-29"})
     version = db_session.scalar(select(ProposedApplicationDateVersion))
+    assert version is not None
     # A DATE, not a timestamp — the M3B +1-day window depends on lossless calendar dates.
     assert isinstance(version.application_date, date)
     assert version.application_date == date(2028, 2, 29)
