@@ -9,9 +9,13 @@ const client = { GET: get, DELETE: del, PUT: vi.fn(), POST: vi.fn() };
 
 vi.mock("@/lib/api", () => ({ useApiClient: () => client }));
 
-// RouteOnboarding does its own fetching; stub it so this suite tests only the shell.
+// RouteOnboarding and ResidencePanel do their own fetching; stub them so this suite
+// tests only the shell.
 vi.mock("@/features/onboarding/RouteOnboarding", () => ({
   RouteOnboarding: () => <div>onboarding stub</div>,
+}));
+vi.mock("@/features/timeline/ResidencePanel", () => ({
+  ResidencePanel: () => <div>residence stub</div>,
 }));
 
 import { CaseWorkspace } from "./CaseWorkspace";

@@ -4,6 +4,7 @@ import type { components } from "@cw/api-client";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { RouteOnboarding } from "@/features/onboarding/RouteOnboarding";
+import { ResidencePanel } from "@/features/timeline/ResidencePanel";
 import { useApiClient } from "@/lib/api";
 
 type Case = components["schemas"]["CaseResponse"];
@@ -149,13 +150,16 @@ function WorkspaceShell({
         {caseData.title}
       </h1>
       <p style={{ color: "var(--cw-text-muted)", marginTop: "var(--cw-space-2)" }}>
-        Your route is supported. The sections below open as later milestones land.
+        Your route is supported. Start with your application date and travel history below;
+        the other sections open as later milestones land.
       </p>
 
-      {/* Navigation scaffold — labels only; each section arrives in a later milestone. */}
-      <nav aria-label="Case sections" style={{ marginTop: "var(--cw-space-6)" }}>
+      <ResidencePanel caseId={caseData.id} />
+
+      {/* Scaffold for the sections that arrive in later milestones. */}
+      <nav aria-label="Other case sections" style={{ marginTop: "var(--cw-space-8)" }}>
         <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "grid", gap: "var(--cw-space-2)" }}>
-          {["Overview", "Requirements", "Timeline", "Evidence"].map((section) => (
+          {["Overview", "Requirements", "Evidence"].map((section) => (
             <li
               key={section}
               style={{
