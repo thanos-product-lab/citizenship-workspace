@@ -125,6 +125,16 @@
         "title": "CurrentUser",
         "type": "object"
       },
+      "DateConfidence": {
+        "enum": [
+          "EXACT",
+          "ESTIMATED",
+          "CONFLICTING",
+          "UNKNOWN"
+        ],
+        "title": "DateConfidence",
+        "type": "string"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -149,6 +159,57 @@
           "status"
         ],
         "title": "LiveResponse",
+        "type": "object"
+      },
+      "ProposedApplicationDateResponse": {
+        "properties": {
+          "application_date": {
+            "format": "date",
+            "title": "Application Date",
+            "type": "string"
+          },
+          "case_id": {
+            "format": "uuid",
+            "title": "Case Id",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "is_current": {
+            "title": "Is Current",
+            "type": "boolean"
+          },
+          "review_state": {
+            "title": "Review State",
+            "type": "string"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "version_number": {
+            "title": "Version Number",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "case_id",
+          "application_date",
+          "version_number",
+          "review_state",
+          "source",
+          "is_current",
+          "revision",
+          "created_at"
+        ],
+        "title": "ProposedApplicationDateResponse",
         "type": "object"
       },
       "ReadyResponse": {
@@ -431,6 +492,31 @@
         "title": "RouteSupportResponse",
         "type": "object"
       },
+      "SelectApplicationDateInput": {
+        "properties": {
+          "application_date": {
+            "format": "date",
+            "title": "Application Date",
+            "type": "string"
+          },
+          "expected_revision": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Revision"
+          }
+        },
+        "required": [
+          "application_date"
+        ],
+        "title": "SelectApplicationDateInput",
+        "type": "object"
+      },
       "StatusType": {
         "enum": [
           "ILR",
@@ -440,6 +526,248 @@
           "UNKNOWN"
         ],
         "title": "StatusType",
+        "type": "string"
+      },
+      "TravelRecordEditInput": {
+        "properties": {
+          "date_confidence": {
+            "$ref": "#/components/schemas/DateConfidence",
+            "default": "EXACT"
+          },
+          "departure_date": {
+            "format": "date",
+            "title": "Departure Date",
+            "type": "string"
+          },
+          "destination_country_code": {
+            "anyOf": [
+              {
+                "maxLength": 2,
+                "minLength": 2,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Destination Country Code"
+          },
+          "destination_label": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Destination Label",
+            "type": "string"
+          },
+          "expected_revision": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Revision"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "return_date": {
+            "format": "date",
+            "title": "Return Date",
+            "type": "string"
+          },
+          "review_state": {
+            "$ref": "#/components/schemas/TravelReviewState",
+            "default": "CONFIRMED"
+          }
+        },
+        "required": [
+          "destination_label",
+          "departure_date",
+          "return_date"
+        ],
+        "title": "TravelRecordEditInput",
+        "type": "object"
+      },
+      "TravelRecordInput": {
+        "description": "A manual travel entry. `date_confidence` and `review_state` are independent\n(\u00a711.4, \u00a711.5) and default to EXACT/CONFIRMED \u2014 a user entering a trip is asserting\nit \u2014 but can be downgraded to make an uncertain record visibly distinct.",
+        "properties": {
+          "date_confidence": {
+            "$ref": "#/components/schemas/DateConfidence",
+            "default": "EXACT"
+          },
+          "departure_date": {
+            "format": "date",
+            "title": "Departure Date",
+            "type": "string"
+          },
+          "destination_country_code": {
+            "anyOf": [
+              {
+                "maxLength": 2,
+                "minLength": 2,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Destination Country Code"
+          },
+          "destination_label": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Destination Label",
+            "type": "string"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "return_date": {
+            "format": "date",
+            "title": "Return Date",
+            "type": "string"
+          },
+          "review_state": {
+            "$ref": "#/components/schemas/TravelReviewState",
+            "default": "CONFIRMED"
+          }
+        },
+        "required": [
+          "destination_label",
+          "departure_date",
+          "return_date"
+        ],
+        "title": "TravelRecordInput",
+        "type": "object"
+      },
+      "TravelRecordResponse": {
+        "properties": {
+          "case_id": {
+            "format": "uuid",
+            "title": "Case Id",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "date_confidence": {
+            "title": "Date Confidence",
+            "type": "string"
+          },
+          "departure_date": {
+            "format": "date",
+            "title": "Departure Date",
+            "type": "string"
+          },
+          "destination_country_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Destination Country Code"
+          },
+          "destination_label": {
+            "title": "Destination Label",
+            "type": "string"
+          },
+          "entry_source": {
+            "title": "Entry Source",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "lifecycle_status": {
+            "title": "Lifecycle Status",
+            "type": "string"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "return_date": {
+            "format": "date",
+            "title": "Return Date",
+            "type": "string"
+          },
+          "review_state": {
+            "title": "Review State",
+            "type": "string"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "version_number": {
+            "title": "Version Number",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "case_id",
+          "version_number",
+          "destination_label",
+          "destination_country_code",
+          "departure_date",
+          "return_date",
+          "date_confidence",
+          "review_state",
+          "entry_source",
+          "notes",
+          "lifecycle_status",
+          "revision",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "TravelRecordResponse",
+        "type": "object"
+      },
+      "TravelReviewState": {
+        "enum": [
+          "DRAFT",
+          "CONFIRMED",
+          "UNCERTAIN"
+        ],
+        "title": "TravelReviewState",
         "type": "string"
       },
       "ValidationError": {
@@ -665,6 +993,120 @@
         ]
       }
     },
+    "/api/v1/cases/{case_id}/application-dates": {
+      "get": {
+        "operationId": "get_application_date_api_v1_cases__case_id__application_dates_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Case Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ProposedApplicationDateResponse"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "title": "Response Get Application Date Api V1 Cases  Case Id  Application Dates Get"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Application Date",
+        "tags": [
+          "application-dates"
+        ]
+      }
+    },
+    "/api/v1/cases/{case_id}/application-dates/select": {
+      "post": {
+        "operationId": "select_application_date_api_v1_cases__case_id__application_dates_select_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Case Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SelectApplicationDateInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProposedApplicationDateResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Select Application Date",
+        "tags": [
+          "application-dates"
+        ]
+      }
+    },
     "/api/v1/cases/{case_id}/route-profile": {
       "get": {
         "operationId": "get_route_profile_api_v1_cases__case_id__route_profile_get",
@@ -832,6 +1274,254 @@
         "summary": "Confirm Route Profile",
         "tags": [
           "route-profile"
+        ]
+      }
+    },
+    "/api/v1/cases/{case_id}/travel-records": {
+      "get": {
+        "operationId": "list_travel_records_api_v1_cases__case_id__travel_records_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Case Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TravelRecordResponse"
+                  },
+                  "title": "Response List Travel Records Api V1 Cases  Case Id  Travel Records Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Travel Records",
+        "tags": [
+          "travel-records"
+        ]
+      },
+      "post": {
+        "operationId": "add_travel_record_api_v1_cases__case_id__travel_records_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Case Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TravelRecordInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TravelRecordResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Add Travel Record",
+        "tags": [
+          "travel-records"
+        ]
+      }
+    },
+    "/api/v1/cases/{case_id}/travel-records/{travel_record_id}": {
+      "delete": {
+        "operationId": "remove_travel_record_api_v1_cases__case_id__travel_records__travel_record_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "travel_record_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Travel Record Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Case Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "expected_revision",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Expected Revision"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TravelRecordResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Remove Travel Record",
+        "tags": [
+          "travel-records"
+        ]
+      },
+      "patch": {
+        "operationId": "edit_travel_record_api_v1_cases__case_id__travel_records__travel_record_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "travel_record_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Travel Record Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Case Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TravelRecordEditInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TravelRecordResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Edit Travel Record",
+        "tags": [
+          "travel-records"
         ]
       }
     },

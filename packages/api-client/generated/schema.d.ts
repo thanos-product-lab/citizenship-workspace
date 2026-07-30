@@ -43,6 +43,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/cases/{case_id}/application-dates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Application Date */
+        get: operations["get_application_date_api_v1_cases__case_id__application_dates_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cases/{case_id}/application-dates/select": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Select Application Date */
+        post: operations["select_application_date_api_v1_cases__case_id__application_dates_select_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/cases/{case_id}/route-profile": {
         parameters: {
             query?: never;
@@ -76,6 +110,42 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cases/{case_id}/travel-records": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Travel Records */
+        get: operations["list_travel_records_api_v1_cases__case_id__travel_records_get"];
+        put?: never;
+        /** Add Travel Record */
+        post: operations["add_travel_record_api_v1_cases__case_id__travel_records_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cases/{case_id}/travel-records/{travel_record_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove Travel Record */
+        delete: operations["remove_travel_record_api_v1_cases__case_id__travel_records__travel_record_id__delete"];
+        options?: never;
+        head?: never;
+        /** Edit Travel Record */
+        patch: operations["edit_travel_record_api_v1_cases__case_id__travel_records__travel_record_id__patch"];
         trace?: never;
     };
     "/api/v1/me": {
@@ -187,6 +257,11 @@ export interface components {
             /** User Id */
             user_id: string;
         };
+        /**
+         * DateConfidence
+         * @enum {string}
+         */
+        DateConfidence: "EXACT" | "ESTIMATED" | "CONFLICTING" | "UNKNOWN";
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -196,6 +271,34 @@ export interface components {
         LiveResponse: {
             /** Status */
             status: string;
+        };
+        /** ProposedApplicationDateResponse */
+        ProposedApplicationDateResponse: {
+            /**
+             * Application Date
+             * Format: date
+             */
+            application_date: string;
+            /**
+             * Case Id
+             * Format: uuid
+             */
+            case_id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Is Current */
+            is_current: boolean;
+            /** Review State */
+            review_state: string;
+            /** Revision */
+            revision: number;
+            /** Source */
+            source: string;
+            /** Version Number */
+            version_number: number;
         };
         /** ReadyResponse */
         ReadyResponse: {
@@ -281,11 +384,130 @@ export interface components {
             /** Support Status */
             support_status: string;
         };
+        /** SelectApplicationDateInput */
+        SelectApplicationDateInput: {
+            /**
+             * Application Date
+             * Format: date
+             */
+            application_date: string;
+            /** Expected Revision */
+            expected_revision?: number | null;
+        };
         /**
          * StatusType
          * @enum {string}
          */
         StatusType: "ILR" | "ILE" | "EU_SETTLED_STATUS" | "OTHER" | "UNKNOWN";
+        /** TravelRecordEditInput */
+        TravelRecordEditInput: {
+            /** @default EXACT */
+            date_confidence: components["schemas"]["DateConfidence"];
+            /**
+             * Departure Date
+             * Format: date
+             */
+            departure_date: string;
+            /** Destination Country Code */
+            destination_country_code?: string | null;
+            /** Destination Label */
+            destination_label: string;
+            /** Expected Revision */
+            expected_revision?: number | null;
+            /** Notes */
+            notes?: string | null;
+            /**
+             * Return Date
+             * Format: date
+             */
+            return_date: string;
+            /** @default CONFIRMED */
+            review_state: components["schemas"]["TravelReviewState"];
+        };
+        /**
+         * TravelRecordInput
+         * @description A manual travel entry. `date_confidence` and `review_state` are independent
+         *     (§11.4, §11.5) and default to EXACT/CONFIRMED — a user entering a trip is asserting
+         *     it — but can be downgraded to make an uncertain record visibly distinct.
+         */
+        TravelRecordInput: {
+            /** @default EXACT */
+            date_confidence: components["schemas"]["DateConfidence"];
+            /**
+             * Departure Date
+             * Format: date
+             */
+            departure_date: string;
+            /** Destination Country Code */
+            destination_country_code?: string | null;
+            /** Destination Label */
+            destination_label: string;
+            /** Notes */
+            notes?: string | null;
+            /**
+             * Return Date
+             * Format: date
+             */
+            return_date: string;
+            /** @default CONFIRMED */
+            review_state: components["schemas"]["TravelReviewState"];
+        };
+        /** TravelRecordResponse */
+        TravelRecordResponse: {
+            /**
+             * Case Id
+             * Format: uuid
+             */
+            case_id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Date Confidence */
+            date_confidence: string;
+            /**
+             * Departure Date
+             * Format: date
+             */
+            departure_date: string;
+            /** Destination Country Code */
+            destination_country_code: string | null;
+            /** Destination Label */
+            destination_label: string;
+            /** Entry Source */
+            entry_source: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Lifecycle Status */
+            lifecycle_status: string;
+            /** Notes */
+            notes: string | null;
+            /**
+             * Return Date
+             * Format: date
+             */
+            return_date: string;
+            /** Review State */
+            review_state: string;
+            /** Revision */
+            revision: number;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Version Number */
+            version_number: number;
+        };
+        /**
+         * TravelReviewState
+         * @enum {string}
+         */
+        TravelReviewState: "DRAFT" | "CONFIRMED" | "UNCERTAIN";
         /** ValidationError */
         ValidationError: {
             /** Context */
@@ -423,6 +645,72 @@ export interface operations {
             };
         };
     };
+    get_application_date_api_v1_cases__case_id__application_dates_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProposedApplicationDateResponse"] | null;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    select_application_date_api_v1_cases__case_id__application_dates_select_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SelectApplicationDateInput"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProposedApplicationDateResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_route_profile_api_v1_cases__case_id__route_profile_get: {
         parameters: {
             query?: never;
@@ -511,6 +799,142 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RouteSupportResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_travel_records_api_v1_cases__case_id__travel_records_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TravelRecordResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_travel_record_api_v1_cases__case_id__travel_records_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TravelRecordInput"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TravelRecordResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_travel_record_api_v1_cases__case_id__travel_records__travel_record_id__delete: {
+        parameters: {
+            query?: {
+                expected_revision?: number | null;
+            };
+            header?: never;
+            path: {
+                travel_record_id: string;
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TravelRecordResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    edit_travel_record_api_v1_cases__case_id__travel_records__travel_record_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                travel_record_id: string;
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TravelRecordEditInput"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TravelRecordResponse"];
                 };
             };
             /** @description Validation Error */
