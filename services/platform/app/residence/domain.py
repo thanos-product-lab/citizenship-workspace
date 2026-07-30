@@ -179,6 +179,13 @@ class EntrySource(StrEnum):
     CORRECTED_CLAIM = "CORRECTED_CLAIM"
 
 
+# Single source of truth for the destination-label cap, so the manual schema, the CSV
+# validator, and the DB column agree (they diverged before: the CSV path skipped the
+# check and over-long labels 500'd at the varchar(120) boundary). The migration keeps a
+# literal 120 by convention (a snapshot); changing this needs a matching migration.
+DESTINATION_LABEL_MAX_LENGTH = 120
+
+
 class TravelRecord(Base):
     """One reported period outside the UK. The stable identity; the values live on its
     immutable versions. Removal is a tombstone (lifecycle → REMOVED, §11.3), never a
@@ -228,7 +235,7 @@ class TravelRecordVersion(Base):
     travel_record_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("travel_records.id"), index=True)
     version_number: Mapped[int] = mapped_column(Integer)
     destination_country_code: Mapped[str | None] = mapped_column(String(2))
-    destination_label: Mapped[str] = mapped_column(String(120))
+    destination_label: Mapped[str] = mapped_column(String(DESTINATION_LABEL_MAX_LENGTH))
     # Raw trip endpoints as calendar DATEs (§6.2). Stored true, never pre-clipped or
     # pre-counted: the M3B rules do endpoint-exclusive counting and window clipping
     # from these values (RULES_SPEC §5). The DB CHECK guards departure <= return.
@@ -321,3 +328,18 @@ class TravelRecordRemoved(DomainEvent):
 
     def payload(self) -> dict[str, Any]:
         return {"travel_record_id": str(self.aggregate_id)}
+
+
+@dataclass(frozen=True)
+class TravelRecordFields:
+    """The full snapshot a create or edit writes into a new immutable version. An edit
+    is a whole-version replacement, not a partial patch — a version captures the complete
+    state so history stays self-contained. Shared by the manual and CSV-import paths."""
+
+    destination_label: str
+    departure_date: date
+    return_date: date
+    date_confidence: DateConfidence
+    review_state: TravelReviewState
+    destination_country_code: str | None = None
+    notes: str | None = None

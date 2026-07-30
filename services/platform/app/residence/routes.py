@@ -18,14 +18,17 @@ from app.auth.schemas import CurrentUser
 from app.cases.dependencies import require_case_access
 from app.cases.domain import ApplicationCase
 from app.residence import service
+from app.residence.domain import TravelRecordFields
 from app.residence.schemas import (
+    CsvImportInput,
+    ImportCommitResponse,
+    ImportValidationResponse,
     ProposedApplicationDateResponse,
     SelectApplicationDateInput,
     TravelRecordEditInput,
     TravelRecordInput,
     TravelRecordResponse,
 )
-from app.residence.service import TravelRecordFields
 from app.shared.tenant import get_tenant_session
 
 router = APIRouter(prefix="/api/v1/cases/{case_id}/application-dates", tags=["application-dates"])
@@ -132,3 +135,29 @@ def remove_travel_record(
         expected_revision=expected_revision,
     )
     return TravelRecordResponse.from_domain(outcome.record, outcome.version)
+
+
+@travel_records_router.post("/import/validate", response_model=ImportValidationResponse)
+def validate_travel_import(
+    body: CsvImportInput,
+    case: Annotated[ApplicationCase, Depends(require_case_access)],
+    session: Annotated[Session, Depends(get_tenant_session)],
+) -> ImportValidationResponse:
+    parsed = service.validate_csv_import(session, case=case, content=body.content)
+    return ImportValidationResponse.from_parsed(parsed)
+
+
+@travel_records_router.post(
+    "/import", response_model=ImportCommitResponse, status_code=status.HTTP_201_CREATED
+)
+def commit_travel_import(
+    body: CsvImportInput,
+    case: Annotated[ApplicationCase, Depends(require_case_access)],
+    session: Annotated[Session, Depends(get_tenant_session)],
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+) -> ImportCommitResponse:
+    outcomes = service.import_travel_records(session, case=case, user=user, content=body.content)
+    return ImportCommitResponse(
+        imported_count=len(outcomes),
+        records=[TravelRecordResponse.from_domain(o.record, o.version) for o in outcomes],
+    )

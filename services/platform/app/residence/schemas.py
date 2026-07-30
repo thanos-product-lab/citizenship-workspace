@@ -11,7 +11,9 @@ from datetime import date, datetime
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from app.residence.csv_import import CONTENT_MAX_LENGTH, ParsedImport, RowDiagnostic
 from app.residence.domain import (
+    DESTINATION_LABEL_MAX_LENGTH,
     DateConfidence,
     ProposedApplicationDate,
     ProposedApplicationDateVersion,
@@ -59,7 +61,7 @@ class TravelRecordInput(BaseModel):
     (§11.4, §11.5) and default to EXACT/CONFIRMED — a user entering a trip is asserting
     it — but can be downgraded to make an uncertain record visibly distinct."""
 
-    destination_label: str = Field(min_length=1, max_length=120)
+    destination_label: str = Field(min_length=1, max_length=DESTINATION_LABEL_MAX_LENGTH)
     departure_date: date
     return_date: date
     date_confidence: DateConfidence = DateConfidence.EXACT
@@ -124,3 +126,83 @@ class TravelRecordResponse(BaseModel):
             created_at=record.created_at,
             updated_at=record.updated_at,
         )
+
+
+class CsvImportInput(BaseModel):
+    # The CSV file's text content. The frontend reads the chosen file and posts its text;
+    # this keeps the contract JSON and the schema simple for the generated client. Capped
+    # (fail-closed → 422) so intake is bounded before real file uploads land in M4 (§11).
+    content: str = Field(max_length=CONTENT_MAX_LENGTH)
+
+
+class ImportRowErrorResponse(BaseModel):
+    field: str
+    code: str
+    message: str
+
+
+class ImportRowValueResponse(BaseModel):
+    """The normalised values of a valid row, echoed back so the validate preview shows
+    exactly what would be imported (dates canonicalised, country code upper-cased)."""
+
+    destination_label: str
+    destination_country_code: str | None
+    departure_date: date
+    return_date: date
+    date_confidence: str
+    review_state: str
+    notes: str | None
+
+
+class ImportRowResponse(BaseModel):
+    row_number: int
+    valid: bool
+    errors: list[ImportRowErrorResponse]
+    value: ImportRowValueResponse | None
+
+    @classmethod
+    def from_diagnostic(cls, diagnostic: RowDiagnostic) -> "ImportRowResponse":
+        value = None
+        if diagnostic.fields is not None:
+            f = diagnostic.fields
+            value = ImportRowValueResponse(
+                destination_label=f.destination_label,
+                destination_country_code=f.destination_country_code,
+                departure_date=f.departure_date,
+                return_date=f.return_date,
+                date_confidence=f.date_confidence.value,
+                review_state=f.review_state.value,
+                notes=f.notes,
+            )
+        return cls(
+            row_number=diagnostic.row_number,
+            valid=diagnostic.valid,
+            errors=[
+                ImportRowErrorResponse(field=e.field, code=e.code, message=e.message)
+                for e in diagnostic.errors
+            ],
+            value=value,
+        )
+
+
+class ImportValidationResponse(BaseModel):
+    total: int
+    valid_count: int
+    error_count: int
+    all_valid: bool
+    rows: list[ImportRowResponse]
+
+    @classmethod
+    def from_parsed(cls, parsed: ParsedImport) -> "ImportValidationResponse":
+        return cls(
+            total=len(parsed.rows),
+            valid_count=parsed.valid_count,
+            error_count=parsed.error_count,
+            all_valid=parsed.all_valid,
+            rows=[ImportRowResponse.from_diagnostic(r) for r in parsed.rows],
+        )
+
+
+class ImportCommitResponse(BaseModel):
+    imported_count: int
+    records: list[TravelRecordResponse]

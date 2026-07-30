@@ -52,6 +52,24 @@ class TravelRecordNotFound(DomainError):
     so the case-ownership of a nested object is checked explicitly (Domain §3.1)."""
 
 
+class CsvImportMalformed(DomainError):
+    """A CSV travel import is structurally unusable — no header, missing required
+    columns, or no data rows — so no row can be parsed. Distinct from per-row errors:
+    there is nothing to correct row-by-row, the file itself is wrong."""
+
+
+class CsvImportInvalid(DomainError):
+    """A CSV import commit was rejected because at least one row failed validation.
+    Carries the full per-row diagnostics `payload` (built by the schema layer) so the
+    422 response tells the user exactly which rows to fix; nothing is written."""
+
+    code = "CSV_IMPORT_INVALID"
+
+    def __init__(self, payload: dict[str, object]) -> None:
+        self.payload = payload
+        super().__init__("the CSV has rows that must be corrected before import")
+
+
 class StateWithoutEventError(RuntimeError):
     """A unit of work tried to commit business state without emitting a domain event.
 
@@ -93,6 +111,22 @@ def register_exception_handlers(app: FastAPI) -> None:
         # 404: unknown id, or an id from another case — indistinguishable on purpose.
         return JSONResponse(
             status_code=status.HTTP_404_NOT_FOUND, content={"detail": "Travel record not found"}
+        )
+
+    @app.exception_handler(CsvImportMalformed)
+    async def _csv_malformed(_request: Request, exc: CsvImportMalformed) -> JSONResponse:
+        # 422: well-formed request, but the CSV file itself cannot be used.
+        return JSONResponse(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            content={"detail": str(exc), "code": "CSV_IMPORT_MALFORMED"},
+        )
+
+    @app.exception_handler(CsvImportInvalid)
+    async def _csv_invalid(_request: Request, exc: CsvImportInvalid) -> JSONResponse:
+        # 422: some rows failed validation; the payload lists the exact offending rows.
+        return JSONResponse(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            content={"code": exc.code, **exc.payload},
         )
 
     @app.exception_handler(ProfileIncomplete)
