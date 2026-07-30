@@ -130,6 +130,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/cases/{case_id}/travel-records/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Commit Travel Import */
+        post: operations["commit_travel_import_api_v1_cases__case_id__travel_records_import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cases/{case_id}/travel-records/import/validate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Validate Travel Import */
+        post: operations["validate_travel_import_api_v1_cases__case_id__travel_records_import_validate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/cases/{case_id}/travel-records/{travel_record_id}": {
         parameters: {
             query?: never;
@@ -243,6 +277,11 @@ export interface components {
             /** Title */
             title: string;
         };
+        /** CsvImportInput */
+        CsvImportInput: {
+            /** Content */
+            content: string;
+        };
         /**
          * CurrentUser
          * @description The authenticated caller, derived from verified Clerk JWT claims.
@@ -266,6 +305,72 @@ export interface components {
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /** ImportCommitResponse */
+        ImportCommitResponse: {
+            /** Imported Count */
+            imported_count: number;
+            /** Records */
+            records: components["schemas"]["TravelRecordResponse"][];
+        };
+        /** ImportRowErrorResponse */
+        ImportRowErrorResponse: {
+            /** Code */
+            code: string;
+            /** Field */
+            field: string;
+            /** Message */
+            message: string;
+        };
+        /** ImportRowResponse */
+        ImportRowResponse: {
+            /** Errors */
+            errors: components["schemas"]["ImportRowErrorResponse"][];
+            /** Row Number */
+            row_number: number;
+            /** Valid */
+            valid: boolean;
+            value: components["schemas"]["ImportRowValueResponse"] | null;
+        };
+        /**
+         * ImportRowValueResponse
+         * @description The normalised values of a valid row, echoed back so the validate preview shows
+         *     exactly what would be imported (dates canonicalised, country code upper-cased).
+         */
+        ImportRowValueResponse: {
+            /** Date Confidence */
+            date_confidence: string;
+            /**
+             * Departure Date
+             * Format: date
+             */
+            departure_date: string;
+            /** Destination Country Code */
+            destination_country_code: string | null;
+            /** Destination Label */
+            destination_label: string;
+            /** Notes */
+            notes: string | null;
+            /**
+             * Return Date
+             * Format: date
+             */
+            return_date: string;
+            /** Review State */
+            review_state: string;
+        };
+        /** ImportValidationResponse */
+        ImportValidationResponse: {
+            /** All Valid */
+            all_valid: boolean;
+            /** Error Count */
+            error_count: number;
+            /** Rows */
+            rows: components["schemas"]["ImportRowResponse"][];
+            /** Total */
+            total: number;
+            /** Valid Count */
+            valid_count: number;
         };
         /** LiveResponse */
         LiveResponse: {
@@ -865,6 +970,76 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TravelRecordResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    commit_travel_import_api_v1_cases__case_id__travel_records_import_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CsvImportInput"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportCommitResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    validate_travel_import_api_v1_cases__case_id__travel_records_import_validate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CsvImportInput"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportValidationResponse"];
                 };
             };
             /** @description Validation Error */

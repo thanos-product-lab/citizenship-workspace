@@ -89,6 +89,20 @@
         "title": "CreateCaseRequest",
         "type": "object"
       },
+      "CsvImportInput": {
+        "properties": {
+          "content": {
+            "maxLength": 1000000,
+            "title": "Content",
+            "type": "string"
+          }
+        },
+        "required": [
+          "content"
+        ],
+        "title": "CsvImportInput",
+        "type": "object"
+      },
       "CurrentUser": {
         "description": "The authenticated caller, derived from verified Clerk JWT claims.\n\nClaims only \u2014 there is no domain user record yet (case ownership is M2).",
         "properties": {
@@ -146,6 +160,183 @@
           }
         },
         "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "ImportCommitResponse": {
+        "properties": {
+          "imported_count": {
+            "title": "Imported Count",
+            "type": "integer"
+          },
+          "records": {
+            "items": {
+              "$ref": "#/components/schemas/TravelRecordResponse"
+            },
+            "title": "Records",
+            "type": "array"
+          }
+        },
+        "required": [
+          "imported_count",
+          "records"
+        ],
+        "title": "ImportCommitResponse",
+        "type": "object"
+      },
+      "ImportRowErrorResponse": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "field": {
+            "title": "Field",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "field",
+          "code",
+          "message"
+        ],
+        "title": "ImportRowErrorResponse",
+        "type": "object"
+      },
+      "ImportRowResponse": {
+        "properties": {
+          "errors": {
+            "items": {
+              "$ref": "#/components/schemas/ImportRowErrorResponse"
+            },
+            "title": "Errors",
+            "type": "array"
+          },
+          "row_number": {
+            "title": "Row Number",
+            "type": "integer"
+          },
+          "valid": {
+            "title": "Valid",
+            "type": "boolean"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImportRowValueResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "row_number",
+          "valid",
+          "errors",
+          "value"
+        ],
+        "title": "ImportRowResponse",
+        "type": "object"
+      },
+      "ImportRowValueResponse": {
+        "description": "The normalised values of a valid row, echoed back so the validate preview shows\nexactly what would be imported (dates canonicalised, country code upper-cased).",
+        "properties": {
+          "date_confidence": {
+            "title": "Date Confidence",
+            "type": "string"
+          },
+          "departure_date": {
+            "format": "date",
+            "title": "Departure Date",
+            "type": "string"
+          },
+          "destination_country_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Destination Country Code"
+          },
+          "destination_label": {
+            "title": "Destination Label",
+            "type": "string"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "return_date": {
+            "format": "date",
+            "title": "Return Date",
+            "type": "string"
+          },
+          "review_state": {
+            "title": "Review State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "destination_label",
+          "destination_country_code",
+          "departure_date",
+          "return_date",
+          "date_confidence",
+          "review_state",
+          "notes"
+        ],
+        "title": "ImportRowValueResponse",
+        "type": "object"
+      },
+      "ImportValidationResponse": {
+        "properties": {
+          "all_valid": {
+            "title": "All Valid",
+            "type": "boolean"
+          },
+          "error_count": {
+            "title": "Error Count",
+            "type": "integer"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/ImportRowResponse"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          },
+          "valid_count": {
+            "title": "Valid Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "valid_count",
+          "error_count",
+          "all_valid",
+          "rows"
+        ],
+        "title": "ImportValidationResponse",
         "type": "object"
       },
       "LiveResponse": {
@@ -1380,6 +1571,122 @@
           }
         ],
         "summary": "Add Travel Record",
+        "tags": [
+          "travel-records"
+        ]
+      }
+    },
+    "/api/v1/cases/{case_id}/travel-records/import": {
+      "post": {
+        "operationId": "commit_travel_import_api_v1_cases__case_id__travel_records_import_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Case Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CsvImportInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportCommitResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Commit Travel Import",
+        "tags": [
+          "travel-records"
+        ]
+      }
+    },
+    "/api/v1/cases/{case_id}/travel-records/import/validate": {
+      "post": {
+        "operationId": "validate_travel_import_api_v1_cases__case_id__travel_records_import_validate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Case Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CsvImportInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportValidationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Validate Travel Import",
         "tags": [
           "travel-records"
         ]
