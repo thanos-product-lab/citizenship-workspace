@@ -51,8 +51,8 @@ def _case_with_date(api: Api, user: str, application_date: str = "2027-04-15") -
     return case_id
 
 
-def _by_key(rows: list[dict]) -> dict[str, dict]:
-    return {row["requirement_key"]: row for row in rows}
+def _by_key(rows: list[dict[str, object]]) -> dict[str, dict[str, object]]:
+    return {str(row["requirement_key"]): row for row in rows}
 
 
 def test_recalculate_persists_current_route_results(api: Api) -> None:
