@@ -1,0 +1,93 @@
+"""ORM for the requirement catalog: definitions, rule versions, dependency rows.
+
+These three tables are **global reference data**, seeded by migration 0007 at owner
+privilege and read (never written) by the app. They carry no case data, so they have
+no row-level-security policy; the app role is granted SELECT only. The models exist so
+the assessment layer can resolve a requirement key to its `requirement_id` and current
+`rule_version_id`, and read a rule's declared dependencies.
+
+The catalog values (titles, groups, guidance citations) live in the migration, which is
+their single source. `app/requirements/catalog.py` owns the complementary *evaluator and
+dependency logic* by key; a drift test asserts the two agree.
+"""
+
+import uuid
+from datetime import datetime
+from enum import StrEnum
+from typing import Any
+
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.orm import Mapped, mapped_column
+
+from app.shared.db import Base
+
+
+class RuleLifecycleStatus(StrEnum):
+    DRAFT = "DRAFT"
+    ACTIVE = "ACTIVE"
+    RETIRED = "RETIRED"
+    REVIEW_REQUIRED = "REVIEW_REQUIRED"
+
+
+class DependencyInputKind(StrEnum):
+    """The kinds of versioned input a rule may declare a dependency on (Domain §25.1).
+    There is deliberately no requirement-result kind: the composite route rule's
+    dependency on other rules' conclusions is rule composition, not an input link."""
+
+    ROUTE_PROFILE = "ROUTE_PROFILE"
+    PROPOSED_APPLICATION_DATE = "PROPOSED_APPLICATION_DATE"
+    TRAVEL_RECORD = "TRAVEL_RECORD"
+    CASE_FACT = "CASE_FACT"
+    KNOWLEDGE_RECORD = "KNOWLEDGE_RECORD"
+    REFEREE_RECORD = "REFEREE_RECORD"
+    EVIDENCE_SUPPORT = "EVIDENCE_SUPPORT"
+    GUIDANCE_VERSION = "GUIDANCE_VERSION"
+
+
+class RequirementDefinition(Base):
+    __tablename__ = "requirement_definitions"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    requirement_key: Mapped[str] = mapped_column(String(60), unique=True)
+    route_key: Mapped[str] = mapped_column(String(40))
+    group_key: Mapped[str] = mapped_column(String(40))
+    title: Mapped[str] = mapped_column(String(200))
+    short_description: Mapped[str | None] = mapped_column(Text)
+    evaluator_key: Mapped[str] = mapped_column(String(60))
+    display_order: Mapped[int] = mapped_column(Integer)
+    enabled: Mapped[bool] = mapped_column(Boolean)
+    introduced_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    retired_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class RuleVersion(Base):
+    __tablename__ = "rule_versions"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    requirement_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("requirement_definitions.id"))
+    semantic_version: Mapped[str] = mapped_column(String(20))
+    rule_set: Mapped[str] = mapped_column(String(20))
+    evaluator_key: Mapped[str] = mapped_column(String(60))
+    # Guidance citations live here as stable source-id strings until Migration 5 adds
+    # the GuidanceSection tables and the RuleGuidanceLink FK (ADR-0007).
+    configuration: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    effective_from: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    effective_to: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    lifecycle_status: Mapped[str] = mapped_column(String(20))
+    implementation_hash: Mapped[str | None] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class RuleDependencyDefinition(Base):
+    __tablename__ = "rule_dependency_definitions"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    rule_version_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("rule_versions.id"))
+    input_kind: Mapped[str] = mapped_column(String(40))
+    input_key: Mapped[str | None] = mapped_column(String(60))
+    dependency_scope: Mapped[str] = mapped_column(String(40))
+    required: Mapped[bool] = mapped_column(Boolean)

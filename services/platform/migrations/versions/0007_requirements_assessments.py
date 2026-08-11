@@ -39,6 +39,7 @@ from datetime import UTC, datetime
 
 import sqlalchemy as sa
 from alembic import op
+from sqlalchemy.dialects import postgresql
 
 revision: str = "0007_requirements_assessments"
 down_revision: str | None = "0006_residence_input_constraints"
@@ -212,7 +213,7 @@ def _catalog_tables() -> tuple[sa.Table, sa.Table, sa.Table]:
         sa.column("semantic_version", sa.String),
         sa.column("rule_set", sa.String),
         sa.column("evaluator_key", sa.String),
-        sa.column("configuration", sa.JSON),
+        sa.column("configuration", postgresql.JSONB),
         sa.column("effective_from", sa.DateTime),
         sa.column("lifecycle_status", sa.String),
     )
@@ -321,7 +322,12 @@ def upgrade() -> None:
         sa.Column("semantic_version", sa.String(length=20), nullable=False),
         sa.Column("rule_set", sa.String(length=20), nullable=False),
         sa.Column("evaluator_key", sa.String(length=60), nullable=False),
-        sa.Column("configuration", sa.JSON(), nullable=False, server_default="{}"),
+        sa.Column(
+            "configuration",
+            postgresql.JSONB(),
+            nullable=False,
+            server_default=sa.text("'{}'::jsonb"),
+        ),
         sa.Column("effective_from", sa.DateTime(timezone=True), nullable=False),
         sa.Column("effective_to", sa.DateTime(timezone=True), nullable=True),
         sa.Column("lifecycle_status", sa.String(length=20), nullable=False),
@@ -389,8 +395,18 @@ def upgrade() -> None:
         sa.Column("conclusion", sa.String(length=40), nullable=False),
         sa.Column("currency", sa.String(length=20), nullable=False),
         sa.Column("summary_code", sa.String(length=60), nullable=True),
-        sa.Column("summary_parameters", sa.JSON(), nullable=False, server_default="{}"),
-        sa.Column("calculation_breakdown", sa.JSON(), nullable=False, server_default="{}"),
+        sa.Column(
+            "summary_parameters",
+            postgresql.JSONB(),
+            nullable=False,
+            server_default=sa.text("'{}'::jsonb"),
+        ),
+        sa.Column(
+            "calculation_breakdown",
+            postgresql.JSONB(),
+            nullable=False,
+            server_default=sa.text("'{}'::jsonb"),
+        ),
         sa.Column("input_snapshot_hash", sa.String(length=64), nullable=True),
         sa.Column(
             "created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
