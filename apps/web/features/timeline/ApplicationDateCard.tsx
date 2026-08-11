@@ -5,7 +5,13 @@ import { useCallback, useEffect, useState } from "react";
 
 import { useApiClient } from "@/lib/api";
 
+import { yearsFromTodayISO } from "./dates";
 import { Field, buttonStyle, cardStyle, errorTextStyle, inputStyle, linkButtonStyle } from "./ui";
+
+// Typo-guard bounds (see dates.ts). The proposed date is often future, so the window
+// leans forward; both ends are generous enough never to reject a real planned date.
+const MIN_DATE = yearsFromTodayISO(-20);
+const MAX_DATE = yearsFromTodayISO(10);
 
 type ProposedDate = components["schemas"]["ProposedApplicationDateResponse"];
 type LoadState = "loading" | "error" | "ready";
@@ -77,8 +83,7 @@ export function ApplicationDateCard({ caseId }: { caseId: string }) {
         Proposed application date
       </h3>
       <p style={{ marginTop: "var(--cw-space-2)", color: "var(--cw-text-muted)", fontSize: "var(--cw-text-sm)" }}>
-        The date your case is assessed against. You can change it at any time; the residence
-        calculations arrive in a later milestone.
+        The date your case is assessed against.
       </p>
 
       {state === "loading" && (
@@ -107,6 +112,9 @@ export function ApplicationDateCard({ caseId }: { caseId: string }) {
               id="app-date"
               type="date"
               value={value}
+              min={MIN_DATE}
+              max={MAX_DATE}
+              className="cw-date-input"
               onChange={(e) => {
                 setValue(e.target.value);
                 setSaveState("idle");

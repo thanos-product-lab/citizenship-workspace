@@ -3,14 +3,21 @@
 import type { components } from "@cw/api-client";
 import { useState } from "react";
 
+import { Combobox } from "./Combobox";
+import { COUNTRY_NAMES } from "./countries";
+import { yearsFromTodayISO } from "./dates";
 import { Field, buttonStyle, errorTextStyle, inputStyle, secondaryButtonStyle } from "./ui";
 
 type DateConfidence = components["schemas"]["DateConfidence"];
 type ReviewState = components["schemas"]["TravelReviewState"];
 
+// Typo-guard bounds for the native date inputs: generous enough never to reject a real
+// past trip or a forward-planned one, tight enough to keep a mistyped year out.
+const MIN_DATE = yearsFromTodayISO(-20);
+const MAX_DATE = yearsFromTodayISO(10);
+
 export interface TravelFormValues {
   destination_label: string;
-  destination_country_code: string;
   departure_date: string;
   return_date: string;
   date_confidence: DateConfidence;
@@ -20,7 +27,6 @@ export interface TravelFormValues {
 
 export const EMPTY_TRAVEL_FORM: TravelFormValues = {
   destination_label: "",
-  destination_country_code: "",
   departure_date: "",
   return_date: "",
   date_confidence: "EXACT",
@@ -87,24 +93,14 @@ export function TravelRecordForm({
 
   return (
     <form onSubmit={handleSubmit} style={{ display: "grid", gap: "var(--cw-space-4)" }}>
-      <Field id={id("destination")} label="Destination">
-        <input
+      <Field id={id("destination")} label="Destination" hint="Start typing a country, or enter your own.">
+        <Combobox
           id={id("destination")}
           value={values.destination_label}
+          options={COUNTRY_NAMES}
+          onChange={(v) => set("destination_label", v)}
           required
           maxLength={120}
-          onChange={(e) => set("destination_label", e.target.value)}
-          style={inputStyle}
-        />
-      </Field>
-
-      <Field id={id("country")} label="Country code" hint="Optional, two letters (e.g. ES).">
-        <input
-          id={id("country")}
-          value={values.destination_country_code}
-          maxLength={2}
-          onChange={(e) => set("destination_country_code", e.target.value)}
-          style={{ ...inputStyle, maxWidth: "8rem" }}
         />
       </Field>
 
@@ -114,6 +110,9 @@ export function TravelRecordForm({
           type="date"
           value={values.departure_date}
           required
+          min={MIN_DATE}
+          max={MAX_DATE}
+          className="cw-date-input"
           onChange={(e) => set("departure_date", e.target.value)}
           style={inputStyle}
         />
@@ -130,6 +129,9 @@ export function TravelRecordForm({
           type="date"
           value={values.return_date}
           required
+          min={MIN_DATE}
+          max={MAX_DATE}
+          className="cw-date-input"
           onChange={(e) => set("return_date", e.target.value)}
           style={inputStyle}
         />

@@ -5,7 +5,7 @@ import { useRef, useState } from "react";
 
 import { useApiClient } from "@/lib/api";
 
-import { buttonStyle, errorTextStyle, inputStyle, secondaryButtonStyle } from "./ui";
+import { buttonStyle, errorTextStyle, secondaryButtonStyle } from "./ui";
 
 type Validation = components["schemas"]["ImportValidationResponse"];
 type State = "idle" | "checking" | "checked" | "malformed" | "importing" | "error";
@@ -107,7 +107,8 @@ export function CsvImport({ caseId, onImported }: { caseId: string; onImported: 
         accept=".csv,text/csv"
         aria-label="Travel history CSV file"
         onChange={onFile}
-        style={{ ...inputStyle, marginTop: "var(--cw-space-3)" }}
+        className="cw-file-input"
+        style={{ marginTop: "var(--cw-space-3)", display: "block" }}
       />
 
       {state === "checking" && (

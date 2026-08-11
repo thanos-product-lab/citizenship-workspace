@@ -36,3 +36,58 @@ body {
   box-shadow: var(--cw-focus-ring);
   border-radius: var(--cw-radius-md);
 }
+
+/* Inline text actions (table row Edit/Remove, confirm/cancel). Quiet at rest,
+   underlined on hover; the global :focus-visible ring covers keyboard focus.
+   Real CSS because :hover can't be expressed inline. */
+.cw-action {
+  background: none;
+  border: none;
+  padding: var(--cw-space-1) 0;
+  font: inherit;
+  font-weight: var(--cw-weight-medium);
+  color: var(--cw-accent);
+  cursor: pointer;
+  border-radius: var(--cw-radius-sm);
+}
+.cw-action:hover {
+  color: var(--cw-accent-hover);
+  text-decoration: underline;
+}
+.cw-action--muted {
+  color: var(--cw-text-muted);
+}
+.cw-action--muted:hover {
+  color: var(--cw-text);
+}
+
+/* Native file input: style the browser's default button to match a secondary
+   button (::file-selector-button is only reachable from CSS, not inline styles). */
+.cw-file-input {
+  font: inherit;
+  color: var(--cw-text-muted);
+  max-width: 100%;
+}
+.cw-file-input::file-selector-button {
+  margin-right: var(--cw-space-3);
+  padding: var(--cw-space-2) var(--cw-space-4);
+  border: 1px solid var(--cw-border-strong);
+  border-radius: var(--cw-radius-md);
+  background: var(--cw-surface);
+  color: var(--cw-text);
+  font-weight: var(--cw-weight-medium);
+  cursor: pointer;
+}
+.cw-file-input::file-selector-button:hover {
+  background: var(--cw-surface-sunken);
+}
+
+/* Native date input: the calendar popup is browser-owned and unstylable, but the
+   picker indicator (the little calendar icon) can be nudged to sit with the design. */
+.cw-date-input::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  opacity: 0.55;
+}
+.cw-date-input::-webkit-calendar-picker-indicator:hover {
+  opacity: 1;
+}

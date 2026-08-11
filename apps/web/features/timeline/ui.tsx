@@ -65,6 +65,79 @@ export const cardStyle: React.CSSProperties = {
 
 export const errorTextStyle: React.CSSProperties = { color: "var(--cw-status-not-satisfied)" };
 
+// Quiet, label-like table headers (xs, subtle, slight tracking) — lighter than a
+// bold black row, so the data reads first.
+export const thStyle: React.CSSProperties = {
+  textAlign: "left",
+  padding: "var(--cw-space-2) var(--cw-space-3)",
+  borderBottom: "1px solid var(--cw-border-strong)",
+  fontSize: "var(--cw-text-xs)",
+  fontWeight: "var(--cw-weight-semibold)",
+  letterSpacing: "0.02em",
+  color: "var(--cw-text-subtle)",
+  whiteSpace: "nowrap",
+};
+
+export const tdStyle: React.CSSProperties = {
+  padding: "var(--cw-space-3)",
+  borderBottom: "1px solid var(--cw-border)",
+  verticalAlign: "middle",
+};
+
+/** Drop a header/cell's left padding so the first column aligns with the card edge. */
+export function firstColStyle(base: React.CSSProperties): React.CSSProperties {
+  return { ...base, paddingLeft: 0 };
+}
+
+// Dates use the tabular mono face (tokens.css: mono is "for dates, thresholds, and
+// calculation breakdowns") and never wrap, so columns stay aligned and scannable.
+export const dateCellStyle: React.CSSProperties = {
+  ...tdStyle,
+  fontFamily: "var(--cw-font-mono)",
+  fontSize: "var(--cw-text-sm)",
+  whiteSpace: "nowrap",
+};
+
+/**
+ * A status pill: soft tinted surface, matching-hue text, a hairline border, and a
+ * decorative leading glyph. Colour is reinforcement only — the label carries the
+ * meaning (non-colour-status gate). Mirrors the design-system `statusTokens` shape.
+ */
+export function StatusBadge({
+  colorVar,
+  surfaceVar,
+  glyph,
+  label,
+}: {
+  colorVar: string;
+  surfaceVar: string;
+  glyph: string;
+  label: string;
+}) {
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: "var(--cw-space-1)",
+        padding: "2px var(--cw-space-2)",
+        borderRadius: "var(--cw-radius-sm)",
+        background: `var(${surfaceVar})`,
+        color: `var(${colorVar})`,
+        border: `1px solid color-mix(in oklab, var(${colorVar}) 32%, var(--cw-surface))`,
+        fontSize: "var(--cw-text-xs)",
+        fontWeight: "var(--cw-weight-semibold)",
+        whiteSpace: "nowrap",
+      }}
+    >
+      <span aria-hidden="true" style={{ fontSize: "0.9em" }}>
+        {glyph}
+      </span>
+      {label}
+    </span>
+  );
+}
+
 /**
  * Label + optional hint + optional error + control. Stamps `aria-describedby` onto
  * the single child control (hint first, then error) so both are announced, and sets
