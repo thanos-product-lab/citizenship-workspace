@@ -45,6 +45,20 @@ class CaseNotActive(DomainError):
         super().__init__(f"this action needs an active case; the case is {lifecycle_status}")
 
 
+class CaseNotAssessable(DomainError):
+    """A trusted assessment was requested for an active case that is missing an input a
+    trusted run requires — for slice 1, a selected application date. Distinct from
+    `CaseNotActive` (still onboarding) and from the ownership 404: the case is active and
+    owned, it just cannot be assessed yet. Carries a stable `code` so the frontend can
+    send the user to the missing step rather than showing a dead end."""
+
+    code = "CASE_NOT_ASSESSABLE"
+
+    def __init__(self, reason: str) -> None:
+        self.reason = reason
+        super().__init__(reason)
+
+
 class TravelRecordNotFound(DomainError):
     """A travel record referenced by id does not exist in this case. Raised (→ 404)
     rather than leaking existence when the id is unknown *or* belongs to another of
@@ -102,6 +116,14 @@ def register_exception_handlers(app: FastAPI) -> None:
                 "code": exc.code,
                 "lifecycle_status": exc.lifecycle_status,
             },
+        )
+
+    @app.exception_handler(CaseNotAssessable)
+    async def _case_not_assessable(_request: Request, exc: CaseNotAssessable) -> JSONResponse:
+        # 409: the case is active but missing an input a trusted assessment needs.
+        return JSONResponse(
+            status_code=status.HTTP_409_CONFLICT,
+            content={"detail": str(exc), "code": exc.code},
         )
 
     @app.exception_handler(TravelRecordNotFound)
