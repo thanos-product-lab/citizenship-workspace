@@ -6,6 +6,11 @@ equality in both directions, per in-scope requirement.
 A rule *declares* dependencies by input class (ROUTE_PROFILE); a result *links* the
 concrete version read (ROUTE_PROFILE_VERSION). The test maps one to the other and asserts
 the (kind, input_key) sets are equal.
+
+Scope: this checks *input-version* provenance only. `route.standard_section_6_1` also
+depends on the adult/status *conclusions* — a result→result edge §25.1 has no input kind
+for — which is deliberately not a link and is owned by selective invalidation (M6,
+ADR-0007). So a green here does not by itself prove the composite is invalidation-complete.
 """
 
 from collections.abc import Callable

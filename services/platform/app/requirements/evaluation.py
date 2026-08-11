@@ -142,6 +142,14 @@ def evaluate_route_requirements(inputs: RouteAssessmentInputs) -> list[Evaluated
                 ),
             ),
         ),
+        # The composite reads the profile answers directly (one input link), and composes
+        # the adult/status *conclusions* — a result→result dependency §25.1 has no input
+        # kind for. Those upstream conclusions are recorded as snapshots for explanation
+        # only; the structural edge that must restale the composite when an upstream
+        # restales is owned by selective invalidation (M6). Until then a change reaching
+        # the composite re-runs the whole route set, so it stays correct — just not
+        # selectively. Do NOT add an APPLICATION_DATE link here: the composite does not
+        # read the date, and links must name only inputs actually read.
         EvaluatedResult(
             requirement_key=KEY_STANDARD,
             conclusion=decision.composite.conclusion.value,

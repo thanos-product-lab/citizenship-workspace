@@ -67,6 +67,15 @@ form changes at M5.
   principle differ at an 18th-birthday boundary (gate uses `today()`, result uses the
   application date) — this is intended, because they answer different questions, and only
   the result is a requirement conclusion.
+- **M6 reminder (composite result-dependency edge):** `route.standard_section_6_1`
+  composes the adult/status *conclusions*, but §25.1's dependency input kinds have no
+  result kind, so at M3B that dependence is a snapshot in `summary_parameters`, not a
+  structural edge. Its result therefore links only the route profile it reads directly.
+  This is sound while recalculation re-runs the whole route set, but selective
+  invalidation (M6) must add a result→result edge (a new dependency kind) so an
+  application-date change that restales `route.adult_applicant` also restales the
+  composite — otherwise the composite would stay silently CURRENT. The strict-equality
+  provenance test checks input-link completeness only and cannot catch this by design.
 
 ## Invariants touched
 

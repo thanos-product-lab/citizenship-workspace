@@ -7,7 +7,11 @@ needs is passed in by the caller (the service reads the clock, never the rule).
 `route.standard_section_6_1` is the composite guard and the only rule that depends
 on other rules' *conclusions* rather than raw inputs; here that dependency is plain
 function composition — the caller evaluates the two upstream rules and passes their
-outcomes in. At M3B this becomes an edge in the persisted invalidation graph.
+outcomes in. At M3B the composite persists as an `AssessmentResult` linking the route
+profile it reads directly, but its dependence on the adult/status *conclusions* is NOT
+yet a persisted invalidation edge (§25.1's input kinds have no result kind). That edge —
+so an application-date change that restales `route.adult_applicant` also restales the
+composite — is owned by selective invalidation (M6, ADR-0007 consequences).
 
 Status is taken as a raw string (not the applicants `StatusType` enum) so this
 module depends on nothing outside `requirements`; the values mirror RFC §9.2.
