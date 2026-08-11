@@ -53,15 +53,18 @@ describe("CaseWorkspace", () => {
     expect(await screen.findByText("onboarding stub")).toBeInTheDocument();
   });
 
-  it("renders the workspace shell with the nav scaffold for an active case", async () => {
+  it("renders the workspace shell with the phase pill and residence for an active case", async () => {
     get.mockResolvedValue({
       data: aCase({ lifecycle_status: "ACTIVE", current_phase: "BUILDING_CASE" }),
       error: undefined,
     });
     render(<CaseWorkspace caseId="c1" />);
     expect(await screen.findByRole("heading", { name: "My case" })).toBeInTheDocument();
-    expect(screen.getByRole("navigation", { name: /case sections/i })).toBeInTheDocument();
-    expect(screen.getByText("Requirements")).toBeInTheDocument();
+    // The phase shows as a pill next to the title; residence is the case's content.
+    expect(screen.getByText("Building your case")).toBeInTheDocument();
+    expect(screen.getByText("residence stub")).toBeInTheDocument();
+    // No roadmap scaffold: unbuilt sections aren't advertised.
+    expect(screen.queryByText("Coming soon")).not.toBeInTheDocument();
   });
 
   it("shows the pending notice and no delete control for a deletion-pending case", async () => {

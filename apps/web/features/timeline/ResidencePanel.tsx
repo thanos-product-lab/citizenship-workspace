@@ -10,7 +10,7 @@ import { TravelHistory } from "./TravelHistory";
  */
 export function ResidencePanel({ caseId }: { caseId: string }) {
   return (
-    <section aria-labelledby="residence-heading" style={{ marginTop: "var(--cw-space-8)" }}>
+    <section aria-labelledby="residence-heading" style={{ marginTop: "var(--cw-space-4)" }}>
       <h2 id="residence-heading" style={{ margin: 0, fontSize: "var(--cw-text-xl)" }}>
         Residence
       </h2>

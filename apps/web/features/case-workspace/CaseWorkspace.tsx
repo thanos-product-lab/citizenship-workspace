@@ -143,41 +143,19 @@ function WorkspaceShell({
 }) {
   return (
     <section style={{ marginTop: "var(--cw-space-6)" }}>
-      <p style={{ margin: 0, fontSize: "var(--cw-text-sm)", color: "var(--cw-text-muted)" }}>
-        {PHASE_LABEL[caseData.current_phase] ?? caseData.current_phase}
-      </p>
-      <h1 ref={headingRef} tabIndex={-1} style={{ fontSize: "var(--cw-text-2xl)", margin: "var(--cw-space-2) 0 0" }}>
-        {caseData.title}
-      </h1>
-      <p style={{ color: "var(--cw-text-muted)", marginTop: "var(--cw-space-2)" }}>
-        Your route is supported. Start with your application date and travel history below;
-        the other sections open as later milestones land.
-      </p>
+      {/* Header block: title + phase pill as one unit. The phase is a state, so it reads
+          as a pill rather than a floating label. No roadmap prose — sections that aren't
+          built simply aren't mentioned. */}
+      <div style={{ display: "flex", alignItems: "center", gap: "var(--cw-space-3)", flexWrap: "wrap" }}>
+        <h1 ref={headingRef} tabIndex={-1} style={{ fontSize: "var(--cw-text-2xl)", margin: 0 }}>
+          {caseData.title}
+        </h1>
+        <span style={phasePillStyle}>
+          {PHASE_LABEL[caseData.current_phase] ?? caseData.current_phase}
+        </span>
+      </div>
 
       <ResidencePanel caseId={caseData.id} />
-
-      {/* Scaffold for the sections that arrive in later milestones. */}
-      <nav aria-label="Other case sections" style={{ marginTop: "var(--cw-space-8)" }}>
-        <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "grid", gap: "var(--cw-space-2)" }}>
-          {["Overview", "Requirements", "Evidence"].map((section) => (
-            <li
-              key={section}
-              style={{
-                padding: "var(--cw-space-3) var(--cw-space-4)",
-                background: "var(--cw-surface-sunken)",
-                border: "1px solid var(--cw-border)",
-                borderRadius: "var(--cw-radius-md)",
-                color: "var(--cw-text-muted)",
-                display: "flex",
-                justifyContent: "space-between",
-              }}
-            >
-              <span>{section}</span>
-              <span style={{ fontSize: "var(--cw-text-sm)" }}>Coming soon</span>
-            </li>
-          ))}
-        </ul>
-      </nav>
     </section>
   );
 }
@@ -262,6 +240,19 @@ function DeleteCaseControl({
     </section>
   );
 }
+
+const phasePillStyle: React.CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  padding: "2px var(--cw-space-2)",
+  borderRadius: "var(--cw-radius-sm)",
+  background: "var(--cw-surface-sunken)",
+  border: "1px solid var(--cw-border)",
+  color: "var(--cw-text-muted)",
+  fontSize: "var(--cw-text-xs)",
+  fontWeight: "var(--cw-weight-medium)",
+  whiteSpace: "nowrap",
+};
 
 const buttonStyle: React.CSSProperties = {
   padding: "var(--cw-space-2) var(--cw-space-4)",
