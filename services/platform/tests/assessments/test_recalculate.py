@@ -83,6 +83,23 @@ def test_requirements_are_not_yet_assessed_before_a_run(api: Api) -> None:
     )
 
 
+def test_route_conclusions_come_from_results_not_the_confirm_event(api: Api) -> None:
+    """Single source of truth (ADR-0007): confirming the route emits RouteSupportEvaluated
+    and sets the case's support_status, but that does NOT populate the requirement
+    conclusions. The route rows stay NOT_YET_ASSESSED until a trusted run writes results;
+    only then do the conclusions appear — proving the read model reads AssessmentResult
+    alone, never the confirm event."""
+    case_id = _case_with_date(api, "user_a")
+
+    before = _by_key(api("user_a").get(f"/api/v1/cases/{case_id}/requirements").json())
+    assert all(before[key]["conclusion"] == "NOT_YET_ASSESSED" for key in ROUTE_KEYS)
+
+    api("user_a").post(f"/api/v1/cases/{case_id}/assessments/recalculate")
+
+    after = _by_key(api("user_a").get(f"/api/v1/cases/{case_id}/requirements").json())
+    assert all(after[key]["conclusion"] == "SUPPORTED" for key in ROUTE_KEYS)
+
+
 def test_recalculate_needs_a_selected_application_date(api: Api) -> None:
     case_id = _active_case(api, "user_a")  # active, but no date selected
     resp = api("user_a").post(f"/api/v1/cases/{case_id}/assessments/recalculate")

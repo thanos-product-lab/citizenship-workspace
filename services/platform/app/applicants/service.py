@@ -162,6 +162,10 @@ def confirm_route_profile(
         target_type="RouteProfileVersion",
         target_id=confirmed.id,
     )
+    # Audit / outbox signal only. Since M3B this event is NOT a conclusion store: the
+    # persisted AssessmentResult (written by the assessments module at recalculation, at
+    # the selected application date) is the single source of truth for route conclusions
+    # (ADR-0007). Here we only gate the case lifecycle via `support_status`.
     uow.emit(
         RouteSupportEvaluated(
             aggregate_id=case.id,
