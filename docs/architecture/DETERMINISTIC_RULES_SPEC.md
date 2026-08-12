@@ -769,11 +769,15 @@ physical_presence_date 2022-04-16
 | Italy | 2026-05-04 | 2026-05-10 | 5–9 May 2026 | 5 |
 | United States | 2026-05-16 | 2026-05-29 | 17–28 May 2026 | 12 |
 
-**`residence.physical_presence_start_date`:** the Spain trip's absent set contains
-2022-04-16 → the anchor date **is** an absent date → `NOT_CURRENTLY_SATISFIED`.
-Forward search finds 2027-04-20 (anchor 2022-04-21, outside the Spain set) as the
-nearest resolving date. This is precisely the "move the application date" moment
-in the demo script.
+**`residence.physical_presence_start_date`:** the Spain trip's absent set (15–19 Apr
+2022) contains 2022-04-16 → the anchor date **is** an absent date →
+`NOT_CURRENTLY_SATISFIED`. The return day 2022-04-20 is a UK day (§5.1), so it is the
+first clear anchor: forward search finds 2027-04-19 (anchor 2022-04-20, outside the
+Spain set) as the nearest resolving date. This is precisely the "move the application
+date" moment in the demo script. (Corrected 2026-08-12 from an earlier off-by-one that
+read 2027-04-20 / anchor 2022-04-21; the return day counts as present, so the first
+clear anchor is the return day itself — the same construction the demo case §8 uses to
+land on 2027-04-25 for its longer trip 1.)
 
 **`status.holding_period`:** earliest = 2025-03-01 + 1y = 2026-03-01.
 15 Apr 2027 ≥ 2026-03-08 → `SUPPORTED`.
