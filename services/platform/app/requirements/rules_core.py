@@ -52,8 +52,8 @@ class Window:
 
 def window(application_date: date, years: int) -> Window:
     """The closed `years`-long interval ending on the application date. Start is
-    `application_date − years + 1 day` — the +1 day the presence anchor and every absence
-    total depend on (RULES_SPEC §3). A naive `− years` is wrong by exactly one day."""
+    `application_date - years + 1 day` — the +1 day the presence anchor and every absence
+    total depend on (RULES_SPEC §3). A naive `- years` is wrong by exactly one day."""
     start = subtract_years(application_date, years) + timedelta(days=1)
     return Window(start=start, end=application_date)
 

@@ -36,12 +36,22 @@ from app.auth.schemas import CurrentUser
 from app.cases.domain import ApplicationCase, LifecycleStatus
 from app.requirements.evaluation import (
     EvaluatedResult,
+    ResidenceAssessmentInputs,
     RouteAssessmentInputs,
+    TripInput,
+    evaluate_residence_requirements,
     evaluate_route_requirements,
 )
 from app.requirements.models import RequirementDefinition
-from app.residence.domain import ProposedApplicationDateVersion
-from app.residence.repository import ProposedApplicationDateRepository
+from app.residence.domain import (
+    DateConfidence,
+    ProposedApplicationDateVersion,
+    TravelReviewState,
+)
+from app.residence.repository import (
+    ProposedApplicationDateRepository,
+    TravelRecordRepository,
+)
 from app.shared.errors import CaseNotActive, CaseNotAssessable
 from app.shared.unit_of_work import UnitOfWork
 
@@ -64,7 +74,7 @@ def recalculate(
     profile_version = _current_route_profile_version(session, case.id)
     date_version = _current_application_date_version(session, case.id)
 
-    inputs = RouteAssessmentInputs(
+    route_inputs = RouteAssessmentInputs(
         date_of_birth=profile_version.date_of_birth,
         status_type=profile_version.status_type,
         married_to_british_citizen=profile_version.married_to_british_citizen,
@@ -73,7 +83,15 @@ def recalculate(
         route_profile_version_id=profile_version.id,
         application_date_version_id=date_version.id,
     )
-    evaluated = evaluate_route_requirements(inputs)
+    residence_inputs = ResidenceAssessmentInputs(
+        application_date=date_version.application_date,
+        application_date_version_id=date_version.id,
+        trips=_gather_trips(session, case.id),
+    )
+    evaluated = [
+        *evaluate_route_requirements(route_inputs),
+        *evaluate_residence_requirements(residence_inputs),
+    ]
 
     run = AssessmentRun.start(
         case_id=case.id,
@@ -192,6 +210,8 @@ def _persist_result(
         summary_code=evaluation.summary_code,
         summary_parameters=dict(evaluation.summary_parameters),
         calculation_breakdown=dict(evaluation.calculation_breakdown),
+        limitations=[limitation.as_dict() for limitation in evaluation.limitations],
+        next_actions=[action.as_dict() for action in evaluation.next_actions],
     )
     AssessmentRepository.add_result(session, result)
     session.flush()
@@ -207,6 +227,25 @@ def _persist_result(
                 contribution_role=link.contribution_role.value,
             ),
         )
+
+
+def _gather_trips(session: Session, case_id: uuid.UUID) -> tuple[TripInput, ...]:
+    """Every active travel record, flattened to primitives, with the §6.1 trust gate decided
+    here (ACTIVE + CONFIRMED + EXACT). The evaluator gets all active trips — trusted totals
+    use the gated subset, provisional totals use all — so the sensitivity rule can run."""
+    records = TravelRecordRepository.list_active_with_current_version(session, case_id)
+    return tuple(
+        TripInput(
+            departure_date=version.departure_date,
+            return_date=version.return_date,
+            travel_record_version_id=version.id,
+            is_trusted=(
+                version.review_state == TravelReviewState.CONFIRMED.value
+                and version.date_confidence == DateConfidence.EXACT.value
+            ),
+        )
+        for _record, version in records
+    )
 
 
 def _current_route_profile_version(session: Session, case_id: uuid.UUID) -> RouteProfileVersion:

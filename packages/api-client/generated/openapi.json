@@ -547,6 +547,22 @@
             "title": "Input Links",
             "type": "array"
           },
+          "limitations": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Limitations",
+            "type": "array"
+          },
+          "next_actions": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Next Actions",
+            "type": "array"
+          },
           "requirement_key": {
             "title": "Requirement Key",
             "type": "string"
@@ -593,6 +609,8 @@
           "summary_code",
           "summary_parameters",
           "calculation_breakdown",
+          "limitations",
+          "next_actions",
           "input_links",
           "guidance",
           "history"

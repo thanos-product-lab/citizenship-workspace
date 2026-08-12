@@ -13,22 +13,53 @@ records and writes `AssessmentResult` rows — nothing else records a route conc
 """
 
 import uuid
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from datetime import date
 from enum import StrEnum
 
+from app.requirements.domain import Conclusion
 from app.requirements.route_rules import (
     KEY_ADULT,
     KEY_STANDARD,
     KEY_STATUS,
     evaluate_route_support,
 )
+from app.requirements.rules_core import (
+    FINAL_YEAR_ABSENCE_THRESHOLD_DAYS,
+    TOTAL_ABSENCE_THRESHOLD_DAYS,
+    Band,
+    Window,
+    absence_union,
+    band_final_year_absences,
+    band_total_absences,
+    count_in_window,
+    final_year_window,
+    more_severe,
+    physical_presence_date,
+    qualifying_window,
+    resolve_presence_date,
+)
 
-# Requirement keys whose evaluators exist in this slice. GET /requirements reports every
-# catalogued requirement; those not in this set have no trusted result yet and read as
-# NOT_YET_ASSESSED. Residence and status keys join as their evaluators land.
+# Residence requirement keys whose evaluators exist as of slice 2.
+KEY_QUALIFYING_PERIOD = "residence.qualifying_period"
+KEY_PHYSICAL_PRESENCE = "residence.physical_presence_start_date"
+KEY_TOTAL_ABSENCES = "residence.total_absences"
+KEY_FINAL_YEAR_ABSENCES = "residence.final_year_absences"
+
+# Requirement keys whose evaluators exist. GET /requirements reports every catalogued
+# requirement; those not in this set have no trusted result yet and read as
+# NOT_YET_ASSESSED. status/knowledge/referee/character keys join as their evaluators land.
 ROUTE_REQUIREMENT_KEYS: tuple[str, ...] = (KEY_ADULT, KEY_STATUS, KEY_STANDARD)
-IN_SCOPE_REQUIREMENT_KEYS: frozenset[str] = frozenset(ROUTE_REQUIREMENT_KEYS)
+RESIDENCE_REQUIREMENT_KEYS: tuple[str, ...] = (
+    KEY_QUALIFYING_PERIOD,
+    KEY_PHYSICAL_PRESENCE,
+    KEY_TOTAL_ABSENCES,
+    KEY_FINAL_YEAR_ABSENCES,
+)
+IN_SCOPE_REQUIREMENT_KEYS: frozenset[str] = frozenset(
+    ROUTE_REQUIREMENT_KEYS + RESIDENCE_REQUIREMENT_KEYS
+)
 
 
 class LinkInputKind(StrEnum):
@@ -48,6 +79,50 @@ class ContributionRole(StrEnum):
     CONTRADICTING = "CONTRADICTING"
     LIMITING = "LIMITING"
     CONTEXTUAL = "CONTEXTUAL"
+
+
+class LimitationSeverity(StrEnum):
+    INFORMATION = "INFORMATION"
+    CAUTION = "CAUTION"
+    REVIEW_REQUIRED = "REVIEW_REQUIRED"
+    BLOCKING = "BLOCKING"
+
+
+@dataclass(frozen=True)
+class Limitation:
+    """A structured condition reducing confidence in a result (Domain §33). Code + severity
+    + parameters, never prose; `affected_input_ids` names the versions responsible."""
+
+    code: str
+    severity: LimitationSeverity
+    message_parameters: dict[str, object] = field(default_factory=dict)
+    affected_input_ids: tuple[str, ...] = ()
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "code": self.code,
+            "severity": self.severity.value,
+            "message_parameters": self.message_parameters,
+            "affected_input_ids": list(self.affected_input_ids),
+        }
+
+
+@dataclass(frozen=True)
+class NextAction:
+    """A structured action that would move a result forward (Domain §34)."""
+
+    code: str
+    label_parameters: dict[str, object] = field(default_factory=dict)
+    priority: int = 0
+    blocking: bool = False
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "code": self.code,
+            "label_parameters": self.label_parameters,
+            "priority": self.priority,
+            "blocking": self.blocking,
+        }
 
 
 @dataclass(frozen=True)
@@ -71,6 +146,8 @@ class EvaluatedResult:
     summary_parameters: dict[str, object] = field(default_factory=dict)
     calculation_breakdown: dict[str, object] = field(default_factory=dict)
     input_links: tuple[InputLinkSpec, ...] = ()
+    limitations: tuple[Limitation, ...] = ()
+    next_actions: tuple[NextAction, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -159,5 +236,220 @@ def evaluate_route_requirements(inputs: RouteAssessmentInputs) -> list[Evaluated
                 "status_conclusion": decision.status.conclusion.value,
             },
             input_links=(profile_link,),
+        ),
+    ]
+
+
+# --- residence evaluators (RULES_SPEC §7.4-7.7) -----------------------------
+
+_SATISFIED_OR_NEAR = frozenset({Conclusion.SUPPORTED, Conclusion.NEAR_THRESHOLD})
+_UNCONFIRMED_LIMITATION = "UNCONFIRMED_RECORDS_AFFECT_CONCLUSION"
+
+
+@dataclass(frozen=True)
+class TripInput:
+    """One active travel record, flattened. `is_trusted` is the §6.1 gate — ACTIVE and
+    CONFIRMED and EXACT — decided by the service; the evaluator never re-derives trust."""
+
+    departure_date: date
+    return_date: date
+    travel_record_version_id: uuid.UUID
+    is_trusted: bool
+
+
+@dataclass(frozen=True)
+class ResidenceAssessmentInputs:
+    application_date: date
+    application_date_version_id: uuid.UUID
+    trips: tuple[TripInput, ...]
+
+
+def _app_date_link(inputs: ResidenceAssessmentInputs) -> InputLinkSpec:
+    return InputLinkSpec(LinkInputKind.APPLICATION_DATE_VERSION, inputs.application_date_version_id)
+
+
+def _travel_links(trips: tuple[TripInput, ...]) -> tuple[InputLinkSpec, ...]:
+    # Every active travel record the rule read is linked (the ALL_ACTIVE_TRAVEL_RECORDS
+    # dependency), trusted or not — the rule reads all of them to compute both totals.
+    return tuple(
+        InputLinkSpec(
+            LinkInputKind.TRAVEL_RECORD_VERSION,
+            trip.travel_record_version_id,
+            contribution_role=ContributionRole.CONTEXTUAL,
+        )
+        for trip in trips
+    )
+
+
+def _spans(trips: Iterable[TripInput]) -> list[tuple[date, date]]:
+    return [(trip.departure_date, trip.return_date) for trip in trips]
+
+
+def _uncertain_ids(trips: tuple[TripInput, ...]) -> tuple[str, ...]:
+    return tuple(str(t.travel_record_version_id) for t in trips if not t.is_trusted)
+
+
+def _threshold_conclusion(
+    trusted_total: int,
+    provisional_total: int,
+    band_fn: Callable[[int], Band],
+    uncertain_ids: tuple[str, ...],
+) -> tuple[Conclusion, str, tuple[Limitation, ...]]:
+    """Band the trusted total, then apply the §6.2 sensitivity rule: if the trusted total is
+    satisfied/near but the provisional total (uncertain records included) would band worse,
+    downgrade to that band capped at INCOMPLETE and attach a REVIEW_REQUIRED limitation.
+    The conclusion is never upgraded by provisional data (provisional_total >= trusted_total)."""
+    trusted_band = band_fn(trusted_total)
+    if trusted_band.conclusion in _SATISFIED_OR_NEAR:
+        provisional_band = band_fn(provisional_total)
+        if more_severe(provisional_band.conclusion, trusted_band.conclusion):
+            downgraded = provisional_band.conclusion
+            if more_severe(downgraded, Conclusion.INCOMPLETE):
+                downgraded = Conclusion.INCOMPLETE
+            limitation = Limitation(
+                code=_UNCONFIRMED_LIMITATION,
+                severity=LimitationSeverity.REVIEW_REQUIRED,
+                message_parameters={
+                    "trusted_days": trusted_total,
+                    "provisional_days": provisional_total,
+                },
+                affected_input_ids=uncertain_ids,
+            )
+            return downgraded, provisional_band.summary_code, (limitation,)
+    return trusted_band.conclusion, trusted_band.summary_code, ()
+
+
+def _evaluate_qualifying_period(inputs: ResidenceAssessmentInputs) -> EvaluatedResult:
+    """§7.4. A calculation, not a test — always SUPPORTED once an application date exists.
+    Owns the window breakdown every other residence rule cites."""
+    q = qualifying_window(inputs.application_date)
+    fy = final_year_window(inputs.application_date)
+    breakdown: dict[str, object] = {
+        "application_date": inputs.application_date.isoformat(),
+        "qualifying_period_start": q.start.isoformat(),
+        "qualifying_period_end": q.end.isoformat(),
+        "final_year_start": fy.start.isoformat(),
+        "final_year_end": fy.end.isoformat(),
+        "physical_presence_date": q.start.isoformat(),
+        "derivation": "application_date - 5 years + 1 day",
+    }
+    return EvaluatedResult(
+        requirement_key=KEY_QUALIFYING_PERIOD,
+        conclusion=Conclusion.SUPPORTED.value,
+        summary_code="QUALIFYING_PERIOD_DERIVED",
+        calculation_breakdown=breakdown,
+        input_links=(_app_date_link(inputs),),
+    )
+
+
+def _evaluate_physical_presence(inputs: ResidenceAssessmentInputs) -> EvaluatedResult:
+    """§7.5. Present on the anchor unless a trip's absent set contains it. Confirmed absence
+    → NOT_CURRENTLY_SATISFIED with the nearest resolving date; uncertain-only absence →
+    INCOMPLETE (the §6.2 gate applied to a membership test, not a total)."""
+    anchor = physical_presence_date(inputs.application_date)
+    trusted_union = absence_union(_spans(t for t in inputs.trips if t.is_trusted))
+    provisional_union = absence_union(_spans(inputs.trips))
+    links = (_app_date_link(inputs), *_travel_links(inputs.trips))
+    params: dict[str, object] = {"physical_presence_date": anchor.isoformat()}
+
+    if anchor in trusted_union:
+        resolving = resolve_presence_date(trusted_union, inputs.application_date)
+        next_actions: tuple[NextAction, ...] = ()
+        if resolving is not None:
+            params["resolving_application_date"] = resolving.isoformat()
+            next_actions = (
+                NextAction(
+                    code="SELECT_APPLICATION_DATE",
+                    label_parameters={"resolving_application_date": resolving.isoformat()},
+                    priority=1,
+                    blocking=True,
+                ),
+            )
+        return EvaluatedResult(
+            requirement_key=KEY_PHYSICAL_PRESENCE,
+            conclusion=Conclusion.NOT_CURRENTLY_SATISFIED.value,
+            summary_code="PRESENCE_NOT_SUPPORTED",
+            summary_parameters=params,
+            input_links=links,
+            next_actions=next_actions,
+        )
+    if anchor in provisional_union:
+        limitation = Limitation(
+            code=_UNCONFIRMED_LIMITATION,
+            severity=LimitationSeverity.REVIEW_REQUIRED,
+            message_parameters={"physical_presence_date": anchor.isoformat()},
+            affected_input_ids=_uncertain_ids(inputs.trips),
+        )
+        return EvaluatedResult(
+            requirement_key=KEY_PHYSICAL_PRESENCE,
+            conclusion=Conclusion.INCOMPLETE.value,
+            summary_code="PRESENCE_UNCERTAIN",
+            summary_parameters=params,
+            input_links=links,
+            limitations=(limitation,),
+        )
+    return EvaluatedResult(
+        requirement_key=KEY_PHYSICAL_PRESENCE,
+        conclusion=Conclusion.SUPPORTED.value,
+        summary_code="PRESENCE_CONFIRMED",
+        summary_parameters=params,
+        input_links=links,
+    )
+
+
+def _evaluate_absence_total(
+    inputs: ResidenceAssessmentInputs,
+    *,
+    requirement_key: str,
+    window_fn: Callable[[date], Window],
+    band_fn: Callable[[int], Band],
+    threshold: int,
+) -> EvaluatedResult:
+    """Shared body for §7.6 total and §7.7 final-year: trusted and provisional totals over
+    the given window, banded, with the §6.2 sensitivity rule."""
+    w = window_fn(inputs.application_date)
+    trusted_spans = _spans(t for t in inputs.trips if t.is_trusted)
+    trusted_total = count_in_window(absence_union(trusted_spans), w)
+    provisional_total = count_in_window(absence_union(_spans(inputs.trips)), w)
+    conclusion, summary_code, limitations = _threshold_conclusion(
+        trusted_total, provisional_total, band_fn, _uncertain_ids(inputs.trips)
+    )
+    params: dict[str, object] = {
+        "days": trusted_total,
+        "provisional_days": provisional_total,
+        "threshold": threshold,
+        "window_start": w.start.isoformat(),
+        "window_end": w.end.isoformat(),
+        "trip_count": len(inputs.trips),
+    }
+    return EvaluatedResult(
+        requirement_key=requirement_key,
+        conclusion=conclusion.value,
+        summary_code=summary_code,
+        summary_parameters=params,
+        input_links=(_app_date_link(inputs), *_travel_links(inputs.trips)),
+        limitations=limitations,
+    )
+
+
+def evaluate_residence_requirements(inputs: ResidenceAssessmentInputs) -> list[EvaluatedResult]:
+    """Evaluate the four residence rules over the case's application date and travel records.
+    Trusted totals use only §6.1-gated trips; provisional totals include every active trip."""
+    return [
+        _evaluate_qualifying_period(inputs),
+        _evaluate_physical_presence(inputs),
+        _evaluate_absence_total(
+            inputs,
+            requirement_key=KEY_TOTAL_ABSENCES,
+            window_fn=qualifying_window,
+            band_fn=band_total_absences,
+            threshold=TOTAL_ABSENCE_THRESHOLD_DAYS,
+        ),
+        _evaluate_absence_total(
+            inputs,
+            requirement_key=KEY_FINAL_YEAR_ABSENCES,
+            window_fn=final_year_window,
+            band_fn=band_final_year_absences,
+            threshold=FINAL_YEAR_ABSENCE_THRESHOLD_DAYS,
         ),
     ]

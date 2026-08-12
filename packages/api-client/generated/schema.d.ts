@@ -515,6 +515,14 @@ export interface components {
             history: components["schemas"]["ResultHistoryView"][];
             /** Input Links */
             input_links: components["schemas"]["InputLinkView"][];
+            /** Limitations */
+            limitations: {
+                [key: string]: unknown;
+            }[];
+            /** Next Actions */
+            next_actions: {
+                [key: string]: unknown;
+            }[];
             /** Requirement Key */
             requirement_key: string;
             /** Short Description */

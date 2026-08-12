@@ -110,6 +110,10 @@ class AssessmentResult(Base):
     summary_code: Mapped[str | None] = mapped_column(String(60))
     summary_parameters: Mapped[dict[str, Any]] = mapped_column(JSONB)
     calculation_breakdown: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    # Structured child values (Domain §33-34): typed {code, severity, parameters} objects,
+    # never prose. Default to empty lists (added in migration 0008).
+    limitations: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list)
+    next_actions: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list)
     input_snapshot_hash: Mapped[str | None] = mapped_column(String(64))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     marked_stale_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -129,6 +133,8 @@ class AssessmentResult(Base):
         summary_code: str | None,
         summary_parameters: dict[str, Any],
         calculation_breakdown: dict[str, Any],
+        limitations: list[dict[str, Any]] | None = None,
+        next_actions: list[dict[str, Any]] | None = None,
     ) -> "AssessmentResult":
         """A freshly evaluated trusted result. Created CURRENT; the caller supersedes any
         prior current result for the same case + requirement first."""
@@ -143,6 +149,8 @@ class AssessmentResult(Base):
             summary_code=summary_code,
             summary_parameters=summary_parameters,
             calculation_breakdown=calculation_breakdown,
+            limitations=limitations or [],
+            next_actions=next_actions or [],
         )
 
     def supersede(self, *, by_result_id: uuid.UUID) -> None:

@@ -67,6 +67,8 @@ class RequirementDetail(BaseModel):
     summary_code: str | None
     summary_parameters: dict[str, object]
     calculation_breakdown: dict[str, object]
+    limitations: list[dict[str, object]]
+    next_actions: list[dict[str, object]]
     input_links: list[InputLinkView]
     guidance: list[dict[str, str]]
     history: list[ResultHistoryView]
@@ -90,6 +92,8 @@ class RequirementDetail(BaseModel):
             summary_code=current.summary_code if current else None,
             summary_parameters=dict(current.summary_parameters) if current else {},
             calculation_breakdown=dict(current.calculation_breakdown) if current else {},
+            limitations=list(current.limitations) if current else [],
+            next_actions=list(current.next_actions) if current else [],
             input_links=[
                 InputLinkView(
                     input_kind=link.input_kind,
