@@ -150,8 +150,11 @@ def test_provisional_records_never_upgrade_the_conclusion(
     # The trusted total is unchanged, and adding unconfirmed records only ever makes the
     # conclusion the same or more severe — never less (RULES_SPEC §6.2, §10).
     trusted_total = trusted_only.summary_parameters["days"]
+    provisional_total = with_uncertain.summary_parameters["provisional_days"]
     assert isinstance(trusted_total, int)
+    assert isinstance(provisional_total, int)
     assert with_uncertain.summary_parameters["days"] == trusted_total
+    assert trusted_total <= provisional_total  # RULES_SPEC §10: trusted <= provisional, always
     assert severity(Conclusion(with_uncertain.conclusion)) >= severity(
         band_total_absences(trusted_total).conclusion
     )

@@ -27,6 +27,7 @@ from app.requirements.models import (
     RuleDependencyDefinition,
     RuleVersion,
 )
+from app.residence.domain import TravelRecordVersion
 
 pytestmark = pytest.mark.integration
 
@@ -101,3 +102,67 @@ def test_input_links_equal_declared_dependencies(api: Api, db_session: Session) 
 
         # Strict equality both directions: no undeclared link, no unlinked dependency.
         assert linked == declared, f"{key}: links {linked} != declared {declared}"
+
+
+def test_residence_links_cover_declared_kinds_and_every_active_trip(
+    api: Api, db_session: Session
+) -> None:
+    # Residence rules declare an ALL_ACTIVE_TRAVEL_RECORDS dependency, which resolves to one
+    # link per active record — so the invariant is: link *kinds* equal declared *kinds*, and
+    # the travel links are exactly the case's active travel-record versions.
+    case_id = _case_with_date(api, "user_a")
+    for departure, return_ in (("2023-06-01", "2023-07-02"), ("2024-02-01", "2024-03-01")):
+        api("user_a").post(
+            f"/api/v1/cases/{case_id}/travel-records",
+            json={
+                "destination_label": "Trip",
+                "departure_date": departure,
+                "return_date": return_,
+                "date_confidence": "EXACT",
+                "review_state": "CONFIRMED",
+            },
+        )
+    api("user_a").post(f"/api/v1/cases/{case_id}/assessments/recalculate")
+
+    active_travel_version_ids = {
+        row.id
+        for row in db_session.scalars(select(TravelRecordVersion))
+        # every seeded trip has exactly one version here, all active
+    }
+
+    for key in ("residence.physical_presence_start_date", "residence.total_absences"):
+        definition = db_session.scalar(
+            select(RequirementDefinition).where(RequirementDefinition.requirement_key == key)
+        )
+        assert definition is not None
+        rule_version = db_session.scalar(
+            select(RuleVersion).where(RuleVersion.requirement_id == definition.id)
+        )
+        assert rule_version is not None
+        declared_kinds = {
+            _DEPENDENCY_TO_LINK[dep.input_kind]
+            for dep in db_session.scalars(
+                select(RuleDependencyDefinition).where(
+                    RuleDependencyDefinition.rule_version_id == rule_version.id
+                )
+            )
+        }
+        result = db_session.scalar(
+            select(AssessmentResult).where(
+                AssessmentResult.requirement_id == definition.id,
+                AssessmentResult.currency == Currency.CURRENT.value,
+            )
+        )
+        assert result is not None
+        links = list(
+            db_session.scalars(
+                select(AssessmentInputLink).where(
+                    AssessmentInputLink.assessment_result_id == result.id
+                )
+            )
+        )
+        assert {link.input_kind for link in links} == declared_kinds  # no undeclared kind
+        travel_ids = {
+            link.input_version_id for link in links if link.input_kind == "TRAVEL_RECORD_VERSION"
+        }
+        assert travel_ids == active_travel_version_ids  # every active trip, exactly
