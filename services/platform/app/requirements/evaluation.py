@@ -293,19 +293,26 @@ def _threshold_conclusion(
     trusted_total: int,
     provisional_total: int,
     band_fn: Callable[[int], Band],
+    capped_summary_code: str,
     uncertain_ids: tuple[str, ...],
 ) -> tuple[Conclusion, str, tuple[Limitation, ...]]:
     """Band the trusted total, then apply the §6.2 sensitivity rule: if the trusted total is
     satisfied/near but the provisional total (uncertain records included) would band worse,
     downgrade to that band capped at INCOMPLETE and attach a REVIEW_REQUIRED limitation.
-    The conclusion is never upgraded by provisional data (provisional_total >= trusted_total)."""
+    The conclusion is never upgraded by provisional data (provisional_total >= trusted_total).
+
+    When the downgrade is *capped* to INCOMPLETE, the summary code is the sensitivity-specific
+    `capped_summary_code`, never the provisional band's failure code — otherwise an INCOMPLETE
+    conclusion would carry an "...EXCEEDED" headline that overstates unconfirmed data (§6.2)."""
     trusted_band = band_fn(trusted_total)
     if trusted_band.conclusion in _SATISFIED_OR_NEAR:
         provisional_band = band_fn(provisional_total)
         if more_severe(provisional_band.conclusion, trusted_band.conclusion):
             downgraded = provisional_band.conclusion
+            summary_code = provisional_band.summary_code
             if more_severe(downgraded, Conclusion.INCOMPLETE):
                 downgraded = Conclusion.INCOMPLETE
+                summary_code = capped_summary_code
             limitation = Limitation(
                 code=_UNCONFIRMED_LIMITATION,
                 severity=LimitationSeverity.REVIEW_REQUIRED,
@@ -315,7 +322,7 @@ def _threshold_conclusion(
                 },
                 affected_input_ids=uncertain_ids,
             )
-            return downgraded, provisional_band.summary_code, (limitation,)
+            return downgraded, summary_code, (limitation,)
     return trusted_band.conclusion, trusted_band.summary_code, ()
 
 
@@ -353,6 +360,10 @@ def _evaluate_physical_presence(inputs: ResidenceAssessmentInputs) -> EvaluatedR
     params: dict[str, object] = {"physical_presence_date": anchor.isoformat()}
 
     if anchor in trusted_union:
+        # The resolving date is searched over the *trusted* absent union only: an unconfirmed
+        # trip must never shape the suggested date. So the offered date clears confirmed
+        # absence — if an uncertain trip also covers it, presence there reads INCOMPLETE until
+        # that record is confirmed. Correct trade-off (§6.2): unconfirmed data cannot drive it.
         resolving = resolve_presence_date(trusted_union, inputs.application_date)
         next_actions: tuple[NextAction, ...] = ()
         if resolving is not None:
@@ -403,6 +414,7 @@ def _evaluate_absence_total(
     requirement_key: str,
     window_fn: Callable[[date], Window],
     band_fn: Callable[[int], Band],
+    capped_summary_code: str,
     threshold: int,
 ) -> EvaluatedResult:
     """Shared body for §7.6 total and §7.7 final-year: trusted and provisional totals over
@@ -412,7 +424,7 @@ def _evaluate_absence_total(
     trusted_total = count_in_window(absence_union(trusted_spans), w)
     provisional_total = count_in_window(absence_union(_spans(inputs.trips)), w)
     conclusion, summary_code, limitations = _threshold_conclusion(
-        trusted_total, provisional_total, band_fn, _uncertain_ids(inputs.trips)
+        trusted_total, provisional_total, band_fn, capped_summary_code, _uncertain_ids(inputs.trips)
     )
     params: dict[str, object] = {
         "days": trusted_total,
@@ -443,6 +455,7 @@ def evaluate_residence_requirements(inputs: ResidenceAssessmentInputs) -> list[E
             requirement_key=KEY_TOTAL_ABSENCES,
             window_fn=qualifying_window,
             band_fn=band_total_absences,
+            capped_summary_code="TOTAL_ABSENCES_UNCONFIRMED_REVIEW",
             threshold=TOTAL_ABSENCE_THRESHOLD_DAYS,
         ),
         _evaluate_absence_total(
@@ -450,6 +463,7 @@ def evaluate_residence_requirements(inputs: ResidenceAssessmentInputs) -> list[E
             requirement_key=KEY_FINAL_YEAR_ABSENCES,
             window_fn=final_year_window,
             band_fn=band_final_year_absences,
+            capped_summary_code="FINAL_YEAR_UNCONFIRMED_REVIEW",
             threshold=FINAL_YEAR_ABSENCE_THRESHOLD_DAYS,
         ),
     ]

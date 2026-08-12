@@ -270,6 +270,15 @@ and applies:
 The conclusion is never *upgraded* by provisional data. Uncertainty can only make
 the answer more cautious.
 
+**Summary code when capped [PRODUCT].** When the downgrade is *capped* to `INCOMPLETE`
+(the provisional band is more severe than `INCOMPLETE`), the result carries the
+rule's `*_UNCONFIRMED_REVIEW` summary code, **not** the provisional band's failure
+code. Otherwise an `INCOMPLETE` conclusion would show an `…_EXCEEDED` headline that
+overstates unconfirmed data. When the downgrade is *not* capped (e.g. to
+`REQUIRES_JUDGEMENT`), the summary code is the provisional band's code, which matches
+the conclusion. Either way the `UNCONFIRMED_RECORDS_AFFECT_CONCLUSION` limitation
+carries `{trusted_days, provisional_days}` and the affected record ids.
+
 This single rule is the largest contributor to a low false-reassurance rate, and
 it should have its own eval fixture.
 
@@ -490,9 +499,11 @@ The sensitivity rule (§6.2) applies.
 
 Summary codes: `TOTAL_ABSENCES_WITHIN_THRESHOLD`,
 `TOTAL_ABSENCES_NEAR_THRESHOLD`, `TOTAL_ABSENCES_DISCRETION_LIKELY`,
-`TOTAL_ABSENCES_REVIEW_REQUIRED`, `TOTAL_ABSENCES_EXCEEDED`.
+`TOTAL_ABSENCES_REVIEW_REQUIRED`, `TOTAL_ABSENCES_EXCEEDED`, plus
+`TOTAL_ABSENCES_UNCONFIRMED_REVIEW` for the §6.2 capped-downgrade state (see below).
 
-Parameters on every code: `{days, threshold, window_start, window_end, trip_count}`.
+Parameters on every code: `{days, threshold, window_start, window_end, trip_count}`,
+with `provisional_days` added whenever the sensitivity rule runs.
 
 ---
 
@@ -524,7 +535,10 @@ the final-year limit is the more common cause of refusal.
 
 The sensitivity rule (§6.2) applies.
 
-Summary codes: mirror §7.6 with `FINAL_YEAR_` prefix.
+Summary codes (the §7.6 set with the `TOTAL_ABSENCES_` stem replaced by
+`FINAL_YEAR_`): `FINAL_YEAR_WITHIN_THRESHOLD`, `FINAL_YEAR_NEAR_THRESHOLD`,
+`FINAL_YEAR_DISCRETION_LIKELY`, `FINAL_YEAR_REVIEW_REQUIRED`, `FINAL_YEAR_EXCEEDED`,
+plus `FINAL_YEAR_UNCONFIRMED_REVIEW` for the §6.2 capped-downgrade state.
 
 ---
 

@@ -197,25 +197,24 @@ band also flipped would conflate the two ideas.
 
 ```
 1. physical_presence_start_date = NOT_CURRENTLY_SATISFIED at 15 Apr 2027.
-   Rule returns nearest resolving date: 21 Apr 2027.
-   (Anchor moves 16→22 Apr 2022; trip 1 returned 26 Apr, so the anchor is still
-    inside trip 1 for 16–25 Apr. First clear anchor is 26 Apr 2022 → app date
-    25 Apr 2027. The rule searches forward and returns the first clear date.)
+   Rule returns nearest resolving date: 25 Apr 2027.
+   (Trip 1 returned 26 Apr 2022, so its absent set is 16–25 Apr 2022 within the
+    window. Application dates 15–24 Apr 2027 have anchors 16–25 Apr 2022, all inside
+    that set. The first clear anchor is 26 Apr 2022 — the return day, a UK day →
+    application date 25 Apr 2027. The rule searches forward and returns it.)
 ```
 
 **Verify this by hand before seeding** — the resolving date depends on trip 1's
 exact return. With trip 1 returning 26 Apr 2022, the anchor is an absent date for
 application dates whose anchor falls 16–25 Apr 2022, i.e. application dates
 15–24 Apr 2027. The first supported application date is **25 April 2027** (anchor
-26 Apr 2022, a UK day — the return day counts as present). The earlier scratch
-value of 21 Apr assumed a shorter trip 1; with the final 26 Apr return, the
-resolving date is 25 Apr 2027.
+26 Apr 2022, a UK day — the return day counts as present).
 
-> Implementation note: this is a worked correction. The seed and the
-> presence-rule test must agree on **25 April 2027** as the resolving date for
-> this fixture, derived from trip 1 returning 2022-04-26. If trip 1's dates are
-> ever changed, this number must be re-derived — it is not independent of the
-> travel history.
+> Implementation note: the seed and the presence-rule test must agree on
+> **25 April 2027** as the resolving date for this fixture, derived from trip 1
+> returning 2022-04-26. If trip 1's dates are ever changed, this number must be
+> re-derived — it is not independent of the travel history. (RULES_SPEC §9 shows the
+> same construction on a shorter trip returning 20 Apr → resolving date 2027-04-19.)
 
 After moving to 25 Apr 2027, the whole qualifying window shifts forward by 10
 days; absence totals must be recalculated (some early Spain days drop out, no new

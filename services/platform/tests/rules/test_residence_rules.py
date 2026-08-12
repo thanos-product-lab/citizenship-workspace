@@ -115,6 +115,9 @@ def test_sensitivity_is_capped_at_incomplete() -> None:
     )[KEY_FINAL_YEAR_ABSENCES]
     assert result.summary_parameters["provisional_days"] == 130
     assert result.conclusion == Conclusion.INCOMPLETE.value
+    # Capped: the summary code is the sensitivity-specific one, not the provisional failure
+    # band's code — an INCOMPLETE conclusion must not carry an "...EXCEEDED" headline.
+    assert result.summary_code == "FINAL_YEAR_UNCONFIRMED_REVIEW"
     assert result.limitations[0].code == "UNCONFIRMED_RECORDS_AFFECT_CONCLUSION"
 
 
