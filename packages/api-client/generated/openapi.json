@@ -339,6 +339,42 @@
         "title": "ImportValidationResponse",
         "type": "object"
       },
+      "InputLinkView": {
+        "properties": {
+          "contribution_role": {
+            "title": "Contribution Role",
+            "type": "string"
+          },
+          "input_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Input Key"
+          },
+          "input_kind": {
+            "title": "Input Kind",
+            "type": "string"
+          },
+          "input_version_id": {
+            "format": "uuid",
+            "title": "Input Version Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "input_kind",
+          "input_version_id",
+          "input_key",
+          "contribution_role"
+        ],
+        "title": "InputLinkView",
+        "type": "object"
+      },
       "LiveResponse": {
         "properties": {
           "status": {
@@ -424,6 +460,146 @@
         "title": "ReadyResponse",
         "type": "object"
       },
+      "RecalculateResponse": {
+        "properties": {
+          "assessment_run_id": {
+            "format": "uuid",
+            "title": "Assessment Run Id",
+            "type": "string"
+          },
+          "mode": {
+            "title": "Mode",
+            "type": "string"
+          },
+          "requirements": {
+            "items": {
+              "$ref": "#/components/schemas/RequirementSummary"
+            },
+            "title": "Requirements",
+            "type": "array"
+          },
+          "result_count": {
+            "title": "Result Count",
+            "type": "integer"
+          },
+          "trigger_type": {
+            "title": "Trigger Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "assessment_run_id",
+          "mode",
+          "trigger_type",
+          "result_count",
+          "requirements"
+        ],
+        "title": "RecalculateResponse",
+        "type": "object"
+      },
+      "RequirementDetail": {
+        "properties": {
+          "calculation_breakdown": {
+            "additionalProperties": true,
+            "title": "Calculation Breakdown",
+            "type": "object"
+          },
+          "conclusion": {
+            "title": "Conclusion",
+            "type": "string"
+          },
+          "currency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
+          },
+          "group_key": {
+            "title": "Group Key",
+            "type": "string"
+          },
+          "guidance": {
+            "items": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "title": "Guidance",
+            "type": "array"
+          },
+          "history": {
+            "items": {
+              "$ref": "#/components/schemas/ResultHistoryView"
+            },
+            "title": "History",
+            "type": "array"
+          },
+          "input_links": {
+            "items": {
+              "$ref": "#/components/schemas/InputLinkView"
+            },
+            "title": "Input Links",
+            "type": "array"
+          },
+          "requirement_key": {
+            "title": "Requirement Key",
+            "type": "string"
+          },
+          "short_description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Short Description"
+          },
+          "summary_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary Code"
+          },
+          "summary_parameters": {
+            "additionalProperties": true,
+            "title": "Summary Parameters",
+            "type": "object"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "requirement_key",
+          "title",
+          "group_key",
+          "short_description",
+          "conclusion",
+          "currency",
+          "summary_code",
+          "summary_parameters",
+          "calculation_breakdown",
+          "input_links",
+          "guidance",
+          "history"
+        ],
+        "title": "RequirementDetail",
+        "type": "object"
+      },
       "RequirementOutcomeResponse": {
         "properties": {
           "conclusion": {
@@ -452,6 +628,118 @@
           "summary_code"
         ],
         "title": "RequirementOutcomeResponse",
+        "type": "object"
+      },
+      "RequirementSummary": {
+        "properties": {
+          "conclusion": {
+            "title": "Conclusion",
+            "type": "string"
+          },
+          "currency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
+          },
+          "display_order": {
+            "title": "Display Order",
+            "type": "integer"
+          },
+          "group_key": {
+            "title": "Group Key",
+            "type": "string"
+          },
+          "requirement_key": {
+            "title": "Requirement Key",
+            "type": "string"
+          },
+          "summary_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary Code"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "required": [
+          "requirement_key",
+          "title",
+          "group_key",
+          "display_order",
+          "conclusion",
+          "currency",
+          "summary_code",
+          "updated_at"
+        ],
+        "title": "RequirementSummary",
+        "type": "object"
+      },
+      "ResultHistoryView": {
+        "properties": {
+          "assessment_run_id": {
+            "format": "uuid",
+            "title": "Assessment Run Id",
+            "type": "string"
+          },
+          "conclusion": {
+            "title": "Conclusion",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "summary_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary Code"
+          }
+        },
+        "required": [
+          "assessment_run_id",
+          "conclusion",
+          "currency",
+          "summary_code",
+          "created_at"
+        ],
+        "title": "ResultHistoryView",
         "type": "object"
       },
       "RouteProfileDraftInput": {
@@ -1295,6 +1583,163 @@
         "summary": "Select Application Date",
         "tags": [
           "application-dates"
+        ]
+      }
+    },
+    "/api/v1/cases/{case_id}/assessments/recalculate": {
+      "post": {
+        "operationId": "recalculate_api_v1_cases__case_id__assessments_recalculate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Case Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecalculateResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Recalculate",
+        "tags": [
+          "assessments"
+        ]
+      }
+    },
+    "/api/v1/cases/{case_id}/requirements": {
+      "get": {
+        "operationId": "list_requirements_api_v1_cases__case_id__requirements_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Case Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RequirementSummary"
+                  },
+                  "title": "Response List Requirements Api V1 Cases  Case Id  Requirements Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Requirements",
+        "tags": [
+          "requirements"
+        ]
+      }
+    },
+    "/api/v1/cases/{case_id}/requirements/{requirement_key}": {
+      "get": {
+        "operationId": "get_requirement_api_v1_cases__case_id__requirements__requirement_key__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "requirement_key",
+            "required": true,
+            "schema": {
+              "title": "Requirement Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Case Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequirementDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Requirement",
+        "tags": [
+          "requirements"
         ]
       }
     },

@@ -77,6 +77,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/cases/{case_id}/assessments/recalculate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Recalculate */
+        post: operations["recalculate_api_v1_cases__case_id__assessments_recalculate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cases/{case_id}/requirements": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Requirements */
+        get: operations["list_requirements_api_v1_cases__case_id__requirements_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cases/{case_id}/requirements/{requirement_key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Requirement */
+        get: operations["get_requirement_api_v1_cases__case_id__requirements__requirement_key__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/cases/{case_id}/route-profile": {
         parameters: {
             query?: never;
@@ -372,6 +423,20 @@ export interface components {
             /** Valid Count */
             valid_count: number;
         };
+        /** InputLinkView */
+        InputLinkView: {
+            /** Contribution Role */
+            contribution_role: string;
+            /** Input Key */
+            input_key: string | null;
+            /** Input Kind */
+            input_kind: string;
+            /**
+             * Input Version Id
+             * Format: uuid
+             */
+            input_version_id: string;
+        };
         /** LiveResponse */
         LiveResponse: {
             /** Status */
@@ -414,12 +479,99 @@ export interface components {
             /** Status */
             status: string;
         };
+        /** RecalculateResponse */
+        RecalculateResponse: {
+            /**
+             * Assessment Run Id
+             * Format: uuid
+             */
+            assessment_run_id: string;
+            /** Mode */
+            mode: string;
+            /** Requirements */
+            requirements: components["schemas"]["RequirementSummary"][];
+            /** Result Count */
+            result_count: number;
+            /** Trigger Type */
+            trigger_type: string;
+        };
+        /** RequirementDetail */
+        RequirementDetail: {
+            /** Calculation Breakdown */
+            calculation_breakdown: {
+                [key: string]: unknown;
+            };
+            /** Conclusion */
+            conclusion: string;
+            /** Currency */
+            currency: string | null;
+            /** Group Key */
+            group_key: string;
+            /** Guidance */
+            guidance: {
+                [key: string]: string;
+            }[];
+            /** History */
+            history: components["schemas"]["ResultHistoryView"][];
+            /** Input Links */
+            input_links: components["schemas"]["InputLinkView"][];
+            /** Requirement Key */
+            requirement_key: string;
+            /** Short Description */
+            short_description: string | null;
+            /** Summary Code */
+            summary_code: string | null;
+            /** Summary Parameters */
+            summary_parameters: {
+                [key: string]: unknown;
+            };
+            /** Title */
+            title: string;
+        };
         /** RequirementOutcomeResponse */
         RequirementOutcomeResponse: {
             /** Conclusion */
             conclusion: string;
             /** Requirement Key */
             requirement_key: string;
+            /** Summary Code */
+            summary_code: string | null;
+        };
+        /** RequirementSummary */
+        RequirementSummary: {
+            /** Conclusion */
+            conclusion: string;
+            /** Currency */
+            currency: string | null;
+            /** Display Order */
+            display_order: number;
+            /** Group Key */
+            group_key: string;
+            /** Requirement Key */
+            requirement_key: string;
+            /** Summary Code */
+            summary_code: string | null;
+            /** Title */
+            title: string;
+            /** Updated At */
+            updated_at: string | null;
+        };
+        /** ResultHistoryView */
+        ResultHistoryView: {
+            /**
+             * Assessment Run Id
+             * Format: uuid
+             */
+            assessment_run_id: string;
+            /** Conclusion */
+            conclusion: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Currency */
+            currency: string;
             /** Summary Code */
             summary_code: string | null;
         };
@@ -803,6 +955,100 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProposedApplicationDateResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    recalculate_api_v1_cases__case_id__assessments_recalculate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecalculateResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_requirements_api_v1_cases__case_id__requirements_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RequirementSummary"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_requirement_api_v1_cases__case_id__requirements__requirement_key__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                requirement_key: string;
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RequirementDetail"];
                 };
             };
             /** @description Validation Error */
