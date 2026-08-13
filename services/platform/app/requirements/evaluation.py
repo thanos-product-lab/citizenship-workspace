@@ -538,13 +538,12 @@ def _evaluate_travel_consistency(inputs: ResidenceAssessmentInputs) -> Evaluated
     def _in_window(trip: TripInput) -> bool:
         # "Inside the qualifying period" (RULES_SPEC §7.8) is read as: the trip has at least
         # one absent day within the window. A trip wholly outside the window is informational
-        # only and does not distort the totals.
+        # only and does not distort the totals, so its questionable dates are not flagged.
         return any(qwindow.contains(d) for d in absents[trip.travel_record_version_id])
 
-    # A CONFLICTING date is a data-integrity problem worth surfacing regardless of the window
-    # (errs toward visible uncertainty, directive 7). Window-scoping it — to match UNCERTAIN —
-    # is a proposed refinement pending an RFC §7.8 amendment; left unscoped until agreed.
-    conflicting = [t for t in trips if t.date_confidence == "CONFLICTING"]
+    # CONFLICTING is window-scoped to match UNCERTAIN (RULES_SPEC §7.8): an out-of-window
+    # conflict cannot affect the assessment, so it is not surfaced as an inconsistency.
+    conflicting = [t for t in trips if t.date_confidence == "CONFLICTING" and _in_window(t)]
     if conflicting:
         limitations.append(
             Limitation(

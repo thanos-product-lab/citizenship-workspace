@@ -102,6 +102,14 @@ def test_uncertain_date_is_incomplete() -> None:
     assert result.summary_code == "TRAVEL_RECORDS_UNCERTAIN"
 
 
+def test_out_of_window_conflict_is_not_flagged() -> None:
+    # A CONFLICTING trip wholly before the qualifying window (starts 2022-04-16 for this app
+    # date) is informational only: window-scoped like UNCERTAIN, it is not surfaced (§7.8).
+    result = _consistency(_trip(date(2019, 1, 1), date(2019, 1, 20), confidence="CONFLICTING"))
+    assert result.conclusion == Conclusion.SUPPORTED.value
+    assert result.summary_code == "TRAVEL_RECORDS_CONSISTENT"
+
+
 
 
 def test_boundary_trip_is_flagged_but_stays_consistent() -> None:

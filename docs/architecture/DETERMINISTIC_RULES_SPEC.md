@@ -387,6 +387,12 @@ earliest_application_date = status_granted_on + 1 year
 | `application_date < earliest` | `NOT_CURRENTLY_SATISFIED`, with `earliest_application_date` returned |
 | `status_granted_on` missing | `INCOMPLETE` |
 
+**[PRODUCT]** A `status_granted_on` of 29 February adds one year with the §4.1
+`relativedelta` clamp (→ 28 February in a non-leap year), the same semantics as the
+qualifying-period window. This is the permissive direction (the earliest date lands one
+day earlier than a strict anniversary) and deliberately differs from the §7.1
+age-attainment convention (1 March); the effect is at most one day on a rare input.
+
 **[PRODUCT]** The seven-day caution band exists because guidance does not state
 the boundary to the day, and because "the date the application is received" is
 not fully within the applicant's control. The product surfaces the margin rather
@@ -574,7 +580,11 @@ Summary codes: `TRAVEL_RECORDS_CONSISTENT`, `TRAVEL_RECORDS_OVERLAP`,
 
 **M3B scope note [PRODUCT].** At M3B this rule detects conflicts (`CONFLICTING` confidence),
 overlaps (intersecting absent-date sets, which also catches identical-date duplicates),
-uncertain dates, boundary-critical trips, and out-of-window trips. Destination-aware
+uncertain dates, boundary-critical trips, and out-of-window trips. "Inside the qualifying
+period" is read as *the trip has at least one absent day within the window*; a trip wholly
+outside the window is informational only. Both `CONFLICTING` and `{ESTIMATED, UNKNOWN}`
+detections are window-scoped this way, so a questionable date on out-of-window history that
+cannot affect the assessment is not surfaced as an inconsistency. Destination-aware
 `DUPLICATE_EVIDENCE` and the unevidenced-trip `MISSING_EVIDENCE` detection depend on the
 destination field and the evidence graph, which arrive in M4; they are deferred. This rule
 creates structured limitations, not `Issue` rows — issue derivation is M6.
