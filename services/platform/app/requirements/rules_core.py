@@ -39,6 +39,16 @@ def subtract_years(anchor: date, years: int) -> date:
         return anchor.replace(year=anchor.year - years, month=2, day=28)
 
 
+def add_years(anchor: date, years: int) -> date:
+    """`anchor` plus `years`, same month and day, clamped only for 29 Feb → 28 Feb (the
+    mirror of `subtract_years`; RULES_SPEC §4.1 semantics). Used for the holding-period
+    earliest application date (status granted + 1 year, §7.3)."""
+    try:
+        return anchor.replace(year=anchor.year + years)
+    except ValueError:
+        return anchor.replace(year=anchor.year + years, month=2, day=28)
+
+
 @dataclass(frozen=True)
 class Window:
     """A closed date interval [start, end]. Both endpoints are inclusive (RULES_SPEC §4.2)."""

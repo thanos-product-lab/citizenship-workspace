@@ -17,6 +17,7 @@ from app.requirements.domain import Conclusion
 from app.requirements.rules_core import (
     absence_union,
     absent_dates,
+    add_years,
     band_final_year_absences,
     band_total_absences,
     count_in_window,
@@ -65,6 +66,23 @@ def test_leap_and_month_boundary_table(application_date: date, expected_start: d
 def test_subtract_years_clamps_only_leap_day() -> None:
     assert subtract_years(date(2028, 2, 29), 5) == date(2023, 2, 28)
     assert subtract_years(date(2024, 2, 29), 4) == date(2020, 2, 29)  # target is a leap year
+
+
+def test_add_years_clamps_only_leap_day() -> None:
+    assert add_years(date(2025, 3, 1), 1) == date(2026, 3, 1)
+    assert add_years(date(2024, 2, 29), 1) == date(2025, 2, 28)  # 2025 is not a leap year
+    assert add_years(date(2024, 2, 29), 4) == date(2028, 2, 29)  # target is a leap year
+
+
+@given(_DATES, st.integers(min_value=0, max_value=8))
+@pytest.mark.property
+def test_add_years_preserves_month_day_except_leap(anchor: date, years: int) -> None:
+    result = add_years(anchor, years)
+    assert result.year == anchor.year + years
+    if (anchor.month, anchor.day) == (2, 29):
+        assert (result.month, result.day) == (2, 28)
+    else:
+        assert (result.month, result.day) == (anchor.month, anchor.day)
 
 
 @given(_APP_DATES)
