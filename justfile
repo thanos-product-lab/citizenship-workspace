@@ -73,9 +73,9 @@ api:
 dev:
     pnpm --filter @cw/web dev
 
-# Load the canonical synthetic demo case (M3A).
+# Load the canonical synthetic demo case (§13 of MVP RFC) via the real command path.
 seed:
-    @echo "just seed: not until M3A (synthetic demo case)."
+    cd services/platform && uv run python -m app.seed.demo_case
 
 # Regenerate packages/api-client from the FastAPI OpenAPI schema.
 api-client:
