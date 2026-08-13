@@ -137,7 +137,12 @@ def test_residence_links_cover_declared_kinds_and_every_active_trip(
         # every seeded trip has exactly one version here, all active
     }
 
-    for key in ("residence.physical_presence_start_date", "residence.total_absences"):
+    for key in (
+        "residence.physical_presence_start_date",
+        "residence.total_absences",
+        "residence.final_year_absences",
+        "residence.travel_consistency",
+    ):
         definition = db_session.scalar(
             select(RequirementDefinition).where(RequirementDefinition.requirement_key == key)
         )
