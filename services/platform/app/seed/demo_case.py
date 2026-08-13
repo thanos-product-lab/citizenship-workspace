@@ -101,7 +101,9 @@ def seed_demo_case(session: Session, *, user_id: str) -> uuid.UUID:
 
 def _run() -> None:
     """`just seed` entry point: seed the demo case into the local database as a fixed demo
-    user. Requires the DB to be up and migrated (`just up` / `just migrate`)."""
+    user. Requires the DB to be up and migrated (`just up` / `just migrate`). Not idempotent:
+    each run creates a new case (the service commands commit per step), and a mid-seed failure
+    leaves a partial case — a `SYNTHETIC_DEMO_CASE` reset is a distinct operation (M-later)."""
     from app.shared.db import get_sessionmaker
     from app.shared.tenant import set_tenant
 

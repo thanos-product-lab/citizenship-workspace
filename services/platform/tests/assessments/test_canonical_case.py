@@ -108,5 +108,8 @@ def test_canonical_stale_transition_moves_439_to_440(api: Api, db_session: Sessi
     assert after["summary_parameters"]["days"] == 440  # one extra absent day (10 May now counts)
     assert after["conclusion"] == "NEAR_THRESHOLD"  # 440 does not cross the 450 band boundary
     assert after["currency"] == "CURRENT"
-    # The 439 result is retained, now superseded — history stays inspectable.
+    # The 439 result is retained but superseded — history inspectable, exactly one current.
     assert len(after["history"]) == 2
+    currencies = [row["currency"] for row in after["history"]]
+    assert currencies.count("CURRENT") == 1  # never two current for one requirement
+    assert currencies.count("SUPERSEDED") == 1  # the 439 predecessor is retired, not orphaned

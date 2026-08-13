@@ -86,12 +86,17 @@ count falling **inside the qualifying window** (16 Apr 2022 – 15 Apr 2027).
 
 > **M3B / M4 staging.** At M3B every trip seeds as `CONFIRMED + EXACT` — the §6.1
 > trust gate admits only exact records, and the headline totals (439, final-year 17)
-> depend on trip 11 being trusted. The *conflict* on trip 11 (a spreadsheet return of
-> 10 May vs an uploaded booking document of 11 May) needs the evidence/extraction
-> model, which is **M4**; only then does trip 11 become `CONFLICTING`, drive
-> `residence.travel_consistency` to `INCONSISTENT`, and produce the trip-6 unevidenced
-> limitation. At M3B the stale-recalculation demo (§7) is a *direct edit* of trip 11's
-> return (10 → 11 May), standing in for the M4 confirm-correction.
+> depend on trip 11 being trusted. The *conflict* on trip 11 needs the evidence/extraction
+> model, which is **M4**. Crucially, at M4 trip 11's confirmed **fact** stays 10 May
+> `EXACT` (so it remains trusted and 439 / 17 do not move); the uploaded booking document
+> yields an untrusted extracted **claim** of 11 May that *conflicts with that fact*
+> (`CONFLICTING_CLAIMS`, the claims-vs-facts model), driving `residence.travel_consistency`
+> to `INCONSISTENT` and producing the trip-6 unevidenced limitation. Confirming the 11 May
+> claim then corrects the fact to 11 May → 440 / 18. At M3B the stale-recalculation demo
+> (§7) is a *direct edit* of trip 11's return (10 → 11 May), standing in for that M4
+> confirm-correction. (Note: the record's `date_confidence` never becomes `CONFLICTING` —
+> that would drop trip 11 out of the trusted union and change 439 / 17; the conflict lives
+> at the claim layer, not the fact.)
 
 Two structural features the fixture must reproduce:
 
@@ -128,7 +133,7 @@ with the M4 conflict.
 | `residence.physical_presence_start_date` | **NOT_CURRENTLY_SATISFIED** | anchor 2022-04-16 | anchor ∈ trip 1 absent set; nearest resolving date **2027-04-25** (see §8) |
 | `residence.total_absences` | **NEAR_THRESHOLD** | **439** | union of all trips within window; band 421–450; 11 days below 450 |
 | `residence.final_year_absences` | **SUPPORTED** | **17** | trips 11 (5) + 12 (12) within final year; ≤75 |
-| `residence.travel_consistency` | **SUPPORTED** (M3B) | boundary note | all trips EXACT → consistent; trip 1 covers the anchor → `NEAR_STANDARD_THRESHOLD` limitation. **M4:** trip 11 CONFLICTING → INCONSISTENT; trip 6 unevidenced → INFORMATION |
+| `residence.travel_consistency` | **SUPPORTED** (M3B) | boundary note | all trips EXACT → consistent; trip 1 covers the anchor → `NEAR_STANDARD_THRESHOLD` limitation. **M4:** the 11 May claim conflicts with trip 11's confirmed fact → INCONSISTENT; trip 6 unevidenced → INFORMATION |
 | `knowledge.life_in_uk` | **SUPPORTED** | ref present | LIUK recorded with reference value |
 | `knowledge.english_language` | **SUPPORTED** | B1, valid | SELT B1, taken 2026-01-10, valid to 2028-01-10; app before expiry−30d |
 | `referees.first` | **SUPPORTED** | complete | all fields, ≥3y, no disqualifier |
@@ -160,10 +165,10 @@ Band [RULES_SPEC §7.6]: 421–450 → NEAR_THRESHOLD, 11 days below the 450 lim
 
 The sensitivity rule `[RULES_SPEC §6.2]` does not downgrade here: at M3B every trip
 is CONFIRMED + EXACT, so the provisional total equals the trusted total and the
-machinery has nothing to act on. (At M4, once trip 11's competing 11 May value makes
-it uncertain, the provisional final-year count would be 18 against a trusted 17 — both
-in the SUPPORTED band, so the sensitivity machinery would run without firing, the
-common case it exists to handle.)
+machinery has nothing to act on. (At M4, trip 11's confirmed fact stays 10 May and
+trusted, so the trusted final-year count is 17; the untrusted 11 May *claim* would put
+the provisional count at 18 — both in the SUPPORTED band, so the sensitivity machinery
+would run without firing, the common case it exists to handle.)
 
 ---
 
