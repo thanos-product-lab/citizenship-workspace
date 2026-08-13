@@ -111,3 +111,24 @@ def test_unconfirmed_trip_is_excluded_from_the_trusted_total(api: Api) -> None:
         link for link in total["input_links"] if link["input_kind"] == "TRAVEL_RECORD_VERSION"
     ]
     assert len(travel_links) == 2
+
+
+def test_conflicting_trip_makes_travel_consistency_inconsistent(api: Api) -> None:
+    case_id = _case_with_date(api, "user_a")
+    _add_trip(
+        api,
+        "user_a",
+        case_id,
+        departure="2023-01-01",
+        return_="2023-01-22",
+        confidence="CONFLICTING",
+    )
+    api("user_a").post(f"/api/v1/cases/{case_id}/assessments/recalculate")
+
+    consistency = _detail(api, "user_a", case_id, "residence.travel_consistency")
+    assert consistency["conclusion"] == "INCONSISTENT"
+    assert consistency["summary_code"] == "TRAVEL_RECORDS_CONFLICT"
+
+    # status.holding_period is now wired and reads SUPPORTED for a long-held ILR.
+    status = _detail(api, "user_a", case_id, "status.holding_period")
+    assert status["conclusion"] == "SUPPORTED"

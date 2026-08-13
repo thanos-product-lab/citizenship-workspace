@@ -62,7 +62,7 @@ def test_recalculate_persists_current_route_results(api: Api) -> None:
     assert resp.status_code == 200
     body = resp.json()
     assert body["mode"] == "TRUSTED"
-    assert body["result_count"] == 7  # three route + four residence rules
+    assert body["result_count"] == 9  # three route + status + five residence rules
 
     rows = _by_key(body["requirements"])
     assert len(rows) == 15  # the whole catalogue is projected, assessed or not
@@ -72,9 +72,10 @@ def test_recalculate_persists_current_route_results(api: Api) -> None:
     # With no trips, the residence totals are zero → SUPPORTED and CURRENT.
     assert rows["residence.total_absences"]["conclusion"] == "SUPPORTED"
     assert rows["residence.total_absences"]["currency"] == "CURRENT"
+    assert rows["status.holding_period"]["conclusion"] == "SUPPORTED"
     # A requirement whose evaluator does not exist yet is NOT_YET_ASSESSED, currency null.
-    assert rows["status.holding_period"]["conclusion"] == "NOT_YET_ASSESSED"
-    assert rows["status.holding_period"]["currency"] is None
+    assert rows["knowledge.life_in_uk"]["conclusion"] == "NOT_YET_ASSESSED"
+    assert rows["knowledge.life_in_uk"]["currency"] is None
 
 
 def test_requirements_are_not_yet_assessed_before_a_run(api: Api) -> None:
@@ -157,8 +158,8 @@ def test_recalculation_supersedes_and_keeps_one_current(api: Api, db_session: Se
         .select_from(AssessmentResult)
         .where(AssessmentResult.currency == Currency.SUPERSEDED.value)
     )
-    assert current == 7  # one CURRENT per assessed requirement (3 route + 4 residence)
-    assert superseded == 7  # the first run's seven, now superseded
+    assert current == 9  # one CURRENT per assessed requirement (3 route + status + 5 residence)
+    assert superseded == 9  # the first run's nine, now superseded
 
 
 def test_requirements_are_not_visible_to_another_user(api: Api) -> None:

@@ -41,6 +41,7 @@ from app.requirements.evaluation import (
     TripInput,
     evaluate_residence_requirements,
     evaluate_route_requirements,
+    evaluate_status_holding_period,
 )
 from app.requirements.models import RequirementDefinition
 from app.residence.domain import (
@@ -77,6 +78,7 @@ def recalculate(
     route_inputs = RouteAssessmentInputs(
         date_of_birth=profile_version.date_of_birth,
         status_type=profile_version.status_type,
+        status_granted_on=profile_version.status_granted_on,
         married_to_british_citizen=profile_version.married_to_british_citizen,
         may_already_be_british=profile_version.may_already_be_british,
         application_date=date_version.application_date,
@@ -90,6 +92,7 @@ def recalculate(
     )
     evaluated = [
         *evaluate_route_requirements(route_inputs),
+        evaluate_status_holding_period(route_inputs),
         *evaluate_residence_requirements(residence_inputs),
     ]
 
@@ -243,6 +246,7 @@ def _gather_trips(session: Session, case_id: uuid.UUID) -> tuple[TripInput, ...]
                 version.review_state == TravelReviewState.CONFIRMED.value
                 and version.date_confidence == DateConfidence.EXACT.value
             ),
+            date_confidence=version.date_confidence,
         )
         for _record, version in records
     )

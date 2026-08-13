@@ -567,7 +567,17 @@ Detections, each raising a typed issue:
 | uncertain dates present | `INCOMPLETE` |
 
 Summary codes: `TRAVEL_RECORDS_CONSISTENT`, `TRAVEL_RECORDS_OVERLAP`,
-`TRAVEL_RECORDS_UNCERTAIN`, `TRAVEL_RECORDS_UNEVIDENCED`.
+`TRAVEL_RECORDS_CONFLICT` (a `CONFLICTING` date confidence, distinct from a set overlap),
+`TRAVEL_RECORDS_UNCERTAIN`, `TRAVEL_RECORDS_UNEVIDENCED`. Detection limitation codes:
+`CONFLICTING_SOURCE_DATES`, `OVERLAPPING_TRAVEL`, `UNCERTAIN_TRAVEL_DATE`,
+`NEAR_STANDARD_THRESHOLD` (boundary-critical), `TRAVEL_OUTSIDE_WINDOW` (`INFORMATION`).
+
+**M3B scope note [PRODUCT].** At M3B this rule detects conflicts (`CONFLICTING` confidence),
+overlaps (intersecting absent-date sets, which also catches identical-date duplicates),
+uncertain dates, boundary-critical trips, and out-of-window trips. Destination-aware
+`DUPLICATE_EVIDENCE` and the unevidenced-trip `MISSING_EVIDENCE` detection depend on the
+destination field and the evidence graph, which arrive in M4; they are deferred. This rule
+creates structured limitations, not `Issue` rows — issue derivation is M6.
 
 ---
 

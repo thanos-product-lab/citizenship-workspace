@@ -40,7 +40,14 @@ SUPPORTED_ANSWERS = {
     "married_to_british_citizen": False,
     "may_already_be_british": False,
 }
-ROUTE_KEYS = ("route.adult_applicant", "route.supported_status", "route.standard_section_6_1")
+# Rules with only scalar (ANY_CURRENT_VERSION) dependencies, so links == declared deps as a
+# strict (kind, input_key) set. status.holding_period joins the three route rules here.
+ROUTE_KEYS = (
+    "route.adult_applicant",
+    "route.supported_status",
+    "route.standard_section_6_1",
+    "status.holding_period",
+)
 
 # A rule's declared dependency kind → the version-link kind a result records for it.
 _DEPENDENCY_TO_LINK = {

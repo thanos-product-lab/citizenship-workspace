@@ -25,6 +25,10 @@ FINAL_YEAR_YEARS = 1
 PRESENCE_SEARCH_HORIZON_DAYS = 90
 TOTAL_ABSENCE_THRESHOLD_DAYS = 450
 FINAL_YEAR_ABSENCE_THRESHOLD_DAYS = 90
+# The 7-day caution band on the holding period (RULES_SPEC §7.3): guidance does not state
+# the boundary to the day, and the application-received date is not fully in the applicant's
+# control, so the product surfaces a narrow margin rather than asserting a same-day pass.
+STATUS_HOLDING_NARROW_MARGIN_DAYS = 7
 
 
 def subtract_years(anchor: date, years: int) -> date:

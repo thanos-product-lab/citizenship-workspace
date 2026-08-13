@@ -15,7 +15,7 @@ records and writes `AssessmentResult` rows — nothing else records a route conc
 import uuid
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, timedelta
 from enum import StrEnum
 
 from app.requirements.domain import Conclusion
@@ -27,10 +27,13 @@ from app.requirements.route_rules import (
 )
 from app.requirements.rules_core import (
     FINAL_YEAR_ABSENCE_THRESHOLD_DAYS,
+    STATUS_HOLDING_NARROW_MARGIN_DAYS,
     TOTAL_ABSENCE_THRESHOLD_DAYS,
     Band,
     Window,
     absence_union,
+    absent_dates,
+    add_years,
     band_final_year_absences,
     band_total_absences,
     count_in_window,
@@ -41,24 +44,30 @@ from app.requirements.rules_core import (
     resolve_presence_date,
 )
 
-# Residence requirement keys whose evaluators exist as of slice 2.
+# The holding-period requirement key (ROUTE_AND_STATUS group, but its own rule).
+KEY_STATUS_HOLDING = "status.holding_period"
+
+# Residence requirement keys whose evaluators exist.
 KEY_QUALIFYING_PERIOD = "residence.qualifying_period"
 KEY_PHYSICAL_PRESENCE = "residence.physical_presence_start_date"
 KEY_TOTAL_ABSENCES = "residence.total_absences"
 KEY_FINAL_YEAR_ABSENCES = "residence.final_year_absences"
+KEY_TRAVEL_CONSISTENCY = "residence.travel_consistency"
 
 # Requirement keys whose evaluators exist. GET /requirements reports every catalogued
 # requirement; those not in this set have no trusted result yet and read as
-# NOT_YET_ASSESSED. status/knowledge/referee/character keys join as their evaluators land.
+# NOT_YET_ASSESSED. knowledge/referee/character keys join as their evaluators land.
 ROUTE_REQUIREMENT_KEYS: tuple[str, ...] = (KEY_ADULT, KEY_STATUS, KEY_STANDARD)
+STATUS_REQUIREMENT_KEYS: tuple[str, ...] = (KEY_STATUS_HOLDING,)
 RESIDENCE_REQUIREMENT_KEYS: tuple[str, ...] = (
     KEY_QUALIFYING_PERIOD,
     KEY_PHYSICAL_PRESENCE,
     KEY_TOTAL_ABSENCES,
     KEY_FINAL_YEAR_ABSENCES,
+    KEY_TRAVEL_CONSISTENCY,
 )
 IN_SCOPE_REQUIREMENT_KEYS: frozenset[str] = frozenset(
-    ROUTE_REQUIREMENT_KEYS + RESIDENCE_REQUIREMENT_KEYS
+    ROUTE_REQUIREMENT_KEYS + STATUS_REQUIREMENT_KEYS + RESIDENCE_REQUIREMENT_KEYS
 )
 
 
@@ -159,6 +168,7 @@ class RouteAssessmentInputs:
 
     date_of_birth: date | None
     status_type: str | None
+    status_granted_on: date | None
     married_to_british_citizen: bool | None
     may_already_be_british: bool | None
     application_date: date
@@ -240,21 +250,85 @@ def evaluate_route_requirements(inputs: RouteAssessmentInputs) -> list[Evaluated
     ]
 
 
-# --- residence evaluators (RULES_SPEC §7.4-7.7) -----------------------------
+def evaluate_status_holding_period(inputs: RouteAssessmentInputs) -> EvaluatedResult:
+    """§7.3. Free from immigration time restrictions for the 12 months before applying:
+    earliest application date = status granted + 1 year. A 7-day caution band sits above it
+    (guidance is not to-the-day and the received date is not fully controllable)."""
+    links = (
+        InputLinkSpec(
+            LinkInputKind.ROUTE_PROFILE_VERSION,
+            inputs.route_profile_version_id,
+            input_key="status_granted_on",
+        ),
+        InputLinkSpec(LinkInputKind.APPLICATION_DATE_VERSION, inputs.application_date_version_id),
+    )
+    if inputs.status_granted_on is None:
+        return EvaluatedResult(
+            KEY_STATUS_HOLDING, Conclusion.INCOMPLETE.value, None, input_links=links
+        )
+
+    earliest = add_years(inputs.status_granted_on, 1)
+    params: dict[str, object] = {"earliest_application_date": earliest.isoformat()}
+    narrow_until = earliest + timedelta(days=STATUS_HOLDING_NARROW_MARGIN_DAYS)
+
+    if inputs.application_date >= narrow_until:
+        return EvaluatedResult(
+            KEY_STATUS_HOLDING,
+            Conclusion.SUPPORTED.value,
+            "STATUS_PERIOD_SATISFIED",
+            summary_parameters=params,
+            input_links=links,
+        )
+    if inputs.application_date >= earliest:
+        limitation = Limitation(
+            code="STATUS_PERIOD_NARROW_MARGIN",
+            severity=LimitationSeverity.CAUTION,
+            message_parameters=dict(params),
+        )
+        return EvaluatedResult(
+            KEY_STATUS_HOLDING,
+            Conclusion.SUPPORTED.value,
+            "STATUS_PERIOD_NARROW_MARGIN",
+            summary_parameters=params,
+            input_links=links,
+            limitations=(limitation,),
+        )
+    # Applied before the holding period is met — return the earliest date as a next action.
+    return EvaluatedResult(
+        KEY_STATUS_HOLDING,
+        Conclusion.NOT_CURRENTLY_SATISFIED.value,
+        "STATUS_PERIOD_NOT_YET_MET",
+        summary_parameters=params,
+        input_links=links,
+        next_actions=(
+            NextAction(
+                code="SELECT_APPLICATION_DATE",
+                label_parameters=dict(params),
+                priority=1,
+                blocking=True,
+            ),
+        ),
+    )
+
+
+# --- residence evaluators (RULES_SPEC §7.4-7.8) -----------------------------
 
 _SATISFIED_OR_NEAR = frozenset({Conclusion.SUPPORTED, Conclusion.NEAR_THRESHOLD})
 _UNCONFIRMED_LIMITATION = "UNCONFIRMED_RECORDS_AFFECT_CONCLUSION"
+_UNCERTAIN_CONFIDENCES = frozenset({"ESTIMATED", "UNKNOWN"})
 
 
 @dataclass(frozen=True)
 class TripInput:
     """One active travel record, flattened. `is_trusted` is the §6.1 gate — ACTIVE and
-    CONFIRMED and EXACT — decided by the service; the evaluator never re-derives trust."""
+    CONFIRMED and EXACT — decided by the service; the evaluator never re-derives trust.
+    `date_confidence` is carried raw for the data-quality (travel-consistency) rule."""
 
     departure_date: date
     return_date: date
     travel_record_version_id: uuid.UUID
     is_trusted: bool
+    date_confidence: str = "EXACT"
 
 
 @dataclass(frozen=True)
@@ -444,8 +518,111 @@ def _evaluate_absence_total(
     )
 
 
+def _evaluate_travel_consistency(inputs: ResidenceAssessmentInputs) -> EvaluatedResult:
+    """§7.8. A data-quality rule: it produces no eligibility conclusion of its own, only a
+    consistency verdict over the travel records, so problems that would silently distort the
+    totals are surfaced. Detections are structured limitations; conflicts/overlaps →
+    INCONSISTENT, uncertain dates → INCOMPLETE, else SUPPORTED.
+
+    Destination-aware duplicate detection (DUPLICATE_EVIDENCE) and unevidenced-trip detection
+    (MISSING_EVIDENCE) need the destination and the evidence graph, which arrive in M4;
+    absent-set overlap already catches identical-date trips here."""
+    trips = inputs.trips
+    anchor = physical_presence_date(inputs.application_date)
+    qwindow = qualifying_window(inputs.application_date)
+    absents = {
+        t.travel_record_version_id: absent_dates(t.departure_date, t.return_date) for t in trips
+    }
+    limitations: list[Limitation] = []
+
+    conflicting = [t for t in trips if t.date_confidence == "CONFLICTING"]
+    if conflicting:
+        limitations.append(
+            Limitation(
+                "CONFLICTING_SOURCE_DATES",
+                LimitationSeverity.REVIEW_REQUIRED,
+                affected_input_ids=tuple(str(t.travel_record_version_id) for t in conflicting),
+            )
+        )
+
+    overlapping: set[uuid.UUID] = set()
+    ids = list(absents)
+    for i, left in enumerate(ids):
+        for right in ids[i + 1 :]:
+            if absents[left] & absents[right]:
+                overlapping.update((left, right))
+    if overlapping:
+        limitations.append(
+            Limitation(
+                "OVERLAPPING_TRAVEL",
+                LimitationSeverity.REVIEW_REQUIRED,
+                affected_input_ids=tuple(sorted(str(i) for i in overlapping)),
+            )
+        )
+
+    uncertain = [
+        t
+        for t in trips
+        if t.date_confidence in _UNCERTAIN_CONFIDENCES
+        and any(qwindow.contains(d) for d in absents[t.travel_record_version_id])
+    ]
+    if uncertain:
+        limitations.append(
+            Limitation(
+                "UNCERTAIN_TRAVEL_DATE",
+                LimitationSeverity.CAUTION,
+                affected_input_ids=tuple(str(t.travel_record_version_id) for t in uncertain),
+            )
+        )
+
+    boundary = [t for t in trips if anchor in absents[t.travel_record_version_id]]
+    if boundary:
+        limitations.append(
+            Limitation(
+                "NEAR_STANDARD_THRESHOLD",
+                LimitationSeverity.CAUTION,
+                message_parameters={"physical_presence_date": anchor.isoformat()},
+                affected_input_ids=tuple(str(t.travel_record_version_id) for t in boundary),
+            )
+        )
+
+    outside = [
+        t
+        for t in trips
+        if absents[t.travel_record_version_id]
+        and not any(qwindow.contains(d) for d in absents[t.travel_record_version_id])
+    ]
+    if outside:
+        limitations.append(
+            Limitation(
+                "TRAVEL_OUTSIDE_WINDOW",
+                LimitationSeverity.INFORMATION,
+                affected_input_ids=tuple(str(t.travel_record_version_id) for t in outside),
+            )
+        )
+
+    # Precedence: a conflict or an overlap is an inconsistency; uncertain dates are
+    # incomplete; boundary/outside notes alone leave the records consistent.
+    if conflicting:
+        conclusion, code = Conclusion.INCONSISTENT, "TRAVEL_RECORDS_CONFLICT"
+    elif overlapping:
+        conclusion, code = Conclusion.INCONSISTENT, "TRAVEL_RECORDS_OVERLAP"
+    elif uncertain:
+        conclusion, code = Conclusion.INCOMPLETE, "TRAVEL_RECORDS_UNCERTAIN"
+    else:
+        conclusion, code = Conclusion.SUPPORTED, "TRAVEL_RECORDS_CONSISTENT"
+
+    return EvaluatedResult(
+        requirement_key=KEY_TRAVEL_CONSISTENCY,
+        conclusion=conclusion.value,
+        summary_code=code,
+        input_links=(_app_date_link(inputs), *_travel_links(inputs.trips)),
+        limitations=tuple(limitations),
+    )
+
+
 def evaluate_residence_requirements(inputs: ResidenceAssessmentInputs) -> list[EvaluatedResult]:
-    """Evaluate the four residence rules over the case's application date and travel records.
+    """Evaluate the five residence rules over the case's application date and travel records.
     Trusted totals use only §6.1-gated trips; provisional totals include every active trip."""
     return [
         _evaluate_qualifying_period(inputs),
@@ -466,4 +643,5 @@ def evaluate_residence_requirements(inputs: ResidenceAssessmentInputs) -> list[E
             capped_summary_code="FINAL_YEAR_UNCONFIRMED_REVIEW",
             threshold=FINAL_YEAR_ABSENCE_THRESHOLD_DAYS,
         ),
+        _evaluate_travel_consistency(inputs),
     ]

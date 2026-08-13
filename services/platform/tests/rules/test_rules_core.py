@@ -79,7 +79,7 @@ def test_add_years_clamps_only_leap_day() -> None:
 def test_add_years_preserves_month_day_except_leap(anchor: date, years: int) -> None:
     result = add_years(anchor, years)
     assert result.year == anchor.year + years
-    if (anchor.month, anchor.day) == (2, 29):
+    if (anchor.month, anchor.day) == (2, 29) and not _is_leap(anchor.year + years):
         assert (result.month, result.day) == (2, 28)
     else:
         assert (result.month, result.day) == (anchor.month, anchor.day)
@@ -95,12 +95,17 @@ def test_window_start_matches_independent_formula(application_date: date) -> Non
     assert window(application_date, 5).start == expected + timedelta(days=1)
 
 
+def _is_leap(year: int) -> bool:
+    return year % 4 == 0 and (year % 100 != 0 or year % 400 == 0)
+
+
 @given(_DATES, st.integers(min_value=0, max_value=8))
 @pytest.mark.property
 def test_subtract_years_preserves_month_day_except_leap(anchor: date, years: int) -> None:
     result = subtract_years(anchor, years)
     assert result.year == anchor.year - years
-    if (anchor.month, anchor.day) == (2, 29):
+    # 29 Feb clamps to 28 Feb only when the *target* year is not itself a leap year.
+    if (anchor.month, anchor.day) == (2, 29) and not _is_leap(anchor.year - years):
         assert (result.month, result.day) == (2, 28)
     else:
         assert (result.month, result.day) == (anchor.month, anchor.day)
