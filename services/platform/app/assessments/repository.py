@@ -141,11 +141,13 @@ class AssessmentRepository:
         return [result.id for result in results]
 
     @staticmethod
-    def list_requirements_with_current(
+    def list_requirements_with_active_result(
         session: Session, case_id: uuid.UUID
     ) -> list[tuple[RequirementDefinition, AssessmentResult | None]]:
-        """Every catalogued requirement with its current result, or None where none exists
-        yet — the shape the requirements list projection needs, in display order."""
+        """Every catalogued requirement with its displayed result — the non-superseded one,
+        CURRENT or STALE — or None where none exists yet, in display order. A STALE result is
+        shown (with its conclusion) so the user sees the last conclusion flagged for recalc
+        (Domain §41.4), never silently hidden."""
         stmt = (
             select(RequirementDefinition, AssessmentResult)
             .outerjoin(
@@ -153,7 +155,7 @@ class AssessmentRepository:
                 and_(
                     AssessmentResult.requirement_id == RequirementDefinition.id,
                     AssessmentResult.case_id == case_id,
-                    AssessmentResult.currency == Currency.CURRENT.value,
+                    AssessmentResult.currency.in_(_SUPERSEDABLE),
                 ),
             )
             .order_by(RequirementDefinition.display_order)

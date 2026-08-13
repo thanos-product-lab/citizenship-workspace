@@ -128,7 +128,7 @@ def recalculate(
     return RecalculationOutcome(
         run=run,
         result_count=len(evaluated),
-        requirements=AssessmentRepository.list_requirements_with_current(session, case.id),
+        requirements=AssessmentRepository.list_requirements_with_active_result(session, case.id),
     )
 
 
@@ -136,7 +136,7 @@ def list_requirements(
     session: Session, *, case: ApplicationCase
 ) -> list[tuple[RequirementDefinition, AssessmentResult | None]]:
     """Every catalogued requirement with its current result (or None), in display order."""
-    return AssessmentRepository.list_requirements_with_current(session, case.id)
+    return AssessmentRepository.list_requirements_with_active_result(session, case.id)
 
 
 @dataclass(frozen=True)
@@ -156,7 +156,8 @@ def get_requirement_detail(
     definition = RequirementCatalogRepository.get_definition_by_key(session, requirement_key)
     if definition is None:
         return None
-    current = AssessmentRepository.get_current_for_requirement(session, case.id, definition.id)
+    # The displayed result is the non-superseded one — CURRENT, or STALE after an input change.
+    current = AssessmentRepository.get_supersedable_for_requirement(session, case.id, definition.id)
     input_links = (
         AssessmentRepository.list_input_links(session, current.id) if current is not None else []
     )

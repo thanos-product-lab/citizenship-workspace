@@ -19,6 +19,7 @@ from datetime import date
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
 
+from app.assessments.invalidation import StaleReason, invalidate_residence_results
 from app.auth.schemas import CurrentUser
 from app.cases import service as cases_service
 from app.cases.domain import ApplicationCase, LifecycleStatus
@@ -133,6 +134,11 @@ def select_application_date(
         action="residence.application_date_selected",
         target_type="ProposedApplicationDateVersion",
         target_id=version.id,
+    )
+    # Blunt stale propagation in the same transaction (§41.2): the date drives every residence
+    # rule, so any current residence result is now stale. No-op on the first selection.
+    invalidate_residence_results(
+        session, uow, case_id=case.id, reason_code=StaleReason.APPLICATION_DATE_CHANGED
     )
     uow.commit()
     session.refresh(root)
@@ -350,6 +356,9 @@ def import_travel_records(
             target_id=version.id,
         )
         outcomes.append(TravelRecordOutcome(record=record, version=version))
+    invalidate_residence_results(
+        session, uow, case_id=case.id, reason_code=StaleReason.TRAVEL_RECORD_CHANGED
+    )
     uow.commit()
     for outcome in outcomes:
         session.refresh(outcome.record)
@@ -399,6 +408,10 @@ def _emit_travel(
         action=action,
         target_type="TravelRecord",
         target_id=target_id,
+    )
+    # Any travel change restales the current residence results in the same transaction (§41.2).
+    invalidate_residence_results(
+        session, uow, case_id=case_id, reason_code=StaleReason.TRAVEL_RECORD_CHANGED
     )
     uow.commit()
 
