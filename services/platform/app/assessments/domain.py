@@ -154,10 +154,20 @@ class AssessmentResult(Base):
         )
 
     def supersede(self, *, by_result_id: uuid.UUID) -> None:
-        """CURRENT → SUPERSEDED, pointing at the result that replaces it. A conclusion is
-        never edited; supersession only changes currency and the forward pointer."""
+        """CURRENT/STALE → SUPERSEDED, pointing at the result that replaces it. A conclusion
+        is never edited; supersession only changes currency and the forward pointer."""
         self.currency = Currency.SUPERSEDED.value
         self.superseded_by_result_id = by_result_id
+
+    def mark_stale(self, *, reason_code: str, at: datetime) -> None:
+        """CURRENT → STALE: the conclusion still stands but an input changed under it, so it
+        must be recalculated. Conclusion is untouched (conclusion ⟂ currency, ADR-0001); only
+        an already-superseded result is refused, since staling it would rewrite history."""
+        if self.currency == Currency.SUPERSEDED.value:
+            raise ValueError("cannot mark a superseded result stale")
+        self.currency = Currency.STALE.value
+        self.marked_stale_at = at
+        self.stale_reason_code = reason_code
 
 
 class AssessmentInputLink(Base):
@@ -190,4 +200,23 @@ class AssessmentRunCompleted(DomainEvent):
             "trigger_type": self.trigger_type,
             "mode": self.mode,
             "result_count": self.result_count,
+        }
+
+
+@dataclass(frozen=True)
+class AssessmentInvalidated(DomainEvent):
+    """Current results were marked STALE because an input changed under them (Domain §41.2).
+    Structural only: the reason code and how many results, never a conclusion."""
+
+    reason_code: str
+    affected_count: int
+
+    aggregate_type: ClassVar[str] = "ApplicationCase"
+    event_type: ClassVar[str] = "AssessmentInvalidated"
+
+    def payload(self) -> dict[str, Any]:
+        return {
+            "case_id": str(self.aggregate_id),
+            "reason_code": self.reason_code,
+            "affected_count": self.affected_count,
         }

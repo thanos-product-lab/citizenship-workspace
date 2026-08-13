@@ -198,7 +198,9 @@ def _persist_result(
         raise RuntimeError(f"no active rule version for {evaluation.requirement_key!r}")
 
     result_id = uuid.uuid4()
-    prior = AssessmentRepository.get_current_for_requirement(session, case_id, definition.id)
+    # Supersede the prior non-superseded result whether it is CURRENT or STALE — a recalc after
+    # an input change must retire the stale result, not leave it beside the new current one.
+    prior = AssessmentRepository.get_supersedable_for_requirement(session, case_id, definition.id)
     if prior is not None:
         prior.supersede(by_result_id=result_id)
         session.flush()
