@@ -81,8 +81,17 @@ count falling **inside the qualifying window** (16 Apr 2022 – 15 Apr 2027).
 | 8 | Italy | 2025-05-04 | 2025-06-25 | 51 | booking | EXACT |
 | 9 | Canada | 2025-09-01 | 2025-10-28 | 56 | booking | EXACT |
 | 10 | Spain | 2026-02-01 | 2026-03-25 | 51 | booking | EXACT |
-| 11 | Italy (final-year) | 2026-05-04 | 2026-05-10 / **11** | 5 | booking | **CONFLICTING** |
+| 11 | Italy (final-year) | 2026-05-04 | 2026-05-10 | 5 | booking | EXACT |
 | 12 | United States (final-year) | 2026-05-16 | 2026-05-29 | 12 | booking | EXACT |
+
+> **M3B / M4 staging.** At M3B every trip seeds as `CONFIRMED + EXACT` — the §6.1
+> trust gate admits only exact records, and the headline totals (439, final-year 17)
+> depend on trip 11 being trusted. The *conflict* on trip 11 (a spreadsheet return of
+> 10 May vs an uploaded booking document of 11 May) needs the evidence/extraction
+> model, which is **M4**; only then does trip 11 become `CONFLICTING`, drive
+> `residence.travel_consistency` to `INCONSISTENT`, and produce the trip-6 unevidenced
+> limitation. At M3B the stale-recalculation demo (§7) is a *direct edit* of trip 11's
+> return (10 → 11 May), standing in for the M4 confirm-correction.
 
 Two structural features the fixture must reproduce:
 
@@ -92,17 +101,22 @@ Two structural features the fixture must reproduce:
   the trip's full absent span is 15–25 Apr (11 days), but only 16–25 Apr (10
   days) fall inside the qualifying window, because 15 Apr is before the window
   starts. The seed must store the true trip and let the rule clip.
-- **Trip 11 is the conflict.** The travel spreadsheet says the return was 10 May
-  2026; an uploaded booking document says 11 May. This is `date_confidence =
-  CONFLICTING` and is the seed of the stale-recalculation demo (§7).
+- **Trip 11 carries the eventual conflict.** At M3B it is a plain EXACT record
+  returning 10 May 2026. The competing document value (11 May) and the resulting
+  `CONFLICTING` state are introduced at M4; trip 11 is the seed of the
+  stale-recalculation demo (§7) either way.
 
 ---
 
 ## 5. Expected assessment outputs  `[per requirement, RULES_SPEC §7]`
 
 These are the trusted-mode conclusions for the **initial** application date
-(15 Apr 2027), with trip 11's return taken as the spreadsheet value (10 May 2026)
-before the conflict is resolved.
+(15 Apr 2027), with trip 11's return at its M3B seed value (10 May 2026). The rows
+for `knowledge.*`, `referees.*`, `character.review`, and `preparation.case_complete`
+are shown for completeness but are **M4+** — their input records do not exist at M3B,
+so they read `NOT_YET_ASSESSED` here. The `travel_consistency` row reflects the M3B
+staging (§4): trip 11 is EXACT, so it is `SUPPORTED`; the `INCONSISTENT` state arrives
+with the M4 conflict.
 
 | Requirement | Conclusion | Key figure | Working |
 |---|---|---|---|
@@ -114,7 +128,7 @@ before the conflict is resolved.
 | `residence.physical_presence_start_date` | **NOT_CURRENTLY_SATISFIED** | anchor 2022-04-16 | anchor ∈ trip 1 absent set; nearest resolving date **2027-04-25** (see §8) |
 | `residence.total_absences` | **NEAR_THRESHOLD** | **439** | union of all trips within window; band 421–450; 11 days below 450 |
 | `residence.final_year_absences` | **SUPPORTED** | **17** | trips 11 (5) + 12 (12) within final year; ≤75 |
-| `residence.travel_consistency` | **INCONSISTENT** | 1 conflict | trip 11 CONFLICTING → INCONSISTENT; trip 6 unevidenced → INFORMATION limitation |
+| `residence.travel_consistency` | **SUPPORTED** (M3B) | boundary note | all trips EXACT → consistent; trip 1 covers the anchor → `NEAR_STANDARD_THRESHOLD` limitation. **M4:** trip 11 CONFLICTING → INCONSISTENT; trip 6 unevidenced → INFORMATION |
 | `knowledge.life_in_uk` | **SUPPORTED** | ref present | LIUK recorded with reference value |
 | `knowledge.english_language` | **SUPPORTED** | B1, valid | SELT B1, taken 2026-01-10, valid to 2028-01-10; app before expiry−30d |
 | `referees.first` | **SUPPORTED** | complete | all fields, ≥3y, no disqualifier |
@@ -144,11 +158,12 @@ Trip contributions within 16 Apr 2022 – 15 Apr 2027 (endpoint-exclusive):
 Band [RULES_SPEC §7.6]: 421–450 → NEAR_THRESHOLD, 11 days below the 450 limit.
 ```
 
-The sensitivity rule `[RULES_SPEC §6.2]` does not downgrade here, because every
-trip is CONFIRMED + EXACT except trip 11. Trip 11's uncertainty affects the
-final-year count by at most one day (17→18), which stays within the SUPPORTED
-band — so no conclusion changes. This is deliberate: the fixture shows the
-sensitivity machinery running without firing, which is the common case.
+The sensitivity rule `[RULES_SPEC §6.2]` does not downgrade here: at M3B every trip
+is CONFIRMED + EXACT, so the provisional total equals the trusted total and the
+machinery has nothing to act on. (At M4, once trip 11's competing 11 May value makes
+it uncertain, the provisional final-year count would be 18 against a trusted 17 — both
+in the SUPPORTED band, so the sensitivity machinery would run without firing, the
+common case it exists to handle.)
 
 ---
 
@@ -160,23 +175,28 @@ The fixture must produce, and the demo must show, at least one of each:
 |---|---|
 | Supported | most requirements |
 | Near threshold | `residence.total_absences` (439) |
-| Inconsistent | `residence.travel_consistency` (trip 11 conflict) |
-| Incomplete | `referees.second` (missing) |
+| Inconsistent | `residence.travel_consistency` (trip 11 conflict) — **M4** |
+| Incomplete | `referees.second` (missing) — **M4**; at M3B, any requirement whose input record does not exist yet reads `NOT_YET_ASSESSED` |
 | Not currently satisfied | `residence.physical_presence_start_date` (initial date) |
-| Stale (currency) | any residence result after trip 11 is resolved (§7) |
+| Stale (currency) | any residence result after a residence input changes (§7) |
 | Final resolved state | after §7 + §8 |
+
+At M3B the fixture produces Supported, Near threshold, Not currently satisfied, and
+Stale. Inconsistent and the referee-driven Incomplete require M4 input models.
 
 ---
 
 ## 7. The stale transition  `[demo-critical]`
 
-The scripted sequence that proves immutable-assessment + stale-recalculation:
+The scripted sequence that proves immutable-assessment + stale-recalculation. **At
+M3B** it runs as a direct edit of trip 11 (steps 2–3 collapse into one edit); the
+document-upload / extraction / confirm-correction framing is the **M4** version.
 
 ```
-1. Initial state: trip 11 return = 10 May 2026 (spreadsheet), CONFLICTING.
+1. Initial state: trip 11 return = 10 May 2026, EXACT.
    total_absences = 439 (NEAR_THRESHOLD), CURRENT.
-2. User uploads the booking document; extraction proposes return = 11 May 2026.
-3. User CONFIRMS 11 May (resolving the conflict via correction).
+2. (M4) User uploads the booking document; extraction proposes return = 11 May 2026.
+3. User edits (M3B) / CONFIRMS the correction (M4): trip 11 return = 11 May 2026.
 4. A new confirmed TravelRecordVersion is created (old version retained).
 5. Dependent residence results are marked STALE in the same transaction.
    - total_absences: conclusion still NEAR_THRESHOLD, currency now STALE.
@@ -258,15 +278,17 @@ fully prepared state.
 
 ## 10. Expected open issues
 
-At initial state, the fixture produces these issues `[DOMAIN_MODEL §36]`:
+Issues are a durable, user-actionable model owned by **M6** (Issue Detection); at M3B
+the equivalent signals are the structured limitations/next-actions on each result, and
+the transient STALE currency. The eventual issue set:
 
-| Issue type | Cause | Dismissible |
-|---|---|---|
-| `CONFLICTING_CLAIMS` | trip 11 return date 10 vs 11 May | No |
-| `MISSING_EVIDENCE` | trip 6 (Greece) unevidenced | Yes (INFORMATION) |
-| `NEAR_THRESHOLD` | total absences 439, 11 below limit | No |
-| `MISSING_REQUIRED_FACT` | second referee absent | No |
-| `STALE_ASSESSMENT` | appears transiently after §7 step 5 | No (auto-resolves) |
+| Issue type | Cause | Dismissible | Milestone |
+|---|---|---|---|
+| `CONFLICTING_CLAIMS` | trip 11 return date 10 vs 11 May | No | M4 (conflict) / M6 (issue) |
+| `MISSING_EVIDENCE` | trip 6 (Greece) unevidenced | Yes (INFORMATION) | M4 / M6 |
+| `NEAR_THRESHOLD` | total absences 439, 11 below limit | No | M6 |
+| `MISSING_REQUIRED_FACT` | second referee absent | No | M4 / M6 |
+| `STALE_ASSESSMENT` | appears transiently after §7 step 5 | No (auto-resolves) | M6 |
 
 ---
 
@@ -275,8 +297,9 @@ At initial state, the fixture produces these issues `[DOMAIN_MODEL §36]`:
 - The fixture seeds via the same command path a real user would use, not by raw
   SQL insert — this exercises the real validation and versioning, and catches
   drift between seed and product behaviour.
-- Trip 11 seeds as two competing values (spreadsheet 10 May, document 11 May) so
-  the conflict exists from the start.
+- At M3B trip 11 seeds as a single EXACT value (return 10 May 2026). Seeding the two
+  competing values (spreadsheet 10 May, document 11 May) needs the evidence model and
+  is **M4**.
 - Trip 1 seeds with its true dates (14–26 Apr 2022); the boundary clipping to 10
   counted days is the *rule's* job, never baked into the seed.
 - `SYNTHETIC_DEMO_CASE` reset is a distinct operation from user case deletion and
