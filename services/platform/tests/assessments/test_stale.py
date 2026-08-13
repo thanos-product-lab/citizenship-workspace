@@ -151,6 +151,47 @@ def test_failed_recalculation_promotes_nothing(
     assert _count(Currency.SUPERSEDED) == 0  # the failed run superseded nothing
 
 
+def test_failure_midway_through_persistence_rolls_back_fully(
+    api: Api, db_session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Guards invariant #4 across a *partial* failure: if the recalc dies after superseding some
+    # results but before finishing, the whole run rolls back — no two-current, nothing orphaned.
+    case_id = _case_with_date(api, "user_a")
+    api("user_a").post(f"/api/v1/cases/{case_id}/assessments/recalculate")
+    _add_trip(api, "user_a", case_id, "2023-06-01", "2023-07-02")  # residence → STALE
+
+    import app.assessments.service as service
+
+    real_persist = service._persist_result
+    calls = {"n": 0}
+
+    def flaky_persist(*args: object, **kwargs: object) -> None:
+        calls["n"] += 1
+        if calls["n"] >= 3:  # let two results supersede + insert, then blow up mid-loop
+            raise RuntimeError("persistence failed mid-run")
+        real_persist(*args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(service, "_persist_result", flaky_persist)
+    with pytest.raises(RuntimeError):
+        api("user_a").post(f"/api/v1/cases/{case_id}/assessments/recalculate")
+
+    # In production the failed request's session closes uncommitted, discarding the mid-loop
+    # supersede/insert writes; the shared test session models that with an explicit rollback.
+    db_session.rollback()
+
+    def _count(currency: Currency) -> int | None:
+        return db_session.scalar(
+            select(func.count())
+            .select_from(AssessmentResult)
+            .where(AssessmentResult.currency == currency.value)
+        )
+
+    # The partial supersede/insert work rolled back: back to 5 STALE + 4 CURRENT, none superseded.
+    assert _count(Currency.STALE) == 5
+    assert _count(Currency.CURRENT) == 4
+    assert _count(Currency.SUPERSEDED) == 0
+
+
 def test_selecting_a_new_date_marks_residence_stale(api: Api) -> None:
     case_id = _case_with_date(api, "user_a")
     api("user_a").post(f"/api/v1/cases/{case_id}/assessments/recalculate")

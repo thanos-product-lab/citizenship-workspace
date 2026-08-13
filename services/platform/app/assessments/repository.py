@@ -111,13 +111,17 @@ class AssessmentRepository:
     ) -> AssessmentResult | None:
         """The one non-superseded result for a requirement — CURRENT or STALE. A recalculation
         supersedes this, so a result marked STALE (input changed) is still replaced correctly
-        rather than left orphaned when the new current result is written."""
+        rather than left orphaned when the new current result is written. Ordered newest-first
+        so that if the at-most-one invariant were ever broken, the newest wins deterministically
+        rather than an arbitrary row being picked silently."""
         return session.scalar(
-            select(AssessmentResult).where(
+            select(AssessmentResult)
+            .where(
                 AssessmentResult.case_id == case_id,
                 AssessmentResult.requirement_id == requirement_id,
                 AssessmentResult.currency.in_(_SUPERSEDABLE),
             )
+            .order_by(AssessmentResult.created_at.desc())
         )
 
     @staticmethod
