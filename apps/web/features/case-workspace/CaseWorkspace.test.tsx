@@ -17,6 +17,9 @@ vi.mock("@/features/onboarding/RouteOnboarding", () => ({
 vi.mock("@/features/timeline/ResidencePanel", () => ({
   ResidencePanel: () => <div>residence stub</div>,
 }));
+vi.mock("@/features/requirements/RequirementsList", () => ({
+  RequirementsList: () => <div>requirements stub</div>,
+}));
 
 import { CaseWorkspace } from "./CaseWorkspace";
 

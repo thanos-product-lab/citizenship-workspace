@@ -11,6 +11,22 @@
  *   import "@cw/design-system/components.css";
  */
 
+/* --- Utilities ------------------------------------------------------------- */
+
+/* Visible to assistive technology, not on screen. Used for live-region announcements
+   whose visual equivalent is a badge changing in place. */
+.cw-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
 /* --- RequirementStatus: two badges, never merged --------------------------- */
 
 .cw-status-pair {

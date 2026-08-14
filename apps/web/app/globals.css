@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "@cw/design-system/components.css";
 
 /* Bridge the design-system tokens into Tailwind's theme so utilities
    (bg-bg, text-text, font-mono, …) resolve to our variables. Component-level

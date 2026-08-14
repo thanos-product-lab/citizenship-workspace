@@ -4,6 +4,7 @@ import type { components } from "@cw/api-client";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { RouteOnboarding } from "@/features/onboarding/RouteOnboarding";
+import { RequirementsList } from "@/features/requirements/RequirementsList";
 import { ResidencePanel } from "@/features/timeline/ResidencePanel";
 import { useApiClient } from "@/lib/api";
 
@@ -156,6 +157,7 @@ function WorkspaceShell({
       </div>
 
       <ResidencePanel caseId={caseData.id} />
+      <RequirementsList caseId={caseData.id} />
     </section>
   );
 }
