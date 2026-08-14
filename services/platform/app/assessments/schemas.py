@@ -7,13 +7,48 @@ from any concluded outcome.
 """
 
 import uuid
+from collections.abc import Callable
 from datetime import datetime
 
 from pydantic import BaseModel
 
 from app.assessments.domain import AssessmentInputLink, AssessmentResult, AssessmentRun
-from app.requirements.domain import Conclusion
+from app.requirements.domain import Conclusion, Currency
+from app.requirements.messages import render_stale_reason, render_summary
 from app.requirements.models import RequirementDefinition
+
+
+class RenderedMessage(BaseModel):
+    """A code, its parameters, and the deterministic plain-language rendering of the two.
+
+    All three travel together on purpose. `text` is what a user reads; `code` and
+    `parameters` are what a client keys layout off and what a reviewer checks the wording
+    against. `text` is null only when a code has no template — a packaging bug the client
+    handles by showing the structured fields rather than inventing a sentence."""
+
+    code: str
+    parameters: dict[str, object]
+    text: str | None
+
+    @classmethod
+    def build(
+        cls,
+        code: str | None,
+        parameters: dict[str, object] | None,
+        render: Callable[[str | None, dict[str, object] | None], str | None],
+    ) -> "RenderedMessage | None":
+        if code is None:
+            return None
+        return cls(code=code, parameters=dict(parameters or {}), text=render(code, parameters))
+
+
+class StaleInformation(BaseModel):
+    """Why a result is no longer current, and since when. Present only while
+    `currency == STALE` — it explains that currency, and never modifies the conclusion."""
+
+    reason_code: str | None
+    reason: str | None
+    marked_stale_at: datetime | None
 
 
 class RequirementSummary(BaseModel):
@@ -21,9 +56,14 @@ class RequirementSummary(BaseModel):
     title: str
     group_key: str
     display_order: int
+    # Two independent axes, never merged (ADR-0001). `currency` is null — not "CURRENT" —
+    # when there is no result at all, so "not looked at yet" cannot be mistaken for
+    # "looked at, and up to date".
     conclusion: str
     currency: str | None
     summary_code: str | None
+    summary: RenderedMessage | None
+    stale: StaleInformation | None
     updated_at: datetime | None
 
     @classmethod
@@ -38,8 +78,28 @@ class RequirementSummary(BaseModel):
             conclusion=result.conclusion if result else Conclusion.NOT_YET_ASSESSED.value,
             currency=result.currency if result else None,
             summary_code=result.summary_code if result else None,
+            summary=(
+                RenderedMessage.build(
+                    result.summary_code, dict(result.summary_parameters), render_summary
+                )
+                if result
+                else None
+            ),
+            stale=_stale_information(result),
             updated_at=result.created_at if result else None,
         )
+
+
+def _stale_information(result: AssessmentResult | None) -> StaleInformation | None:
+    """Only populated for a STALE result. A CURRENT result carries no stale block at all,
+    so a client cannot render a stale notice over a conclusion that is still good."""
+    if result is None or result.currency != Currency.STALE.value:
+        return None
+    return StaleInformation(
+        reason_code=result.stale_reason_code,
+        reason=render_stale_reason(result.stale_reason_code),
+        marked_stale_at=result.marked_stale_at,
+    )
 
 
 class InputLinkView(BaseModel):
@@ -66,6 +126,8 @@ class RequirementDetail(BaseModel):
     currency: str | None
     summary_code: str | None
     summary_parameters: dict[str, object]
+    summary: RenderedMessage | None
+    stale: StaleInformation | None
     calculation_breakdown: dict[str, object]
     limitations: list[dict[str, object]]
     next_actions: list[dict[str, object]]
@@ -91,6 +153,14 @@ class RequirementDetail(BaseModel):
             currency=current.currency if current else None,
             summary_code=current.summary_code if current else None,
             summary_parameters=dict(current.summary_parameters) if current else {},
+            summary=(
+                RenderedMessage.build(
+                    current.summary_code, dict(current.summary_parameters), render_summary
+                )
+                if current
+                else None
+            ),
+            stale=_stale_information(current),
             calculation_breakdown=dict(current.calculation_breakdown) if current else {},
             limitations=list(current.limitations) if current else [],
             next_actions=list(current.next_actions) if current else [],

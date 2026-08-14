@@ -55,6 +55,14 @@ def _by_key(rows: list[dict[str, object]]) -> dict[str, dict[str, object]]:
     return {str(row["requirement_key"]): row for row in rows}
 
 
+def _nested(row: dict[str, object], key: str) -> dict[str, object]:
+    """A nested response object, narrowed. Response bodies are `dict[str, object]`, so
+    reaching into `row["summary"]["text"]` is not type-safe without this."""
+    value = row[key]
+    assert isinstance(value, dict), f"expected {key} to be an object, got {value!r}"
+    return value
+
+
 def test_recalculate_persists_current_route_results(api: Api) -> None:
     case_id = _case_with_date(api, "user_a")
 
@@ -220,3 +228,96 @@ def test_a_stale_result_alone_moves_the_phase_to_resolving_issues(api: Api) -> N
 
     body = api("user_a").get(f"/api/v1/cases/{case_id}").json()
     assert body["current_phase"] == "RESOLVING_ISSUES"
+
+
+# --- rendered summaries on the projections (M4 slice 1) ---------------------
+
+
+def test_requirement_list_carries_code_parameters_and_rendered_text(api: Api) -> None:
+    """All three travel together: the code and parameters stay machine-readable, and the
+    text is rendered server-side from them so the wording is part of the contract."""
+    case_id = _case_with_date(api, "user_a")
+    api("user_a").post(f"/api/v1/cases/{case_id}/assessments/recalculate")
+
+    rows = _by_key(api("user_a").get(f"/api/v1/cases/{case_id}/requirements").json())
+    total = rows["residence.total_absences"]
+    summary = _nested(total, "summary")
+    assert summary["code"] == total["summary_code"] == "TOTAL_ABSENCES_WITHIN_THRESHOLD"
+    assert _nested(summary, "parameters")["threshold"] == 450
+    text = summary["text"]
+    assert isinstance(text, str) and "confirmed travel records" in text
+
+
+def test_an_unassessed_requirement_has_no_summary_and_no_currency(api: Api) -> None:
+    """The honest shape of "not looked at yet": NOT_YET_ASSESSED with a null currency and
+    no summary at all. A currency of CURRENT here would claim the requirement had been
+    assessed and found up to date."""
+    case_id = _case_with_date(api, "user_a")
+    api("user_a").post(f"/api/v1/cases/{case_id}/assessments/recalculate")
+
+    rows = _by_key(api("user_a").get(f"/api/v1/cases/{case_id}/requirements").json())
+    referee = rows["referees.first"]
+    assert referee["conclusion"] == "NOT_YET_ASSESSED"
+    assert referee["currency"] is None
+    assert referee["summary"] is None
+    assert referee["stale"] is None
+
+
+def test_a_current_result_carries_no_stale_block(api: Api) -> None:
+    case_id = _case_with_date(api, "user_a")
+    api("user_a").post(f"/api/v1/cases/{case_id}/assessments/recalculate")
+
+    rows = _by_key(api("user_a").get(f"/api/v1/cases/{case_id}/requirements").json())
+    assert rows["residence.total_absences"]["currency"] == "CURRENT"
+    assert rows["residence.total_absences"]["stale"] is None
+
+
+def test_a_stale_result_keeps_its_conclusion_and_explains_its_currency(api: Api) -> None:
+    """The ADR-0001 shape the UI has to render: the conclusion is untouched, the currency
+    says STALE, and the stale block explains why — three separate signals, never merged."""
+    case_id = _case_with_date(api, "user_a")
+    api("user_a").post(f"/api/v1/cases/{case_id}/assessments/recalculate")
+    before = _by_key(api("user_a").get(f"/api/v1/cases/{case_id}/requirements").json())
+    conclusion_before = before["residence.total_absences"]["conclusion"]
+
+    current = api("user_a").get(f"/api/v1/cases/{case_id}/application-dates").json()
+    api("user_a").post(
+        f"/api/v1/cases/{case_id}/application-dates/select",
+        json={"application_date": "2027-05-20", "expected_revision": current["revision"]},
+    )
+
+    row = _by_key(api("user_a").get(f"/api/v1/cases/{case_id}/requirements").json())[
+        "residence.total_absences"
+    ]
+    assert row["conclusion"] == conclusion_before  # the conclusion is never rewritten
+    assert row["currency"] == "STALE"
+    stale = _nested(row, "stale")
+    assert stale["reason_code"] == "APPLICATION_DATE_CHANGED"
+    assert stale["reason"] == "Your proposed application date changed after this was worked out."
+    assert stale["marked_stale_at"] is not None
+    # The summary still describes the conclusion that was reached; staleness is separate.
+    assert _nested(row, "summary")["text"]
+
+
+def test_requirement_detail_renders_the_same_summary_as_the_list(api: Api) -> None:
+    """Two projections of one result must not disagree about what it says."""
+    case_id = _case_with_date(api, "user_a")
+    api("user_a").post(f"/api/v1/cases/{case_id}/assessments/recalculate")
+
+    listed = _by_key(api("user_a").get(f"/api/v1/cases/{case_id}/requirements").json())
+    detail = (
+        api("user_a").get(f"/api/v1/cases/{case_id}/requirements/residence.total_absences").json()
+    )
+    assert detail["summary"] == listed["residence.total_absences"]["summary"]
+
+
+def test_every_assessed_requirement_renders_some_text(api: Api) -> None:
+    """A null `text` on a result that has a summary code means a missing template shipped."""
+    case_id = _case_with_date(api, "user_a")
+    api("user_a").post(f"/api/v1/cases/{case_id}/assessments/recalculate")
+
+    for row in api("user_a").get(f"/api/v1/cases/{case_id}/requirements").json():
+        if row["summary"] is None:
+            continue
+        summary = _nested(row, "summary")
+        assert summary["text"], f"{row['requirement_key']} has no rendered text"

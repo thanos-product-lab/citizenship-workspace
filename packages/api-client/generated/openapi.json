@@ -497,6 +497,38 @@
         "title": "RecalculateResponse",
         "type": "object"
       },
+      "RenderedMessage": {
+        "description": "A code, its parameters, and the deterministic plain-language rendering of the two.\n\nAll three travel together on purpose. `text` is what a user reads; `code` and\n`parameters` are what a client keys layout off and what a reviewer checks the wording\nagainst. `text` is null only when a code has no template \u2014 a packaging bug the client\nhandles by showing the structured fields rather than inventing a sentence.",
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "parameters": {
+            "additionalProperties": true,
+            "title": "Parameters",
+            "type": "object"
+          },
+          "text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text"
+          }
+        },
+        "required": [
+          "code",
+          "parameters",
+          "text"
+        ],
+        "title": "RenderedMessage",
+        "type": "object"
+      },
       "RequirementDetail": {
         "properties": {
           "calculation_breakdown": {
@@ -578,6 +610,26 @@
             ],
             "title": "Short Description"
           },
+          "stale": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StaleInformation"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RenderedMessage"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "summary_code": {
             "anyOf": [
               {
@@ -608,6 +660,8 @@
           "currency",
           "summary_code",
           "summary_parameters",
+          "summary",
+          "stale",
           "calculation_breakdown",
           "limitations",
           "next_actions",
@@ -677,6 +731,26 @@
             "title": "Requirement Key",
             "type": "string"
           },
+          "stale": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StaleInformation"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RenderedMessage"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "summary_code": {
             "anyOf": [
               {
@@ -713,6 +787,8 @@
           "conclusion",
           "currency",
           "summary_code",
+          "summary",
+          "stale",
           "updated_at"
         ],
         "title": "RequirementSummary",
@@ -1012,6 +1088,52 @@
           "application_date"
         ],
         "title": "SelectApplicationDateInput",
+        "type": "object"
+      },
+      "StaleInformation": {
+        "description": "Why a result is no longer current, and since when. Present only while\n`currency == STALE` \u2014 it explains that currency, and never modifies the conclusion.",
+        "properties": {
+          "marked_stale_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Marked Stale At"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "reason_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason Code"
+          }
+        },
+        "required": [
+          "reason_code",
+          "reason",
+          "marked_stale_at"
+        ],
+        "title": "StaleInformation",
         "type": "object"
       },
       "StatusType": {

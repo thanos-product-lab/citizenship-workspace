@@ -495,6 +495,25 @@ export interface components {
             /** Trigger Type */
             trigger_type: string;
         };
+        /**
+         * RenderedMessage
+         * @description A code, its parameters, and the deterministic plain-language rendering of the two.
+         *
+         *     All three travel together on purpose. `text` is what a user reads; `code` and
+         *     `parameters` are what a client keys layout off and what a reviewer checks the wording
+         *     against. `text` is null only when a code has no template — a packaging bug the client
+         *     handles by showing the structured fields rather than inventing a sentence.
+         */
+        RenderedMessage: {
+            /** Code */
+            code: string;
+            /** Parameters */
+            parameters: {
+                [key: string]: unknown;
+            };
+            /** Text */
+            text: string | null;
+        };
         /** RequirementDetail */
         RequirementDetail: {
             /** Calculation Breakdown */
@@ -527,6 +546,8 @@ export interface components {
             requirement_key: string;
             /** Short Description */
             short_description: string | null;
+            stale: components["schemas"]["StaleInformation"] | null;
+            summary: components["schemas"]["RenderedMessage"] | null;
             /** Summary Code */
             summary_code: string | null;
             /** Summary Parameters */
@@ -557,6 +578,8 @@ export interface components {
             group_key: string;
             /** Requirement Key */
             requirement_key: string;
+            stale: components["schemas"]["StaleInformation"] | null;
+            summary: components["schemas"]["RenderedMessage"] | null;
             /** Summary Code */
             summary_code: string | null;
             /** Title */
@@ -658,6 +681,19 @@ export interface components {
             application_date: string;
             /** Expected Revision */
             expected_revision?: number | null;
+        };
+        /**
+         * StaleInformation
+         * @description Why a result is no longer current, and since when. Present only while
+         *     `currency == STALE` — it explains that currency, and never modifies the conclusion.
+         */
+        StaleInformation: {
+            /** Marked Stale At */
+            marked_stale_at: string | null;
+            /** Reason */
+            reason: string | null;
+            /** Reason Code */
+            reason_code: string | null;
         };
         /**
          * StatusType
