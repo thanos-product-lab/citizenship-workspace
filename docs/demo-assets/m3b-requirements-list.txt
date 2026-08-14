@@ -1,0 +1,22 @@
+# M3B — requirements list after recalculate (`just recalc <case>`)
+# Nine M3B requirements assessed; the six M4-input requirements read NOT_YET_ASSESSED.
+
+run e5186157-3378-4131-9e52-18fb3dcefccc  mode=TRUSTED  results=9
+
+requirement                              conclusion                 currency   figure
+------------------------------------------------------------------------------------------
+route.adult_applicant                    SUPPORTED                  CURRENT    
+route.supported_status                   SUPPORTED                  CURRENT    
+route.standard_section_6_1               SUPPORTED                  CURRENT    
+status.holding_period                    SUPPORTED                  CURRENT    
+residence.qualifying_period              SUPPORTED                  CURRENT    
+residence.physical_presence_start_date   NOT_CURRENTLY_SATISFIED    CURRENT    2027-04-25
+residence.total_absences                 NEAR_THRESHOLD             CURRENT    439
+residence.final_year_absences            SUPPORTED                  CURRENT    17
+residence.travel_consistency             SUPPORTED                  CURRENT    
+knowledge.life_in_uk                     NOT_YET_ASSESSED           -         
+knowledge.english_language               NOT_YET_ASSESSED           -         
+referees.first                           NOT_YET_ASSESSED           -         
+referees.second                          NOT_YET_ASSESSED           -         
+character.review                         NOT_YET_ASSESSED           -         
+preparation.case_complete                NOT_YET_ASSESSED           -         

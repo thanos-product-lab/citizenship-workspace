@@ -1,0 +1,24 @@
+# M3B — residence.total_absences provenance (`just inspect <case> residence.total_absences`)
+# 439 (NEAR_THRESHOLD), threshold 450, linked to the application-date version + all 12 travel-record versions.
+
+# residence.total_absences — Total absences
+conclusion : NEAR_THRESHOLD
+currency   : CURRENT
+summary    : TOTAL_ABSENCES_NEAR_THRESHOLD
+parameters : {'days': 439, 'threshold': 450, 'trip_count': 12, 'window_end': '2027-04-15', 'window_start': '2022-04-16', 'provisional_days': 439}
+input links:
+  - APPLICATION_DATE_VERSION -> 5a74090c-1ea8-454a-a855-35db39ddce24
+  - TRAVEL_RECORD_VERSION -> 44300cde-ec73-48a4-8bd6-ae1ad3af9d5c
+  - TRAVEL_RECORD_VERSION -> 5457bbea-e700-4032-ae2d-feb31f128562
+  - TRAVEL_RECORD_VERSION -> d94d6ff5-04fb-43fa-8ff7-1b2cc61efca6
+  - TRAVEL_RECORD_VERSION -> db7f9b5b-66c1-4275-a3fe-98d0e38dab6b
+  - TRAVEL_RECORD_VERSION -> b116c9c6-d7e5-4029-a7b0-0c3ca5e77582
+  - TRAVEL_RECORD_VERSION -> 1c4c6407-6498-421e-bbdb-961858cfb79e
+  - TRAVEL_RECORD_VERSION -> 75935be7-2f82-4703-a1bd-80f9ed342735
+  - TRAVEL_RECORD_VERSION -> a0ee4425-0597-4122-b015-675455096f18
+  - TRAVEL_RECORD_VERSION -> 4f5399b1-ac82-458b-9243-40e4dc53e6d0
+  - TRAVEL_RECORD_VERSION -> 2dd94a10-d21e-4723-90ab-4cc4df779279
+  - TRAVEL_RECORD_VERSION -> 8b9f8562-3408-4913-a9b2-e09bf193181c
+  - TRAVEL_RECORD_VERSION -> 6c5c0e32-8b4c-43c5-af69-2834a9730ea7
+history (newest first):
+  - 2026-08-14 11:36  NEAR_THRESHOLD           CURRENT
