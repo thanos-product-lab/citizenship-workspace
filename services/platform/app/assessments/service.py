@@ -16,6 +16,7 @@ reads the clock the rules never touch.
 """
 
 import uuid
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
@@ -33,7 +34,8 @@ from app.assessments.domain import (
 )
 from app.assessments.repository import AssessmentRepository, RequirementCatalogRepository
 from app.auth.schemas import CurrentUser
-from app.cases.domain import ApplicationCase, LifecycleStatus
+from app.cases.domain import ApplicationCase, CasePhase, LifecycleStatus
+from app.cases.phase import RequirementState, derive_phase
 from app.requirements.evaluation import (
     EvaluatedResult,
     ResidenceAssessmentInputs,
@@ -137,6 +139,43 @@ def list_requirements(
 ) -> list[tuple[RequirementDefinition, AssessmentResult | None]]:
     """Every catalogued requirement with its current result (or None), in display order."""
     return AssessmentRepository.list_requirements_with_active_result(session, case.id)
+
+
+def derive_phases(
+    session: Session, *, cases: Sequence[ApplicationCase]
+) -> dict[uuid.UUID, CasePhase]:
+    """Each case's phase, derived from its current assessment state (Domain §7.5, ADR-0009).
+
+    This module does the gathering because it is the one that already reads both the case
+    aggregate and the requirements catalogue; `cases.phase` owns the rule itself and stays
+    a pure function. The stored `cases.current_phase` column is never consulted — it is
+    written once at creation and never advanced, so it reports SETTING_UP forever.
+
+    Only ACTIVE cases need assessment state, so a list of draft cases costs no query at all.
+    """
+    active_ids = [c.id for c in cases if c.lifecycle_status is LifecycleStatus.ACTIVE]
+    states_by_case = (
+        AssessmentRepository.list_displayed_states_by_case(session, active_ids)
+        if active_ids
+        else {}
+    )
+    catalogue_size = RequirementCatalogRepository.count_definitions(session) if active_ids else 0
+    return {
+        case.id: derive_phase(
+            lifecycle_status=case.lifecycle_status,
+            states=[
+                RequirementState(conclusion=conclusion, currency=currency)
+                for conclusion, currency in states_by_case.get(case.id, [])
+            ],
+            catalogue_size=catalogue_size,
+        )
+        for case in cases
+    }
+
+
+def derive_case_phase(session: Session, *, case: ApplicationCase) -> CasePhase:
+    """The phase for a single case. Convenience over `derive_phases`."""
+    return derive_phases(session, cases=[case])[case.id]
 
 
 @dataclass(frozen=True)

@@ -7,9 +7,10 @@ resolves a requirement key to its ids through one seam.
 """
 
 import uuid
+from collections.abc import Sequence
 from datetime import datetime
 
-from sqlalchemy import and_, select
+from sqlalchemy import and_, func, select
 from sqlalchemy.orm import Session
 
 from app.assessments.domain import AssessmentInputLink, AssessmentResult, AssessmentRun
@@ -66,6 +67,12 @@ class RequirementCatalogRepository:
                 )
             )
         )
+
+    @staticmethod
+    def count_definitions(session: Session) -> int:
+        """How many requirements the catalogue holds — the denominator for "are any still
+        unassessed", used by the case-phase derivation."""
+        return session.scalar(select(func.count()).select_from(RequirementDefinition)) or 0
 
     @staticmethod
     def get_guidance(session: Session, rule_version_id: uuid.UUID) -> list[dict[str, str]]:
@@ -165,6 +172,34 @@ class AssessmentRepository:
             .order_by(RequirementDefinition.display_order)
         )
         return [(definition, result) for definition, result in session.execute(stmt)]
+
+    @staticmethod
+    def list_displayed_states_by_case(
+        session: Session, case_ids: Sequence[uuid.UUID]
+    ) -> dict[uuid.UUID, list[tuple[str, str]]]:
+        """Every case's displayed (non-superseded) results as `(conclusion, currency)` pairs,
+        in **one query** for all the given cases — the case list would otherwise issue a
+        query per case to derive its phase. Cases with no results are absent from the dict.
+
+        Conclusion and currency are returned as a pair and never merged (ADR-0001); the
+        phase derivation reads both independently.
+        """
+        if not case_ids:
+            return {}
+        rows = session.execute(
+            select(
+                AssessmentResult.case_id,
+                AssessmentResult.conclusion,
+                AssessmentResult.currency,
+            ).where(
+                AssessmentResult.case_id.in_(case_ids),
+                AssessmentResult.currency.in_(_SUPERSEDABLE),
+            )
+        )
+        states: dict[uuid.UUID, list[tuple[str, str]]] = {}
+        for case_id, conclusion, currency in rows:
+            states.setdefault(case_id, []).append((conclusion, currency))
+        return states
 
     @staticmethod
     def list_history_for_requirement(

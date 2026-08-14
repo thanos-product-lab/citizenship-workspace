@@ -68,6 +68,10 @@ class ApplicationCase(Base):
     # Private column: the state machine below is the only writer.
     _lifecycle_status: Mapped[str] = mapped_column("lifecycle_status", String(20))
     _support_status: Mapped[str] = mapped_column("support_status", String(20))
+    # NOT the case's phase. Written once at creation and never advanced; the phase is a
+    # derived projection (Domain §7.5) computed by `app.cases.phase.derive_phase`, and no
+    # projection may read this column — it would report SETTING_UP on a finished case.
+    # Retained only because dropping it is a schema change, not a read-side one (ADR-0009).
     current_phase: Mapped[str] = mapped_column(String(20))
     # Set in M3A; nullable now so the column exists from Migration 1 (Domain §55).
     current_proposed_application_date_id: Mapped[uuid.UUID | None] = mapped_column()

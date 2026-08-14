@@ -5,6 +5,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 
+from app.assessments import service as assessment_service
 from app.auth.dependencies import get_current_user
 from app.auth.schemas import CurrentUser
 from app.cases import service
@@ -23,7 +24,8 @@ def create_case(
     user: Annotated[CurrentUser, Depends(get_current_user)],
 ) -> CaseResponse:
     case = service.create_case(session, user=user, title=body.title)
-    return CaseResponse.from_domain(case)
+    phase = assessment_service.derive_case_phase(session, case=case)
+    return CaseResponse.from_domain(case, phase=phase)
 
 
 @router.get("", response_model=list[CaseResponse])
@@ -31,14 +33,19 @@ def list_cases(
     session: Annotated[Session, Depends(get_tenant_session)],
     user: Annotated[CurrentUser, Depends(get_current_user)],
 ) -> list[CaseResponse]:
-    return [CaseResponse.from_domain(c) for c in service.list_cases(session, user=user)]
+    cases = service.list_cases(session, user=user)
+    # One batched derivation for the whole list, not one query per case.
+    phases = assessment_service.derive_phases(session, cases=cases)
+    return [CaseResponse.from_domain(c, phase=phases[c.id]) for c in cases]
 
 
 @router.get("/{case_id}", response_model=CaseResponse)
 def get_case(
     case: Annotated[ApplicationCase, Depends(require_case_access)],
+    session: Annotated[Session, Depends(get_tenant_session)],
 ) -> CaseResponse:
-    return CaseResponse.from_domain(case)
+    phase = assessment_service.derive_case_phase(session, case=case)
+    return CaseResponse.from_domain(case, phase=phase)
 
 
 @router.delete("/{case_id}", response_model=CaseResponse)
@@ -49,4 +56,5 @@ def delete_case(
 ) -> CaseResponse:
     """Request deletion: the case enters DELETION_PENDING and the purge is queued."""
     deleted = service.request_deletion(session, case=case, user=user)
-    return CaseResponse.from_domain(deleted)
+    phase = assessment_service.derive_case_phase(session, case=deleted)
+    return CaseResponse.from_domain(deleted, phase=phase)

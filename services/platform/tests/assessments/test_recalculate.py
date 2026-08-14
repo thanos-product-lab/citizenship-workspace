@@ -168,3 +168,55 @@ def test_requirements_are_not_visible_to_another_user(api: Api) -> None:
 
     assert api("user_b").get(f"/api/v1/cases/{case_id}/requirements").status_code == 404
     assert api("user_b").post(f"/api/v1/cases/{case_id}/assessments/recalculate").status_code == 404
+
+
+# --- derived case phase (Domain §7.5, ADR-0009) -----------------------------
+
+
+def test_a_draft_case_reports_setting_up(api: Api) -> None:
+    case_id = _draft_case(api, "user_a")
+    body = api("user_a").get(f"/api/v1/cases/{case_id}").json()
+    assert body["current_phase"] == "SETTING_UP"
+
+
+def test_an_assessed_case_no_longer_reports_the_stored_setting_up(api: Api) -> None:
+    """The regression this derivation exists for. `cases.current_phase` is written once at
+    creation and never advanced, so before ADR-0009 a fully assessed case told the user it
+    was still "Setting up". The phase must now come from the assessment state."""
+    case_id = _case_with_date(api, "user_a")
+    api("user_a").post(f"/api/v1/cases/{case_id}/assessments/recalculate")
+
+    body = api("user_a").get(f"/api/v1/cases/{case_id}").json()
+    assert body["current_phase"] != "SETTING_UP"
+    # Nine requirements assessed and clean (this case records no travel), six with no
+    # result at all — so the honest phase is BUILDING_CASE, not "prepared".
+    assert body["current_phase"] == "BUILDING_CASE"
+
+
+def test_the_derived_phase_appears_in_the_case_list_too(api: Api) -> None:
+    """The list endpoint derives in one batched query rather than per case, so it needs its
+    own assertion — a projection that only fixed the detail endpoint would still lie here."""
+    case_id = _case_with_date(api, "user_a")
+    api("user_a").post(f"/api/v1/cases/{case_id}/assessments/recalculate")
+
+    rows = api("user_a").get("/api/v1/cases").json()
+    listed = next(row for row in rows if row["id"] == case_id)
+    assert listed["current_phase"] == "BUILDING_CASE"
+
+
+def test_a_stale_result_alone_moves_the_phase_to_resolving_issues(api: Api) -> None:
+    """Currency is enough (ADR-0001). Changing the application date restales the residence
+    results; the phase must reflect that even though every conclusion still stands."""
+    case_id = _case_with_date(api, "user_a")
+    api("user_a").post(f"/api/v1/cases/{case_id}/assessments/recalculate")
+    assert api("user_a").get(f"/api/v1/cases/{case_id}").json()["current_phase"] == "BUILDING_CASE"
+
+    current = api("user_a").get(f"/api/v1/cases/{case_id}/application-dates").json()
+    changed = api("user_a").post(
+        f"/api/v1/cases/{case_id}/application-dates/select",
+        json={"application_date": "2027-05-20", "expected_revision": current["revision"]},
+    )
+    assert changed.status_code == 200, changed.text
+
+    body = api("user_a").get(f"/api/v1/cases/{case_id}").json()
+    assert body["current_phase"] == "RESOLVING_ISSUES"
