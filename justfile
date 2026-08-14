@@ -77,6 +77,10 @@ dev:
 seed:
     cd services/platform && uv run python -m app.seed.demo_case
 
+# Recalculate a case and print its requirement conclusions (dev walkthrough helper).
+recalc case_id user_id="demo-user":
+    cd services/platform && uv run python -m scripts.recalc {{case_id}} {{user_id}}
+
 # Regenerate packages/api-client from the FastAPI OpenAPI schema.
 api-client:
     mkdir -p packages/api-client/generated
