@@ -1,6 +1,6 @@
 import "@testing-library/jest-dom/vitest";
 
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const get = vi.fn();
@@ -123,7 +123,7 @@ describe("RequirementsList", () => {
     expect(alert).toHaveTextContent("We couldn’t load the requirements for this case.");
 
     get.mockResolvedValueOnce({ data: [aRequirement()] });
-    screen.getByRole("button", { name: "Try again" }).click();
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
     await waitFor(() => expect(screen.getByText("Total absences")).toBeInTheDocument());
   });
 
@@ -149,7 +149,7 @@ describe("RequirementsList", () => {
         ],
       },
     });
-    screen.getByRole("button", { name: "Recalculate" }).click();
+    fireEvent.click(screen.getByRole("button", { name: "Recalculate" }));
     await waitFor(() => expect(screen.getByText(/440 days outside the UK/)).toBeInTheDocument());
   });
 
@@ -159,7 +159,7 @@ describe("RequirementsList", () => {
     await screen.findByText("Total absences");
 
     post.mockResolvedValue({ error: { detail: "boom" } });
-    screen.getByRole("button", { name: "Recalculate" }).click();
+    fireEvent.click(screen.getByRole("button", { name: "Recalculate" }));
 
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent("Nothing has changed");
