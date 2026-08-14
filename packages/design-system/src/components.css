@@ -1,0 +1,271 @@
+/*
+ * Component styles for the domain components.
+ *
+ * Real CSS rather than inline styles, because the accessibility gate needs things inline
+ * styles cannot express: :hover, :focus-visible, @media, and prefers-reduced-motion.
+ * Everything here reads **role and status tokens only** — never a raw hex, never a ramp
+ * step — so both themes come for free from tokens.css.
+ *
+ * Import once, alongside the tokens:
+ *   import "@cw/design-system/tokens.css";
+ *   import "@cw/design-system/components.css";
+ */
+
+/* --- RequirementStatus: two badges, never merged --------------------------- */
+
+.cw-status-pair {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--cw-space-2);
+  flex-wrap: wrap;
+}
+
+.cw-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--cw-space-2);
+  padding: var(--cw-space-1) var(--cw-space-3);
+  border-radius: var(--cw-radius-md);
+  font-size: var(--cw-text-sm);
+  font-weight: var(--cw-weight-medium);
+  line-height: var(--cw-leading-snug);
+  white-space: nowrap;
+}
+
+.cw-status-pair--sm .cw-status-badge {
+  font-size: var(--cw-text-xs);
+  padding: 2px var(--cw-space-2);
+}
+
+/*
+ * The currency badge is deliberately quieter than the conclusion badge: outlined rather
+ * than filled. It must be clearly present and clearly *secondary* — the conclusion is the
+ * answer, the currency qualifies it. Making them equally loud would read as two competing
+ * verdicts; making the currency invisible would collapse the two axes (ADR-0001).
+ */
+.cw-status-badge--currency {
+  background: transparent;
+  border: 1px dashed currentColor;
+  padding-block: calc(var(--cw-space-1) - 1px);
+}
+
+/* An unknown conclusion gets a neutral, obviously-unstyled treatment rather than
+   inheriting a status colour it has not earned. */
+.cw-status-badge[data-conclusion="unknown"] {
+  color: var(--cw-text-muted);
+  background: var(--cw-surface-sunken);
+  border: 1px solid var(--cw-border-strong);
+}
+
+/* --- Requirement list ------------------------------------------------------ */
+
+.cw-requirement-groups {
+  display: grid;
+  gap: var(--cw-space-8);
+}
+
+.cw-requirement-group > h3 {
+  margin: 0 0 var(--cw-space-1);
+  font-size: var(--cw-text-sm);
+  font-weight: var(--cw-weight-semibold);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--cw-text-muted);
+}
+
+.cw-requirement-group__count {
+  margin: 0 0 var(--cw-space-3);
+  font-size: var(--cw-text-sm);
+  color: var(--cw-text-subtle);
+}
+
+/*
+ * A bordered list, not a stack of floating cards (UI/UX §13.4). One outer border and
+ * hairline dividers keeps the page calm and the scan line vertical.
+ */
+.cw-requirement-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--cw-border);
+  border-radius: var(--cw-radius-lg);
+  background: var(--cw-surface);
+  overflow: hidden;
+}
+
+.cw-requirement-list > li + li {
+  border-top: 1px solid var(--cw-border);
+}
+
+.cw-requirement-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--cw-space-4);
+  padding: var(--cw-space-4) var(--cw-space-5);
+}
+
+.cw-requirement-row__main {
+  min-width: 0;
+}
+
+.cw-requirement-row__title {
+  margin: 0;
+  font-size: var(--cw-text-base);
+  font-weight: var(--cw-weight-medium);
+  line-height: var(--cw-leading-snug);
+  color: var(--cw-text);
+}
+
+.cw-requirement-row__summary {
+  margin: var(--cw-space-2) 0 0;
+  font-size: var(--cw-text-sm);
+  line-height: var(--cw-leading-normal);
+  color: var(--cw-text-muted);
+  max-width: 60ch;
+}
+
+/* Figures are the content of this product; give them tabular emphasis
+   (DESIGN_SYSTEM_FOUNDATIONS §5). */
+.cw-figure {
+  font-family: var(--cw-font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * The stale notice. Amber left rule plus a clock glyph plus the word "Stale" — three
+ * signals, so it survives greyscale and does not depend on the border colour alone.
+ */
+.cw-stale-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--cw-space-2);
+  margin: var(--cw-space-3) 0 0;
+  padding: var(--cw-space-2) var(--cw-space-3);
+  border-left: 3px solid var(--cw-currency-stale);
+  border-radius: 0 var(--cw-radius-sm) var(--cw-radius-sm) 0;
+  background: var(--cw-surface-sunken);
+  font-size: var(--cw-text-sm);
+  line-height: var(--cw-leading-snug);
+  color: var(--cw-text-muted);
+}
+
+.cw-stale-notice svg {
+  flex: none;
+  margin-top: 0.15em;
+  color: var(--cw-currency-stale);
+}
+
+/* --- Section shell --------------------------------------------------------- */
+
+.cw-section {
+  margin-top: var(--cw-space-10);
+}
+
+.cw-section__header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--cw-space-4);
+  flex-wrap: wrap;
+  margin-bottom: var(--cw-space-5);
+}
+
+.cw-section__header h2 {
+  margin: 0;
+  font-size: var(--cw-text-xl);
+  font-weight: var(--cw-weight-semibold);
+  line-height: var(--cw-leading-tight);
+}
+
+.cw-section__note {
+  margin: var(--cw-space-2) 0 0;
+  font-size: var(--cw-text-sm);
+  color: var(--cw-text-muted);
+  max-width: 62ch;
+}
+
+/* --- Empty and error states ------------------------------------------------ */
+
+.cw-empty {
+  padding: var(--cw-space-8) var(--cw-space-5);
+  border: 1px dashed var(--cw-border-strong);
+  border-radius: var(--cw-radius-lg);
+  text-align: center;
+  color: var(--cw-text-muted);
+  font-size: var(--cw-text-sm);
+  line-height: var(--cw-leading-normal);
+}
+
+.cw-empty p {
+  margin: 0 auto;
+  max-width: 46ch;
+}
+
+.cw-empty__actions {
+  margin-top: var(--cw-space-4);
+}
+
+/* --- Buttons --------------------------------------------------------------- */
+
+.cw-button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--cw-space-2);
+  padding: var(--cw-space-2) var(--cw-space-4);
+  border-radius: var(--cw-radius-md);
+  border: 1px solid transparent;
+  background: var(--cw-accent);
+  color: var(--cw-accent-contrast);
+  font: inherit;
+  font-weight: var(--cw-weight-medium);
+  cursor: pointer;
+  transition: background-color 120ms ease;
+}
+
+.cw-button:hover:not(:disabled) {
+  background: var(--cw-accent-hover);
+}
+
+.cw-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.cw-button--secondary {
+  background: var(--cw-surface);
+  color: var(--cw-text);
+  border-color: var(--cw-border-strong);
+}
+
+.cw-button--secondary:hover:not(:disabled) {
+  background: var(--cw-surface-sunken);
+}
+
+/* --- Motion ---------------------------------------------------------------- */
+
+/*
+ * Motion explains state changes here and nowhere else, and it is always optional
+ * (UI/UX §14, §15). Anyone who has asked for reduced motion gets none of it.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .cw-button,
+  .cw-requirement-row {
+    transition: none;
+  }
+}
+
+/* --- Narrow widths --------------------------------------------------------- */
+
+/*
+ * Below ~34rem — and equivalently at 200% zoom on a laptop — the status badges stop
+ * sharing a line with the title and sit beneath it. Nothing is hidden or truncated at any
+ * width; the row only reflows.
+ */
+@media (max-width: 34rem) {
+  .cw-requirement-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--cw-space-3);
+  }
+}

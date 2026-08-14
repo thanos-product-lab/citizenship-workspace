@@ -7,6 +7,36 @@
  * names are stable identifiers resolved to real icons by the components in M4.
  */
 
+/**
+ * The non-colour indicators. Every token below names one of these, and `StatusGlyph`
+ * resolves each to a shape — so a token naming a glyph the icon set does not draw is a
+ * compile error rather than a silently missing signal.
+ */
+export const glyphNames = [
+  // conclusions
+  "check",
+  "dashed-circle",
+  "conflict",
+  "gauge",
+  "scale",
+  "shield",
+  "minus-circle",
+  "dash",
+  // currency
+  "dot",
+  "clock",
+  "history",
+  "preview",
+  // provenance
+  "proposed",
+  "pencil",
+  "equals",
+  "paperclip",
+  "slash",
+] as const;
+
+export type GlyphName = (typeof glyphNames)[number];
+
 // --- Requirement conclusion (DOMAIN_MODEL_RFC §30.2) ---
 
 export const conclusionStates = [
@@ -28,7 +58,7 @@ export interface StatusToken {
   /** CSS custom property for the soft badge surface. */
   readonly surfaceVar: string;
   /** Non-colour indicator — colour is never the only signal. */
-  readonly glyph: string;
+  readonly glyph: GlyphName;
   /** Short human label. */
   readonly label: string;
 }
@@ -93,7 +123,7 @@ export type CurrencyState = (typeof currencyStates)[number];
 export interface CurrencyToken {
   /** null for `current`, which needs no adornment. */
   readonly colorVar: string | null;
-  readonly glyph: string;
+  readonly glyph: GlyphName;
   readonly label: string;
 }
 
@@ -121,7 +151,7 @@ export type ProvenanceKind = (typeof provenanceKinds)[number];
 
 export interface ProvenanceToken {
   readonly colorVar: string;
-  readonly glyph: string;
+  readonly glyph: GlyphName;
   readonly label: string;
 }
 
