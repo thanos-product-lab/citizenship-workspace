@@ -81,6 +81,14 @@ seed:
 recalc case_id user_id="demo-user":
     cd services/platform && uv run python -m scripts.recalc {{case_id}} {{user_id}}
 
+# Print one requirement's full detail: parameters, limitations, input-link provenance, history.
+inspect case_id requirement_key user_id="demo-user":
+    cd services/platform && uv run python -m scripts.inspect {{case_id}} {{requirement_key}} {{user_id}}
+
+# Edit a trip's return date (fires stale invalidation) — drives the M3B stale demo.
+edit-trip case_id departure new_return user_id="demo-user":
+    cd services/platform && uv run python -m scripts.edit_trip {{case_id}} {{departure}} {{new_return}} {{user_id}}
+
 # Regenerate packages/api-client from the FastAPI OpenAPI schema.
 api-client:
     mkdir -p packages/api-client/generated
