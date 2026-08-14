@@ -23,7 +23,14 @@ type SaveState = "idle" | "saving" | "saved" | "conflict" | "invalid" | "error";
  * deterministic rules that arrive in the next milestone. This surface only captures
  * and persists the date, with optimistic-concurrency (a stale change → reload).
  */
-export function ApplicationDateCard({ caseId }: { caseId: string }) {
+export function ApplicationDateCard({
+  caseId,
+  onResidenceChanged,
+}: {
+  caseId: string;
+  /** Called after the date changes — which restales every residence result server-side. */
+  onResidenceChanged?: () => void;
+}) {
   const api = useApiClient();
   const [current, setCurrent] = useState<ProposedDate | null>(null);
   const [value, setValue] = useState("");
@@ -70,6 +77,7 @@ export function ApplicationDateCard({ caseId }: { caseId: string }) {
       setCurrent(data);
       setValue(data.application_date);
       setSaveState("saved");
+      onResidenceChanged?.();
       return;
     }
     if (response?.status === 409) setSaveState("conflict");

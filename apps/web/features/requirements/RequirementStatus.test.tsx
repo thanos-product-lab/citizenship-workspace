@@ -93,6 +93,25 @@ describe("RequirementStatus", () => {
     }
   });
 
+  it("shows an unrecognised CURRENCY verbatim rather than as no badge", () => {
+    // The dangerous default: if an unknown currency collapsed to null it would render
+    // identically to CURRENT, so a value this build does not know — a new enum member, a
+    // casing change, client/API skew — would silently read as "current and unremarkable".
+    render(<RequirementStatus conclusion="SUPPORTED" currency="SOME_NEW_CURRENCY" />);
+    const badge = screen.getByText("SOME_NEW_CURRENCY").closest("[data-currency]");
+    expect(badge).toHaveAttribute("data-currency", "unknown");
+  });
+
+  it("distinguishes an absent currency from an unrecognised one", () => {
+    const { container: absent } = render(<RequirementStatus conclusion="SUPPORTED" />);
+    expect(absent.querySelector("[data-currency]")).toBeNull();
+
+    const { container: unknown } = render(
+      <RequirementStatus conclusion="SUPPORTED" currency="WAT" />,
+    );
+    expect(unknown.querySelector("[data-currency]")).not.toBeNull();
+  });
+
   it("shows an unrecognised conclusion verbatim rather than guessing", () => {
     // A value this build does not know about must not be silently rendered as something
     // benign — that would be the UI inventing a conclusion.

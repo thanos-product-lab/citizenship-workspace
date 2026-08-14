@@ -52,7 +52,9 @@ describe("RequirementsList", () => {
   it("shows a loading state, then the requirements grouped by their group", async () => {
     get.mockResolvedValue({ data: [aRequirement(), unassessed] });
     render(<RequirementsList caseId="c1" />);
-    expect(screen.getByRole("status")).toHaveTextContent("Loading requirements…");
+    // The visible text carries no role: the announcement is made by the persistent
+    // aria-live region, and a second role="status" here would announce it twice.
+    expect(screen.getByText("Loading requirements…")).toBeInTheDocument();
 
     expect(await screen.findByText("Residence")).toBeInTheDocument();
     expect(screen.getByText("Referees")).toBeInTheDocument();
@@ -162,9 +164,87 @@ describe("RequirementsList", () => {
     fireEvent.click(screen.getByRole("button", { name: "Recalculate" }));
 
     const alert = await screen.findByRole("alert");
-    expect(alert).toHaveTextContent("Nothing has changed");
+    // Not "nothing has changed": a timeout or a dropped response after commit would make
+    // that false, and the user would be told the case is unchanged while looking at a
+    // list that is out of date.
+    expect(alert).toHaveTextContent("couldn’t confirm whether that recalculation ran");
     // The previous conclusion is untouched — a failed run never replaces a result.
     expect(screen.getByText(/439 days outside the UK/)).toBeInTheDocument();
+  });
+
+  it("never claims a stale conclusion still stands", async () => {
+    // The one claim the system cannot make. A STALE result means the inputs beneath the
+    // conclusion changed and it has NOT been re-evaluated — the canonical demo case
+    // exists to show 439 -> 440 crossing a band. Saying "this conclusion still stands"
+    // would collapse currency into conclusion by prose rather than by enum.
+    get.mockResolvedValue({
+      data: [
+        aRequirement({
+          currency: "STALE",
+          stale: {
+            reason_code: "TRAVEL_RECORD_CHANGED",
+            reason: "Your travel records changed after this was worked out.",
+            marked_stale_at: "2026-08-14T11:36:00Z",
+          },
+        }),
+      ],
+    });
+    const { container } = render(<RequirementsList caseId="c1" />);
+    await screen.findByText("Total absences");
+
+    const text = container.textContent ?? "";
+    expect(text).not.toMatch(/still stands/i);
+    expect(text).not.toMatch(/still (valid|holds|applies|accurate)/i);
+    expect(text).toMatch(/has not been rechecked/i);
+  });
+
+  it("refetches when the parent signals a residence input changed", async () => {
+    // Travel and application-date writes mark residence results STALE server-side in the
+    // same transaction. Those inputs sit directly above this list on the same page, so
+    // without a refetch the user keeps looking at conclusions the API has already flagged.
+    get.mockResolvedValue({ data: [aRequirement()] });
+    const { rerender } = render(<RequirementsList caseId="c1" refreshToken={0} />);
+    await screen.findByText("Total absences");
+    expect(get).toHaveBeenCalledTimes(1);
+
+    get.mockResolvedValue({
+      data: [
+        aRequirement({
+          currency: "STALE",
+          stale: {
+            reason_code: "TRAVEL_RECORD_CHANGED",
+            reason: "Your travel records changed after this was worked out.",
+            marked_stale_at: "2026-08-14T11:36:00Z",
+          },
+        }),
+      ],
+    });
+    rerender(<RequirementsList caseId="c1" refreshToken={1} />);
+    await waitFor(() => expect(screen.getByText("Stale")).toBeInTheDocument());
+    expect(get).toHaveBeenCalledTimes(2);
+  });
+
+  it("still lists a stored NOT_YET_ASSESSED result that has a currency", async () => {
+    // A placeholder result (the route rules emit these) is a real result with a real
+    // currency. Filtering the list on the conclusion would hide it — including when the
+    // thing being hidden is STALE.
+    get.mockResolvedValue({
+      data: [
+        aRequirement({
+          requirement_key: "route.adult_applicant",
+          title: "Adult applicant",
+          group_key: "ROUTE_AND_STATUS",
+          display_order: 1,
+          conclusion: "NOT_YET_ASSESSED",
+          currency: "CURRENT",
+          summary_code: null,
+          summary: null,
+        }),
+      ],
+    });
+    render(<RequirementsList caseId="c1" />);
+    expect(await screen.findByText("Adult applicant")).toBeInTheDocument();
+    expect(screen.queryByText(/Nothing has been assessed yet/)).not.toBeInTheDocument();
   });
 
   it("shows no percentage, score or fraction anywhere", async () => {

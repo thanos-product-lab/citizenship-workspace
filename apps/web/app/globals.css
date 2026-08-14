@@ -38,6 +38,28 @@ body {
   border-radius: var(--cw-radius-md);
 }
 
+/* Windows High Contrast drops box-shadow entirely, so `outline: none` above would leave
+   keyboard users there with no focus indicator at all. Put the outline back. */
+@media (forced-colors: active) {
+  :focus-visible {
+    outline: 2px solid Highlight;
+    outline-offset: 2px;
+  }
+}
+
+/* Tailwind's preflight sets `a { color: inherit; text-decoration: inherit }`, which makes
+   prose links indistinguishable from the text around them — colour alone would not be
+   enough even if it were restored (WCAG 1.4.1). Underline them. */
+a {
+  color: var(--cw-accent);
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+a:hover {
+  color: var(--cw-accent-hover);
+}
+
 /* Inline text actions (table row Edit/Remove, confirm/cancel). Quiet at rest,
    underlined on hover; the global :focus-visible ring covers keyboard focus.
    Real CSS because :hover can't be expressed inline. */

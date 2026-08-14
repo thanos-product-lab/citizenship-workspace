@@ -2,7 +2,7 @@
 
 import type { components } from "@cw/api-client";
 import { RequirementStatus, StatusGlyph } from "@cw/design-system";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useApiClient } from "@/lib/api";
 
@@ -22,96 +22,141 @@ type RunState = "idle" | "running" | "error";
  *   no summary. It is never hidden, and never shown as failing — six of the fifteen
  *   requirements have no evaluator yet, and pretending otherwise in either direction
  *   would misrepresent the case.
- * - A stale result keeps its conclusion and gains a separate notice explaining why it is
- *   no longer current. The conclusion is not restyled, greyed, or withdrawn.
- * - No count is presented as a score, a fraction, or a percentage. The group heading
- *   states how many requirements it holds, nothing more.
+ * - A stale result keeps its conclusion and gains a separate notice saying the
+ *   conclusion **has not been rechecked**. The notice must never claim the conclusion
+ *   still holds: that is precisely what a stale result cannot tell us.
+ * - No count is presented as a score, a fraction, or a percentage.
+ *
+ * `refreshToken` is how the parent tells this list that a residence input changed. Those
+ * writes mark residence results STALE server-side in the same transaction, so without a
+ * refetch this list would keep rendering conclusions the API has already flagged.
  */
-export function RequirementsList({ caseId }: { caseId: string }) {
+export function RequirementsList({
+  caseId,
+  refreshToken = 0,
+}: {
+  caseId: string;
+  refreshToken?: number;
+}) {
   const api = useApiClient();
   const [requirements, setRequirements] = useState<Requirement[]>([]);
   const [state, setState] = useState<LoadState>("loading");
   const [runState, setRunState] = useState<RunState>("idle");
+  const [announcement, setAnnouncement] = useState("");
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const returnFocusToHeading = useRef(false);
 
-  const load = useCallback(() => {
-    setState("loading");
-    let active = true;
-    void api
-      .GET("/api/v1/cases/{case_id}/requirements", { params: { path: { case_id: caseId } } })
-      .then(({ data, error }) => {
-        if (!active) return;
-        // A malformed payload becomes the error state rather than an exception: this
-        // section sits inside the case workspace, and a throw here would blank the
-        // whole page instead of degrading one part of it.
-        if (error || !Array.isArray(data)) {
-          setState("error");
-          return;
-        }
-        setRequirements(data);
-        setState("ready");
-      });
-    return () => {
-      active = false;
-    };
-  }, [api, caseId]);
+  const load = useCallback(
+    (opts?: { focusHeadingOnDone?: boolean }) => {
+      setState("loading");
+      if (opts?.focusHeadingOnDone) returnFocusToHeading.current = true;
+      let active = true;
+      void api
+        .GET("/api/v1/cases/{case_id}/requirements", { params: { path: { case_id: caseId } } })
+        .then(({ data, error }) => {
+          if (!active) return;
+          // A malformed payload becomes the error state rather than an exception: this
+          // section sits inside the case workspace, and a throw here would blank the
+          // whole page instead of degrading one part of it.
+          if (error || !Array.isArray(data)) {
+            setState("error");
+            return;
+          }
+          setRequirements(data);
+          setState("ready");
+        });
+      return () => {
+        active = false;
+      };
+    },
+    [api, caseId],
+  );
 
-  useEffect(() => load(), [load]);
+  // Refetches on mount and whenever the parent signals a residence input changed.
+  useEffect(() => load(), [load, refreshToken]);
+
+  // A button that unmounts takes the keyboard focus with it, dropping the user to
+  // <body>. Park focus on the section heading instead, post-render so the target exists.
+  useEffect(() => {
+    if (state !== "loading" && returnFocusToHeading.current) {
+      returnFocusToHeading.current = false;
+      headingRef.current?.focus();
+    }
+  }, [state]);
 
   async function recalculate() {
     setRunState("running");
+    setAnnouncement("Recalculating requirements.");
     const { data, error } = await api.POST("/api/v1/cases/{case_id}/assessments/recalculate", {
       params: { path: { case_id: caseId } },
     });
     if (error || !data || !Array.isArray(data.requirements)) {
       setRunState("error");
+      setAnnouncement("Recalculation did not complete.");
       return;
     }
     setRequirements(data.requirements);
     setRunState("idle");
+    // Emptying a live region announces nothing, so the completion has to be its own
+    // message: badges change in place, which gives a screen-reader user no other cue.
+    const current = data.requirements.filter((r) => r.conclusion !== "NOT_YET_ASSESSED").length;
+    setAnnouncement(
+      `Recalculation finished. ${current} ${current === 1 ? "requirement" : "requirements"} assessed.`,
+    );
   }
 
-  const assessed = requirements.filter((r) => r.conclusion !== "NOT_YET_ASSESSED");
+  // "Has a result" is a question about currency, not conclusion: a *stored*
+  // NOT_YET_ASSESSED result is a real result with a real currency, and filtering on the
+  // conclusion would hide it — including when it is STALE.
+  const withResults = requirements.filter((r) => r.currency !== null);
   const groups = groupRequirements(requirements);
+  const busy = runState === "running";
 
   return (
     <section className="cw-section" aria-labelledby="requirements-heading">
       <div className="cw-section__header">
         <div>
-          <h2 id="requirements-heading">Requirements</h2>
+          <h2 id="requirements-heading" ref={headingRef} tabIndex={-1}>
+            Requirements
+          </h2>
           <p className="cw-section__note">
             Each requirement shows what was concluded and whether that conclusion is still
             current. Open a requirement to see the facts and rule behind it.
           </p>
         </div>
-        {state === "ready" && assessed.length > 0 ? (
+        {state === "ready" && withResults.length > 0 ? (
           <button
             type="button"
             className="cw-button cw-button--secondary"
-            onClick={() => void recalculate()}
-            disabled={runState === "running"}
+            onClick={() => void (busy ? undefined : recalculate())}
+            // aria-disabled, not disabled: a focused button that becomes `disabled` is
+            // blurred by the browser, silently dropping focus mid-operation.
+            aria-disabled={busy}
           >
-            {runState === "running" ? "Recalculating…" : "Recalculate"}
+            {busy ? "Recalculating…" : "Recalculate"}
           </button>
         ) : null}
       </div>
 
-      {/* Announce the outcome of a recalculation to screen-reader users, who get no
-          visual cue from badges changing in place. */}
+      {/* Mounted unconditionally: a live region whose container and text appear in the
+          same commit is frequently missed by NVDA and JAWS. */}
       <p aria-live="polite" className="cw-visually-hidden">
-        {runState === "running" ? "Recalculating requirements." : ""}
+        {state === "loading" ? "Loading requirements." : announcement}
       </p>
 
       {state === "loading" ? (
-        <p role="status" style={{ color: "var(--cw-text-muted)" }}>
-          Loading requirements…
-        </p>
+        <p style={{ color: "var(--cw-text-muted)" }}>Loading requirements…</p>
       ) : null}
 
       {state === "error" ? (
         <div role="alert" className="cw-empty">
           <p>We couldn’t load the requirements for this case.</p>
           <div className="cw-empty__actions">
-            <button type="button" className="cw-button cw-button--secondary" onClick={() => load()}>
+            <button
+              type="button"
+              className="cw-button cw-button--secondary"
+              onClick={() => load({ focusHeadingOnDone: true })}
+            >
               Try again
             </button>
           </div>
@@ -124,7 +169,7 @@ export function RequirementsList({ caseId }: { caseId: string }) {
         </div>
       ) : null}
 
-      {state === "ready" && requirements.length > 0 && assessed.length === 0 ? (
+      {state === "ready" && requirements.length > 0 && withResults.length === 0 ? (
         <div className="cw-empty">
           <p>
             Nothing has been assessed yet. Once you’ve set an application date, run an
@@ -134,10 +179,10 @@ export function RequirementsList({ caseId }: { caseId: string }) {
             <button
               type="button"
               className="cw-button"
-              onClick={() => void recalculate()}
-              disabled={runState === "running"}
+              onClick={() => void (busy ? undefined : recalculate())}
+              aria-disabled={busy}
             >
-              {runState === "running" ? "Assessing…" : "Run assessment"}
+              {busy ? "Assessing…" : "Run assessment"}
             </button>
           </div>
         </div>
@@ -145,11 +190,15 @@ export function RequirementsList({ caseId }: { caseId: string }) {
 
       {runState === "error" ? (
         <p role="alert" style={{ color: "var(--cw-status-not-satisfied)" }}>
-          We couldn’t recalculate this case. Nothing has changed — please try again.
+          {/* Deliberately not "nothing has changed": a timeout or a dropped response
+              after commit would make that false, and the user would be told the case is
+              unchanged while looking at a list that is out of date. */}
+          We couldn’t confirm whether that recalculation ran. Reload the page to see the
+          current state.
         </p>
       ) : null}
 
-      {state === "ready" && assessed.length > 0 ? (
+      {state === "ready" && withResults.length > 0 ? (
         <div className="cw-requirement-groups">
           {groups.map((group) => (
             <section
@@ -192,8 +241,8 @@ function RequirementRow({ requirement }: { requirement: Requirement }) {
           <p className="cw-stale-notice">
             <StatusGlyph name="clock" size={16} />
             <span>
-              {requirement.stale.reason ?? "An input changed after this was worked out."} This
-              conclusion still stands, but it needs recalculating.
+              {requirement.stale.reason ?? "An input changed after this was worked out."} This is
+              the conclusion from before that change; it has not been rechecked.
             </span>
           </p>
         ) : null}

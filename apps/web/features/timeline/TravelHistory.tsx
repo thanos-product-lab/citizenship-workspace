@@ -114,7 +114,16 @@ function toForm(r: Travel): TravelFormValues {
  * CSV import. All totals and calculations are deliberately absent — this is the input
  * layer; the assessment view arrives in a later milestone.
  */
-export function TravelHistory({ caseId }: { caseId: string }) {
+export function TravelHistory({
+  caseId,
+  onResidenceChanged,
+}: {
+  caseId: string;
+  /** Called after any write that lands. Every travel write marks the case's residence
+      assessments STALE in the same transaction, so whatever is rendering those results
+      has to refetch or it will keep showing conclusions the API has already flagged. */
+  onResidenceChanged?: () => void;
+}) {
   const api = useApiClient();
   const [records, setRecords] = useState<Travel[]>([]);
   const [state, setState] = useState<LoadState>("loading");
@@ -196,6 +205,7 @@ export function TravelHistory({ caseId }: { caseId: string }) {
     if (data) {
       closeToHeading(closeForm);
       load({ notice: "Trip added." });
+      onResidenceChanged?.();
       return;
     }
     setFormError(response?.status === 422 ? "Please check the dates and try again." : "Something went wrong.");
@@ -217,6 +227,7 @@ export function TravelHistory({ caseId }: { caseId: string }) {
     if (data) {
       closeToHeading(closeForm);
       load({ notice: "Trip updated." });
+      onResidenceChanged?.();
       return;
     }
     if (response?.status === 409) {
@@ -243,6 +254,7 @@ export function TravelHistory({ caseId }: { caseId: string }) {
     });
     if (data) {
       load({ notice: "Trip removed." });
+      onResidenceChanged?.();
       return;
     }
     load({ notice: response?.status === 409 ? "That trip changed elsewhere; reloaded." : "Could not remove the trip." });

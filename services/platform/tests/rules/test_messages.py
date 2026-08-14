@@ -25,7 +25,11 @@ from app.requirements.messages import (
     render_stale_reason,
     render_summary,
 )
-from app.requirements.rules_core import band_final_year_absences, band_total_absences
+from app.requirements.rules_core import (
+    PRESENCE_SEARCH_HORIZON_DAYS,
+    band_final_year_absences,
+    band_total_absences,
+)
 
 _RULES_MODULES = ("evaluation.py", "route_rules.py", "rules_core.py")
 
@@ -168,6 +172,52 @@ def test_absence_summary_never_frames_the_gap_as_headroom() -> None:
     assert "11" not in text
     assert "remaining" not in text.lower()
     assert "left" not in text.lower()
+
+
+def test_the_verdict_follows_the_provisional_figure_when_the_two_diverge() -> None:
+    """The §6.2 sensitivity rule can give a result the *provisional* band's summary code
+    without capping it: trusted 400 bands SUPPORTED, provisional 440 bands NEAR_THRESHOLD.
+    Attaching "that is close to the standard threshold" to the figure 400 would describe
+    400 as near 450, which it is not. The verdict must sit with the figure it describes."""
+    text = render_summary(
+        "TOTAL_ABSENCES_NEAR_THRESHOLD",
+        {"days": 400, "provisional_days": 440, "threshold": 450},
+    )
+    assert text is not None
+    assert "Including those, that is close to the standard threshold." in text
+    assert "confirmed travel records, against a threshold of 450. That is close" not in text
+    assert text.index("400") < text.index("440") < text.index("close to the standard")
+
+
+def test_the_capped_codes_keep_their_own_wording_about_both_figures() -> None:
+    """The two UNCONFIRMED_REVIEW verdicts already speak about confirmed *and*
+    unconfirmed records, so they must not be re-prefixed with "Including those,"."""
+    text = render_summary(
+        "TOTAL_ABSENCES_UNCONFIRMED_REVIEW",
+        {"days": 439, "provisional_days": 470, "threshold": 450},
+    )
+    assert text is not None
+    assert "Including those," not in text
+    assert "cannot be settled yet" in text
+
+
+def test_an_absence_summary_without_a_figure_asserts_no_verdict() -> None:
+    """A missing `days` parameter must not leave a threshold verdict standing with no
+    number behind it — "None days ... That is within the standard threshold" would be the
+    product asserting an outcome it cannot support."""
+    text = render_summary("TOTAL_ABSENCES_WITHIN_THRESHOLD", {"threshold": 450})
+    assert text is not None
+    assert "within the standard threshold" not in text
+    assert "None" not in text
+    assert "not available" in text
+
+
+def test_the_presence_horizon_is_not_restated_in_copy() -> None:
+    """The sentence must track `PRESENCE_SEARCH_HORIZON_DAYS` rather than repeating 90,
+    so changing the constant cannot leave the copy asserting something false."""
+    text = render_summary("PRESENCE_NOT_SUPPORTED", {"physical_presence_date": "2022-04-16"})
+    assert text is not None
+    assert f"next {PRESENCE_SEARCH_HORIZON_DAYS} days" in text
 
 
 def test_divergent_figures_are_stated_separately() -> None:

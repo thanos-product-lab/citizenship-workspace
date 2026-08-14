@@ -23,6 +23,11 @@ export function CaseWorkspace({ caseId }: { caseId: string }) {
   const api = useApiClient();
   const [caseData, setCaseData] = useState<Case | null>(null);
   const [state, setState] = useState<LoadState>("loading");
+  // Bumped whenever a residence input changes. Those writes mark residence results STALE
+  // and can move the derived case phase, so both the case and the requirements list have
+  // to be refetched — otherwise the screen keeps showing conclusions and a phase the API
+  // has already moved on from.
+  const [residenceVersion, setResidenceVersion] = useState(0);
   const headingRef = useRef<HTMLHeadingElement>(null);
 
   const load = useCallback(
@@ -49,7 +54,7 @@ export function CaseWorkspace({ caseId }: { caseId: string }) {
     [api, caseId],
   );
 
-  useEffect(() => load(), [load]);
+  useEffect(() => load(), [load, residenceVersion]);
 
   // Move focus to the case heading when a user action transitions the case into
   // deletion-pending, so the confirm button that unmounts doesn't drop focus to
@@ -113,7 +118,12 @@ export function CaseWorkspace({ caseId }: { caseId: string }) {
       ) : (
         <>
           {lifecycle === "ACTIVE" ? (
-            <WorkspaceShell caseData={caseData} headingRef={headingRef} />
+            <WorkspaceShell
+              caseData={caseData}
+              headingRef={headingRef}
+              onResidenceChanged={() => setResidenceVersion((n) => n + 1)}
+              residenceVersion={residenceVersion}
+            />
           ) : (
             <RouteOnboarding caseId={caseId} />
           )}
@@ -138,9 +148,15 @@ const PHASE_LABEL: Record<string, string> = {
 function WorkspaceShell({
   caseData,
   headingRef,
+  onResidenceChanged,
+  residenceVersion,
 }: {
   caseData: Case;
   headingRef: React.RefObject<HTMLHeadingElement | null>;
+  onResidenceChanged: () => void;
+  /** Bumped on every residence write; threaded into the requirements list so it
+      refetches the results those writes just marked STALE. */
+  residenceVersion: number;
 }) {
   return (
     <section style={{ marginTop: "var(--cw-space-6)" }}>
@@ -156,8 +172,8 @@ function WorkspaceShell({
         </span>
       </div>
 
-      <ResidencePanel caseId={caseData.id} />
-      <RequirementsList caseId={caseData.id} />
+      <ResidencePanel caseId={caseData.id} onResidenceChanged={onResidenceChanged} />
+      <RequirementsList caseId={caseData.id} refreshToken={residenceVersion} />
     </section>
   );
 }

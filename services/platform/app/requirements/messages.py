@@ -32,6 +32,8 @@ rules can emit has a template, so `None` means a genuine packaging bug, never ro
 from collections.abc import Callable
 from datetime import date
 
+from app.requirements.rules_core import PRESENCE_SEARCH_HORIZON_DAYS
+
 Parameters = dict[str, object]
 
 # A template is a pure function of the code's parameters. Kept as a plain Callable
@@ -86,26 +88,53 @@ def _int(p: Parameters, key: str) -> int | None:
 # --- summary codes ----------------------------------------------------------
 
 
-def _absence_summary(p: Parameters, *, period: str, verdict: str) -> str:
-    """Shared body for the ten total/final-year band codes. States the confirmed figure
-    against the threshold, then — only when they differ — the provisional figure, naming
-    it as unconfirmed. `days` is always the trusted total; `provisional_days` includes
-    records that have not been confirmed."""
+def _absence_summary(
+    p: Parameters,
+    *,
+    period: str,
+    verdict: str,
+    verdict_covers_unconfirmed: bool = False,
+) -> str:
+    """Shared body for the ten total/final-year band codes.
+
+    `days` is always the trusted total; `provisional_days` includes records that have not
+    been confirmed. The confirmed figure always leads and is always named as confirmed.
+
+    **Where the verdict attaches matters.** The verdict clause comes from the result's
+    summary code, and under the §6.2 sensitivity rule that code can be the *provisional*
+    band's — trusted 400 days bands as SUPPORTED while provisional 440 bands as
+    NEAR_THRESHOLD, and no cap applies. Appending "that is close to the standard
+    threshold" straight after "400 days … from confirmed travel records" would attach a
+    verdict about 440 to the figure 400. So when the two diverge, the verdict follows the
+    provisional figure instead. `verdict_covers_unconfirmed` marks the two capped codes
+    whose wording already speaks about both figures.
+    """
     confirmed = _int(p, "days")
     threshold = _int(p, "threshold")
     provisional = _int(p, "provisional_days")
 
+    # No figure means nothing for a threshold verdict to describe. Degrade to a statement
+    # of the gap rather than asserting an outcome with no number behind it.
+    if confirmed is None:
+        return f"The number of days outside the UK {period} is not available on this result."
+
     sentence = f"{_days(confirmed)} outside the UK {period}, from confirmed travel records"
     if threshold is not None:
         sentence += f", against a threshold of {threshold}"
-    sentence += f". {verdict}"
+    sentence += "."
 
-    if provisional is not None and confirmed is not None and provisional > confirmed:
+    if provisional is not None and provisional > confirmed:
         extra = provisional - confirmed
         sentence += (
             f" Records you have not confirmed would add {_days(extra)},"
             f" bringing the total to {provisional}."
         )
+        if verdict_covers_unconfirmed:
+            sentence += f" {verdict}"
+        else:
+            sentence += f" Including those, {verdict[0].lower()}{verdict[1:]}"
+    else:
+        sentence += f" {verdict}"
     return sentence
 
 
@@ -187,7 +216,10 @@ SUMMARY_TEMPLATES: dict[str, _Template] = {
             " The earliest later application date whose first day is clear of confirmed "
             f"absence is {format_date(p.get('resolving_application_date'))}."
             if p.get("resolving_application_date")
-            else " No later date within the next 90 days clears that day."
+            else (
+                f" No later date within the next {PRESENCE_SEARCH_HORIZON_DAYS} days"
+                " clears that day."
+            )
         )
     ),
     # residence.total_absences (§7.6)
@@ -222,6 +254,7 @@ SUMMARY_TEMPLATES: dict[str, _Template] = {
         period="across your five-year qualifying period",
         verdict="Your confirmed records are within the threshold, but records you have not "
         "confirmed would change that conclusion, so it cannot be settled yet.",
+        verdict_covers_unconfirmed=True,
     ),
     # residence.final_year_absences (§7.7)
     "FINAL_YEAR_WITHIN_THRESHOLD": lambda p: _absence_summary(
@@ -255,6 +288,7 @@ SUMMARY_TEMPLATES: dict[str, _Template] = {
         period="in the final 12 months",
         verdict="Your confirmed records are within the threshold, but records you have not "
         "confirmed would change that conclusion, so it cannot be settled yet.",
+        verdict_covers_unconfirmed=True,
     ),
     # residence.travel_consistency (§7.8) — a data-quality verdict, no figures attached.
     "TRAVEL_RECORDS_CONSISTENT": lambda p: (

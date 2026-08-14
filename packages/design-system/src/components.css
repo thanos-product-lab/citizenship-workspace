@@ -38,14 +38,23 @@
 
 .cw-status-badge {
   display: inline-flex;
-  align-items: center;
+  /* Top-aligned, not centred: the label wraps at narrow widths and the glyph must stay
+     on its first line. `white-space: nowrap` here would make the badge's min-content its
+     full string — "Professional review recommended" then cannot fit the ~214px available
+     at a 320px viewport, and .cw-requirement-list's overflow:hidden would clip it rather
+     than scroll it (WCAG 1.4.10). */
+  align-items: flex-start;
   gap: var(--cw-space-2);
   padding: var(--cw-space-1) var(--cw-space-3);
   border-radius: var(--cw-radius-md);
   font-size: var(--cw-text-sm);
   font-weight: var(--cw-weight-medium);
   line-height: var(--cw-leading-snug);
-  white-space: nowrap;
+}
+
+.cw-status-badge svg {
+  flex: none;
+  margin-top: 0.15em;
 }
 
 .cw-status-pair--sm .cw-status-badge {
@@ -92,7 +101,9 @@
 .cw-requirement-group__count {
   margin: 0 0 var(--cw-space-3);
   font-size: var(--cw-text-sm);
-  color: var(--cw-text-subtle);
+  /* --cw-text-subtle is 4.47:1 on --cw-bg — it was tuned against --cw-surface, and this
+     count sits on the page background. --cw-text-muted is 6.69:1 there. */
+  color: var(--cw-text-muted);
 }
 
 /*
@@ -106,7 +117,10 @@
   border: 1px solid var(--cw-border);
   border-radius: var(--cw-radius-lg);
   background: var(--cw-surface);
-  overflow: hidden;
+  /* `clip` rather than `hidden` so the rows' focus rings are not cropped when the
+     requirement title becomes a link in the next slice. */
+  overflow: clip;
+  overflow-clip-margin: 4px;
 }
 
 .cw-requirement-list > li + li {
@@ -251,7 +265,11 @@
 .cw-button--secondary {
   background: var(--cw-surface);
   color: var(--cw-text);
-  border-color: var(--cw-border-strong);
+  /* Not --cw-border-strong: this button's fill is within 1.03:1 of the page background,
+     so the border is its only affordance and must clear 3:1 on its own (WCAG 1.4.11).
+     --cw-border-strong is 1.56:1 on white; --cw-neutral-500 is 4.73:1 on --cw-surface
+     and 3.67:1 on the dark surface. */
+  border-color: var(--cw-neutral-500);
 }
 
 .cw-button--secondary:hover:not(:disabled) {

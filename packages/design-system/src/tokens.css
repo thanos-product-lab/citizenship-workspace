@@ -146,6 +146,13 @@
     --cw-status-not-satisfied: #ef8a82;
     --cw-status-not-assessed: var(--cw-neutral-400);
 
+    /* Currency must be re-declared too: --cw-currency-stale survives only because it
+       aliases a status base above. These two point at fixed ramp steps that fail AA on
+       the dark surface (2.67:1 and 3.67:1), and the provisional badge's dashed border
+       uses currentColor, so it also fails the 3:1 non-text threshold. */
+    --cw-currency-superseded: var(--cw-neutral-400);
+    --cw-currency-provisional: var(--cw-primary-300);
+
     --cw-bg: var(--cw-neutral-950);
     --cw-surface: var(--cw-neutral-900);
     --cw-surface-sunken: var(--cw-neutral-950);
@@ -171,6 +178,13 @@
   --cw-status-professional-review: #e08cb4;
   --cw-status-not-satisfied: #ef8a82;
   --cw-status-not-assessed: var(--cw-neutral-400);
+
+  /* Currency must be re-declared too: --cw-currency-stale survives only because it
+     aliases a status base above. These two point at fixed ramp steps that fail AA on
+     the dark surface (2.67:1 and 3.67:1), and the provisional badge's dashed border
+     uses currentColor, so it also fails the 3:1 non-text threshold. */
+  --cw-currency-superseded: var(--cw-neutral-400);
+  --cw-currency-provisional: var(--cw-primary-300);
 
   --cw-bg: var(--cw-neutral-950);
   --cw-surface: var(--cw-neutral-900);
