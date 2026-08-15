@@ -303,3 +303,416 @@
     gap: var(--cw-space-3);
   }
 }
+
+/* --- Assessment summary (the head of the detail page) ---------------------- */
+
+.cw-assessment {
+  padding-bottom: var(--cw-space-6);
+  border-bottom: 1px solid var(--cw-border);
+}
+
+.cw-assessment__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--cw-space-4);
+  flex-wrap: wrap;
+}
+
+.cw-assessment__title {
+  margin: 0;
+  font-size: var(--cw-text-3xl);
+  font-weight: var(--cw-weight-semibold);
+  line-height: var(--cw-leading-tight);
+  letter-spacing: -0.01em;
+}
+
+.cw-assessment__description {
+  margin: var(--cw-space-3) 0 0;
+  color: var(--cw-text-muted);
+  max-width: 60ch;
+}
+
+/* The headline figure gets the mono face and real size — in this product the number
+   is the content, not a decoration on the sentence. */
+.cw-assessment__figure {
+  margin: var(--cw-space-5) 0 0;
+  font-size: var(--cw-text-xl);
+  color: var(--cw-text);
+}
+
+.cw-assessment__summary {
+  margin: var(--cw-space-3) 0 0;
+  font-size: var(--cw-text-lg);
+  line-height: var(--cw-leading-normal);
+  max-width: 64ch;
+}
+
+/* --- Explanation stack ----------------------------------------------------- */
+
+/*
+ * The §7.3 tree, drawn. A single rule runs down the left of the whole stack and each
+ * layer marks itself against it, so the layers read as branches of one explanation
+ * rather than as a series of unrelated cards (UI/UX §13.4 — avoid an interface made
+ * entirely of floating cards).
+ */
+.cw-stack {
+  margin-top: var(--cw-space-8);
+  padding-left: var(--cw-space-6);
+  border-left: 2px solid var(--cw-border);
+  display: grid;
+  gap: var(--cw-space-8);
+}
+
+.cw-stack__layer {
+  position: relative;
+}
+
+/* The branch mark: a short rule reaching back to the stack's spine. */
+.cw-stack__layer::before {
+  content: "";
+  position: absolute;
+  left: calc(var(--cw-space-6) * -1);
+  top: 0.7em;
+  width: var(--cw-space-4);
+  height: 2px;
+  background: var(--cw-border);
+}
+
+.cw-stack__title {
+  margin: 0;
+  font-size: var(--cw-text-sm);
+  font-weight: var(--cw-weight-semibold);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--cw-text-muted);
+}
+
+.cw-stack__note {
+  margin: var(--cw-space-2) 0 0;
+  font-size: var(--cw-text-sm);
+  color: var(--cw-text-subtle);
+  max-width: 62ch;
+}
+
+/* An empty layer is a finding, not an absence — so it is styled as content, not as an
+   error or a placeholder. */
+.cw-stack__empty {
+  margin: var(--cw-space-3) 0 0;
+  color: var(--cw-text-muted);
+  font-size: var(--cw-text-sm);
+  line-height: var(--cw-leading-normal);
+  max-width: 62ch;
+}
+
+/* --- Calculation breakdown ------------------------------------------------- */
+
+.cw-calc {
+  margin-top: var(--cw-space-4);
+  border-collapse: collapse;
+  width: 100%;
+  max-width: 44rem;
+}
+
+.cw-calc th,
+.cw-calc td {
+  padding: var(--cw-space-3) 0;
+  text-align: left;
+  vertical-align: baseline;
+  border-bottom: 1px solid var(--cw-border);
+}
+
+.cw-calc th {
+  font-weight: var(--cw-weight-regular);
+  color: var(--cw-text-muted);
+  padding-right: var(--cw-space-4);
+}
+
+.cw-calc td {
+  text-align: right;
+  font-size: var(--cw-text-base);
+  color: var(--cw-text);
+  white-space: nowrap;
+}
+
+.cw-calc__note {
+  display: block;
+  font-size: var(--cw-text-xs);
+  color: var(--cw-text-subtle);
+}
+
+/* --- Assessed inputs ------------------------------------------------------- */
+
+.cw-input-list {
+  list-style: none;
+  margin: var(--cw-space-4) 0 0;
+  padding: 0;
+  display: grid;
+  gap: var(--cw-space-3);
+}
+
+.cw-input {
+  padding: var(--cw-space-4);
+  border: 1px solid var(--cw-border);
+  border-radius: var(--cw-radius-md);
+  background: var(--cw-surface);
+}
+
+.cw-input[data-unavailable="true"] {
+  border-style: dashed;
+}
+
+.cw-input__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--cw-space-3);
+  flex-wrap: wrap;
+}
+
+.cw-input__label {
+  font-weight: var(--cw-weight-medium);
+}
+
+.cw-input__value {
+  margin: var(--cw-space-2) 0 0;
+  font-size: var(--cw-text-base);
+}
+
+.cw-input__detail {
+  margin: var(--cw-space-1) 0 0;
+  font-size: var(--cw-text-sm);
+  color: var(--cw-text-muted);
+}
+
+/*
+ * The two markers that stop a long list reading as corroboration. Both carry a glyph and
+ * words; neither depends on its colour.
+ */
+.cw-input__flag {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--cw-space-2);
+  margin: var(--cw-space-3) 0 0;
+  font-size: var(--cw-text-sm);
+  line-height: var(--cw-leading-snug);
+}
+
+.cw-input__flag svg {
+  flex: none;
+  margin-top: 0.15em;
+}
+
+.cw-input__flag[data-flag="not-counted"] {
+  color: var(--cw-text-muted);
+}
+
+.cw-input__flag[data-flag="moved"] {
+  color: var(--cw-currency-stale);
+}
+
+/* --- Provenance badge ------------------------------------------------------ */
+
+.cw-provenance {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--cw-space-1);
+  font-size: var(--cw-text-xs);
+  font-weight: var(--cw-weight-medium);
+  white-space: nowrap;
+}
+
+.cw-provenance[data-provenance="unknown"] {
+  color: var(--cw-text-muted);
+}
+
+/* --- Source reference ------------------------------------------------------ */
+
+.cw-source {
+  margin-top: var(--cw-space-4);
+}
+
+.cw-source__meta {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: var(--cw-space-4);
+  margin: 0;
+  padding: var(--cw-space-4);
+  border: 1px solid var(--cw-border);
+  border-radius: var(--cw-radius-md);
+  background: var(--cw-surface-sunken);
+}
+
+.cw-source__meta dt {
+  font-size: var(--cw-text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--cw-text-muted);
+}
+
+.cw-source__meta dd {
+  margin: var(--cw-space-1) 0 0;
+  font-size: var(--cw-text-sm);
+}
+
+.cw-source__citations {
+  list-style: none;
+  margin: var(--cw-space-4) 0 0;
+  padding: 0;
+  display: grid;
+  gap: var(--cw-space-2);
+}
+
+.cw-source__citations li {
+  display: flex;
+  gap: var(--cw-space-3);
+  align-items: baseline;
+  flex-wrap: wrap;
+  font-size: var(--cw-text-sm);
+  line-height: var(--cw-leading-snug);
+}
+
+.cw-source__code {
+  flex: none;
+  padding: 1px var(--cw-space-2);
+  border-radius: var(--cw-radius-sm);
+  background: var(--cw-surface-sunken);
+  border: 1px solid var(--cw-border);
+  font-size: var(--cw-text-xs);
+  color: var(--cw-text-muted);
+}
+
+/* The declared gap. Muted, not alarming: it is a statement about what we record, not a
+   problem with the user's case. */
+.cw-source__gap {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--cw-space-2);
+  margin: var(--cw-space-4) 0 0;
+  font-size: var(--cw-text-sm);
+  line-height: var(--cw-leading-snug);
+  color: var(--cw-text-muted);
+  max-width: 62ch;
+}
+
+.cw-source__gap svg {
+  flex: none;
+  margin-top: 0.15em;
+}
+
+/* --- Limitations and next actions ------------------------------------------ */
+
+.cw-notes {
+  list-style: none;
+  margin: var(--cw-space-4) 0 0;
+  padding: 0;
+  display: grid;
+  gap: var(--cw-space-3);
+}
+
+.cw-note {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--cw-space-3);
+  padding: var(--cw-space-3) var(--cw-space-4);
+  border-left: 3px solid var(--cw-border-strong);
+  border-radius: 0 var(--cw-radius-sm) var(--cw-radius-sm) 0;
+  background: var(--cw-surface);
+  line-height: var(--cw-leading-normal);
+}
+
+.cw-note svg {
+  flex: none;
+  margin-top: 0.2em;
+}
+
+.cw-note[data-severity="REVIEW_REQUIRED"],
+.cw-note[data-severity="BLOCKING"] {
+  border-left-color: var(--cw-status-inconsistent);
+}
+
+.cw-note[data-severity="CAUTION"] {
+  border-left-color: var(--cw-status-near-threshold);
+}
+
+.cw-note[data-blocking="true"] {
+  border-left-color: var(--cw-status-not-satisfied);
+}
+
+.cw-note__meta {
+  display: block;
+  margin-top: var(--cw-space-1);
+  font-size: var(--cw-text-xs);
+  color: var(--cw-text-subtle);
+}
+
+/* --- Assessment history ---------------------------------------------------- */
+
+.cw-history {
+  list-style: none;
+  margin: var(--cw-space-4) 0 0;
+  padding: 0;
+  display: grid;
+  gap: var(--cw-space-3);
+}
+
+.cw-history__item {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--cw-space-4);
+  padding: var(--cw-space-3) var(--cw-space-4);
+  border: 1px solid var(--cw-border);
+  border-radius: var(--cw-radius-md);
+  flex-wrap: wrap;
+}
+
+/* A superseded entry is visibly historical — recessed, not merely older in the list. */
+.cw-history__item[data-current="false"] {
+  background: var(--cw-surface-sunken);
+  border-style: dashed;
+  color: var(--cw-text-muted);
+}
+
+.cw-history__when {
+  font-size: var(--cw-text-sm);
+  color: var(--cw-text-muted);
+}
+
+/* --- Detail page shell ----------------------------------------------------- */
+
+.cw-back {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--cw-space-2);
+  font-size: var(--cw-text-sm);
+}
+
+@media (max-width: 34rem) {
+  .cw-stack {
+    padding-left: var(--cw-space-4);
+  }
+  .cw-stack__layer::before {
+    left: calc(var(--cw-space-4) * -1);
+    width: var(--cw-space-2);
+  }
+  .cw-calc td {
+    white-space: normal;
+  }
+}
+
+/*
+ * The requirement title is the link into the explanation. Quiet at rest so the list stays
+ * calm, underlined on hover; the global :focus-visible ring covers keyboard focus. The
+ * summary beneath stays outside the link so it is read as prose, not as link text.
+ */
+.cw-requirement-row__link {
+  color: inherit;
+  text-decoration: none;
+}
+
+.cw-requirement-row__link:hover {
+  color: var(--cw-accent);
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}

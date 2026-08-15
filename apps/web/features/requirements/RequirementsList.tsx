@@ -1,7 +1,7 @@
 "use client";
 
 import type { components } from "@cw/api-client";
-import { RequirementStatus, StatusGlyph } from "@cw/design-system";
+import { RequirementStatus, StaleAssessmentNotice } from "@cw/design-system";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useApiClient } from "@/lib/api";
@@ -219,7 +219,7 @@ export function RequirementsList({
               <ul className="cw-requirement-list">
                 {group.items.map((requirement) => (
                   <li key={requirement.requirement_key}>
-                    <RequirementRow requirement={requirement} />
+                    <RequirementRow requirement={requirement} caseId={caseId} />
                   </li>
                 ))}
               </ul>
@@ -231,27 +231,34 @@ export function RequirementsList({
   );
 }
 
-function RequirementRow({ requirement }: { requirement: Requirement }) {
+function RequirementRow({
+  requirement,
+  caseId,
+}: {
+  requirement: Requirement;
+  caseId: string;
+}) {
   const unassessed = requirement.conclusion === "NOT_YET_ASSESSED";
   return (
     <div className="cw-requirement-row">
       <div className="cw-requirement-row__main">
-        <h4 className="cw-requirement-row__title">{requirement.title}</h4>
+        <h4 className="cw-requirement-row__title">
+          {/* The whole row is not a link: the summary beneath it is prose a screen-reader
+              user should be able to read without it being announced as link text. */}
+          <a
+            className="cw-requirement-row__link"
+            href={`/cases/${caseId}/requirements/${encodeURIComponent(requirement.requirement_key)}`}
+          >
+            {requirement.title}
+          </a>
+        </h4>
         <p className="cw-requirement-row__summary">
           {requirement.summary?.text ??
             (unassessed
               ? "This requirement hasn’t been assessed yet."
               : "No plain-language summary is available for this result.")}
         </p>
-        {requirement.stale ? (
-          <p className="cw-stale-notice">
-            <StatusGlyph name="clock" size={16} />
-            <span>
-              {requirement.stale.reason ?? "An input changed after this was worked out."} This is
-              the conclusion from before that change; it has not been rechecked.
-            </span>
-          </p>
-        ) : null}
+        {requirement.stale ? <StaleAssessmentNotice reason={requirement.stale.reason} /> : null}
       </div>
       <RequirementStatus
         conclusion={requirement.conclusion}
