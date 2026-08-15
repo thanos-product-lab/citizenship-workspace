@@ -12,7 +12,7 @@
  * below carry the explanation instead.
  */
 
-import type { JSX, ReactNode } from "react";
+import type { JSX, ReactNode, RefObject } from "react";
 
 import { RequirementStatus } from "./RequirementStatus";
 
@@ -27,6 +27,8 @@ export interface AssessmentSummaryProps {
   summary?: string | null;
   /** Rendered under the summary — the stale notice belongs here. */
   children?: ReactNode;
+  /** Lets the page park focus on the title when a control it owned unmounts. */
+  titleRef?: RefObject<HTMLHeadingElement | null>;
 }
 
 export function AssessmentSummary({
@@ -37,11 +39,14 @@ export function AssessmentSummary({
   figure,
   summary,
   children,
+  titleRef,
 }: AssessmentSummaryProps): JSX.Element {
   return (
     <header className="cw-assessment">
       <div className="cw-assessment__head">
-        <h1 className="cw-assessment__title">{title}</h1>
+        <h1 className="cw-assessment__title" ref={titleRef} tabIndex={-1}>
+          {title}
+        </h1>
         <RequirementStatus conclusion={conclusion} currency={currency} />
       </div>
 

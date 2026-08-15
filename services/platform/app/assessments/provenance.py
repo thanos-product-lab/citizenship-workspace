@@ -29,11 +29,17 @@ from datetime import date
 
 from sqlalchemy.orm import Session
 
+from app.applicants.domain import ReviewState as ProfileReviewState
 from app.applicants.repository import RouteProfileRepository
 from app.assessments.domain import AssessmentInputLink
 from app.requirements.evaluation import LinkInputKind
 from app.requirements.messages import format_date
-from app.residence.domain import DateConfidence, TravelReviewState
+from app.residence.domain import (
+    DateConfidence,
+    TravelLifecycleStatus,
+    TravelReviewState,
+    counts_toward_trusted_total,
+)
 from app.residence.repository import (
     ProposedApplicationDateRepository,
     TravelRecordRepository,
@@ -73,7 +79,7 @@ class ResolvedInput:
     #: An optional qualifying line, e.g. "Confirmed · exact dates".
     detail: str | None
     version_number: int | None
-    #: Is this still the current version of its record? False means the input moved.
+    #: Is this still the current version of its record? False means the input was edited.
     is_still_current: bool
     #: Did this input pass the §6.1 trust gate and count toward the trusted figure?
     #: None where the gate does not apply (the application date, profile answers).
@@ -82,6 +88,10 @@ class ResolvedInput:
     provenance_kind: str
     #: True when the version could not be loaded at all.
     unavailable: bool = False
+    #: Has the record been removed since? A tombstone keeps `current_version_id` pointing
+    #: at its last version, so removal is invisible to `is_still_current` and must be its
+    #: own signal — otherwise a deleted trip renders as a live, counting input.
+    is_removed: bool = False
 
 
 def resolve_input_links(session: Session, links: list[AssessmentInputLink]) -> list[ResolvedInput]:
@@ -141,16 +151,16 @@ def _resolve_application_date(session: Session, link: AssessmentInputLink) -> Re
 
 
 def _resolve_travel_record(session: Session, link: AssessmentInputLink) -> ResolvedInput:
-    version = TravelRecordRepository.get_version(session, link.input_version_id)
-    if version is None:
+    found = TravelRecordRepository.get_record_for_version(session, link.input_version_id)
+    if found is None:
         return _unavailable(link, label="Travel record")
+    record, version = found
 
     confirmed = version.review_state == TravelReviewState.CONFIRMED.value
-    exact = version.date_confidence == DateConfidence.EXACT.value
-    # §6.1: only a confirmed record with exact dates counts toward the trusted figure.
-    # The service applies this same gate when it gathers trips; it is restated here for
-    # display, so the screen can say which records actually counted.
-    counts = confirmed and exact
+    removed = record.lifecycle_status is TravelLifecycleStatus.REMOVED
+    # One definition of the §6.1 gate, shared with the assessment service. It includes the
+    # ACTIVE check, which is what stops a removed record reporting as counting.
+    counts = counts_toward_trusted_total(record, version)
 
     return ResolvedInput(
         input_kind=link.input_kind,
@@ -161,14 +171,21 @@ def _resolve_travel_record(session: Session, link: AssessmentInputLink) -> Resol
         value=_trip_dates(version.departure_date, version.return_date),
         detail=_trip_detail(confirmed=confirmed, date_confidence=version.date_confidence),
         version_number=version.version_number,
-        is_still_current=TravelRecordRepository.is_current_version(session, link.input_version_id),
+        is_still_current=record.current_version_id == link.input_version_id,
+        is_removed=removed,
         counts_as_confirmed=counts,
         provenance_kind=(
             "conflicting"
             if version.date_confidence == DateConfidence.CONFLICTING.value
             else "user_confirmed"
             if counts
-            else "unavailable"
+            # Not "unavailable": that badge means the version could not be read at all, and
+            # collapsing "did not count" into it destroys the distinction. The record was
+            # entered by the user; it simply did not pass the gate, which the row says in
+            # words directly beneath.
+            else "user_corrected"
+            if removed
+            else "system_calculated"
         ),
     )
 
@@ -187,7 +204,13 @@ def _resolve_route_profile(session: Session, link: AssessmentInputLink) -> Resol
         "version_number": version.version_number,
         "is_still_current": is_current,
         "counts_as_confirmed": None,
-        "provenance_kind": "user_confirmed",
+        # Derived, not asserted: a profile version can still be DRAFT, and the badge must
+        # not outrun the domain even where the current write paths make that unreachable.
+        "provenance_kind": (
+            "user_confirmed"
+            if version.review_state == ProfileReviewState.CONFIRMED.value
+            else "system_calculated"
+        ),
     }
 
     # A rule that names no field read the profile as a whole (the composite route guard).

@@ -632,6 +632,8 @@ export interface components {
              * Format: uuid
              */
             input_version_id: string;
+            /** Is Removed */
+            is_removed: boolean;
             /** Is Still Current */
             is_still_current: boolean;
             /** Label */

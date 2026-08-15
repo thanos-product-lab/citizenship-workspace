@@ -23,9 +23,7 @@ _sessionmaker: sessionmaker[Session] | None = None
 def get_sessionmaker() -> sessionmaker[Session]:
     global _sessionmaker
     if _sessionmaker is None:
-        _sessionmaker = sessionmaker(
-            bind=get_engine(), autoflush=False, expire_on_commit=False
-        )
+        _sessionmaker = sessionmaker(bind=get_engine(), autoflush=False, expire_on_commit=False)
     return _sessionmaker
 
 

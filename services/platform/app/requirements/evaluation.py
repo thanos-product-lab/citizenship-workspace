@@ -568,9 +568,7 @@ def _evaluate_travel_consistency(inputs: ResidenceAssessmentInputs) -> Evaluated
             )
         )
 
-    uncertain = [
-        t for t in trips if t.date_confidence in _UNCERTAIN_CONFIDENCES and _in_window(t)
-    ]
+    uncertain = [t for t in trips if t.date_confidence in _UNCERTAIN_CONFIDENCES and _in_window(t)]
     if uncertain:
         limitations.append(
             Limitation(

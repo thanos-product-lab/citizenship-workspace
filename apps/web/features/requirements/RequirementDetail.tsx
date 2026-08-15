@@ -12,7 +12,7 @@ import {
   StaleAssessmentNotice,
   StatusGlyph,
 } from "@cw/design-system";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useApiClient } from "@/lib/api";
 
@@ -47,9 +47,15 @@ export function RequirementDetail({
   const api = useApiClient();
   const [detail, setDetail] = useState<Detail | null>(null);
   const [state, setState] = useState<LoadState>("loading");
+  const titleRef = useRef<HTMLHeadingElement>(null);
+  const returnFocusToTitle = useRef(false);
 
-  const load = useCallback(() => {
-    setState("loading");
+  const load = useCallback((opts?: { quiet?: boolean; focusTitleOnDone?: boolean }) => {
+    // A `quiet` reload swaps the content in place. Dropping back to "loading" would tear
+    // down all nine sections, losing scroll position and focus — unacceptable for a
+    // background refresh on a page this long.
+    if (!opts?.quiet) setState("loading");
+    if (opts?.focusTitleOnDone) returnFocusToTitle.current = true;
     let active = true;
     void api
       .GET("/api/v1/cases/{case_id}/requirements/{requirement_key}", {
@@ -81,11 +87,21 @@ export function RequirementDetail({
 
   // Re-check on refocus. The page holds a snapshot, and an edit made elsewhere can mark
   // this result STALE server-side; without this the page would keep showing CURRENT.
+  // Quiet, so alt-tabbing away and back does not blank the page and lose the reader's place.
   useEffect(() => {
-    const onFocus = () => load();
+    const onFocus = () => load({ quiet: true });
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
   }, [load]);
+
+  // The retry button unmounts on click; park focus on the title rather than dropping the
+  // user to <body>, where the next Tab restarts from the top of the document.
+  useEffect(() => {
+    if (state === "ready" && returnFocusToTitle.current) {
+      returnFocusToTitle.current = false;
+      titleRef.current?.focus();
+    }
+  }, [state]);
 
   if (state === "loading") {
     return (
@@ -113,7 +129,11 @@ export function RequirementDetail({
         <p style={{ color: "var(--cw-status-not-satisfied)" }}>
           We couldn’t load this requirement.
         </p>
-        <button type="button" className="cw-button cw-button--secondary" onClick={() => load()}>
+        <button
+          type="button"
+          className="cw-button cw-button--secondary"
+          onClick={() => load({ focusTitleOnDone: true })}
+        >
           Try again
         </button>
       </div>
@@ -126,7 +146,7 @@ export function RequirementDetail({
     detail.summary_parameters as Record<string, unknown>,
   );
   const movedInputs = [...detail.facts_used, ...detail.travel_inputs].filter(
-    (input) => !input.is_still_current && !input.unavailable,
+    (input) => (!input.is_still_current || input.is_removed) && !input.unavailable,
   );
 
   return (
@@ -142,6 +162,7 @@ export function RequirementDetail({
         currency={detail.currency}
         figure={headlineFigure(detail)}
         summary={detail.summary?.text ?? null}
+        titleRef={titleRef}
       >
         {detail.stale ? (
           <StaleAssessmentNotice
@@ -220,12 +241,13 @@ export function RequirementDetail({
             ) : null}
           </ExplanationLayer>
 
-          {detail.travel_inputs.length > 0 ? (
-            <ExplanationLayer
-              id="layer-travel"
-              title="Travel records used"
-              note={travelNote(detail)}
-            >
+          <ExplanationLayer
+            id="layer-travel"
+            title="Travel records used"
+            note={detail.travel_inputs.length > 0 ? travelNote(detail) : undefined}
+            emptyMessage="This assessment read no travel records."
+          >
+            {detail.travel_inputs.length > 0 ? (
               <ul className="cw-input-list">
                 {detail.travel_inputs.map((input) => (
                   <AssessedInput
@@ -236,12 +258,13 @@ export function RequirementDetail({
                     provenanceKind={input.provenance_kind}
                     countsAsConfirmed={input.counts_as_confirmed}
                     isStillCurrent={input.is_still_current}
+                    isRemoved={input.is_removed}
                     unavailable={input.unavailable}
                   />
                 ))}
               </ul>
-            </ExplanationLayer>
-          ) : null}
+            ) : null}
+          </ExplanationLayer>
 
           {/* The layer stays in the stack rather than being dropped: "no evidence is
               linked" is a true and important statement about this case, and removing the
@@ -306,7 +329,13 @@ export function RequirementDetail({
           <ExplanationLayer
             id="layer-next"
             title="Next action"
-            emptyMessage="There’s nothing to do for this requirement right now."
+            emptyMessage={
+              // "Nothing to do" beneath an unresolved limitation is false reassurance, and
+              // several evaluators raise limitations without emitting a next action.
+              detail.conclusion === "SUPPORTED" && detail.limitations.length === 0
+                ? "There’s nothing to do for this requirement right now."
+                : "No next action has been recorded for this result. Anything listed under Limitations is still unresolved."
+            }
           >
             {detail.next_actions.length > 0 ? (
               <ul className="cw-notes">
@@ -390,9 +419,12 @@ function headlineFigure(detail: Detail): string | null {
   const threshold = params["threshold"];
   if (typeof days !== "number") return null;
   const noun = days === 1 ? "day" : "days";
+  // "confirmed" is load-bearing: `days` is the trusted total, and the message registry
+  // commits to always naming it as such. This is the one figure composed outside it. The
+  // relationship is stated in words, not a middle dot a screen reader skips.
   return typeof threshold === "number"
-    ? `${days} ${noun} · threshold ${threshold}`
-    : `${days} ${noun}`;
+    ? `${days} confirmed ${noun} against a threshold of ${threshold}`
+    : `${days} confirmed ${noun}`;
 }
 
 /**
@@ -402,8 +434,10 @@ function headlineFigure(detail: Detail): string | null {
 function travelNote(detail: Detail): string {
   const total = detail.travel_inputs.length;
   const counted = detail.travel_inputs.filter((i) => i.counts_as_confirmed === true).length;
+  // Scoped to this run, not to the user's current records: under a stale result the two
+  // sets differ, and "all of your travel records" would be a false claim about the present.
   if (counted === total) {
-    return `All ${total} of your travel records were confirmed with exact dates, so all of them counted towards the figure.`;
+    return `All ${total} travel records this assessment read were confirmed with exact dates, so all of them counted towards the figure.`;
   }
-  return `${counted} of ${total} travel records were confirmed with exact dates. Only those counted towards the figure.`;
+  return `${counted} of the ${total} travel records this assessment read were confirmed with exact dates. Only those counted towards the figure.`;
 }

@@ -71,7 +71,10 @@
   --cw-provenance-evidence-supported: var(--cw-primary-700);
   --cw-provenance-conflicting: var(--cw-status-inconsistent);
   --cw-provenance-stale: var(--cw-status-near-threshold);
-  --cw-provenance-unavailable: var(--cw-neutral-400);
+  /* neutral-400 is 2.58:1 on --cw-surface and fails AA as 12px badge text. It shares a
+     hue with system-calculated at -600, which is fine: the glyph and label still separate
+     them, which is what the never-colour-alone rule is for. */
+  --cw-provenance-unavailable: var(--cw-neutral-600);
 
   /* --- Role tokens (what components reference; these flip in dark mode) --- */
   --cw-bg: var(--cw-neutral-50);

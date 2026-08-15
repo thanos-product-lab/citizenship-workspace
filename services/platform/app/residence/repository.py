@@ -34,7 +34,9 @@ class ProposedApplicationDateRepository:
         return bool(
             session.scalar(
                 select(ProposedApplicationDate.id).where(
-                    ProposedApplicationDate.current_version_id == version_id
+                    ProposedApplicationDate.current_version_id == version_id,
+                    # A case may hold more than one root; only the current one counts.
+                    ProposedApplicationDate.is_current.is_(True),
                 )
             )
         )
@@ -60,18 +62,21 @@ class TravelRecordRepository:
         return session.get(TravelRecord, travel_record_id)
 
     @staticmethod
-    def is_current_version(session: Session, version_id: uuid.UUID) -> bool:
-        """Whether this exact version is still its record's current one.
+    def get_record_for_version(
+        session: Session, version_id: uuid.UUID
+    ) -> tuple[TravelRecord, TravelRecordVersion] | None:
+        """The record and version behind a linked version id.
 
-        An assessment links the version it actually read. Once the record is edited a new
-        version becomes current and this returns False — which is what lets the detail
-        screen say *which* input moved under a stale result, rather than only that
-        something did."""
-        return bool(
-            session.scalar(
-                select(TravelRecord.id).where(TravelRecord.current_version_id == version_id)
-            )
-        )
+        Returns both because the two answer different questions and callers need both:
+        the *version* holds the values a rule read, the *record* holds the lifecycle — and
+        a removed record is a tombstone whose `current_version_id` still points at its last
+        version, so a check that reads only the version cannot tell it apart from a live
+        one."""
+        version = session.get(TravelRecordVersion, version_id)
+        if version is None:
+            return None
+        record = session.get(TravelRecord, version.travel_record_id)
+        return (record, version) if record is not None else None
 
     @staticmethod
     def get_version(session: Session, version_id: uuid.UUID) -> TravelRecordVersion | None:

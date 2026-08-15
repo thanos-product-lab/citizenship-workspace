@@ -48,9 +48,8 @@ from app.requirements.evaluation import (
 )
 from app.requirements.models import RequirementDefinition, RuleVersion
 from app.residence.domain import (
-    DateConfidence,
     ProposedApplicationDateVersion,
-    TravelReviewState,
+    counts_toward_trusted_total,
 )
 from app.residence.repository import (
     ProposedApplicationDateRepository,
@@ -293,13 +292,10 @@ def _gather_trips(session: Session, case_id: uuid.UUID) -> tuple[TripInput, ...]
             departure_date=version.departure_date,
             return_date=version.return_date,
             travel_record_version_id=version.id,
-            is_trusted=(
-                version.review_state == TravelReviewState.CONFIRMED.value
-                and version.date_confidence == DateConfidence.EXACT.value
-            ),
+            is_trusted=counts_toward_trusted_total(record, version),
             date_confidence=version.date_confidence,
         )
-        for _record, version in records
+        for record, version in records
     )
 
 

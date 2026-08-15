@@ -31,22 +31,27 @@ export function ExplanationStack({ children }: { children: ReactNode }): JSX.Ele
 export interface ExplanationLayerProps {
   /** The layer name, e.g. "Facts used". Rendered as a real heading. */
   title: string;
+  /** Heading level. Defaults to 2: these sections are the top-level divisions of the
+      detail page, matching how the case page structures its own sections. */
+  headingLevel?: 2 | 3;
   /** Stable id so the heading can label the section. */
   id: string;
   /** One line framing what this layer answers. */
-  note?: string;
+  note?: string | undefined;
   /** Shown instead of children when there is nothing in this layer. */
-  emptyMessage?: string;
+  emptyMessage?: string | undefined;
   children?: ReactNode;
 }
 
 export function ExplanationLayer({
   title,
   id,
+  headingLevel = 2,
   note,
   emptyMessage,
   children,
 }: ExplanationLayerProps): JSX.Element {
+  const Heading = `h${headingLevel}` as "h2" | "h3";
   const isEmpty =
     children === undefined ||
     children === null ||
@@ -55,9 +60,9 @@ export function ExplanationLayer({
 
   return (
     <section className="cw-stack__layer" aria-labelledby={id}>
-      <h3 className="cw-stack__title" id={id}>
+      <Heading className="cw-stack__title" id={id}>
         {title}
-      </h3>
+      </Heading>
       {note ? <p className="cw-stack__note">{note}</p> : null}
       {isEmpty ? <p className="cw-stack__empty">{emptyMessage ?? "Nothing recorded."}</p> : children}
     </section>

@@ -62,9 +62,7 @@ class OutboxEventRecord(Base):
     aggregate_id: Mapped[uuid.UUID] = mapped_column(index=True)
     event_type: Mapped[str] = mapped_column(String(60))
     payload: Mapped[dict[str, Any]] = mapped_column(JSONB)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     # NULL published_at = not yet delivered; the reader lands in a later slice.
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
     attempt_count: Mapped[int] = mapped_column(Integer, default=0)

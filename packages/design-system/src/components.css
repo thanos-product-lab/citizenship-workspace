@@ -391,7 +391,9 @@
 .cw-stack__note {
   margin: var(--cw-space-2) 0 0;
   font-size: var(--cw-text-sm);
-  color: var(--cw-text-subtle);
+  /* Not --cw-text-subtle: 4.47:1 on --cw-bg. This line carries the "N of M records
+     counted" sentence, which is the layer's whole anti-corroboration signal. */
+  color: var(--cw-text-muted);
   max-width: 62ch;
 }
 
@@ -407,8 +409,14 @@
 
 /* --- Calculation breakdown ------------------------------------------------- */
 
-.cw-calc {
+/* A data table may scroll instead of reflowing (an explicit 1.4.10 exception), but it
+   must scroll *itself* rather than making the document scroll sideways. */
+.cw-calc-scroll {
   margin-top: var(--cw-space-4);
+  overflow-x: auto;
+}
+
+.cw-calc {
   border-collapse: collapse;
   width: 100%;
   max-width: 44rem;
@@ -438,7 +446,8 @@
 .cw-calc__note {
   display: block;
   font-size: var(--cw-text-xs);
-  color: var(--cw-text-subtle);
+  /* Carries "from confirmed records only" — the qualifier that makes the row honest. */
+  color: var(--cw-text-muted);
 }
 
 /* --- Assessed inputs ------------------------------------------------------- */
@@ -643,7 +652,8 @@
   display: block;
   margin-top: var(--cw-space-1);
   font-size: var(--cw-text-xs);
-  color: var(--cw-text-subtle);
+  /* 4.16:1 as --cw-text-subtle on a superseded history row's sunken background. */
+  color: var(--cw-text-muted);
 }
 
 /* --- Assessment history ---------------------------------------------------- */
@@ -708,7 +718,11 @@
  */
 .cw-requirement-row__link {
   color: inherit;
-  text-decoration: none;
+  /* A persistent, low-contrast underline: hover is the weakest discovery channel, and at
+     200% zoom it is often unavailable entirely. */
+  text-decoration: underline;
+  text-decoration-color: var(--cw-border-strong);
+  text-underline-offset: 0.2em;
 }
 
 .cw-requirement-row__link:hover {

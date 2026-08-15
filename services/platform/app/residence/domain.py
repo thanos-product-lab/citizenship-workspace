@@ -343,3 +343,24 @@ class TravelRecordFields:
     review_state: TravelReviewState
     destination_country_code: str | None = None
     notes: str | None = None
+
+
+def counts_toward_trusted_total(record: "TravelRecord", version: "TravelRecordVersion") -> bool:
+    """The §6.1 trust gate, defined **once**: a record contributes to a trusted total only
+    if it is ACTIVE, its review state is CONFIRMED, and its dates are EXACT.
+
+    All three matter, and the lifecycle check is the one that is easy to forget. Removal is
+    a tombstone: `current_version_id` keeps pointing at the last version, so a removed
+    record still looks confirmed and current to any check that only reads the version.
+    A second copy of this rule that omitted ACTIVE is exactly how a deleted trip came to be
+    displayed as counting towards a figure (CLAUDE.md §9: deleting evidence cannot leave
+    its support state as available).
+
+    The assessment service applies this when gathering trips; the provenance resolver
+    applies it when describing what a result read. They must never drift apart.
+    """
+    return (
+        record.lifecycle_status is TravelLifecycleStatus.ACTIVE
+        and version.review_state == TravelReviewState.CONFIRMED.value
+        and version.date_confidence == DateConfidence.EXACT.value
+    )

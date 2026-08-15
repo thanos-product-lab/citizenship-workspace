@@ -205,3 +205,64 @@ def test_resolution_preserves_link_order(api: Api, db_session: Session) -> None:
     links = _links_for(db_session, case_id, "residence.total_absences")
     resolved = resolve_input_links(db_session, links)
     assert [r.input_version_id for r in resolved] == [link.input_version_id for link in links]
+
+
+def test_a_removed_record_is_marked_removed_and_stops_counting(
+    api: Api, db_session: Session
+) -> None:
+    """Removal is a tombstone: the record keeps pointing at its last version, so
+    `is_still_current` stays true and only the lifecycle reveals the deletion.
+
+    Before the §6.1 gate was shared, the display path checked CONFIRMED + EXACT but not
+    ACTIVE, so a deleted trip rendered as current, confirmed, and counting towards the
+    figure — the failure CLAUDE.md §9 names directly ("deleting evidence cannot leave its
+    support state as available")."""
+    case_id = _assessed_case(api, "user_a")
+    records = api("user_a").get(f"/api/v1/cases/{case_id}/travel-records").json()
+    record = records[0]
+
+    removed = api("user_a").delete(
+        f"/api/v1/cases/{case_id}/travel-records/{record['id']}",
+        params={"expected_revision": record["revision"]},
+    )
+    assert removed.status_code == 200, removed.text
+    db_session.expire_all()
+
+    resolved = resolve_input_links(
+        db_session, _links_for(db_session, case_id, "residence.total_absences")
+    )
+    trip = next(r for r in resolved if r.input_kind == "TRAVEL_RECORD_VERSION")
+
+    assert trip.is_removed is True
+    assert trip.counts_as_confirmed is False
+    # The value shown is still what the rule read — the result was reached from it.
+    assert trip.value == "4 May 2026 to 10 May 2026"
+
+
+def test_the_trust_gate_has_one_definition(api: Api, db_session: Session) -> None:
+    """The assessment service and the provenance resolver must agree on which records count.
+    Two copies of the §6.1 rule is how the removed-record bug happened, so this pins that
+    the displayed `counts_as_confirmed` matches the gate the evaluator actually applied."""
+    from app.residence.domain import counts_toward_trusted_total
+    from app.residence.repository import TravelRecordRepository
+
+    case_id = _assessed_case(api, "user_a")
+    api("user_a").post(
+        f"/api/v1/cases/{case_id}/travel-records",
+        json={
+            "destination_label": "Greece",
+            "departure_date": "2026-07-01",
+            "return_date": "2026-07-20",
+            "date_confidence": "ESTIMATED",
+        },
+    )
+    api("user_a").post(f"/api/v1/cases/{case_id}/assessments/recalculate")
+
+    resolved = resolve_input_links(
+        db_session, _links_for(db_session, case_id, "residence.total_absences")
+    )
+    for item in (r for r in resolved if r.input_kind == "TRAVEL_RECORD_VERSION"):
+        found = TravelRecordRepository.get_record_for_version(db_session, item.input_version_id)
+        assert found is not None
+        record, version = found
+        assert item.counts_as_confirmed == counts_toward_trusted_total(record, version)

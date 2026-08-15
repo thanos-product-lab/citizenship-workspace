@@ -52,6 +52,10 @@ export interface AssessedInputProps {
   /** Null where the trust gate does not apply (the application date, profile answers). */
   countsAsConfirmed?: boolean | null;
   isStillCurrent: boolean;
+  /** The record was deleted after this result was produced. Distinct from an edit: a
+      tombstone keeps the record pointing at this version, so removal is invisible to
+      `isStillCurrent` and needs its own signal. */
+  isRemoved?: boolean;
   unavailable?: boolean;
 }
 
@@ -62,6 +66,7 @@ export function AssessedInput({
   provenanceKind,
   countsAsConfirmed = null,
   isStillCurrent,
+  isRemoved = false,
   unavailable = false,
 }: AssessedInputProps): JSX.Element {
   return (
@@ -81,7 +86,14 @@ export function AssessedInput({
         </p>
       ) : null}
 
-      {!isStillCurrent && !unavailable ? (
+      {isRemoved ? (
+        <p className="cw-input__flag" data-flag="moved">
+          <StatusGlyph name="slash" size={14} />
+          <span>
+            This record has been removed since. The value above is what the rule read.
+          </span>
+        </p>
+      ) : !isStillCurrent && !unavailable ? (
         <p className="cw-input__flag" data-flag="moved">
           <StatusGlyph name="clock" size={14} />
           <span>This has been edited since. The value above is what the rule read.</span>

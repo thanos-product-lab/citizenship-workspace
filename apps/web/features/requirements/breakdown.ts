@@ -101,7 +101,7 @@ export function buildCalculationRows(
   const provisional = num(parameters, "provisional_days");
   if (provisional !== null && confirmed !== null && provisional > confirmed) {
     rows.push({
-      label: "Days from unconfirmed records",
+      label: "Additional days unconfirmed records would add",
       value: days(provisional - confirmed),
       note: "not counted towards the figure above",
     });

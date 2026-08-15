@@ -20,6 +20,7 @@ function anInput(overrides: Record<string, unknown> = {}) {
     detail: "Confirmed · exact dates",
     version_number: 1,
     is_still_current: true,
+    is_removed: false,
     counts_as_confirmed: true,
     provenance_kind: "user_confirmed",
     unavailable: false,
@@ -97,7 +98,7 @@ describe("RequirementDetail", () => {
       "Limitations",
       "Next action",
     ]) {
-      expect(screen.getByRole("heading", { name: layer, level: 3 })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: layer, level: 2 })).toBeInTheDocument();
     }
   });
 
@@ -139,7 +140,7 @@ describe("RequirementDetail", () => {
     render(<RequirementDetail caseId="c1" requirementKey="residence.total_absences" />);
 
     expect(
-      await screen.findByText(/1 of 2 travel records were confirmed with exact dates/),
+      await screen.findByText(/1 of the 2 travel records this assessment read were confirmed/),
     ).toBeInTheDocument();
     expect(screen.getByText(/Did not count towards the confirmed figure/)).toBeInTheDocument();
   });
@@ -222,7 +223,9 @@ describe("RequirementDetail", () => {
     render(<RequirementDetail caseId="c1" requirementKey="residence.total_absences" />);
 
     const table = await screen.findByRole("table");
-    expect(within(table).getByText("Days from unconfirmed records")).toBeInTheDocument();
+    expect(
+      within(table).getByText("Additional days unconfirmed records would add"),
+    ).toBeInTheDocument();
     expect(within(table).getByText("13 days")).toBeInTheDocument();
     expect(within(table).getByText("not counted towards the figure above")).toBeInTheDocument();
   });
@@ -330,6 +333,84 @@ describe("RequirementDetail", () => {
 
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent("We couldn’t load this requirement.");
+  });
+
+  it("marks a removed record as removed, not as edited", async () => {
+    // Removal is a tombstone: the record keeps pointing at this version, so
+    // `is_still_current` stays true and only `is_removed` reveals the deletion. Before
+    // this, a deleted trip rendered as a live, confirmed, counting input.
+    get.mockResolvedValue({
+      data: aDetail({
+        currency: "STALE",
+        stale: {
+          reason_code: "TRAVEL_RECORD_CHANGED",
+          reason: "Your travel records changed after this was worked out.",
+          marked_stale_at: "2026-08-14T11:36:00Z",
+        },
+        travel_inputs: [
+          anInput({ is_still_current: true, is_removed: true, counts_as_confirmed: false }),
+        ],
+      }),
+    });
+    render(<RequirementDetail caseId="c1" requirementKey="residence.total_absences" />);
+
+    expect(await screen.findByText(/This record has been removed since/)).toBeInTheDocument();
+    expect(screen.queryByText(/This has been edited since/)).not.toBeInTheDocument();
+    expect(screen.getByText(/Did not count towards the confirmed figure/)).toBeInTheDocument();
+    // And it is named as the thing that changed.
+    expect(screen.getByText(/What changed: Trip to Italy/)).toBeInTheDocument();
+  });
+
+  it("does not say there is nothing to do when a limitation is unresolved", async () => {
+    // Several evaluators raise limitations without emitting a next action. "Nothing to do"
+    // one layer below an unresolved limitation is false reassurance.
+    get.mockResolvedValue({
+      data: aDetail({
+        conclusion: "INCONSISTENT",
+        limitations: [
+          {
+            code: "CONFLICTING_SOURCE_DATES",
+            severity: "REVIEW_REQUIRED",
+            parameters: {},
+            text: "The dates on this trip conflict between sources.",
+            affected_input_ids: ["a"],
+          },
+        ],
+        next_actions: [],
+      }),
+    });
+    render(<RequirementDetail caseId="c1" requirementKey="residence.total_absences" />);
+
+    await screen.findByText(/The dates on this trip conflict between sources/);
+    expect(screen.queryByText(/nothing to do for this requirement/)).not.toBeInTheDocument();
+    expect(screen.getByText(/Anything listed under Limitations is still unresolved/)).toBeInTheDocument();
+  });
+
+  it("names the headline figure as confirmed and states the threshold in words", async () => {
+    // The message registry commits to always naming the trusted total as confirmed; this
+    // is the one figure composed outside it, and a middle dot is skipped by screen readers.
+    get.mockResolvedValue({ data: aDetail() });
+    render(<RequirementDetail caseId="c1" requirementKey="residence.total_absences" />);
+    expect(
+      await screen.findByText("439 confirmed days against a threshold of 450"),
+    ).toBeInTheDocument();
+  });
+
+  it("scopes the travel-record count to what this assessment read", async () => {
+    // Under a stale result the user's current records and the run's inputs differ, so
+    // "all of your travel records" would be a false claim about the present.
+    get.mockResolvedValue({ data: aDetail() });
+    render(<RequirementDetail caseId="c1" requirementKey="residence.total_absences" />);
+    expect(
+      await screen.findByText(/travel records this assessment read were confirmed/),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps the travel layer when no records were read", async () => {
+    get.mockResolvedValue({ data: aDetail({ travel_inputs: [] }) });
+    render(<RequirementDetail caseId="c1" requirementKey="residence.total_absences" />);
+    await screen.findByRole("heading", { name: "Travel records used" });
+    expect(screen.getByText("This assessment read no travel records.")).toBeInTheDocument();
   });
 
   it("404s for an unknown requirement key", async () => {

@@ -42,3 +42,29 @@ export function groupRequirements(requirements: Requirement[]): RequirementGroup
   }
   return groups;
 }
+
+/**
+ * Requirement titles for the document title, keyed by requirement key.
+ *
+ * The API is the source of truth for a requirement's title and the page renders that; this
+ * map exists only so `generateMetadata` can name the page without a request. A key missing
+ * here falls back to the generic title rather than guessing — the metadata layer has no
+ * session and must never block on a fetch that could fail.
+ */
+export const REQUIREMENT_TITLES: Record<string, string> = {
+  "route.adult_applicant": "Adult applicant",
+  "route.supported_status": "Settled status",
+  "route.standard_section_6_1": "Standard five-year route",
+  "status.holding_period": "Settled-status holding period",
+  "residence.qualifying_period": "Qualifying period",
+  "residence.physical_presence_start_date": "Presence on the first day",
+  "residence.total_absences": "Total absences",
+  "residence.final_year_absences": "Final-year absences",
+  "residence.travel_consistency": "Travel record consistency",
+  "knowledge.life_in_uk": "Life in the UK test",
+  "knowledge.english_language": "English language",
+  "referees.first": "First referee",
+  "referees.second": "Second referee",
+  "character.review": "Good character",
+  "preparation.case_complete": "Case readiness",
+};

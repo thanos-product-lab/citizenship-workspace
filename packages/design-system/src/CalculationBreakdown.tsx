@@ -32,9 +32,10 @@ export function CalculationBreakdown({
 }): JSX.Element | null {
   if (rows.length === 0) return null;
   return (
-    <table className="cw-calc">
-      <caption className="cw-visually-hidden">{caption}</caption>
-      <tbody>
+    <div className="cw-calc-scroll">
+      <table className="cw-calc">
+        <caption className="cw-visually-hidden">{caption}</caption>
+        <tbody>
         {rows.map((row) => (
           <tr key={row.label}>
             <th scope="row">
@@ -44,7 +45,8 @@ export function CalculationBreakdown({
             <td className="cw-figure">{row.value}</td>
           </tr>
         ))}
-      </tbody>
-    </table>
+        </tbody>
+      </table>
+    </div>
   );
 }

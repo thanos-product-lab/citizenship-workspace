@@ -131,6 +131,9 @@ class ResolvedInputView(BaseModel):
     #: False means this input has been edited since the result was produced — the specific
     #: thing that moved under a stale conclusion.
     is_still_current: bool
+    #: True means the record was removed after this result was produced. Distinct from
+    #: `is_still_current`, which a tombstone leaves true.
+    is_removed: bool
     #: Whether this record passed the §6.1 trust gate and counted toward the trusted
     #: figure. Null where the gate does not apply. Never omit this: a list of travel
     #: inputs with no such marker reads as a list of corroboration.

@@ -911,6 +911,10 @@
             "title": "Input Version Id",
             "type": "string"
           },
+          "is_removed": {
+            "title": "Is Removed",
+            "type": "boolean"
+          },
           "is_still_current": {
             "title": "Is Still Current",
             "type": "boolean"
@@ -953,6 +957,7 @@
           "detail",
           "version_number",
           "is_still_current",
+          "is_removed",
           "counts_as_confirmed",
           "provenance_kind",
           "unavailable"
