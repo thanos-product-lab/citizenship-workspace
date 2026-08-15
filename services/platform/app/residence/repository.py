@@ -28,6 +28,18 @@ class ProposedApplicationDateRepository:
         )
 
     @staticmethod
+    def is_current_version(session: Session, version_id: uuid.UUID) -> bool:
+        """Whether this exact version is still the case's current proposed date. See the
+        note on `TravelRecordRepository.is_current_version`."""
+        return bool(
+            session.scalar(
+                select(ProposedApplicationDate.id).where(
+                    ProposedApplicationDate.current_version_id == version_id
+                )
+            )
+        )
+
+    @staticmethod
     def get_version(
         session: Session, version_id: uuid.UUID
     ) -> ProposedApplicationDateVersion | None:
@@ -46,6 +58,20 @@ class TravelRecordRepository:
     @staticmethod
     def get(session: Session, travel_record_id: uuid.UUID) -> TravelRecord | None:
         return session.get(TravelRecord, travel_record_id)
+
+    @staticmethod
+    def is_current_version(session: Session, version_id: uuid.UUID) -> bool:
+        """Whether this exact version is still its record's current one.
+
+        An assessment links the version it actually read. Once the record is edited a new
+        version becomes current and this returns False — which is what lets the detail
+        screen say *which* input moved under a stale result, rather than only that
+        something did."""
+        return bool(
+            session.scalar(
+                select(TravelRecord.id).where(TravelRecord.current_version_id == version_id)
+            )
+        )
 
     @staticmethod
     def get_version(session: Session, version_id: uuid.UUID) -> TravelRecordVersion | None:

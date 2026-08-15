@@ -14,6 +14,17 @@ class RouteProfileRepository:
         return session.scalar(select(RouteProfile).where(RouteProfile.case_id == case_id))
 
     @staticmethod
+    def is_current_version(session: Session, version_id: uuid.UUID) -> bool:
+        """Whether this exact version is still the profile's current one. An assessment
+        links the version it read; if that is no longer current, the input moved under the
+        result — which is what makes a stale result explainable rather than just flagged."""
+        return bool(
+            session.scalar(
+                select(RouteProfile.id).where(RouteProfile.current_version_id == version_id)
+            )
+        )
+
+    @staticmethod
     def get_version(session: Session, version_id: uuid.UUID) -> RouteProfileVersion | None:
         return session.get(RouteProfileVersion, version_id)
 
