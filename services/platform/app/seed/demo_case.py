@@ -100,14 +100,26 @@ def seed_demo_case(session: Session, *, user_id: str) -> uuid.UUID:
 
 
 def _run() -> None:
-    """`just seed` entry point: seed the demo case into the local database as a fixed demo
-    user. Requires the DB to be up and migrated (`just up` / `just migrate`). Not idempotent:
+    """`just seed [user_id]` entry point: seed the demo case into the local database.
+
+    Defaults to the fixed `demo-user`, which is what the CLI walkthroughs (`just recalc`,
+    `just inspect`) use. Pass a real signed-in user id to seed the case into an account you
+    can actually open in the browser — the case is the ownership boundary, so a case owned
+    by `demo-user` is correctly a 404 for anyone else.
+
+    Requires the DB to be up and migrated (`just up` / `just migrate`). Not idempotent:
     each run creates a new case (the service commands commit per step), and a mid-seed failure
-    leaves a partial case — a `SYNTHETIC_DEMO_CASE` reset is a distinct operation (M-later)."""
+    leaves a partial case — a `SYNTHETIC_DEMO_CASE` reset is a distinct operation (M-later).
+
+    The case data itself is synthetic regardless of owner (CLAUDE.md §2.9); only the owning
+    account changes.
+    """
+    import sys
+
     from app.shared.db import get_sessionmaker
     from app.shared.tenant import set_tenant
 
-    user_id = "demo-user"
+    user_id = sys.argv[1] if len(sys.argv) > 1 else "demo-user"
     session = get_sessionmaker()()
     try:
         set_tenant(session, user_id)

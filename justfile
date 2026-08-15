@@ -74,8 +74,10 @@ dev:
     pnpm --filter @cw/web dev
 
 # Load the canonical synthetic demo case (§13 of MVP RFC) via the real command path.
-seed:
-    cd services/platform && uv run python -m app.seed.demo_case
+# Pass a signed-in user id to seed it into an account you can open in the browser;
+# the default `demo-user` is what the CLI walkthroughs use.
+seed user_id="demo-user":
+    cd services/platform && uv run python -m app.seed.demo_case {{user_id}}
 
 # Recalculate a case and print its requirement conclusions (dev walkthrough helper).
 recalc case_id user_id="demo-user":

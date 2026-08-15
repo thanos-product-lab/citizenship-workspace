@@ -34,9 +34,14 @@ type RunState = "idle" | "running" | "error";
 export function RequirementsList({
   caseId,
   refreshToken = 0,
+  onAssessmentRun,
 }: {
   caseId: string;
   refreshToken?: number;
+  /** Called after a recalculation lands. The case phase is derived from assessment
+      state (ADR-0009), so a run that changes conclusions can move it — without this the
+      phase pill keeps showing whatever it was at page load. */
+  onAssessmentRun?: () => void;
 }) {
   const api = useApiClient();
   const [requirements, setRequirements] = useState<Requirement[]>([]);
@@ -97,6 +102,7 @@ export function RequirementsList({
     }
     setRequirements(data.requirements);
     setRunState("idle");
+    onAssessmentRun?.();
     // Emptying a live region announces nothing, so the completion has to be its own
     // message: badges change in place, which gives a screen-reader user no other cue.
     const current = data.requirements.filter((r) => r.conclusion !== "NOT_YET_ASSESSED").length;

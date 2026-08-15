@@ -155,6 +155,40 @@ describe("RequirementsList", () => {
     await waitFor(() => expect(screen.getByText(/440 days outside the UK/)).toBeInTheDocument());
   });
 
+  it("tells the parent a recalculation landed, so the derived phase can refresh", async () => {
+    // Caught in the browser, not by a test: after "Run assessment" the phase pill still
+    // read "Setting up" beside a fully assessed list. The phase is derived from
+    // assessment state (ADR-0009), so the case has to be refetched when a run lands.
+    const onAssessmentRun = vi.fn();
+    get.mockResolvedValue({ data: [aRequirement()] });
+    render(<RequirementsList caseId="c1" onAssessmentRun={onAssessmentRun} />);
+    await screen.findByText("Total absences");
+
+    post.mockResolvedValue({
+      data: {
+        assessment_run_id: "r1",
+        mode: "TRUSTED",
+        trigger_type: "USER_REQUESTED",
+        result_count: 1,
+        requirements: [aRequirement()],
+      },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Recalculate" }));
+    await waitFor(() => expect(onAssessmentRun).toHaveBeenCalledTimes(1));
+  });
+
+  it("does not claim a recalculation landed when it failed", async () => {
+    const onAssessmentRun = vi.fn();
+    get.mockResolvedValue({ data: [aRequirement()] });
+    render(<RequirementsList caseId="c1" onAssessmentRun={onAssessmentRun} />);
+    await screen.findByText("Total absences");
+
+    post.mockResolvedValue({ error: { detail: "boom" } });
+    fireEvent.click(screen.getByRole("button", { name: "Recalculate" }));
+    await screen.findByRole("alert");
+    expect(onAssessmentRun).not.toHaveBeenCalled();
+  });
+
   it("reports a failed recalculation without changing what is shown", async () => {
     get.mockResolvedValue({ data: [aRequirement()] });
     render(<RequirementsList caseId="c1" />);

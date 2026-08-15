@@ -3,15 +3,24 @@
 ### Status
 
 Proposed for implementation
-Version: 0.1 — **token foundation** (M1 slice 4)
+Version: 0.2 — token foundation (M1 slice 4) + **first components** (M4 slice 1)
 
 This document specifies the token layer: colour, typography, spacing, surfaces,
-and the status / provenance vocabularies. It is deliberately scoped to tokens —
-component specifications (`RequirementStatus`, `ExplanationStack`, …) follow in
-**M4**, built on these tokens. The implementation lives in
-`packages/design-system` (`src/tokens.css` = values, `src/tokens.ts` = the typed
-semantic maps). See `Evidence_First_Citizenship_Workspace_UI_UX.md` §13 for the
-direction this makes concrete.
+and the status / provenance vocabularies. The implementation lives in
+`packages/design-system`:
+
+| File | Holds |
+|---|---|
+| `src/tokens.css` | raw values as CSS custom properties |
+| `src/tokens.ts` | the typed semantic maps (status, currency, provenance, glyph names) |
+| `src/components.css` | component styles — added M4 slice 1 |
+| `src/StatusGlyph.tsx` | the glyph set, resolved from `GlyphName` |
+| `src/RequirementStatus.tsx` | conclusion + currency as two badges |
+
+See `Evidence_First_Citizenship_Workspace_UI_UX.md` §13 for the direction this
+makes concrete. Remaining M4 components (`ExplanationStack`,
+`CalculationBreakdown`, `SourceReference`, `StaleAssessmentNotice`,
+`AssessmentSummary`, `BeforeAfterValue`) arrive in slice 2.
 
 ---
 
@@ -150,6 +159,29 @@ import "@cw/design-system/tokens.css";                 // CSS custom properties
 import { statusTokens, provenanceTokens } from "@cw/design-system";
 ```
 
-In M4 the Tailwind theme maps these variables to utilities; components read role
-and status tokens, never raw ramp steps or hard-coded hexes. `tokens.ts` is the
-single typed bridge between domain states and their visual treatment.
+Components read role and status tokens, never raw ramp steps or hard-coded hexes.
+`tokens.ts` is the single typed bridge between domain states and their visual
+treatment, and `GlyphName` is exhaustive over the icon set — a token naming a
+glyph `StatusGlyph` does not draw is a compile error, not a missing signal.
+
+---
+
+## 9. Known gaps
+
+### 9.1 `SourceReference` cannot show a guidance version or retrieval date (M4)
+
+MVP §8.8 requires that "source links display source version and retrieval date".
+Neither value exists in the data at M4: `RuleVersion.configuration["guidance"]`
+holds a citation string only (`{"source": "GUIDE_AN", "section": "…"}`), and the
+`GuidanceVersion` / `GuidanceSection` tables that would carry a version and a
+retrieval timestamp arrive with Migration 5 (ADR-0007).
+
+`SourceReference` therefore shows the **rule** version and the citation, and says
+plainly that the guidance version and retrieval date are not yet recorded. It does
+not display a placeholder, an approximate date, or the rule's `effective_from`
+dressed as a retrieval date.
+
+This is a deliberate, accepted gap: fabricating provenance is the most damaging
+defect available to this product, and an unmet acceptance criterion stated openly
+is strictly better than a met one that lies. Closing it is M5 work, and the
+criterion should be re-checked then rather than marked complete at M4.

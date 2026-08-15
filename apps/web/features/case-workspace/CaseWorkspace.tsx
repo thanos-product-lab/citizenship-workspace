@@ -23,16 +23,24 @@ export function CaseWorkspace({ caseId }: { caseId: string }) {
   const api = useApiClient();
   const [caseData, setCaseData] = useState<Case | null>(null);
   const [state, setState] = useState<LoadState>("loading");
-  // Bumped whenever a residence input changes. Those writes mark residence results STALE
-  // and can move the derived case phase, so both the case and the requirements list have
-  // to be refetched — otherwise the screen keeps showing conclusions and a phase the API
-  // has already moved on from.
+  // Two separate signals, because two different things go stale.
+  //
+  // `caseVersion` — anything that can move the *derived case phase*: a residence write,
+  //   and a recalculation. The phase is derived from assessment state (ADR-0009), so a
+  //   run that changes conclusions can change it, and the pill would otherwise keep
+  //   showing the phase from page load.
+  // `residenceVersion` — only residence writes, which mark residence results STALE
+  //   server-side. A recalculation does not bump it: the list already holds the fresh
+  //   results from the POST response, so refetching would be a redundant round trip.
+  const [caseVersion, setCaseVersion] = useState(0);
   const [residenceVersion, setResidenceVersion] = useState(0);
   const headingRef = useRef<HTMLHeadingElement>(null);
 
   const load = useCallback(
-    (opts?: { focusHeadingOnDone?: boolean }) => {
-      setState("loading");
+    (opts?: { focusHeadingOnDone?: boolean; quiet?: boolean }) => {
+      // A refresh is `quiet`: it must not drop the workspace back to the loading state,
+      // which would blank the whole page for a background refetch.
+      if (!opts?.quiet) setState("loading");
       let active = true;
       void api
         .GET("/api/v1/cases/{case_id}", { params: { path: { case_id: caseId } } })
@@ -54,7 +62,12 @@ export function CaseWorkspace({ caseId }: { caseId: string }) {
     [api, caseId],
   );
 
-  useEffect(() => load(), [load, residenceVersion]);
+  useEffect(() => load(), [load]);
+
+  useEffect(() => {
+    if (caseVersion === 0) return; // the initial load above already ran
+    return load({ quiet: true });
+  }, [load, caseVersion]);
 
   // Move focus to the case heading when a user action transitions the case into
   // deletion-pending, so the confirm button that unmounts doesn't drop focus to
@@ -121,7 +134,11 @@ export function CaseWorkspace({ caseId }: { caseId: string }) {
             <WorkspaceShell
               caseData={caseData}
               headingRef={headingRef}
-              onResidenceChanged={() => setResidenceVersion((n) => n + 1)}
+              onResidenceChanged={() => {
+                setResidenceVersion((n) => n + 1);
+                setCaseVersion((n) => n + 1);
+              }}
+              onAssessmentRun={() => setCaseVersion((n) => n + 1)}
               residenceVersion={residenceVersion}
             />
           ) : (
@@ -149,11 +166,14 @@ function WorkspaceShell({
   caseData,
   headingRef,
   onResidenceChanged,
+  onAssessmentRun,
   residenceVersion,
 }: {
   caseData: Case;
   headingRef: React.RefObject<HTMLHeadingElement | null>;
   onResidenceChanged: () => void;
+  /** A recalculation can change conclusions and therefore the derived phase. */
+  onAssessmentRun: () => void;
   /** Bumped on every residence write; threaded into the requirements list so it
       refetches the results those writes just marked STALE. */
   residenceVersion: number;
@@ -173,7 +193,11 @@ function WorkspaceShell({
       </div>
 
       <ResidencePanel caseId={caseData.id} onResidenceChanged={onResidenceChanged} />
-      <RequirementsList caseId={caseData.id} refreshToken={residenceVersion} />
+      <RequirementsList
+        caseId={caseData.id}
+        refreshToken={residenceVersion}
+        onAssessmentRun={onAssessmentRun}
+      />
     </section>
   );
 }
