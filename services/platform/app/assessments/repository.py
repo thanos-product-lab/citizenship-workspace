@@ -75,6 +75,13 @@ class RequirementCatalogRepository:
         return session.scalar(select(func.count()).select_from(RequirementDefinition)) or 0
 
     @staticmethod
+    def get_rule_version(session: Session, rule_version_id: uuid.UUID) -> RuleVersion | None:
+        """The exact rule version a result was evaluated under. The detail screen shows this
+        one, not the requirement's currently-active rule — a historical result must display
+        the rule that actually produced it (Domain §30.5)."""
+        return session.get(RuleVersion, rule_version_id)
+
+    @staticmethod
     def get_guidance(session: Session, rule_version_id: uuid.UUID) -> list[dict[str, str]]:
         version = session.get(RuleVersion, rule_version_id)
         if version is None:

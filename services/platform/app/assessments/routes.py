@@ -46,9 +46,7 @@ def get_requirement(
     view = service.get_requirement_detail(session, case=case, requirement_key=requirement_key)
     if view is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Requirement not found")
-    return RequirementDetail.from_view(
-        view.definition, view.current, view.input_links, view.guidance, view.history
-    )
+    return RequirementDetail.from_view(view)
 
 
 @assessments_router.post("/recalculate", response_model=RecalculateResponse)

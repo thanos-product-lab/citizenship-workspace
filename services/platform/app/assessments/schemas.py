@@ -8,14 +8,26 @@ from any concluded outcome.
 
 import uuid
 from collections.abc import Callable
+from dataclasses import asdict
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from pydantic import BaseModel
 
-from app.assessments.domain import AssessmentInputLink, AssessmentResult, AssessmentRun
+from app.assessments.domain import AssessmentResult, AssessmentRun
+from app.assessments.provenance import ResolvedInput
 from app.requirements.domain import Conclusion, Currency
-from app.requirements.messages import render_stale_reason, render_summary
-from app.requirements.models import RequirementDefinition
+from app.requirements.evaluation import LinkInputKind
+from app.requirements.messages import (
+    render_limitation,
+    render_next_action,
+    render_stale_reason,
+    render_summary,
+)
+from app.requirements.models import RequirementDefinition, RuleVersion
+
+if TYPE_CHECKING:  # avoids a cycle: the service imports these schemas back
+    from app.assessments.service import RequirementDetailView
 
 
 class RenderedMessage(BaseModel):
@@ -102,11 +114,113 @@ def _stale_information(result: AssessmentResult | None) -> StaleInformation | No
     )
 
 
-class InputLinkView(BaseModel):
+class ResolvedInputView(BaseModel):
+    """One versioned input a result read, described. The structural fields (`input_kind`,
+    `input_version_id`, `contribution_role`) are the provenance record; the rest is what
+    makes it readable. Both travel, so the client can render the description while the
+    exact reference stays available and checkable."""
+
     input_kind: str
-    input_version_id: uuid.UUID
     input_key: str | None
+    input_version_id: uuid.UUID
     contribution_role: str
+    label: str
+    value: str
+    detail: str | None
+    version_number: int | None
+    #: False means this input has been edited since the result was produced — the specific
+    #: thing that moved under a stale conclusion.
+    is_still_current: bool
+    #: Whether this record passed the §6.1 trust gate and counted toward the trusted
+    #: figure. Null where the gate does not apply. Never omit this: a list of travel
+    #: inputs with no such marker reads as a list of corroboration.
+    counts_as_confirmed: bool | None
+    provenance_kind: str
+    unavailable: bool
+
+    @classmethod
+    def of(cls, resolved: ResolvedInput) -> "ResolvedInputView":
+        return cls(**asdict(resolved))
+
+
+class LimitationView(BaseModel):
+    """A structured condition reducing confidence (Domain §33), rendered. `affected_input_ids`
+    names the exact versions responsible, so the UI can point at them in the inputs list."""
+
+    code: str
+    severity: str
+    parameters: dict[str, object]
+    text: str | None
+    affected_input_ids: list[str]
+
+    @classmethod
+    def of(cls, raw: dict[str, object]) -> "LimitationView":
+        code = str(raw.get("code", ""))
+        parameters = raw.get("message_parameters")
+        params = dict(parameters) if isinstance(parameters, dict) else {}
+        affected = raw.get("affected_input_ids")
+        return cls(
+            code=code,
+            severity=str(raw.get("severity", "")),
+            parameters=params,
+            text=render_limitation(code, params),
+            affected_input_ids=[str(item) for item in affected]
+            if isinstance(affected, list)
+            else [],
+        )
+
+
+class NextActionView(BaseModel):
+    """A structured action that would move the result forward (Domain §34), rendered."""
+
+    code: str
+    parameters: dict[str, object]
+    text: str | None
+    priority: int
+    blocking: bool
+
+    @classmethod
+    def of(cls, raw: dict[str, object]) -> "NextActionView":
+        code = str(raw.get("code", ""))
+        parameters = raw.get("label_parameters")
+        params = dict(parameters) if isinstance(parameters, dict) else {}
+        priority = raw.get("priority")
+        return cls(
+            code=code,
+            parameters=params,
+            text=render_next_action(code, params),
+            priority=priority if isinstance(priority, int) else 0,
+            blocking=bool(raw.get("blocking", False)),
+        )
+
+
+class RuleView(BaseModel):
+    """The rule version that produced the displayed result, and its guidance citations.
+
+    `guidance_version_recorded` is deliberately present and deliberately false at M4.
+    MVP §8.8 wants a guidance version and retrieval date on every source link; the
+    `GuidanceVersion` tables that would carry them arrive with Migration 5 (ADR-0007).
+    Rather than omit the question or fill it with the rule's own `effective_from` dressed
+    up as a retrieval date, the API states that the value is not recorded yet and the UI
+    says so. Fabricated provenance is the worst defect this product could ship.
+    """
+
+    semantic_version: str
+    rule_set: str
+    lifecycle_status: str
+    effective_from: datetime
+    guidance: list[dict[str, str]]
+    guidance_version_recorded: bool = False
+
+    @classmethod
+    def of(cls, rule: RuleVersion, guidance: list[dict[str, str]]) -> "RuleView":
+        return cls(
+            semantic_version=rule.semantic_version,
+            rule_set=rule.rule_set,
+            lifecycle_status=rule.lifecycle_status,
+            effective_from=rule.effective_from,
+            guidance=guidance,
+        )
 
 
 class ResultHistoryView(BaseModel):
@@ -114,7 +228,25 @@ class ResultHistoryView(BaseModel):
     conclusion: str
     currency: str
     summary_code: str | None
+    #: Carried so a change between two runs is legible. Without it the canonical
+    #: 439 → 440 transition renders as "NEAR_THRESHOLD → NEAR_THRESHOLD", i.e. as nothing
+    #: having happened.
+    summary_parameters: dict[str, object]
+    summary: RenderedMessage | None
     created_at: datetime
+
+    @classmethod
+    def of(cls, result: AssessmentResult) -> "ResultHistoryView":
+        parameters = dict(result.summary_parameters)
+        return cls(
+            assessment_run_id=result.assessment_run_id,
+            conclusion=result.conclusion,
+            currency=result.currency,
+            summary_code=result.summary_code,
+            summary_parameters=parameters,
+            summary=RenderedMessage.build(result.summary_code, parameters, render_summary),
+            created_at=result.created_at,
+        )
 
 
 class RequirementDetail(BaseModel):
@@ -129,21 +261,22 @@ class RequirementDetail(BaseModel):
     summary: RenderedMessage | None
     stale: StaleInformation | None
     calculation_breakdown: dict[str, object]
-    limitations: list[dict[str, object]]
-    next_actions: list[dict[str, object]]
-    input_links: list[InputLinkView]
+    limitations: list[LimitationView]
+    next_actions: list[NextActionView]
+    #: The explanation stack splits inputs by what they are. `facts_used` is the route
+    #: profile answers and the proposed application date; `travel_inputs` is the travel
+    #: records. Both are resolved from the same link set and neither is filtered.
+    facts_used: list[ResolvedInputView]
+    travel_inputs: list[ResolvedInputView]
+    rule: RuleView | None
     guidance: list[dict[str, str]]
     history: list[ResultHistoryView]
 
     @classmethod
-    def from_view(
-        cls,
-        definition: RequirementDefinition,
-        current: AssessmentResult | None,
-        input_links: list[AssessmentInputLink],
-        guidance: list[dict[str, str]],
-        history: list[AssessmentResult],
-    ) -> "RequirementDetail":
+    def from_view(cls, view: "RequirementDetailView") -> "RequirementDetail":
+        current = view.current
+        definition = view.definition
+        resolved = [ResolvedInputView.of(item) for item in view.inputs]
         return cls(
             requirement_key=definition.requirement_key,
             title=definition.title,
@@ -162,28 +295,21 @@ class RequirementDetail(BaseModel):
             ),
             stale=_stale_information(current),
             calculation_breakdown=dict(current.calculation_breakdown) if current else {},
-            limitations=list(current.limitations) if current else [],
-            next_actions=list(current.next_actions) if current else [],
-            input_links=[
-                InputLinkView(
-                    input_kind=link.input_kind,
-                    input_version_id=link.input_version_id,
-                    input_key=link.input_key,
-                    contribution_role=link.contribution_role,
-                )
-                for link in input_links
+            limitations=[
+                LimitationView.of(item) for item in (current.limitations if current else [])
             ],
-            guidance=guidance,
-            history=[
-                ResultHistoryView(
-                    assessment_run_id=item.assessment_run_id,
-                    conclusion=item.conclusion,
-                    currency=item.currency,
-                    summary_code=item.summary_code,
-                    created_at=item.created_at,
-                )
-                for item in history
+            next_actions=[
+                NextActionView.of(item) for item in (current.next_actions if current else [])
             ],
+            facts_used=[
+                item for item in resolved if item.input_kind != LinkInputKind.TRAVEL_RECORD_VERSION
+            ],
+            travel_inputs=[
+                item for item in resolved if item.input_kind == LinkInputKind.TRAVEL_RECORD_VERSION
+            ],
+            rule=RuleView.of(view.rule, view.guidance) if view.rule is not None else None,
+            guidance=view.guidance,
+            history=[ResultHistoryView.of(item) for item in view.history],
         )
 
 

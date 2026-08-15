@@ -423,24 +423,47 @@ export interface components {
             /** Valid Count */
             valid_count: number;
         };
-        /** InputLinkView */
-        InputLinkView: {
-            /** Contribution Role */
-            contribution_role: string;
-            /** Input Key */
-            input_key: string | null;
-            /** Input Kind */
-            input_kind: string;
-            /**
-             * Input Version Id
-             * Format: uuid
-             */
-            input_version_id: string;
+        /**
+         * LimitationView
+         * @description A structured condition reducing confidence (Domain §33), rendered. `affected_input_ids`
+         *     names the exact versions responsible, so the UI can point at them in the inputs list.
+         */
+        LimitationView: {
+            /** Affected Input Ids */
+            affected_input_ids: string[];
+            /** Code */
+            code: string;
+            /** Parameters */
+            parameters: {
+                [key: string]: unknown;
+            };
+            /** Severity */
+            severity: string;
+            /** Text */
+            text: string | null;
         };
         /** LiveResponse */
         LiveResponse: {
             /** Status */
             status: string;
+        };
+        /**
+         * NextActionView
+         * @description A structured action that would move the result forward (Domain §34), rendered.
+         */
+        NextActionView: {
+            /** Blocking */
+            blocking: boolean;
+            /** Code */
+            code: string;
+            /** Parameters */
+            parameters: {
+                [key: string]: unknown;
+            };
+            /** Priority */
+            priority: number;
+            /** Text */
+            text: string | null;
         };
         /** ProposedApplicationDateResponse */
         ProposedApplicationDateResponse: {
@@ -524,6 +547,8 @@ export interface components {
             conclusion: string;
             /** Currency */
             currency: string | null;
+            /** Facts Used */
+            facts_used: components["schemas"]["ResolvedInputView"][];
             /** Group Key */
             group_key: string;
             /** Guidance */
@@ -532,18 +557,13 @@ export interface components {
             }[];
             /** History */
             history: components["schemas"]["ResultHistoryView"][];
-            /** Input Links */
-            input_links: components["schemas"]["InputLinkView"][];
             /** Limitations */
-            limitations: {
-                [key: string]: unknown;
-            }[];
+            limitations: components["schemas"]["LimitationView"][];
             /** Next Actions */
-            next_actions: {
-                [key: string]: unknown;
-            }[];
+            next_actions: components["schemas"]["NextActionView"][];
             /** Requirement Key */
             requirement_key: string;
+            rule: components["schemas"]["RuleView"] | null;
             /** Short Description */
             short_description: string | null;
             stale: components["schemas"]["StaleInformation"] | null;
@@ -556,6 +576,8 @@ export interface components {
             };
             /** Title */
             title: string;
+            /** Travel Inputs */
+            travel_inputs: components["schemas"]["ResolvedInputView"][];
         };
         /** RequirementOutcomeResponse */
         RequirementOutcomeResponse: {
@@ -587,6 +609,42 @@ export interface components {
             /** Updated At */
             updated_at: string | null;
         };
+        /**
+         * ResolvedInputView
+         * @description One versioned input a result read, described. The structural fields (`input_kind`,
+         *     `input_version_id`, `contribution_role`) are the provenance record; the rest is what
+         *     makes it readable. Both travel, so the client can render the description while the
+         *     exact reference stays available and checkable.
+         */
+        ResolvedInputView: {
+            /** Contribution Role */
+            contribution_role: string;
+            /** Counts As Confirmed */
+            counts_as_confirmed: boolean | null;
+            /** Detail */
+            detail: string | null;
+            /** Input Key */
+            input_key: string | null;
+            /** Input Kind */
+            input_kind: string;
+            /**
+             * Input Version Id
+             * Format: uuid
+             */
+            input_version_id: string;
+            /** Is Still Current */
+            is_still_current: boolean;
+            /** Label */
+            label: string;
+            /** Provenance Kind */
+            provenance_kind: string;
+            /** Unavailable */
+            unavailable: boolean;
+            /** Value */
+            value: string;
+            /** Version Number */
+            version_number: number | null;
+        };
         /** ResultHistoryView */
         ResultHistoryView: {
             /**
@@ -603,8 +661,13 @@ export interface components {
             created_at: string;
             /** Currency */
             currency: string;
+            summary: components["schemas"]["RenderedMessage"] | null;
             /** Summary Code */
             summary_code: string | null;
+            /** Summary Parameters */
+            summary_parameters: {
+                [key: string]: unknown;
+            };
         };
         /** RouteProfileDraftInput */
         RouteProfileDraftInput: {
@@ -671,6 +734,39 @@ export interface components {
             summary_code: string | null;
             /** Support Status */
             support_status: string;
+        };
+        /**
+         * RuleView
+         * @description The rule version that produced the displayed result, and its guidance citations.
+         *
+         *     `guidance_version_recorded` is deliberately present and deliberately false at M4.
+         *     MVP §8.8 wants a guidance version and retrieval date on every source link; the
+         *     `GuidanceVersion` tables that would carry them arrive with Migration 5 (ADR-0007).
+         *     Rather than omit the question or fill it with the rule's own `effective_from` dressed
+         *     up as a retrieval date, the API states that the value is not recorded yet and the UI
+         *     says so. Fabricated provenance is the worst defect this product could ship.
+         */
+        RuleView: {
+            /**
+             * Effective From
+             * Format: date-time
+             */
+            effective_from: string;
+            /** Guidance */
+            guidance: {
+                [key: string]: string;
+            }[];
+            /**
+             * Guidance Version Recorded
+             * @default false
+             */
+            guidance_version_recorded: boolean;
+            /** Lifecycle Status */
+            lifecycle_status: string;
+            /** Rule Set */
+            rule_set: string;
+            /** Semantic Version */
+            semantic_version: string;
         };
         /** SelectApplicationDateInput */
         SelectApplicationDateInput: {

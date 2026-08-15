@@ -32,6 +32,7 @@ from app.assessments.domain import (
     AssessmentRunCompleted,
     AssessmentTriggerType,
 )
+from app.assessments.provenance import ResolvedInput, resolve_input_links
 from app.assessments.repository import AssessmentRepository, RequirementCatalogRepository
 from app.auth.schemas import CurrentUser
 from app.cases.domain import ApplicationCase, CasePhase, LifecycleStatus
@@ -45,7 +46,7 @@ from app.requirements.evaluation import (
     evaluate_route_requirements,
     evaluate_status_holding_period,
 )
-from app.requirements.models import RequirementDefinition
+from app.requirements.models import RequirementDefinition, RuleVersion
 from app.residence.domain import (
     DateConfidence,
     ProposedApplicationDateVersion,
@@ -182,7 +183,12 @@ def derive_case_phase(session: Session, *, case: ApplicationCase) -> CasePhase:
 class RequirementDetailView:
     definition: RequirementDefinition
     current: AssessmentResult | None
-    input_links: list[AssessmentInputLink]
+    #: Input links resolved against the versions they point at, so the detail screen can
+    #: show what was read rather than a list of UUIDs.
+    inputs: list[ResolvedInput]
+    #: The rule version the *displayed result* ran under — not the requirement's currently
+    #: active rule, which may since have moved on.
+    rule: RuleVersion | None
     guidance: list[dict[str, str]]
     history: list[AssessmentResult]
 
@@ -197,23 +203,26 @@ def get_requirement_detail(
         return None
     # The displayed result is the non-superseded one — CURRENT, or STALE after an input change.
     current = AssessmentRepository.get_supersedable_for_requirement(session, case.id, definition.id)
-    input_links = (
-        AssessmentRepository.list_input_links(session, current.id) if current is not None else []
-    )
+
     if current is not None:
-        guidance = RequirementCatalogRepository.get_guidance(session, current.rule_version_id)
+        links = AssessmentRepository.list_input_links(session, current.id)
+        inputs = resolve_input_links(session, links)
+        rule = RequirementCatalogRepository.get_rule_version(session, current.rule_version_id)
     else:
-        active = RequirementCatalogRepository.get_active_rule_version(session, definition.id)
-        guidance = (
-            RequirementCatalogRepository.get_guidance(session, active.id)
-            if active is not None
-            else []
-        )
+        # No result yet: there are no inputs to show, but the requirement still has a rule
+        # and a guidance citation, so the reader can see what *would* be applied.
+        inputs = []
+        rule = RequirementCatalogRepository.get_active_rule_version(session, definition.id)
+
+    guidance = (
+        RequirementCatalogRepository.get_guidance(session, rule.id) if rule is not None else []
+    )
     history = AssessmentRepository.list_history_for_requirement(session, case.id, definition.id)
     return RequirementDetailView(
         definition=definition,
         current=current,
-        input_links=input_links,
+        inputs=inputs,
+        rule=rule,
         guidance=guidance,
         history=history,
     )

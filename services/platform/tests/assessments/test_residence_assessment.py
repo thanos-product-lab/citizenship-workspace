@@ -75,7 +75,7 @@ def test_trusted_trip_drives_the_absence_total_with_provenance(api: Api) -> None
     assert total["conclusion"] == "SUPPORTED"
     assert total["summary_parameters"]["days"] == 30
     # One application-date link plus one travel-record link (the ALL_ACTIVE dependency).
-    kinds = sorted(link["input_kind"] for link in total["input_links"])
+    kinds = sorted(item["input_kind"] for item in total["facts_used"] + total["travel_inputs"])
     assert kinds == ["APPLICATION_DATE_VERSION", "TRAVEL_RECORD_VERSION"]
 
     qualifying = _detail(api, "user_a", case_id, "residence.qualifying_period")
@@ -107,10 +107,10 @@ def test_unconfirmed_trip_is_excluded_from_the_trusted_total(api: Api) -> None:
     assert total["summary_parameters"]["days"] == 20  # trusted only
     assert total["summary_parameters"]["provisional_days"] == 60  # both
     # Two active records → two travel links plus the application-date link.
-    travel_links = [
-        link for link in total["input_links"] if link["input_kind"] == "TRAVEL_RECORD_VERSION"
-    ]
-    assert len(travel_links) == 2
+    assert len(total["travel_inputs"]) == 2
+    # And the screen can tell them apart: only the confirmed-exact record counted toward
+    # the trusted figure, so a reader cannot mistake two rows for two confirmed inputs.
+    assert sorted(item["counts_as_confirmed"] for item in total["travel_inputs"]) == [False, True]
 
 
 def test_conflicting_trip_makes_travel_consistency_inconsistent(api: Api) -> None:

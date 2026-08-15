@@ -136,8 +136,13 @@ def test_detail_exposes_conclusion_currency_and_provenance(api: Api) -> None:
     assert detail["guidance"]  # a rule cites at least one guidance source
     assert len(detail["history"]) == 1
     # Adult reads the route profile (DOB) and the application date — two exact links.
-    kinds = sorted(link["input_kind"] for link in detail["input_links"])
+    # Neither is a travel record, so both land in `facts_used` and `travel_inputs` is empty.
+    kinds = sorted(item["input_kind"] for item in detail["facts_used"])
     assert kinds == ["APPLICATION_DATE_VERSION", "ROUTE_PROFILE_VERSION"]
+    assert detail["travel_inputs"] == []
+    # The rule that produced this result is named, with its guidance citation.
+    assert detail["rule"]["semantic_version"]
+    assert detail["rule"]["rule_set"]
 
 
 def test_unknown_requirement_key_is_404(api: Api) -> None:
@@ -321,3 +326,155 @@ def test_every_assessed_requirement_renders_some_text(api: Api) -> None:
             continue
         summary = _nested(row, "summary")
         assert summary["text"], f"{row['requirement_key']} has no rendered text"
+
+
+# --- the explanation stack (M4 slice 2) -------------------------------------
+
+
+def test_detail_renders_limitations_and_next_actions_not_bare_codes(api: Api) -> None:
+    """A limitation and a next action are structured children of the result, and both must
+    arrive with plain-language text alongside their code — the UI never invents wording."""
+    case_id = _case_with_date(api, "user_a")
+    api("user_a").post(
+        f"/api/v1/cases/{case_id}/travel-records",
+        json={
+            "destination_label": "Spain",
+            "departure_date": "2022-04-14",
+            "return_date": "2022-04-26",
+        },
+    )
+    api("user_a").post(f"/api/v1/cases/{case_id}/assessments/recalculate")
+
+    detail = (
+        api("user_a")
+        .get(f"/api/v1/cases/{case_id}/requirements/residence.physical_presence_start_date")
+        .json()
+    )
+
+    action = detail["next_actions"][0]
+    assert action["code"] == "SELECT_APPLICATION_DATE"
+    assert action["blocking"] is True
+    assert action["text"] and "25 April 2027" in action["text"]
+
+
+def test_detail_names_the_rule_that_produced_the_result(api: Api) -> None:
+    case_id = _case_with_date(api, "user_a")
+    api("user_a").post(f"/api/v1/cases/{case_id}/assessments/recalculate")
+
+    rule = (
+        api("user_a")
+        .get(f"/api/v1/cases/{case_id}/requirements/residence.total_absences")
+        .json()["rule"]
+    )
+    assert rule["semantic_version"] == "1.0.0"
+    assert rule["rule_set"] == "2026.07.0"
+    assert rule["lifecycle_status"] == "ACTIVE"
+    assert rule["guidance"]
+
+
+def test_the_guidance_version_gap_is_declared_not_faked(api: Api) -> None:
+    """MVP §8.8 wants a guidance version and retrieval date on every source link. Neither
+    exists until Migration 5 (ADR-0007). The API must say so rather than supplying the
+    rule's own effective_from dressed as a retrieval date — fabricated provenance is the
+    worst defect this product could ship."""
+    case_id = _case_with_date(api, "user_a")
+    api("user_a").post(f"/api/v1/cases/{case_id}/assessments/recalculate")
+
+    rule = (
+        api("user_a")
+        .get(f"/api/v1/cases/{case_id}/requirements/residence.total_absences")
+        .json()["rule"]
+    )
+    assert rule["guidance_version_recorded"] is False
+    for citation in rule["guidance"]:
+        assert "retrieved_at" not in citation
+        assert "version" not in citation
+
+
+def test_history_carries_the_figures_so_a_change_is_legible(api: Api) -> None:
+    """The canonical demo moment. Without parameters on history rows, 439 → 440 renders as
+    "NEAR_THRESHOLD → NEAR_THRESHOLD" — a real change looking like nothing happened."""
+    case_id = _case_with_date(api, "user_a")
+    api("user_a").post(
+        f"/api/v1/cases/{case_id}/travel-records",
+        json={
+            "destination_label": "Italy",
+            "departure_date": "2023-06-01",
+            "return_date": "2023-07-02",
+        },
+    )
+    api("user_a").post(f"/api/v1/cases/{case_id}/assessments/recalculate")
+
+    records = api("user_a").get(f"/api/v1/cases/{case_id}/travel-records").json()
+    record = records[0]
+    api("user_a").patch(
+        f"/api/v1/cases/{case_id}/travel-records/{record['id']}",
+        json={
+            "destination_label": "Italy",
+            "departure_date": "2023-06-01",
+            "return_date": "2023-07-05",
+            "expected_revision": record["revision"],
+        },
+    )
+    api("user_a").post(f"/api/v1/cases/{case_id}/assessments/recalculate")
+
+    history = (
+        api("user_a")
+        .get(f"/api/v1/cases/{case_id}/requirements/residence.total_absences")
+        .json()["history"]
+    )
+    assert len(history) == 2
+    figures = [row["summary_parameters"]["days"] for row in history]
+    assert figures == [33, 30]  # newest first: the change is visible
+    assert all(row["summary"]["text"] for row in history)
+
+
+def test_a_stale_result_names_the_input_that_moved(api: Api) -> None:
+    """The payoff of resolving input links: a stale result says not just that something
+    changed, but which input it was."""
+    case_id = _case_with_date(api, "user_a")
+    api("user_a").post(
+        f"/api/v1/cases/{case_id}/travel-records",
+        json={
+            "destination_label": "Italy",
+            "departure_date": "2023-06-01",
+            "return_date": "2023-07-02",
+        },
+    )
+    api("user_a").post(f"/api/v1/cases/{case_id}/assessments/recalculate")
+
+    records = api("user_a").get(f"/api/v1/cases/{case_id}/travel-records").json()
+    record = records[0]
+    api("user_a").patch(
+        f"/api/v1/cases/{case_id}/travel-records/{record['id']}",
+        json={
+            "destination_label": "Italy",
+            "departure_date": "2023-06-01",
+            "return_date": "2023-07-05",
+            "expected_revision": record["revision"],
+        },
+    )
+
+    detail = (
+        api("user_a").get(f"/api/v1/cases/{case_id}/requirements/residence.total_absences").json()
+    )
+    assert detail["currency"] == "STALE"
+    moved = [item for item in detail["travel_inputs"] if not item["is_still_current"]]
+    assert len(moved) == 1
+    assert moved[0]["label"] == "Trip to Italy"
+    # The value shown is still the one the rule read, not the edited one.
+    assert moved[0]["value"] == "1 June 2023 to 2 July 2023"
+
+
+def test_an_unassessed_requirement_still_shows_the_rule_that_would_apply(api: Api) -> None:
+    """No result yet, so no inputs — but the requirement still has a rule and a citation,
+    and showing them is honest about what *would* be applied."""
+    case_id = _case_with_date(api, "user_a")
+    api("user_a").post(f"/api/v1/cases/{case_id}/assessments/recalculate")
+
+    detail = api("user_a").get(f"/api/v1/cases/{case_id}/requirements/referees.first").json()
+    assert detail["conclusion"] == "NOT_YET_ASSESSED"
+    assert detail["currency"] is None
+    assert detail["facts_used"] == []
+    assert detail["travel_inputs"] == []
+    assert detail["history"] == []

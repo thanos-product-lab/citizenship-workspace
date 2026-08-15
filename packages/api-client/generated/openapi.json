@@ -339,13 +339,30 @@
         "title": "ImportValidationResponse",
         "type": "object"
       },
-      "InputLinkView": {
+      "LimitationView": {
+        "description": "A structured condition reducing confidence (Domain \u00a733), rendered. `affected_input_ids`\nnames the exact versions responsible, so the UI can point at them in the inputs list.",
         "properties": {
-          "contribution_role": {
-            "title": "Contribution Role",
+          "affected_input_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Affected Input Ids",
+            "type": "array"
+          },
+          "code": {
+            "title": "Code",
             "type": "string"
           },
-          "input_key": {
+          "parameters": {
+            "additionalProperties": true,
+            "title": "Parameters",
+            "type": "object"
+          },
+          "severity": {
+            "title": "Severity",
+            "type": "string"
+          },
+          "text": {
             "anyOf": [
               {
                 "type": "string"
@@ -354,25 +371,17 @@
                 "type": "null"
               }
             ],
-            "title": "Input Key"
-          },
-          "input_kind": {
-            "title": "Input Kind",
-            "type": "string"
-          },
-          "input_version_id": {
-            "format": "uuid",
-            "title": "Input Version Id",
-            "type": "string"
+            "title": "Text"
           }
         },
         "required": [
-          "input_kind",
-          "input_version_id",
-          "input_key",
-          "contribution_role"
+          "code",
+          "severity",
+          "parameters",
+          "text",
+          "affected_input_ids"
         ],
-        "title": "InputLinkView",
+        "title": "LimitationView",
         "type": "object"
       },
       "LiveResponse": {
@@ -386,6 +395,48 @@
           "status"
         ],
         "title": "LiveResponse",
+        "type": "object"
+      },
+      "NextActionView": {
+        "description": "A structured action that would move the result forward (Domain \u00a734), rendered.",
+        "properties": {
+          "blocking": {
+            "title": "Blocking",
+            "type": "boolean"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "parameters": {
+            "additionalProperties": true,
+            "title": "Parameters",
+            "type": "object"
+          },
+          "priority": {
+            "title": "Priority",
+            "type": "integer"
+          },
+          "text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text"
+          }
+        },
+        "required": [
+          "code",
+          "parameters",
+          "text",
+          "priority",
+          "blocking"
+        ],
+        "title": "NextActionView",
         "type": "object"
       },
       "ProposedApplicationDateResponse": {
@@ -551,6 +602,13 @@
             ],
             "title": "Currency"
           },
+          "facts_used": {
+            "items": {
+              "$ref": "#/components/schemas/ResolvedInputView"
+            },
+            "title": "Facts Used",
+            "type": "array"
+          },
           "group_key": {
             "title": "Group Key",
             "type": "string"
@@ -572,25 +630,16 @@
             "title": "History",
             "type": "array"
           },
-          "input_links": {
-            "items": {
-              "$ref": "#/components/schemas/InputLinkView"
-            },
-            "title": "Input Links",
-            "type": "array"
-          },
           "limitations": {
             "items": {
-              "additionalProperties": true,
-              "type": "object"
+              "$ref": "#/components/schemas/LimitationView"
             },
             "title": "Limitations",
             "type": "array"
           },
           "next_actions": {
             "items": {
-              "additionalProperties": true,
-              "type": "object"
+              "$ref": "#/components/schemas/NextActionView"
             },
             "title": "Next Actions",
             "type": "array"
@@ -598,6 +647,16 @@
           "requirement_key": {
             "title": "Requirement Key",
             "type": "string"
+          },
+          "rule": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RuleView"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "short_description": {
             "anyOf": [
@@ -649,6 +708,13 @@
           "title": {
             "title": "Title",
             "type": "string"
+          },
+          "travel_inputs": {
+            "items": {
+              "$ref": "#/components/schemas/ResolvedInputView"
+            },
+            "title": "Travel Inputs",
+            "type": "array"
           }
         },
         "required": [
@@ -665,7 +731,9 @@
           "calculation_breakdown",
           "limitations",
           "next_actions",
-          "input_links",
+          "facts_used",
+          "travel_inputs",
+          "rule",
           "guidance",
           "history"
         ],
@@ -794,6 +862,104 @@
         "title": "RequirementSummary",
         "type": "object"
       },
+      "ResolvedInputView": {
+        "description": "One versioned input a result read, described. The structural fields (`input_kind`,\n`input_version_id`, `contribution_role`) are the provenance record; the rest is what\nmakes it readable. Both travel, so the client can render the description while the\nexact reference stays available and checkable.",
+        "properties": {
+          "contribution_role": {
+            "title": "Contribution Role",
+            "type": "string"
+          },
+          "counts_as_confirmed": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Counts As Confirmed"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "input_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Input Key"
+          },
+          "input_kind": {
+            "title": "Input Kind",
+            "type": "string"
+          },
+          "input_version_id": {
+            "format": "uuid",
+            "title": "Input Version Id",
+            "type": "string"
+          },
+          "is_still_current": {
+            "title": "Is Still Current",
+            "type": "boolean"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "provenance_kind": {
+            "title": "Provenance Kind",
+            "type": "string"
+          },
+          "unavailable": {
+            "title": "Unavailable",
+            "type": "boolean"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          },
+          "version_number": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version Number"
+          }
+        },
+        "required": [
+          "input_kind",
+          "input_key",
+          "input_version_id",
+          "contribution_role",
+          "label",
+          "value",
+          "detail",
+          "version_number",
+          "is_still_current",
+          "counts_as_confirmed",
+          "provenance_kind",
+          "unavailable"
+        ],
+        "title": "ResolvedInputView",
+        "type": "object"
+      },
       "ResultHistoryView": {
         "properties": {
           "assessment_run_id": {
@@ -814,6 +980,16 @@
             "title": "Currency",
             "type": "string"
           },
+          "summary": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RenderedMessage"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "summary_code": {
             "anyOf": [
               {
@@ -824,6 +1000,11 @@
               }
             ],
             "title": "Summary Code"
+          },
+          "summary_parameters": {
+            "additionalProperties": true,
+            "title": "Summary Parameters",
+            "type": "object"
           }
         },
         "required": [
@@ -831,6 +1012,8 @@
           "conclusion",
           "currency",
           "summary_code",
+          "summary_parameters",
+          "summary",
           "created_at"
         ],
         "title": "ResultHistoryView",
@@ -1063,6 +1246,52 @@
           "requirements"
         ],
         "title": "RouteSupportResponse",
+        "type": "object"
+      },
+      "RuleView": {
+        "description": "The rule version that produced the displayed result, and its guidance citations.\n\n`guidance_version_recorded` is deliberately present and deliberately false at M4.\nMVP \u00a78.8 wants a guidance version and retrieval date on every source link; the\n`GuidanceVersion` tables that would carry them arrive with Migration 5 (ADR-0007).\nRather than omit the question or fill it with the rule's own `effective_from` dressed\nup as a retrieval date, the API states that the value is not recorded yet and the UI\nsays so. Fabricated provenance is the worst defect this product could ship.",
+        "properties": {
+          "effective_from": {
+            "format": "date-time",
+            "title": "Effective From",
+            "type": "string"
+          },
+          "guidance": {
+            "items": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "title": "Guidance",
+            "type": "array"
+          },
+          "guidance_version_recorded": {
+            "default": false,
+            "title": "Guidance Version Recorded",
+            "type": "boolean"
+          },
+          "lifecycle_status": {
+            "title": "Lifecycle Status",
+            "type": "string"
+          },
+          "rule_set": {
+            "title": "Rule Set",
+            "type": "string"
+          },
+          "semantic_version": {
+            "title": "Semantic Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "semantic_version",
+          "rule_set",
+          "lifecycle_status",
+          "effective_from",
+          "guidance"
+        ],
+        "title": "RuleView",
         "type": "object"
       },
       "SelectApplicationDateInput": {
