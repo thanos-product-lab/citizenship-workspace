@@ -9,12 +9,14 @@ from any concluded outcome.
 import uuid
 from collections.abc import Callable
 from dataclasses import asdict
-from datetime import datetime
+from datetime import date, datetime
 from typing import TYPE_CHECKING
 
 from pydantic import BaseModel
 
 from app.assessments.domain import AssessmentResult, AssessmentRun
+from app.assessments.groups import GroupMember, GroupSummary
+from app.assessments.priority import CandidateAction
 from app.assessments.provenance import ResolvedInput
 from app.requirements.domain import Conclusion, Currency
 from app.requirements.evaluation import LinkInputKind
@@ -27,7 +29,7 @@ from app.requirements.messages import (
 from app.requirements.models import RequirementDefinition, RuleVersion
 
 if TYPE_CHECKING:  # avoids a cycle: the service imports these schemas back
-    from app.assessments.service import RequirementDetailView
+    from app.assessments.service import CaseOverviewView, RequirementDetailView
 
 
 class RenderedMessage(BaseModel):
@@ -112,6 +114,16 @@ def _stale_information(result: AssessmentResult | None) -> StaleInformation | No
         reason=render_stale_reason(result.stale_reason_code),
         marked_stale_at=result.marked_stale_at,
     )
+
+
+class RequirementLink(BaseModel):
+    """A requirement as the overview references it: enough to render its status and link
+    to the full explanation, without duplicating the detail projection."""
+
+    requirement_key: str
+    title: str
+    conclusion: str
+    currency: str | None
 
 
 class ResolvedInputView(BaseModel):
@@ -339,4 +351,122 @@ class RecalculateResponse(BaseModel):
                 RequirementSummary.from_projection(definition, result)
                 for definition, result in requirements
             ],
+        )
+
+
+# --- case overview (Domain §44.1) -------------------------------------------
+
+
+class GroupSummaryView(BaseModel):
+    """One requirement group, compressed without losing what its members said.
+
+    `conclusion_counts` is a tally by named state — never a fraction and never ordered as
+    progress (CLAUDE.md §2.6). `not_yet_assessed` sits outside it so a group containing
+    requirements nothing has decided can never read as complete. `currency` inherits the
+    weakest member's (ADR-0010): one stale member makes the group stale.
+    """
+
+    group_key: str
+    conclusion_counts: dict[str, int]
+    not_yet_assessed: int
+    total: int
+    currency: str | None
+    needs_attention: int
+    stale: int
+    is_fully_concluded: bool
+    #: The group's requirements, in display order, so the overview can link to each.
+    requirements: list[RequirementLink]
+
+    @classmethod
+    def of(cls, summary: GroupSummary, members: list[GroupMember]) -> "GroupSummaryView":
+        return cls(
+            group_key=summary.group_key,
+            conclusion_counts=summary.conclusion_counts,
+            not_yet_assessed=summary.not_yet_assessed,
+            total=summary.total,
+            currency=summary.currency,
+            needs_attention=summary.needs_attention,
+            stale=summary.stale,
+            is_fully_concluded=summary.is_fully_concluded,
+            requirements=[
+                RequirementLink(
+                    requirement_key=m.requirement_key,
+                    title=m.title,
+                    conclusion=m.conclusion,
+                    currency=m.currency,
+                )
+                for m in members
+                if m.group_key == summary.group_key
+            ],
+        )
+
+
+class PriorityActionView(BaseModel):
+    """One of the at-most-three actions the overview surfaces, with the requirement that
+    raised it so the user can open the full explanation."""
+
+    requirement_key: str
+    requirement_title: str
+    conclusion: str
+    code: str
+    parameters: dict[str, object]
+    text: str | None
+    blocking: bool
+
+    @classmethod
+    def of(cls, action: CandidateAction) -> "PriorityActionView":
+        return cls(
+            requirement_key=action.requirement_key,
+            requirement_title=action.requirement_title,
+            conclusion=action.conclusion,
+            code=action.code,
+            parameters=action.parameters,
+            text=render_next_action(action.code, action.parameters),
+            blocking=action.blocking,
+        )
+
+
+class CaseOverview(BaseModel):
+    """The case overview read model (Domain §44.1).
+
+    **`open_issue_count` and `evidence_coverage` are deliberately absent.** §44.1 lists
+    both, but issue detection is M6 and evidence is M5. A zero here would say the system
+    checked and found nothing, which is a stronger claim than the product can make. The
+    fields arrive with the subsystems that populate them.
+    """
+
+    case_id: uuid.UUID
+    title: str
+    route_key: str
+    lifecycle_status: str
+    #: Derived from assessment state, never the stored column (ADR-0009).
+    current_phase: str
+    application_date: date | None
+    groups: list[GroupSummaryView]
+    priority_actions: list[PriorityActionView]
+    #: How many actions exist beyond the three shown, so the cap never hides work silently.
+    priority_actions_hidden: int
+    #: Requirements with no real conclusion yet, across the whole case.
+    not_yet_assessed: int
+    #: Requirements whose displayed result is stale.
+    stale: int
+    total_requirements: int
+    last_assessed_at: datetime | None
+
+    @classmethod
+    def from_view(cls, view: "CaseOverviewView") -> "CaseOverview":
+        return cls(
+            case_id=view.case.id,
+            title=view.case.title,
+            route_key=view.case.route_key,
+            lifecycle_status=view.case.lifecycle_status.value,
+            current_phase=view.phase.value,
+            application_date=view.application_date,
+            groups=[GroupSummaryView.of(group, view.members) for group in view.groups],
+            priority_actions=[PriorityActionView.of(a) for a in view.actions.shown],
+            priority_actions_hidden=view.actions.hidden,
+            not_yet_assessed=sum(g.not_yet_assessed for g in view.groups),
+            stale=sum(g.stale for g in view.groups),
+            total_requirements=sum(g.total for g in view.groups),
+            last_assessed_at=view.last_assessed_at,
         )

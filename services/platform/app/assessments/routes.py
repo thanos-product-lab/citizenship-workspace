@@ -1,5 +1,6 @@
 """Requirements and assessment endpoints. Case access is checked before any handler.
 
+    GET  /api/v1/cases/{case_id}/overview                           → the case overview
     GET  /api/v1/cases/{case_id}/requirements                       → every requirement
     GET  /api/v1/cases/{case_id}/requirements/{requirement_key}     → one requirement's detail
     POST /api/v1/cases/{case_id}/assessments/recalculate            → run a trusted assessment
@@ -15,17 +16,31 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.assessments import service
-from app.assessments.schemas import RecalculateResponse, RequirementDetail, RequirementSummary
+from app.assessments.schemas import (
+    CaseOverview,
+    RecalculateResponse,
+    RequirementDetail,
+    RequirementSummary,
+)
 from app.auth.dependencies import get_current_user
 from app.auth.schemas import CurrentUser
 from app.cases.dependencies import require_case_access
 from app.cases.domain import ApplicationCase
 from app.shared.tenant import get_tenant_session
 
+overview_router = APIRouter(prefix="/api/v1/cases/{case_id}/overview", tags=["cases"])
 requirements_router = APIRouter(
     prefix="/api/v1/cases/{case_id}/requirements", tags=["requirements"]
 )
 assessments_router = APIRouter(prefix="/api/v1/cases/{case_id}/assessments", tags=["assessments"])
+
+
+@overview_router.get("", response_model=CaseOverview)
+def get_overview(
+    case: Annotated[ApplicationCase, Depends(require_case_access)],
+    session: Annotated[Session, Depends(get_tenant_session)],
+) -> CaseOverview:
+    return CaseOverview.from_view(service.get_case_overview(session, case=case))
 
 
 @requirements_router.get("", response_model=list[RequirementSummary])

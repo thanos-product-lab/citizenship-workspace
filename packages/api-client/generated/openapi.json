@@ -1,6 +1,103 @@
 {
   "components": {
     "schemas": {
+      "CaseOverview": {
+        "description": "The case overview read model (Domain \u00a744.1).\n\n**`open_issue_count` and `evidence_coverage` are deliberately absent.** \u00a744.1 lists\nboth, but issue detection is M6 and evidence is M5. A zero here would say the system\nchecked and found nothing, which is a stronger claim than the product can make. The\nfields arrive with the subsystems that populate them.",
+        "properties": {
+          "application_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Application Date"
+          },
+          "case_id": {
+            "format": "uuid",
+            "title": "Case Id",
+            "type": "string"
+          },
+          "current_phase": {
+            "title": "Current Phase",
+            "type": "string"
+          },
+          "groups": {
+            "items": {
+              "$ref": "#/components/schemas/GroupSummaryView"
+            },
+            "title": "Groups",
+            "type": "array"
+          },
+          "last_assessed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Assessed At"
+          },
+          "lifecycle_status": {
+            "title": "Lifecycle Status",
+            "type": "string"
+          },
+          "not_yet_assessed": {
+            "title": "Not Yet Assessed",
+            "type": "integer"
+          },
+          "priority_actions": {
+            "items": {
+              "$ref": "#/components/schemas/PriorityActionView"
+            },
+            "title": "Priority Actions",
+            "type": "array"
+          },
+          "priority_actions_hidden": {
+            "title": "Priority Actions Hidden",
+            "type": "integer"
+          },
+          "route_key": {
+            "title": "Route Key",
+            "type": "string"
+          },
+          "stale": {
+            "title": "Stale",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "total_requirements": {
+            "title": "Total Requirements",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "case_id",
+          "title",
+          "route_key",
+          "lifecycle_status",
+          "current_phase",
+          "application_date",
+          "groups",
+          "priority_actions",
+          "priority_actions_hidden",
+          "not_yet_assessed",
+          "stale",
+          "total_requirements",
+          "last_assessed_at"
+        ],
+        "title": "CaseOverview",
+        "type": "object"
+      },
       "CaseResponse": {
         "properties": {
           "created_at": {
@@ -148,6 +245,73 @@
         ],
         "title": "DateConfidence",
         "type": "string"
+      },
+      "GroupSummaryView": {
+        "description": "One requirement group, compressed without losing what its members said.\n\n`conclusion_counts` is a tally by named state \u2014 never a fraction and never ordered as\nprogress (CLAUDE.md \u00a72.6). `not_yet_assessed` sits outside it so a group containing\nrequirements nothing has decided can never read as complete. `currency` inherits the\nweakest member's (ADR-0010): one stale member makes the group stale.",
+        "properties": {
+          "conclusion_counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Conclusion Counts",
+            "type": "object"
+          },
+          "currency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
+          },
+          "group_key": {
+            "title": "Group Key",
+            "type": "string"
+          },
+          "is_fully_concluded": {
+            "title": "Is Fully Concluded",
+            "type": "boolean"
+          },
+          "needs_attention": {
+            "title": "Needs Attention",
+            "type": "integer"
+          },
+          "not_yet_assessed": {
+            "title": "Not Yet Assessed",
+            "type": "integer"
+          },
+          "requirements": {
+            "items": {
+              "$ref": "#/components/schemas/RequirementLink"
+            },
+            "title": "Requirements",
+            "type": "array"
+          },
+          "stale": {
+            "title": "Stale",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "group_key",
+          "conclusion_counts",
+          "not_yet_assessed",
+          "total",
+          "currency",
+          "needs_attention",
+          "stale",
+          "is_fully_concluded",
+          "requirements"
+        ],
+        "title": "GroupSummaryView",
+        "type": "object"
       },
       "HTTPValidationError": {
         "properties": {
@@ -437,6 +601,58 @@
           "blocking"
         ],
         "title": "NextActionView",
+        "type": "object"
+      },
+      "PriorityActionView": {
+        "description": "One of the at-most-three actions the overview surfaces, with the requirement that\nraised it so the user can open the full explanation.",
+        "properties": {
+          "blocking": {
+            "title": "Blocking",
+            "type": "boolean"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "conclusion": {
+            "title": "Conclusion",
+            "type": "string"
+          },
+          "parameters": {
+            "additionalProperties": true,
+            "title": "Parameters",
+            "type": "object"
+          },
+          "requirement_key": {
+            "title": "Requirement Key",
+            "type": "string"
+          },
+          "requirement_title": {
+            "title": "Requirement Title",
+            "type": "string"
+          },
+          "text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text"
+          }
+        },
+        "required": [
+          "requirement_key",
+          "requirement_title",
+          "conclusion",
+          "code",
+          "parameters",
+          "text",
+          "blocking"
+        ],
+        "title": "PriorityActionView",
         "type": "object"
       },
       "ProposedApplicationDateResponse": {
@@ -738,6 +954,42 @@
           "history"
         ],
         "title": "RequirementDetail",
+        "type": "object"
+      },
+      "RequirementLink": {
+        "description": "A requirement as the overview references it: enough to render its status and link\nto the full explanation, without duplicating the detail projection.",
+        "properties": {
+          "conclusion": {
+            "title": "Conclusion",
+            "type": "string"
+          },
+          "currency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
+          },
+          "requirement_key": {
+            "title": "Requirement Key",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "requirement_key",
+          "title",
+          "conclusion",
+          "currency"
+        ],
+        "title": "RequirementLink",
         "type": "object"
       },
       "RequirementOutcomeResponse": {
@@ -2005,6 +2257,54 @@
         "summary": "Recalculate",
         "tags": [
           "assessments"
+        ]
+      }
+    },
+    "/api/v1/cases/{case_id}/overview": {
+      "get": {
+        "operationId": "get_overview_api_v1_cases__case_id__overview_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Case Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CaseOverview"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Overview",
+        "tags": [
+          "cases"
         ]
       }
     },

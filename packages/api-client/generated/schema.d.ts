@@ -94,6 +94,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/cases/{case_id}/overview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Overview */
+        get: operations["get_overview_api_v1_cases__case_id__overview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/cases/{case_id}/requirements": {
         parameters: {
             query?: never;
@@ -288,6 +305,46 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * CaseOverview
+         * @description The case overview read model (Domain §44.1).
+         *
+         *     **`open_issue_count` and `evidence_coverage` are deliberately absent.** §44.1 lists
+         *     both, but issue detection is M6 and evidence is M5. A zero here would say the system
+         *     checked and found nothing, which is a stronger claim than the product can make. The
+         *     fields arrive with the subsystems that populate them.
+         */
+        CaseOverview: {
+            /** Application Date */
+            application_date: string | null;
+            /**
+             * Case Id
+             * Format: uuid
+             */
+            case_id: string;
+            /** Current Phase */
+            current_phase: string;
+            /** Groups */
+            groups: components["schemas"]["GroupSummaryView"][];
+            /** Last Assessed At */
+            last_assessed_at: string | null;
+            /** Lifecycle Status */
+            lifecycle_status: string;
+            /** Not Yet Assessed */
+            not_yet_assessed: number;
+            /** Priority Actions */
+            priority_actions: components["schemas"]["PriorityActionView"][];
+            /** Priority Actions Hidden */
+            priority_actions_hidden: number;
+            /** Route Key */
+            route_key: string;
+            /** Stale */
+            stale: number;
+            /** Title */
+            title: string;
+            /** Total Requirements */
+            total_requirements: number;
+        };
         /** CaseResponse */
         CaseResponse: {
             /**
@@ -352,6 +409,37 @@ export interface components {
          * @enum {string}
          */
         DateConfidence: "EXACT" | "ESTIMATED" | "CONFLICTING" | "UNKNOWN";
+        /**
+         * GroupSummaryView
+         * @description One requirement group, compressed without losing what its members said.
+         *
+         *     `conclusion_counts` is a tally by named state — never a fraction and never ordered as
+         *     progress (CLAUDE.md §2.6). `not_yet_assessed` sits outside it so a group containing
+         *     requirements nothing has decided can never read as complete. `currency` inherits the
+         *     weakest member's (ADR-0010): one stale member makes the group stale.
+         */
+        GroupSummaryView: {
+            /** Conclusion Counts */
+            conclusion_counts: {
+                [key: string]: number;
+            };
+            /** Currency */
+            currency: string | null;
+            /** Group Key */
+            group_key: string;
+            /** Is Fully Concluded */
+            is_fully_concluded: boolean;
+            /** Needs Attention */
+            needs_attention: number;
+            /** Not Yet Assessed */
+            not_yet_assessed: number;
+            /** Requirements */
+            requirements: components["schemas"]["RequirementLink"][];
+            /** Stale */
+            stale: number;
+            /** Total */
+            total: number;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -462,6 +550,29 @@ export interface components {
             };
             /** Priority */
             priority: number;
+            /** Text */
+            text: string | null;
+        };
+        /**
+         * PriorityActionView
+         * @description One of the at-most-three actions the overview surfaces, with the requirement that
+         *     raised it so the user can open the full explanation.
+         */
+        PriorityActionView: {
+            /** Blocking */
+            blocking: boolean;
+            /** Code */
+            code: string;
+            /** Conclusion */
+            conclusion: string;
+            /** Parameters */
+            parameters: {
+                [key: string]: unknown;
+            };
+            /** Requirement Key */
+            requirement_key: string;
+            /** Requirement Title */
+            requirement_title: string;
             /** Text */
             text: string | null;
         };
@@ -578,6 +689,21 @@ export interface components {
             title: string;
             /** Travel Inputs */
             travel_inputs: components["schemas"]["ResolvedInputView"][];
+        };
+        /**
+         * RequirementLink
+         * @description A requirement as the overview references it: enough to render its status and link
+         *     to the full explanation, without duplicating the detail projection.
+         */
+        RequirementLink: {
+            /** Conclusion */
+            conclusion: string;
+            /** Currency */
+            currency: string | null;
+            /** Requirement Key */
+            requirement_key: string;
+            /** Title */
+            title: string;
         };
         /** RequirementOutcomeResponse */
         RequirementOutcomeResponse: {
@@ -1128,6 +1254,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RecalculateResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_overview_api_v1_cases__case_id__overview_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CaseOverview"];
                 };
             };
             /** @description Validation Error */

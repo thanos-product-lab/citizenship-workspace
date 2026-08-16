@@ -18,7 +18,7 @@ reads the clock the rules never touch.
 import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 from sqlalchemy.orm import Session
 
@@ -32,11 +32,14 @@ from app.assessments.domain import (
     AssessmentRunCompleted,
     AssessmentTriggerType,
 )
+from app.assessments.groups import GroupMember, GroupSummary, summarise_groups
+from app.assessments.priority import CandidateAction, PriorityActions, select_priority_actions
 from app.assessments.provenance import ResolvedInput, resolve_input_links
 from app.assessments.repository import AssessmentRepository, RequirementCatalogRepository
 from app.auth.schemas import CurrentUser
 from app.cases.domain import ApplicationCase, CasePhase, LifecycleStatus
 from app.cases.phase import RequirementState, derive_phase
+from app.requirements.domain import Conclusion
 from app.requirements.evaluation import (
     EvaluatedResult,
     ResidenceAssessmentInputs,
@@ -176,6 +179,90 @@ def derive_phases(
 def derive_case_phase(session: Session, *, case: ApplicationCase) -> CasePhase:
     """The phase for a single case. Convenience over `derive_phases`."""
     return derive_phases(session, cases=[case])[case.id]
+
+
+@dataclass(frozen=True)
+class CaseOverviewView:
+    """Everything the overview screen reads, gathered once (Domain §44.1).
+
+    Deliberately absent: **open issue count** and **evidence coverage**. §44.1 lists both,
+    but neither subsystem exists — issues arrive at M6, evidence at M5. Reporting "0 open
+    issues" would state that the system looked and found none, which is a stronger and
+    falser claim than saying nothing. The fields join when the things they count do.
+    """
+
+    case: ApplicationCase
+    phase: CasePhase
+    application_date: date | None
+    groups: list[GroupSummary]
+    #: Every requirement with its group, so the overview can list and link them.
+    members: list[GroupMember]
+    actions: PriorityActions
+    last_assessed_at: datetime | None
+
+
+def get_case_overview(session: Session, *, case: ApplicationCase) -> CaseOverviewView:
+    """The case overview projection. One pass over the requirement catalogue and its
+    displayed results; the group and priority rules are pure functions over that."""
+    projection = AssessmentRepository.list_requirements_with_active_result(session, case.id)
+
+    members: list[GroupMember] = []
+    candidates: list[CandidateAction] = []
+    last_assessed: datetime | None = None
+
+    for definition, result in projection:
+        conclusion = result.conclusion if result else Conclusion.NOT_YET_ASSESSED.value
+        members.append(
+            GroupMember(
+                requirement_key=definition.requirement_key,
+                group_key=definition.group_key,
+                title=definition.title,
+                conclusion=conclusion,
+                currency=result.currency if result else None,
+                display_order=definition.display_order,
+            )
+        )
+        if result is None:
+            continue
+        if last_assessed is None or result.created_at > last_assessed:
+            last_assessed = result.created_at
+        for raw in result.next_actions:
+            raw_priority = raw.get("priority")
+            candidates.append(
+                CandidateAction(
+                    requirement_key=definition.requirement_key,
+                    requirement_title=definition.title,
+                    conclusion=conclusion,
+                    display_order=definition.display_order,
+                    code=str(raw.get("code", "")),
+                    parameters=dict(raw.get("label_parameters") or {}),
+                    priority=raw_priority if isinstance(raw_priority, int) else 0,
+                    blocking=bool(raw.get("blocking", False)),
+                )
+            )
+
+    date_version = _current_application_date_version_or_none(session, case.id)
+
+    return CaseOverviewView(
+        case=case,
+        phase=derive_case_phase(session, case=case),
+        application_date=date_version.application_date if date_version else None,
+        groups=summarise_groups(members),
+        members=members,
+        actions=select_priority_actions(candidates),
+        last_assessed_at=last_assessed,
+    )
+
+
+def _current_application_date_version_or_none(
+    session: Session, case_id: uuid.UUID
+) -> ProposedApplicationDateVersion | None:
+    """The selected date, or None. Unlike `_current_application_date_version` this does not
+    raise: the overview must render for a case that has not chosen a date yet."""
+    root = ProposedApplicationDateRepository.get_current_for_case(session, case_id)
+    if root is None or root.current_version_id is None:
+        return None
+    return ProposedApplicationDateRepository.get_version(session, root.current_version_id)
 
 
 @dataclass(frozen=True)

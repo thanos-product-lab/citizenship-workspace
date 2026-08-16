@@ -9,7 +9,11 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes import router as api_router
 from app.applicants.routes import router as route_profile_router
-from app.assessments.routes import assessments_router, requirements_router
+from app.assessments.routes import (
+    assessments_router,
+    overview_router,
+    requirements_router,
+)
 from app.cases.routes import router as cases_router
 from app.core.config import get_settings
 from app.core.db import connection_is_superuser
@@ -59,6 +63,7 @@ def create_app() -> FastAPI:
     app.include_router(route_profile_router)
     app.include_router(application_dates_router)
     app.include_router(travel_records_router)
+    app.include_router(overview_router)
     app.include_router(requirements_router)
     app.include_router(assessments_router)
 
