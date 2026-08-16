@@ -1,6 +1,8 @@
 import "@testing-library/jest-dom/vitest";
 
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
+
+import { renderWithQuery as render } from "@/test/render";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const get = vi.fn();

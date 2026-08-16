@@ -8,20 +8,14 @@ import { TravelHistory } from "./TravelHistory";
  * travel history. M3A input layer only — no qualifying-period, absence, or presence
  * calculation is shown; those deterministic results arrive in the next milestone.
  */
-export function ResidencePanel({
-  caseId,
-  onResidenceChanged,
-}: {
-  caseId: string;
-  onResidenceChanged: () => void;
-}) {
+export function ResidencePanel({ caseId }: { caseId: string }) {
   return (
     <section aria-labelledby="residence-heading" style={{ marginTop: "var(--cw-space-4)" }}>
       <h2 id="residence-heading" style={{ margin: 0, fontSize: "var(--cw-text-xl)" }}>
         Residence
       </h2>
-      <ApplicationDateCard caseId={caseId} onResidenceChanged={onResidenceChanged} />
-      <TravelHistory caseId={caseId} onResidenceChanged={onResidenceChanged} />
+      <ApplicationDateCard caseId={caseId} />
+      <TravelHistory caseId={caseId} />
     </section>
   );
 }

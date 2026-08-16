@@ -12,15 +12,16 @@ import {
   StaleAssessmentNotice,
   StatusGlyph,
 } from "@cw/design-system";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useEffect, useRef } from "react";
 
 import { useApiClient } from "@/lib/api";
+import { caseKeys } from "@/lib/queries";
 
 import { buildCalculationRows } from "./breakdown";
 import { formatDate, formatDateTime } from "./dates";
 
 type Detail = components["schemas"]["RequirementDetail"];
-type LoadState = "loading" | "notfound" | "error" | "ready";
 
 /**
  * The requirement explanation — the product's signature interaction.
@@ -45,65 +46,47 @@ export function RequirementDetail({
   requirementKey: string;
 }) {
   const api = useApiClient();
-  const [detail, setDetail] = useState<Detail | null>(null);
-  const [state, setState] = useState<LoadState>("loading");
   const titleRef = useRef<HTMLHeadingElement>(null);
   const returnFocusToTitle = useRef(false);
 
-  const load = useCallback((opts?: { quiet?: boolean; focusTitleOnDone?: boolean }) => {
-    // A `quiet` reload swaps the content in place. Dropping back to "loading" would tear
-    // down all nine sections, losing scroll position and focus — unacceptable for a
-    // background refresh on a page this long.
-    if (!opts?.quiet) setState("loading");
-    if (opts?.focusTitleOnDone) returnFocusToTitle.current = true;
-    let active = true;
-    void api
-      .GET("/api/v1/cases/{case_id}/requirements/{requirement_key}", {
-        params: { path: { case_id: caseId, requirement_key: requirementKey } },
-      })
-      .then(({ data, response }) => {
-        if (!active) return;
-        if (response?.status === 404) {
-          setState("notfound");
-          return;
-        }
-        // A payload missing the list fields becomes the error state rather than a crash.
-        // The generated client types promise they are present, but types describe the
-        // schema this build was generated from — during a deploy an older API can still
-        // be answering, and a white screen is a worse answer than "try again".
-        if (!data || !isRenderable(data)) {
-          setState("error");
-          return;
-        }
-        setDetail(data);
-        setState("ready");
-      });
-    return () => {
-      active = false;
-    };
-  }, [api, caseId, requirementKey]);
+  // Keyed under the case, so any write that touches assessment state invalidates this
+  // page too — including writes made from the case screen in another tab. Refetching on
+  // window focus is the cache's default here, which is what makes a snapshot page safe.
+  const { data, status, error, refetch } = useQuery({
+    queryKey: caseKeys.requirement(caseId, requirementKey),
+    queryFn: async () => {
+      const { data, response } = await api.GET(
+        "/api/v1/cases/{case_id}/requirements/{requirement_key}",
+        { params: { path: { case_id: caseId, requirement_key: requirementKey } } },
+      );
+      if (!data) {
+        throw Object.assign(new Error("requirement unavailable"), {
+          status: response?.status ?? 0,
+        });
+      }
+      // A payload missing the list fields becomes an error rather than a crash. The
+      // generated types promise they are present, but types describe the schema this
+      // build was generated from — during a deploy an older API can still be answering.
+      if (!isRenderable(data)) {
+        throw Object.assign(new Error("requirement payload not renderable"), { status: 0 });
+      }
+      return data;
+    },
+  });
 
-  useEffect(() => load(), [load]);
-
-  // Re-check on refocus. The page holds a snapshot, and an edit made elsewhere can mark
-  // this result STALE server-side; without this the page would keep showing CURRENT.
-  // Quiet, so alt-tabbing away and back does not blank the page and lose the reader's place.
-  useEffect(() => {
-    const onFocus = () => load({ quiet: true });
-    window.addEventListener("focus", onFocus);
-    return () => window.removeEventListener("focus", onFocus);
-  }, [load]);
+  const notFound = (error as { status?: number } | null)?.status === 404;
+  const detail = data ?? null;
 
   // The retry button unmounts on click; park focus on the title rather than dropping the
   // user to <body>, where the next Tab restarts from the top of the document.
   useEffect(() => {
-    if (state === "ready" && returnFocusToTitle.current) {
+    if (status === "success" && returnFocusToTitle.current) {
       returnFocusToTitle.current = false;
       titleRef.current?.focus();
     }
-  }, [state]);
+  }, [status]);
 
-  if (state === "loading") {
+  if (status === "pending") {
     return (
       <p role="status" style={{ color: "var(--cw-text-muted)" }}>
         Loading this requirement…
@@ -111,7 +94,7 @@ export function RequirementDetail({
     );
   }
 
-  if (state === "notfound") {
+  if (notFound) {
     return (
       <div>
         <h1 style={{ fontSize: "var(--cw-text-2xl)" }}>Requirement not found</h1>
@@ -123,7 +106,7 @@ export function RequirementDetail({
     );
   }
 
-  if (state === "error" || !detail) {
+  if (status === "error" || !detail) {
     return (
       <div role="alert">
         <p style={{ color: "var(--cw-status-not-satisfied)" }}>
@@ -132,7 +115,10 @@ export function RequirementDetail({
         <button
           type="button"
           className="cw-button cw-button--secondary"
-          onClick={() => load({ focusTitleOnDone: true })}
+          onClick={() => {
+            returnFocusToTitle.current = true;
+            void refetch();
+          }}
         >
           Try again
         </button>

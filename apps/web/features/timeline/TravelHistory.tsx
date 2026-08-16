@@ -4,7 +4,10 @@ import type { components } from "@cw/api-client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 
+import { useQueryClient } from "@tanstack/react-query";
+
 import { useApiClient } from "@/lib/api";
+import { assessmentTouched } from "@/lib/queries";
 
 import { ConfirmDialog } from "./ConfirmDialog";
 import { countryCodeFor } from "./countries";
@@ -116,15 +119,11 @@ function toForm(r: Travel): TravelFormValues {
  */
 export function TravelHistory({
   caseId,
-  onResidenceChanged,
 }: {
   caseId: string;
-  /** Called after any write that lands. Every travel write marks the case's residence
-      assessments STALE in the same transaction, so whatever is rendering those results
-      has to refetch or it will keep showing conclusions the API has already flagged. */
-  onResidenceChanged?: () => void;
 }) {
   const api = useApiClient();
+  const client = useQueryClient();
   const [records, setRecords] = useState<Travel[]>([]);
   const [state, setState] = useState<LoadState>("loading");
   const [mode, setMode] = useState<Mode>({ kind: "none" });
@@ -205,7 +204,7 @@ export function TravelHistory({
     if (data) {
       closeToHeading(closeForm);
       load({ notice: "Trip added." });
-      onResidenceChanged?.();
+      void assessmentTouched(client, caseId);
       return;
     }
     setFormError(response?.status === 422 ? "Please check the dates and try again." : "Something went wrong.");
@@ -227,7 +226,7 @@ export function TravelHistory({
     if (data) {
       closeToHeading(closeForm);
       load({ notice: "Trip updated." });
-      onResidenceChanged?.();
+      void assessmentTouched(client, caseId);
       return;
     }
     if (response?.status === 409) {
@@ -254,7 +253,7 @@ export function TravelHistory({
     });
     if (data) {
       load({ notice: "Trip removed." });
-      onResidenceChanged?.();
+      void assessmentTouched(client, caseId);
       return;
     }
     load({ notice: response?.status === 409 ? "That trip changed elsewhere; reloaded." : "Could not remove the trip." });

@@ -1,6 +1,8 @@
 import "@testing-library/jest-dom/vitest";
 
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
+
+import { renderWithQuery as render } from "@/test/render";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const get = vi.fn();
@@ -129,39 +131,12 @@ describe("RequirementsList", () => {
     await waitFor(() => expect(screen.getByText("Total absences")).toBeInTheDocument());
   });
 
-  it("replaces the list with the recalculated results", async () => {
+  it("shows the recalculated results, refetched rather than taken from the response", async () => {
+    // The mutation no longer writes the POST body into local state. It invalidates, and
+    // the query refetches — so the list and every other reader see the same fetch, and
+    // there is one source of truth rather than two that can disagree.
     get.mockResolvedValue({ data: [aRequirement()] });
     render(<RequirementsList caseId="c1" />);
-    await screen.findByText("Total absences");
-
-    post.mockResolvedValue({
-      data: {
-        assessment_run_id: "r1",
-        mode: "TRUSTED",
-        trigger_type: "USER_REQUESTED",
-        result_count: 1,
-        requirements: [
-          aRequirement({
-            summary: {
-              code: "TOTAL_ABSENCES_NEAR_THRESHOLD",
-              parameters: { days: 440, threshold: 450 },
-              text: "440 days outside the UK across your five-year qualifying period, from confirmed travel records, against a threshold of 450. That is close to the standard threshold.",
-            },
-          }),
-        ],
-      },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Recalculate" }));
-    await waitFor(() => expect(screen.getByText(/440 days outside the UK/)).toBeInTheDocument());
-  });
-
-  it("tells the parent a recalculation landed, so the derived phase can refresh", async () => {
-    // Caught in the browser, not by a test: after "Run assessment" the phase pill still
-    // read "Setting up" beside a fully assessed list. The phase is derived from
-    // assessment state (ADR-0009), so the case has to be refetched when a run lands.
-    const onAssessmentRun = vi.fn();
-    get.mockResolvedValue({ data: [aRequirement()] });
-    render(<RequirementsList caseId="c1" onAssessmentRun={onAssessmentRun} />);
     await screen.findByText("Total absences");
 
     post.mockResolvedValue({
@@ -173,20 +148,58 @@ describe("RequirementsList", () => {
         requirements: [aRequirement()],
       },
     });
+    get.mockResolvedValue({
+      data: [
+        aRequirement({
+          summary: {
+            code: "TOTAL_ABSENCES_NEAR_THRESHOLD",
+            parameters: { days: 440, threshold: 450 },
+            text: "440 days outside the UK across your five-year qualifying period, from confirmed travel records, against a threshold of 450. That is close to the standard threshold.",
+          },
+        }),
+      ],
+    });
     fireEvent.click(screen.getByRole("button", { name: "Recalculate" }));
-    await waitFor(() => expect(onAssessmentRun).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.getByText(/440 days outside the UK/)).toBeInTheDocument());
   });
 
-  it("does not claim a recalculation landed when it failed", async () => {
-    const onAssessmentRun = vi.fn();
+  it("invalidates every case-scoped query when a recalculation lands", async () => {
+    // This replaces four hand-wired refresh counters. The bug they kept producing was a
+    // reader nobody remembered to wire: the phase pill, the detail page, and the overview
+    // each went stale in turn during M4. Invalidating the case subtree reaches readers
+    // that did not exist when this code was written.
     get.mockResolvedValue({ data: [aRequirement()] });
-    render(<RequirementsList caseId="c1" onAssessmentRun={onAssessmentRun} />);
+    const { client } = render(<RequirementsList caseId="c1" />);
     await screen.findByText("Total absences");
 
+    const invalidate = vi.spyOn(client, "invalidateQueries");
+    post.mockResolvedValue({
+      data: {
+        assessment_run_id: "r1",
+        mode: "TRUSTED",
+        trigger_type: "USER_REQUESTED",
+        result_count: 1,
+        requirements: [aRequirement()],
+      },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Recalculate" }));
+
+    await waitFor(() =>
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: ["cases", "c1"] }),
+    );
+  });
+
+  it("does not invalidate when a recalculation fails", async () => {
+    get.mockResolvedValue({ data: [aRequirement()] });
+    const { client } = render(<RequirementsList caseId="c1" />);
+    await screen.findByText("Total absences");
+
+    const invalidate = vi.spyOn(client, "invalidateQueries");
     post.mockResolvedValue({ error: { detail: "boom" } });
     fireEvent.click(screen.getByRole("button", { name: "Recalculate" }));
+
     await screen.findByRole("alert");
-    expect(onAssessmentRun).not.toHaveBeenCalled();
+    expect(invalidate).not.toHaveBeenCalled();
   });
 
   it("reports a failed recalculation without changing what is shown", async () => {
@@ -232,12 +245,9 @@ describe("RequirementsList", () => {
     expect(text).toMatch(/has not been rechecked/i);
   });
 
-  it("refetches when the parent signals a residence input changed", async () => {
-    // Travel and application-date writes mark residence results STALE server-side in the
-    // same transaction. Those inputs sit directly above this list on the same page, so
-    // without a refetch the user keeps looking at conclusions the API has already flagged.
+  it("refetches when the case's queries are invalidated", async () => {
     get.mockResolvedValue({ data: [aRequirement()] });
-    const { rerender } = render(<RequirementsList caseId="c1" refreshToken={0} />);
+    const { client } = render(<RequirementsList caseId="c1" />);
     await screen.findByText("Total absences");
     expect(get).toHaveBeenCalledTimes(1);
 
@@ -253,9 +263,8 @@ describe("RequirementsList", () => {
         }),
       ],
     });
-    rerender(<RequirementsList caseId="c1" refreshToken={1} />);
+    await client.invalidateQueries({ queryKey: ["cases", "c1"] });
     await waitFor(() => expect(screen.getByText("Stale")).toBeInTheDocument());
-    expect(get).toHaveBeenCalledTimes(2);
   });
 
   it("still lists a stored NOT_YET_ASSESSED result that has a currency", async () => {

@@ -3,7 +3,10 @@
 import type { components } from "@cw/api-client";
 import { useCallback, useEffect, useState } from "react";
 
+import { useQueryClient } from "@tanstack/react-query";
+
 import { useApiClient } from "@/lib/api";
+import { assessmentTouched } from "@/lib/queries";
 
 import { yearsFromTodayISO } from "./dates";
 import { Field, buttonStyle, cardStyle, errorTextStyle, inputStyle, linkButtonStyle } from "./ui";
@@ -25,13 +28,11 @@ type SaveState = "idle" | "saving" | "saved" | "conflict" | "invalid" | "error";
  */
 export function ApplicationDateCard({
   caseId,
-  onResidenceChanged,
 }: {
   caseId: string;
-  /** Called after the date changes — which restales every residence result server-side. */
-  onResidenceChanged?: () => void;
 }) {
   const api = useApiClient();
+  const client = useQueryClient();
   const [current, setCurrent] = useState<ProposedDate | null>(null);
   const [value, setValue] = useState("");
   const [state, setState] = useState<LoadState>("loading");
@@ -77,7 +78,7 @@ export function ApplicationDateCard({
       setCurrent(data);
       setValue(data.application_date);
       setSaveState("saved");
-      onResidenceChanged?.();
+      void assessmentTouched(client, caseId);
       return;
     }
     if (response?.status === 409) setSaveState("conflict");

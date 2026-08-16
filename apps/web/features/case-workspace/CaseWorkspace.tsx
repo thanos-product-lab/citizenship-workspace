@@ -1,17 +1,17 @@
 "use client";
 
 import type { components } from "@cw/api-client";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useRef, useState } from "react";
 
 import { RouteOnboarding } from "@/features/onboarding/RouteOnboarding";
 import { CaseOverviewPanel } from "@/features/overview/CaseOverviewPanel";
 import { RequirementsList } from "@/features/requirements/RequirementsList";
 import { ResidencePanel } from "@/features/timeline/ResidencePanel";
 import { useApiClient } from "@/lib/api";
+import { caseKeys } from "@/lib/queries";
 
 type Case = components["schemas"]["CaseResponse"];
-type Overview = components["schemas"]["CaseOverview"];
-type LoadState = "loading" | "notfound" | "error" | "ready";
 type DeleteState = "idle" | "confirming" | "deleting" | "error";
 
 /**
@@ -23,58 +23,32 @@ type DeleteState = "idle" | "confirming" | "deleting" | "error";
  */
 export function CaseWorkspace({ caseId }: { caseId: string }) {
   const api = useApiClient();
-  const [caseData, setCaseData] = useState<Case | null>(null);
-  const [state, setState] = useState<LoadState>("loading");
-  // Two separate signals, because two different things go stale.
-  //
-  // `caseVersion` — anything that can move the *derived case phase*: a residence write,
-  //   and a recalculation. The phase is derived from assessment state (ADR-0009), so a
-  //   run that changes conclusions can change it, and the pill would otherwise keep
-  //   showing the phase from page load.
-  // `residenceVersion` — only residence writes, which mark residence results STALE
-  //   server-side. A recalculation does not bump it: the list already holds the fresh
-  //   results from the POST response, so refetching would be a redundant round trip.
-  const [caseVersion, setCaseVersion] = useState(0);
-  const [residenceVersion, setResidenceVersion] = useState(0);
-  // Anything that can change a conclusion or its currency: a residence write, and a
-  // recalculation. The overview is a projection of assessment state, so it goes out of
-  // date with either — and a summary describing the previous run above a list showing the
-  // new one is the aggregate version of returning a superseded result as current.
-  const [overviewVersion, setOverviewVersion] = useState(0);
+  const client = useQueryClient();
   const headingRef = useRef<HTMLHeadingElement>(null);
 
-  const load = useCallback(
-    (opts?: { focusHeadingOnDone?: boolean; quiet?: boolean }) => {
-      // A refresh is `quiet`: it must not drop the workspace back to the loading state,
-      // which would blank the whole page for a background refetch.
-      if (!opts?.quiet) setState("loading");
-      let active = true;
-      void api
-        .GET("/api/v1/cases/{case_id}", { params: { path: { case_id: caseId } } })
-        .then(({ data, error, response }) => {
-          if (!active) return;
-          if (data) {
-            setCaseData(data);
-            setState("ready");
-          } else {
-            setState(response?.status === 404 ? "notfound" : "error");
-          }
-          if (opts?.focusHeadingOnDone) headingRef.current?.focus();
-          void error;
-        });
-      return () => {
-        active = false;
-      };
+  // Keyed under the case, so a write anywhere on the page refetches this too — the case
+  // carries the derived phase (ADR-0009), which moves whenever a conclusion does. There
+  // are no refresh counters left: `assessmentTouched` names what went stale, and every
+  // reader keyed under the case hears it, including ones added later.
+  const {
+    data: caseData,
+    status,
+    error,
+    refetch,
+  } = useQuery({
+    queryKey: caseKeys.case(caseId),
+    queryFn: async () => {
+      const { data, response } = await api.GET("/api/v1/cases/{case_id}", {
+        params: { path: { case_id: caseId } },
+      });
+      if (!data) {
+        throw Object.assign(new Error("case unavailable"), { status: response?.status ?? 0 });
+      }
+      return data;
     },
-    [api, caseId],
-  );
+  });
 
-  useEffect(() => load(), [load]);
-
-  useEffect(() => {
-    if (caseVersion === 0) return; // the initial load above already ran
-    return load({ quiet: true });
-  }, [load, caseVersion]);
+  const notFound = (error as { status?: number } | null)?.status === 404;
 
   // Move focus to the case heading when a user action transitions the case into
   // deletion-pending, so the confirm button that unmounts doesn't drop focus to
@@ -88,7 +62,7 @@ export function CaseWorkspace({ caseId }: { caseId: string }) {
     prevLifecycle.current = lifecycle;
   }, [caseData?.lifecycle_status]);
 
-  if (state === "loading") {
+  if (status === "pending") {
     return (
       <p role="status" style={{ color: "var(--cw-text-muted)" }}>
         Loading this case…
@@ -96,7 +70,7 @@ export function CaseWorkspace({ caseId }: { caseId: string }) {
     );
   }
 
-  if (state === "notfound") {
+  if (notFound) {
     return (
       <div>
         <h1 style={{ fontSize: "var(--cw-text-2xl)" }}>Case not found</h1>
@@ -107,11 +81,11 @@ export function CaseWorkspace({ caseId }: { caseId: string }) {
     );
   }
 
-  if (state === "error" || !caseData) {
+  if (status === "error" || !caseData) {
     return (
       <div role="alert">
         <p style={{ color: "var(--cw-status-not-satisfied)" }}>We couldn’t load this case.</p>
-        <button type="button" onClick={() => load({ focusHeadingOnDone: true })} style={buttonStyle}>
+        <button type="button" onClick={() => void refetch()} style={buttonStyle}>
           Try again
         </button>
       </div>
@@ -138,27 +112,15 @@ export function CaseWorkspace({ caseId }: { caseId: string }) {
       ) : (
         <>
           {lifecycle === "ACTIVE" ? (
-            <WorkspaceShell
-              caseData={caseData}
-              headingRef={headingRef}
-              onResidenceChanged={() => {
-                setResidenceVersion((n) => n + 1);
-                setCaseVersion((n) => n + 1);
-                setOverviewVersion((n) => n + 1);
-              }}
-              onAssessmentRun={() => {
-                setCaseVersion((n) => n + 1);
-                setOverviewVersion((n) => n + 1);
-              }}
-              residenceVersion={residenceVersion}
-              overviewVersion={overviewVersion}
-            />
+            <WorkspaceShell caseData={caseData} headingRef={headingRef} />
           ) : (
             <RouteOnboarding caseId={caseId} />
           )}
+          {/* Deletion returns the updated case, so write it straight into the cache
+              rather than refetching: the server has already told us the new state. */}
           <DeleteCaseControl
             caseId={caseId}
-            onDeleted={(updated) => setCaseData(updated)}
+            onDeleted={(updated) => client.setQueryData(caseKeys.case(caseId), updated)}
           />
         </>
       )}
@@ -177,23 +139,24 @@ const PHASE_LABEL: Record<string, string> = {
 function WorkspaceShell({
   caseData,
   headingRef,
-  onResidenceChanged,
-  onAssessmentRun,
-  residenceVersion,
-  overviewVersion,
 }: {
   caseData: Case;
   headingRef: React.RefObject<HTMLHeadingElement | null>;
-  onResidenceChanged: () => void;
-  /** A recalculation can change conclusions and therefore the derived phase. */
-  onAssessmentRun: () => void;
-  /** Bumped on every residence write; threaded into the requirements list so it
-      refetches the results those writes just marked STALE. */
-  residenceVersion: number;
-  /** Bumped by anything that changes assessment state, including a recalculation. */
-  overviewVersion: number;
 }) {
-  const [overview, setOverview] = useState<Overview | null>(null);
+  // The overview lives here rather than inside its panel because the group summaries it
+  // returns are also rendered by the requirements list, and one fetch should serve both.
+  const api = useApiClient();
+  const { data: overview, status } = useQuery({
+    queryKey: caseKeys.overview(caseData.id),
+    queryFn: async () => {
+      const { data } = await api.GET("/api/v1/cases/{case_id}/overview", {
+        params: { path: { case_id: caseData.id } },
+      });
+      if (!data || !Array.isArray(data.groups)) throw new Error("overview unavailable");
+      return data;
+    },
+  });
+
   return (
     <section style={{ marginTop: "var(--cw-space-6)" }}>
       {/* Header block: title + phase pill as one unit. The phase is a state, so it reads
@@ -209,79 +172,27 @@ function WorkspaceShell({
         </span>
       </div>
 
-      <CaseOverview
-        caseId={caseData.id}
-        refreshToken={overviewVersion}
-        onLoaded={setOverview}
-      />
-      <ResidencePanel caseId={caseData.id} onResidenceChanged={onResidenceChanged} />
-      <RequirementsList
-        caseId={caseData.id}
-        refreshToken={residenceVersion}
-        onAssessmentRun={onAssessmentRun}
-        groupSummaries={overview?.groups ?? []}
-      />
+      {status === "pending" ? (
+        // Reserve the space so the panel does not shove already-rendered content down the
+        // page once its fetch resolves.
+        <div className="cw-overview__placeholder" aria-hidden="true" />
+      ) : status === "error" || !overview ? (
+        // The counts survive in the list below, so this is context rather than
+        // information — but two things do not survive and the user must not assume they
+        // were empty: the priority actions, which appear nowhere else on this screen, and
+        // the case-level stale banner, the only aggregate staleness signal.
+        <p className="cw-overview__unavailable">
+          This summary couldn’t be loaded, so any outstanding actions aren’t shown here. The
+          requirements below are current.
+        </p>
+      ) : (
+        <CaseOverviewPanel overview={overview} />
+      )}
+
+      <ResidencePanel caseId={caseData.id} />
+      <RequirementsList caseId={caseData.id} groupSummaries={overview?.groups ?? []} />
     </section>
   );
-}
-
-/**
- * Fetches the case overview. Kept beside the requirements list rather than folded into
- * it: the two answer different questions (where does this case stand, versus what does
- * each requirement say) and a failure in one must not blank the other.
- */
-function CaseOverview({
-  caseId,
-  refreshToken,
-  onLoaded,
-}: {
-  caseId: string;
-  refreshToken: number;
-  onLoaded: (overview: Overview | null) => void;
-}) {
-  const api = useApiClient();
-  const [overview, setOverview] = useState<Overview | null>(null);
-  const [failed, setFailed] = useState(false);
-
-  useEffect(() => {
-    let active = true;
-    void api
-      .GET("/api/v1/cases/{case_id}/overview", { params: { path: { case_id: caseId } } })
-      .then(({ data, error }) => {
-        if (!active) return;
-        if (error || !data || !Array.isArray(data.groups)) {
-          setFailed(true);
-          // Clear the parent's copy too. Keeping it would leave the group headings
-          // describing the payload from before the write that just failed to refetch —
-          // "5 requirements", no stale marker — directly above rows badged Stale.
-          onLoaded(null);
-          return;
-        }
-        setFailed(false);
-        setOverview(data);
-        onLoaded(data);
-      });
-    return () => {
-      active = false;
-    };
-  }, [api, caseId, refreshToken, onLoaded]);
-
-  if (failed) {
-    // The counts survive in the list below, so this is context rather than information —
-    // but two things do not survive and the user must not assume they were empty: the
-    // priority actions, which appear nowhere else on this screen, and the case-level
-    // stale banner, which is the only aggregate staleness signal.
-    return (
-      <p className="cw-overview__unavailable">
-        This summary couldn’t be loaded, so any outstanding actions aren’t shown here. The
-        requirements below are current.
-      </p>
-    );
-  }
-  // a11y: reserve the heading's space so the panel does not shove already-rendered
-  // content down the page once its fetch resolves.
-  if (!overview) return <div className="cw-overview__placeholder" aria-hidden="true" />;
-  return <CaseOverviewPanel overview={overview} />;
 }
 
 function DeleteCaseControl({
