@@ -21,6 +21,13 @@
             "title": "Case Id",
             "type": "string"
           },
+          "conclusion_counts": {
+            "items": {
+              "$ref": "#/components/schemas/ConclusionCountView"
+            },
+            "title": "Conclusion Counts",
+            "type": "array"
+          },
           "current_phase": {
             "title": "Current Phase",
             "type": "string"
@@ -47,6 +54,10 @@
           "lifecycle_status": {
             "title": "Lifecycle Status",
             "type": "string"
+          },
+          "needs_attention": {
+            "title": "Needs Attention",
+            "type": "integer"
           },
           "not_yet_assessed": {
             "title": "Not Yet Assessed",
@@ -90,7 +101,9 @@
           "groups",
           "priority_actions",
           "priority_actions_hidden",
+          "conclusion_counts",
           "not_yet_assessed",
+          "needs_attention",
           "stale",
           "total_requirements",
           "last_assessed_at"
@@ -152,6 +165,25 @@
           "revision"
         ],
         "title": "CaseResponse",
+        "type": "object"
+      },
+      "ConclusionCountView": {
+        "description": "One conclusion and how many requirements in the group hold it. A list, ordered most\nsevere first by the server, rather than a map \u2014 key order is not a contract, and the\nordering is a domain rule (RULES_SPEC \u00a77.13) no client should re-derive.",
+        "properties": {
+          "conclusion": {
+            "title": "Conclusion",
+            "type": "string"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "conclusion",
+          "count"
+        ],
+        "title": "ConclusionCountView",
         "type": "object"
       },
       "ConfirmRequest": {
@@ -250,11 +282,11 @@
         "description": "One requirement group, compressed without losing what its members said.\n\n`conclusion_counts` is a tally by named state \u2014 never a fraction and never ordered as\nprogress (CLAUDE.md \u00a72.6). `not_yet_assessed` sits outside it so a group containing\nrequirements nothing has decided can never read as complete. `currency` inherits the\nweakest member's (ADR-0010): one stale member makes the group stale.",
         "properties": {
           "conclusion_counts": {
-            "additionalProperties": {
-              "type": "integer"
+            "items": {
+              "$ref": "#/components/schemas/ConclusionCountView"
             },
             "title": "Conclusion Counts",
-            "type": "object"
+            "type": "array"
           },
           "currency": {
             "anyOf": [
@@ -618,6 +650,17 @@
             "title": "Conclusion",
             "type": "string"
           },
+          "currency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
+          },
           "parameters": {
             "additionalProperties": true,
             "title": "Parameters",
@@ -647,6 +690,7 @@
           "requirement_key",
           "requirement_title",
           "conclusion",
+          "currency",
           "code",
           "parameters",
           "text",

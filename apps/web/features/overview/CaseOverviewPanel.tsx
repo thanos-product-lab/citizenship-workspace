@@ -6,8 +6,18 @@ import type { JSX } from "react";
 
 import { formatDate } from "@/features/requirements/dates";
 
-import { busiestGroup, conclusionLines, phaseHeading, unassessedLine } from "./narrative";
 import { GROUP_LABELS } from "@/features/requirements/groups";
+
+import { busiestGroup, conclusionLines, phaseHeading, unassessedLine } from "./narrative";
+
+/** A group's display name. An unlabelled key is humanised rather than shown raw, so a
+ *  catalogue addition never drops `REFEREES` into the middle of a sentence. */
+function groupLabel(key: string): string {
+  const known = GROUP_LABELS[key];
+  if (known) return known;
+  const words = key.toLowerCase().replace(/_/g, " ");
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
 
 type Overview = components["schemas"]["CaseOverview"];
 
@@ -20,7 +30,9 @@ type Overview = components["schemas"]["CaseOverview"];
  *   The counts are of named states, and the number of unassessed requirements is stated
  *   as its own fact rather than as a remainder.
  * - **Let staleness hide behind a summary.** A case with any stale result carries a
- *   banner here, and each group heading carries its own currency (ADR-0010).
+ *   banner here, and each group heading states how many of its conclusions are stale
+ *   (ADR-0010). The group's own `currency` is not rendered yet — when M6 introduces
+ *   PROVISIONAL results a count of stale conclusions will no longer be sufficient.
  * - **Imply an outcome.** The heading comes from the derived case phase (ADR-0009); the
  *   one narrative line names where the outstanding work is, from a count comparison.
  *   Nothing predicts whether an application would succeed.
@@ -31,8 +43,8 @@ export function CaseOverviewPanel({ overview }: { overview: Overview }): JSX.Ele
   const busiest = busiestGroup(overview);
 
   return (
-    <section className="cw-overview" aria-labelledby="overview-heading">
-      <div className="cw-overview__facts">
+    <section className="cw-overview" aria-label="Case overview">
+      <dl className="cw-overview__facts">
         {overview.application_date ? (
           <div>
             <dt>Proposed application date</dt>
@@ -49,29 +61,27 @@ export function CaseOverviewPanel({ overview }: { overview: Overview }): JSX.Ele
             <dd className="cw-figure">{formatDate(overview.last_assessed_at)}</dd>
           </div>
         ) : null}
-      </div>
+      </dl>
 
-      <h2 id="overview-heading" className="cw-overview__heading">
-        {phaseHeading(overview.current_phase)}
-      </h2>
+      <h2 className="cw-overview__heading">{phaseHeading(overview.current_phase)}</h2>
 
       {lines.length === 0 && !unassessed ? (
         <p className="cw-overview__empty">
           No requirements are catalogued for this route yet.
         </p>
       ) : (
-        <ul className="cw-overview__counts">
+        <ul className="cw-overview__counts" aria-label="Requirements by state">
           {lines.map((line) => (
             <li key={line.key}>
-              <span className="cw-overview__count cw-figure">{line.count}</span>
+              <span className="cw-overview__count cw-figure">{line.count}</span>{" "}
               <span>{line.label.toLowerCase()}</span>
             </li>
           ))}
+          {/* The unassessed count is its own fact, never "the rest": a requirement
+              nothing has decided is not progress waiting to be counted. */}
           {unassessed ? (
             <li key={unassessed.key} data-unassessed="true">
-              <span className="cw-overview__count cw-figure">{unassessed.count}</span>
-              {/* Stated as its own fact, never as "the rest": a requirement nothing has
-                  decided is not progress waiting to be counted. */}
+              <span className="cw-overview__count cw-figure">{unassessed.count}</span>{" "}
               <span>not yet assessed</span>
             </li>
           ) : null}
@@ -80,13 +90,16 @@ export function CaseOverviewPanel({ overview }: { overview: Overview }): JSX.Ele
 
       {busiest ? (
         <p className="cw-overview__where">
-          Most of the outstanding work is in{" "}
-          <strong>{GROUP_LABELS[busiest.group_key] ?? busiest.group_key}</strong>.
+          Of the requirements that need attention, most are in{" "}
+          <strong>{groupLabel(busiest.group_key)}</strong>.
+          {overview.not_yet_assessed > 0
+            ? " Requirements that haven’t been assessed yet aren’t counted here."
+            : ""}
         </p>
       ) : null}
 
       {overview.stale > 0 ? (
-        <p className="cw-overview__stale" role="status">
+        <p className="cw-overview__stale">
           <StatusGlyph name="clock" size={16} />
           <span>
             {overview.stale === 1
@@ -115,7 +128,10 @@ function PriorityActions({ overview }: { overview: Overview }): JSX.Element | nu
       <h3 id="actions-heading">What to do next</h3>
       <ol className="cw-actions__list">
         {overview.priority_actions.map((action) => (
-          <li key={`${action.requirement_key}-${action.code}`} className="cw-action-card">
+          <li
+            key={`${action.requirement_key}-${action.code}-${JSON.stringify(action.parameters)}`}
+            className="cw-action-card"
+          >
             <a
               className="cw-action-card__title"
               href={`/cases/${overview.case_id}/requirements/${encodeURIComponent(action.requirement_key)}`}
@@ -123,6 +139,19 @@ function PriorityActions({ overview }: { overview: Overview }): JSX.Element | nu
               {action.requirement_title}
             </a>
             <p className="cw-action-card__text">{action.text ?? action.code}</p>
+            {action.currency === "STALE" ? (
+              // The ask is usually still right, but it was computed from arithmetic the
+              // system has already flagged as not rechecked. Saying so here is the only
+              // correction available: unlike a group tile, an action card has no second
+              // badge, and "cannot be satisfied until this is resolved" below would
+              // otherwise read as a settled fact.
+              <p className="cw-action-card__flag" data-stale="true">
+                <StatusGlyph name="clock" size={14} />
+                <span>
+                  Based on figures that haven’t been rechecked since your inputs changed.
+                </span>
+              </p>
+            ) : null}
             {action.blocking ? (
               <p className="cw-action-card__flag">
                 <StatusGlyph name="minus-circle" size={14} />
@@ -135,8 +164,8 @@ function PriorityActions({ overview }: { overview: Overview }): JSX.Element | nu
       {overview.priority_actions_hidden > 0 ? (
         <p className="cw-actions__more">
           {overview.priority_actions_hidden === 1
-            ? "1 more action is listed against its requirement below."
-            : `${overview.priority_actions_hidden} more actions are listed against their requirements below.`}
+            ? "1 more action isn’t shown here. Open its requirement below to see it."
+            : `${overview.priority_actions_hidden} more actions aren’t shown here. Open the requirements below to see them.`}
         </p>
       ) : null}
     </section>

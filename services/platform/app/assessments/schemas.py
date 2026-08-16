@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING
 from pydantic import BaseModel
 
 from app.assessments.domain import AssessmentResult, AssessmentRun
-from app.assessments.groups import GroupMember, GroupSummary
+from app.assessments.groups import GroupMember, GroupSummary, total_conclusion_counts
 from app.assessments.priority import CandidateAction
 from app.assessments.provenance import ResolvedInput
 from app.requirements.domain import Conclusion, Currency
@@ -357,6 +357,15 @@ class RecalculateResponse(BaseModel):
 # --- case overview (Domain §44.1) -------------------------------------------
 
 
+class ConclusionCountView(BaseModel):
+    """One conclusion and how many requirements in the group hold it. A list, ordered most
+    severe first by the server, rather than a map — key order is not a contract, and the
+    ordering is a domain rule (RULES_SPEC §7.13) no client should re-derive."""
+
+    conclusion: str
+    count: int
+
+
 class GroupSummaryView(BaseModel):
     """One requirement group, compressed without losing what its members said.
 
@@ -367,7 +376,7 @@ class GroupSummaryView(BaseModel):
     """
 
     group_key: str
-    conclusion_counts: dict[str, int]
+    conclusion_counts: list[ConclusionCountView]
     not_yet_assessed: int
     total: int
     currency: str | None
@@ -381,7 +390,10 @@ class GroupSummaryView(BaseModel):
     def of(cls, summary: GroupSummary, members: list[GroupMember]) -> "GroupSummaryView":
         return cls(
             group_key=summary.group_key,
-            conclusion_counts=summary.conclusion_counts,
+            conclusion_counts=[
+                ConclusionCountView(conclusion=c.conclusion, count=c.count)
+                for c in summary.conclusion_counts
+            ],
             not_yet_assessed=summary.not_yet_assessed,
             total=summary.total,
             currency=summary.currency,
@@ -408,6 +420,10 @@ class PriorityActionView(BaseModel):
     requirement_key: str
     requirement_title: str
     conclusion: str
+    #: The currency of the result that raised this action. A STALE result still raises its
+    #: action — the ask is usually still right — but the card must say the arithmetic
+    #: behind it has not been rechecked rather than presenting it as a settled instruction.
+    currency: str | None
     code: str
     parameters: dict[str, object]
     text: str | None
@@ -419,6 +435,7 @@ class PriorityActionView(BaseModel):
             requirement_key=action.requirement_key,
             requirement_title=action.requirement_title,
             conclusion=action.conclusion,
+            currency=action.currency,
             code=action.code,
             parameters=action.parameters,
             text=render_next_action(action.code, action.parameters),
@@ -446,8 +463,13 @@ class CaseOverview(BaseModel):
     priority_actions: list[PriorityActionView]
     #: How many actions exist beyond the three shown, so the cap never hides work silently.
     priority_actions_hidden: int
+    #: Case-wide counts by conclusion, most severe first. Aggregated and ordered by the
+    #: server so the client never re-derives severity or reorders by magnitude.
+    conclusion_counts: list[ConclusionCountView]
     #: Requirements with no real conclusion yet, across the whole case.
     not_yet_assessed: int
+    #: Requirements whose conclusion needs the user's attention, across the whole case.
+    needs_attention: int
     #: Requirements whose displayed result is stale.
     stale: int
     total_requirements: int
@@ -463,9 +485,14 @@ class CaseOverview(BaseModel):
             current_phase=view.phase.value,
             application_date=view.application_date,
             groups=[GroupSummaryView.of(group, view.members) for group in view.groups],
+            conclusion_counts=[
+                ConclusionCountView(conclusion=c.conclusion, count=c.count)
+                for c in total_conclusion_counts(view.groups)
+            ],
             priority_actions=[PriorityActionView.of(a) for a in view.actions.shown],
             priority_actions_hidden=view.actions.hidden,
             not_yet_assessed=sum(g.not_yet_assessed for g in view.groups),
+            needs_attention=sum(g.needs_attention for g in view.groups),
             stale=sum(g.stale for g in view.groups),
             total_requirements=sum(g.total for g in view.groups),
             last_assessed_at=view.last_assessed_at,

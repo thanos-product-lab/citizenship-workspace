@@ -281,6 +281,42 @@ describe("RequirementsList", () => {
     expect(screen.queryByText(/Nothing has been assessed yet/)).not.toBeInTheDocument();
   });
 
+  it("marks a group heading stale when the summary says a member is", async () => {
+    // R5: GroupHeadingSummary was only ever exercised in its fallback shape, so the stale
+    // marker — the entire reason ADR-0010 surfaces at group level — had no test.
+    get.mockResolvedValue({ data: [aRequirement()] });
+    render(
+      <RequirementsList
+        caseId="c1"
+        groupSummaries={[
+          {
+            group_key: "RESIDENCE",
+            conclusion_counts: [{ conclusion: "SUPPORTED", count: 5 }],
+            not_yet_assessed: 0,
+            total: 5,
+            currency: "STALE",
+            needs_attention: 0,
+            stale: 2,
+            is_fully_concluded: true,
+            requirements: [],
+          },
+        ]}
+      />,
+    );
+    await screen.findByText("Total absences");
+    expect(screen.getByText("2 conclusions are stale")).toBeInTheDocument();
+  });
+
+  it("falls back to a count-only heading when no summary is available", async () => {
+    // A failed overview fetch must not leave the heading asserting a shape sourced from a
+    // different payload — count only, no stale marker either way.
+    get.mockResolvedValue({ data: [aRequirement()] });
+    render(<RequirementsList caseId="c1" groupSummaries={[]} />);
+    await screen.findByText("Total absences");
+    expect(screen.getByText("1 requirement")).toBeInTheDocument();
+    expect(screen.queryByText(/conclusions are stale/)).not.toBeInTheDocument();
+  });
+
   it("shows no percentage, score or fraction anywhere", async () => {
     get.mockResolvedValue({ data: [aRequirement(), unassessed] });
     const { container } = render(<RequirementsList caseId="c1" />);

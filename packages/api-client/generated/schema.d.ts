@@ -322,6 +322,8 @@ export interface components {
              * Format: uuid
              */
             case_id: string;
+            /** Conclusion Counts */
+            conclusion_counts: components["schemas"]["ConclusionCountView"][];
             /** Current Phase */
             current_phase: string;
             /** Groups */
@@ -330,6 +332,8 @@ export interface components {
             last_assessed_at: string | null;
             /** Lifecycle Status */
             lifecycle_status: string;
+            /** Needs Attention */
+            needs_attention: number;
             /** Not Yet Assessed */
             not_yet_assessed: number;
             /** Priority Actions */
@@ -374,6 +378,18 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+        };
+        /**
+         * ConclusionCountView
+         * @description One conclusion and how many requirements in the group hold it. A list, ordered most
+         *     severe first by the server, rather than a map — key order is not a contract, and the
+         *     ordering is a domain rule (RULES_SPEC §7.13) no client should re-derive.
+         */
+        ConclusionCountView: {
+            /** Conclusion */
+            conclusion: string;
+            /** Count */
+            count: number;
         };
         /** ConfirmRequest */
         ConfirmRequest: {
@@ -420,9 +436,7 @@ export interface components {
          */
         GroupSummaryView: {
             /** Conclusion Counts */
-            conclusion_counts: {
-                [key: string]: number;
-            };
+            conclusion_counts: components["schemas"]["ConclusionCountView"][];
             /** Currency */
             currency: string | null;
             /** Group Key */
@@ -565,6 +579,8 @@ export interface components {
             code: string;
             /** Conclusion */
             conclusion: string;
+            /** Currency */
+            currency: string | null;
             /** Parameters */
             parameters: {
                 [key: string]: unknown;

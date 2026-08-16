@@ -933,3 +933,38 @@
   color: var(--cw-currency-stale);
   font-weight: var(--cw-weight-medium);
 }
+
+/* A stale-derived action card: the ask still stands, the figures behind it have not been
+   rechecked. Amber rather than red — this qualifies the card, it does not condemn it. */
+.cw-action-card__flag[data-stale="true"] {
+  color: var(--cw-currency-stale);
+}
+
+/* Reserve the overview's vertical space while it loads, so the panel does not shove
+   already-rendered content down the page when its fetch resolves. */
+.cw-overview__placeholder {
+  min-height: 12rem;
+}
+
+.cw-overview__unavailable {
+  margin: var(--cw-space-6) 0 0;
+  padding: var(--cw-space-3) var(--cw-space-4);
+  border-left: 3px solid var(--cw-border-strong);
+  background: var(--cw-surface-sunken);
+  color: var(--cw-text-muted);
+  font-size: var(--cw-text-sm);
+  line-height: var(--cw-leading-snug);
+  max-width: 66ch;
+}
+
+/* The overview heading sits under the case title, so it must not match its size. */
+.cw-overview__heading {
+  font-size: var(--cw-text-xl);
+}
+
+/* Not --cw-border-strong (1.56:1): this link is the only route from a priority action to
+   its reasoning, and the repo already rejected that token for affordances. */
+.cw-action-card__title,
+.cw-requirement-row__link {
+  text-decoration-color: var(--cw-neutral-500);
+}

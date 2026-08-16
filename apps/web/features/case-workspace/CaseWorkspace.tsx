@@ -36,6 +36,11 @@ export function CaseWorkspace({ caseId }: { caseId: string }) {
   //   results from the POST response, so refetching would be a redundant round trip.
   const [caseVersion, setCaseVersion] = useState(0);
   const [residenceVersion, setResidenceVersion] = useState(0);
+  // Anything that can change a conclusion or its currency: a residence write, and a
+  // recalculation. The overview is a projection of assessment state, so it goes out of
+  // date with either — and a summary describing the previous run above a list showing the
+  // new one is the aggregate version of returning a superseded result as current.
+  const [overviewVersion, setOverviewVersion] = useState(0);
   const headingRef = useRef<HTMLHeadingElement>(null);
 
   const load = useCallback(
@@ -139,9 +144,14 @@ export function CaseWorkspace({ caseId }: { caseId: string }) {
               onResidenceChanged={() => {
                 setResidenceVersion((n) => n + 1);
                 setCaseVersion((n) => n + 1);
+                setOverviewVersion((n) => n + 1);
               }}
-              onAssessmentRun={() => setCaseVersion((n) => n + 1)}
+              onAssessmentRun={() => {
+                setCaseVersion((n) => n + 1);
+                setOverviewVersion((n) => n + 1);
+              }}
               residenceVersion={residenceVersion}
+              overviewVersion={overviewVersion}
             />
           ) : (
             <RouteOnboarding caseId={caseId} />
@@ -170,6 +180,7 @@ function WorkspaceShell({
   onResidenceChanged,
   onAssessmentRun,
   residenceVersion,
+  overviewVersion,
 }: {
   caseData: Case;
   headingRef: React.RefObject<HTMLHeadingElement | null>;
@@ -179,6 +190,8 @@ function WorkspaceShell({
   /** Bumped on every residence write; threaded into the requirements list so it
       refetches the results those writes just marked STALE. */
   residenceVersion: number;
+  /** Bumped by anything that changes assessment state, including a recalculation. */
+  overviewVersion: number;
 }) {
   const [overview, setOverview] = useState<Overview | null>(null);
   return (
@@ -191,13 +204,14 @@ function WorkspaceShell({
           {caseData.title}
         </h1>
         <span style={phasePillStyle}>
+          <span className="cw-visually-hidden">Case phase: </span>
           {PHASE_LABEL[caseData.current_phase] ?? caseData.current_phase}
         </span>
       </div>
 
       <CaseOverview
         caseId={caseData.id}
-        refreshToken={residenceVersion}
+        refreshToken={overviewVersion}
         onLoaded={setOverview}
       />
       <ResidencePanel caseId={caseData.id} onResidenceChanged={onResidenceChanged} />
@@ -223,7 +237,7 @@ function CaseOverview({
 }: {
   caseId: string;
   refreshToken: number;
-  onLoaded: (overview: Overview) => void;
+  onLoaded: (overview: Overview | null) => void;
 }) {
   const api = useApiClient();
   const [overview, setOverview] = useState<Overview | null>(null);
@@ -237,6 +251,10 @@ function CaseOverview({
         if (!active) return;
         if (error || !data || !Array.isArray(data.groups)) {
           setFailed(true);
+          // Clear the parent's copy too. Keeping it would leave the group headings
+          // describing the payload from before the write that just failed to refetch —
+          // "5 requirements", no stale marker — directly above rows badged Stale.
+          onLoaded(null);
           return;
         }
         setFailed(false);
@@ -249,11 +267,20 @@ function CaseOverview({
   }, [api, caseId, refreshToken, onLoaded]);
 
   if (failed) {
-    // Degrade quietly rather than alarm: the requirements list below carries the same
-    // conclusions, so a failed summary costs context, not information.
-    return null;
+    // The counts survive in the list below, so this is context rather than information —
+    // but two things do not survive and the user must not assume they were empty: the
+    // priority actions, which appear nowhere else on this screen, and the case-level
+    // stale banner, which is the only aggregate staleness signal.
+    return (
+      <p className="cw-overview__unavailable">
+        This summary couldn’t be loaded, so any outstanding actions aren’t shown here. The
+        requirements below are current.
+      </p>
+    );
   }
-  if (!overview) return null;
+  // a11y: reserve the heading's space so the panel does not shove already-rendered
+  // content down the page once its fetch resolves.
+  if (!overview) return <div className="cw-overview__placeholder" aria-hidden="true" />;
   return <CaseOverviewPanel overview={overview} />;
 }
 

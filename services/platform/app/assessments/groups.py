@@ -36,6 +36,17 @@ _CURRENCY_WEAKNESS: dict[str, int] = {
     Currency.SUPERSEDED.value: 3,
 }
 
+# A currency this build does not recognise is treated as weaker than any it does. The
+# alternative — skipping it — lets a group whose only non-current member is unrecognised
+# report as CURRENT, describing it as assessed and up to date on the strength of a value
+# the code could not interpret. That is the strongest-member reading ADR-0010 rejects,
+# reached through a defensive branch.
+_UNKNOWN_CURRENCY_WEAKNESS = max(_CURRENCY_WEAKNESS.values()) + 1
+
+
+def _weakness(currency: str) -> int:
+    return _CURRENCY_WEAKNESS.get(currency, _UNKNOWN_CURRENCY_WEAKNESS)
+
 
 @dataclass(frozen=True)
 class GroupMember:
@@ -50,10 +61,19 @@ class GroupMember:
 
 
 @dataclass(frozen=True)
+class ConclusionCount:
+    conclusion: str
+    count: int
+
+
+@dataclass(frozen=True)
 class GroupSummary:
     group_key: str
-    #: Counts by conclusion, excluding NOT_YET_ASSESSED.
-    conclusion_counts: dict[str, int] = field(default_factory=dict)
+    #: Counts by conclusion, excluding NOT_YET_ASSESSED, **most severe first**. Ordered
+    #: here rather than in the client: severity is a domain rule (RULES_SPEC §7.13), and a
+    #: client sorting by magnitude would put the most reassuring state first on the screen
+    #: a user most often reads only (CLAUDE.md §2.7).
+    conclusion_counts: list[ConclusionCount] = field(default_factory=list)
     #: Requirements in this group with no real conclusion yet — counted apart so a group
     #: containing them can never read as complete.
     not_yet_assessed: int = 0
@@ -78,11 +98,24 @@ _NEEDS_ATTENTION_FROM = severity(Conclusion.REQUIRES_JUDGEMENT)
 
 
 def _needs_attention(conclusion: str) -> bool:
+    # An unrecognised conclusion is never silently counted as fine.
+    return _severity_of(conclusion) >= _NEEDS_ATTENTION_FROM
+
+
+def _severity_of(conclusion: str) -> int:
     try:
-        return severity(Conclusion(conclusion)) >= _NEEDS_ATTENTION_FROM
+        return severity(Conclusion(conclusion))
     except ValueError:
-        # An unrecognised conclusion is never silently counted as fine.
-        return True
+        return 99  # unrecognised sorts first, toward visibility
+
+
+def _ordered_counts(counts: Counter[str]) -> list[ConclusionCount]:
+    return [
+        ConclusionCount(conclusion=conclusion, count=count)
+        for conclusion, count in sorted(
+            counts.items(), key=lambda item: (-_severity_of(item[0]), item[0])
+        )
+    ]
 
 
 def summarise_group(group_key: str, members: Sequence[GroupMember]) -> GroupSummary:
@@ -106,21 +139,33 @@ def summarise_group(group_key: str, members: Sequence[GroupMember]) -> GroupSumm
             continue
         if member.currency == Currency.STALE.value:
             stale += 1
-        rank = _CURRENCY_WEAKNESS.get(member.currency)
-        if rank is None:
-            continue
-        if weakest is None or rank > _CURRENCY_WEAKNESS[weakest]:
+        if weakest is None or _weakness(member.currency) > _weakness(weakest):
             weakest = member.currency
 
     return GroupSummary(
         group_key=group_key,
-        conclusion_counts=dict(counts),
+        conclusion_counts=_ordered_counts(counts),
         not_yet_assessed=unassessed,
         total=len(members),
         currency=weakest,
         needs_attention=attention,
         stale=stale,
     )
+
+
+def total_conclusion_counts(summaries: Sequence[GroupSummary]) -> list[ConclusionCount]:
+    """Case-wide counts, most severe first.
+
+    Aggregated here rather than in the client: merging the per-group lists preserves each
+    group's ordering but not the whole, so whichever conclusion the first group happened to
+    hold would lead — in practice SUPPORTED, the most reassuring state, at the top of the
+    screen a user most often reads only.
+    """
+    totals: Counter[str] = Counter()
+    for summary in summaries:
+        for entry in summary.conclusion_counts:
+            totals[entry.conclusion] += entry.count
+    return _ordered_counts(totals)
 
 
 def summarise_groups(members: Sequence[GroupMember]) -> list[GroupSummary]:

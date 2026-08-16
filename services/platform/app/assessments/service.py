@@ -233,6 +233,7 @@ def get_case_overview(session: Session, *, case: ApplicationCase) -> CaseOvervie
                     requirement_key=definition.requirement_key,
                     requirement_title=definition.title,
                     conclusion=conclusion,
+                    currency=result.currency,
                     display_order=definition.display_order,
                     code=str(raw.get("code", "")),
                     parameters=dict(raw.get("label_parameters") or {}),

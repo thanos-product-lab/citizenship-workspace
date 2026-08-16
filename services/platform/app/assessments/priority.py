@@ -27,7 +27,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
 
-from app.requirements.domain import Conclusion
+from app.requirements.domain import Conclusion, Currency
 from app.requirements.rules_core import severity
 
 
@@ -38,6 +38,12 @@ class CandidateAction:
     requirement_key: str
     requirement_title: str
     conclusion: str
+    #: The currency of the result that raised this action. Displayed results include STALE
+    #: (`_SUPERSEDABLE`), so an action can be derived from arithmetic the system has itself
+    #: flagged as not rechecked. Presenting that as a current instruction — with a blocking
+    #: claim attached — is ADR-0001's failure applied to actions, and unlike a group tile
+    #: there is no second badge to correct it. The card must be able to say so.
+    currency: str | None
     display_order: int
     code: str
     parameters: dict[str, Any]
@@ -68,10 +74,13 @@ def _conclusion_severity(conclusion: str) -> int:
         return 99
 
 
-def _sort_key(action: CandidateAction) -> tuple[int, int, int, int]:
+def _sort_key(action: CandidateAction) -> tuple[int, int, int, int, int]:
     return (
         0 if action.blocking else 1,
         -_conclusion_severity(action.conclusion),
+        # A current result outranks a stale one raising the same ask: acting on rechecked
+        # arithmetic is strictly better advice.
+        0 if action.currency == Currency.CURRENT.value else 1,
         action.priority,
         action.display_order,
     )
@@ -86,14 +95,19 @@ def _identity(action: CandidateAction) -> tuple[str, str]:
 def select_priority_actions(
     candidates: Sequence[CandidateAction], *, limit: int = MAX_SHOWN
 ) -> PriorityActions:
+    # Sort **before** deduplicating. Deduplicating first would keep whichever identical ask
+    # came earliest in catalogue order, which may be the non-blocking, less severe one —
+    # the card would then link to the weaker requirement and drop its blocking flag while
+    # the stronger constraint disappeared and `hidden` counted it as shown.
+    ordered = sorted(candidates, key=_sort_key)
+
     seen: set[tuple[str, str]] = set()
     distinct: list[CandidateAction] = []
-    for action in candidates:
+    for action in ordered:
         identity = _identity(action)
         if identity in seen:
             continue
         seen.add(identity)
         distinct.append(action)
 
-    distinct.sort(key=_sort_key)
     return PriorityActions(shown=distinct[:limit], total=len(distinct))

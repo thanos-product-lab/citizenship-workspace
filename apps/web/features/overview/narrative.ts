@@ -50,23 +50,19 @@ export interface CountLine {
  * folding it into the tally would let requirements nothing has decided read as progress.
  */
 export function conclusionLines(overview: Overview): CountLine[] {
-  const totals = new Map<string, number>();
-  for (const group of overview.groups) {
-    for (const [conclusion, count] of Object.entries(group.conclusion_counts)) {
-      totals.set(conclusion, (totals.get(conclusion) ?? 0) + count);
-    }
-  }
-
-  return [...totals.entries()]
-    .map(([conclusion, count]) => {
-      const state = toConclusionState(conclusion);
-      return {
-        key: conclusion,
-        label: state ? statusTokens[state].label : conclusion,
-        count,
-      };
-    })
-    .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
+  // Read straight from the server's case-wide list, which is ordered by severity
+  // (RULES_SPEC §7.13). Aggregating the per-group lists here instead would preserve each
+  // group's order but not the whole: whichever conclusion the first group held would lead,
+  // which in practice put SUPPORTED at the top. Neither the aggregation nor the ordering
+  // belongs in the client.
+  return overview.conclusion_counts.map((entry) => {
+    const state = toConclusionState(entry.conclusion);
+    return {
+      key: entry.conclusion,
+      label: state ? statusTokens[state].label : entry.conclusion,
+      count: entry.count,
+    };
+  });
 }
 
 /** The unassessed count as its own statement, or null when everything has a conclusion. */
@@ -92,9 +88,11 @@ export function busiestGroup(overview: Overview): Group | null {
 /** A single group's state, in words. Counts only; no verdict about the group. */
 export function groupLine(group: Group): string {
   const parts: string[] = [];
-  for (const [conclusion, count] of Object.entries(group.conclusion_counts)) {
-    const state = toConclusionState(conclusion);
-    parts.push(`${count} ${state ? statusTokens[state].label.toLowerCase() : conclusion}`);
+  for (const entry of group.conclusion_counts) {
+    const state = toConclusionState(entry.conclusion);
+    parts.push(
+      `${entry.count} ${state ? statusTokens[state].label.toLowerCase() : entry.conclusion}`,
+    );
   }
   if (group.not_yet_assessed > 0) {
     parts.push(`${group.not_yet_assessed} not yet assessed`);

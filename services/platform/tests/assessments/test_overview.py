@@ -72,7 +72,7 @@ def test_an_unassessed_group_is_not_fully_concluded_and_has_no_currency(api: Api
     currency — 'current' would claim it had been assessed and found up to date."""
     referees = _group(_overview(api, "user_a", _assessed_case(api, "user_a")), "REFEREES")
     assert referees["not_yet_assessed"] == 2
-    assert referees["conclusion_counts"] == {}
+    assert referees["conclusion_counts"] == []
     assert referees["is_fully_concluded"] is False
     assert referees["currency"] is None
 
@@ -82,7 +82,7 @@ def test_an_assessed_group_reports_counts_by_named_state(api: Api) -> None:
     assert residence["total"] == 5
     assert residence["is_fully_concluded"] is True
     assert residence["currency"] == "CURRENT"
-    assert sum(residence["conclusion_counts"].values()) == 5
+    assert sum(c["count"] for c in residence["conclusion_counts"]) == 5
 
 
 def test_a_stale_member_makes_its_group_stale_but_not_the_others(api: Api) -> None:
@@ -100,7 +100,7 @@ def test_a_stale_member_makes_its_group_stale_but_not_the_others(api: Api) -> No
     assert residence["currency"] == "STALE"
     assert residence["stale"] == 5
     # The conclusions are preserved — staleness never rewrites what was concluded.
-    assert sum(residence["conclusion_counts"].values()) == 5
+    assert sum(c["count"] for c in residence["conclusion_counts"]) == 5
     assert _group(overview, "REFEREES")["currency"] is None
     assert overview["stale"] == 5
 
@@ -166,3 +166,75 @@ def test_the_canonical_case_shape(api: Api) -> None:
     assert overview["not_yet_assessed"] == 6
     assert overview["stale"] == 0
     assert overview["application_date"] == "2027-04-15"
+
+
+def test_conclusion_counts_arrive_ordered_most_severe_first(api: Api) -> None:
+    """Severity is a domain rule (RULES_SPEC §7.13); the server owns the order so no client
+    re-derives it, and so nothing sorts by magnitude and leads with the most reassuring
+    state on the screen a user most often reads only."""
+    case_id = _assessed_case(api, "user_a")
+    api("user_a").post(
+        f"/api/v1/cases/{case_id}/travel-records",
+        json={
+            "destination_label": "Spain",
+            "departure_date": "2022-04-14",
+            "return_date": "2022-04-26",
+        },
+    )
+    api("user_a").post(f"/api/v1/cases/{case_id}/assessments/recalculate")
+
+    residence = _group(_overview(api, "user_a", case_id), "RESIDENCE")
+    conclusions = [c["conclusion"] for c in residence["conclusion_counts"]]
+    assert conclusions[0] == "NOT_CURRENTLY_SATISFIED"
+    assert conclusions[-1] == "SUPPORTED"
+
+
+def test_a_priority_action_carries_the_currency_of_the_result_that_raised_it(
+    api: Api,
+) -> None:
+    """Displayed results include STALE, so an action can be computed from arithmetic the
+    system has flagged as not rechecked. The card needs to be able to say so."""
+    case_id = _assessed_case(api, "user_a")
+    api("user_a").post(
+        f"/api/v1/cases/{case_id}/travel-records",
+        json={
+            "destination_label": "Spain",
+            "departure_date": "2022-04-14",
+            "return_date": "2022-04-26",
+        },
+    )
+    api("user_a").post(f"/api/v1/cases/{case_id}/assessments/recalculate")
+    assert _overview(api, "user_a", case_id)["priority_actions"][0]["currency"] == "CURRENT"
+
+    # Changing the date restales the residence results the action was derived from.
+    current = api("user_a").get(f"/api/v1/cases/{case_id}/application-dates").json()
+    api("user_a").post(
+        f"/api/v1/cases/{case_id}/application-dates/select",
+        json={"application_date": "2027-05-20", "expected_revision": current["revision"]},
+    )
+    actions = _overview(api, "user_a", case_id)["priority_actions"]
+    assert actions and actions[0]["currency"] == "STALE"
+
+
+def test_case_wide_counts_are_ordered_most_severe_first(api: Api) -> None:
+    """Aggregated server-side. Merging the per-group lists in a client preserves each
+    group's order but not the whole — the first group's SUPPORTED would lead, putting the
+    most reassuring state at the top of the screen a user most often reads only."""
+    case_id = _assessed_case(api, "user_a")
+    api("user_a").post(
+        f"/api/v1/cases/{case_id}/travel-records",
+        json={
+            "destination_label": "Spain",
+            "departure_date": "2022-04-14",
+            "return_date": "2022-04-26",
+        },
+    )
+    api("user_a").post(f"/api/v1/cases/{case_id}/assessments/recalculate")
+
+    counts = _overview(api, "user_a", case_id)["conclusion_counts"]
+    conclusions = [c["conclusion"] for c in counts]
+    assert conclusions[0] == "NOT_CURRENTLY_SATISFIED"
+    assert conclusions[-1] == "SUPPORTED"
+    # The tally covers every assessed requirement and excludes the unassessed ones.
+    overview = _overview(api, "user_a", case_id)
+    assert sum(c["count"] for c in counts) + overview["not_yet_assessed"] == 15

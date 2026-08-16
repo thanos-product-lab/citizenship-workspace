@@ -20,11 +20,13 @@ def _action(
     blocking: bool = False,
     display_order: int = 1,
     key: str = "residence.total_absences",
+    currency: str = "CURRENT",
 ) -> CandidateAction:
     return CandidateAction(
         requirement_key=key,
         requirement_title="A requirement",
         conclusion=conclusion.value,
+        currency=currency,
         display_order=display_order,
         code=code,
         parameters=parameters or {},
@@ -132,6 +134,7 @@ def test_an_unrecognised_conclusion_sorts_as_most_urgent() -> None:
                 requirement_key="x.y",
                 requirement_title="X",
                 conclusion="SOMETHING_NEW",
+                currency="CURRENT",
                 display_order=1,
                 code="UNKNOWN",
                 parameters={},
@@ -160,3 +163,44 @@ def test_the_canonical_case_surfaces_the_presence_date_action() -> None:
     assert len(result.shown) == 1
     assert result.hidden == 0
     assert result.shown[0].parameters == {"resolving_application_date": "2027-04-25"}
+
+
+def test_a_current_result_outranks_a_stale_one_raising_the_same_ask() -> None:
+    """Acting on rechecked arithmetic is strictly better advice, so when both raise the
+    same kind of ask the current one leads."""
+    result = select_priority_actions(
+        [
+            _action(code="A", parameters={"x": 1}, currency="STALE", display_order=1),
+            _action(code="B", parameters={"x": 2}, currency="CURRENT", display_order=2),
+        ]
+    )
+    assert [a.code for a in result.shown] == ["B", "A"]
+
+
+def test_dedupe_keeps_the_strongest_candidate_not_the_first() -> None:
+    """Deduplicating before sorting would keep whichever identical ask came earliest in
+    catalogue order — possibly the non-blocking, less severe one — so the card would link
+    to the weaker requirement and drop its blocking flag."""
+    result = select_priority_actions(
+        [
+            _action(
+                code="SAME",
+                parameters={"x": 1},
+                blocking=False,
+                conclusion=Conclusion.NEAR_THRESHOLD,
+                key="weak.one",
+                display_order=1,
+            ),
+            _action(
+                code="SAME",
+                parameters={"x": 1},
+                blocking=True,
+                conclusion=Conclusion.NOT_CURRENTLY_SATISFIED,
+                key="strong.one",
+                display_order=9,
+            ),
+        ]
+    )
+    assert result.total == 1
+    assert result.shown[0].requirement_key == "strong.one"
+    assert result.shown[0].blocking is True
