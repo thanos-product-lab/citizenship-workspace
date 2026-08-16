@@ -1,7 +1,7 @@
 "use client";
 
 import type { components } from "@cw/api-client";
-import { RequirementStatus, StaleAssessmentNotice } from "@cw/design-system";
+import { RequirementStatus, StaleAssessmentNotice, StatusGlyph } from "@cw/design-system";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useApiClient } from "@/lib/api";
@@ -9,6 +9,7 @@ import { useApiClient } from "@/lib/api";
 import { GROUP_LABELS, groupRequirements } from "./groups";
 
 type Requirement = components["schemas"]["RequirementSummary"];
+type GroupSummary = components["schemas"]["GroupSummaryView"];
 type LoadState = "loading" | "error" | "ready";
 type RunState = "idle" | "running" | "error";
 
@@ -35,9 +36,14 @@ export function RequirementsList({
   caseId,
   refreshToken = 0,
   onAssessmentRun,
+  groupSummaries = [],
 }: {
   caseId: string;
   refreshToken?: number;
+  /** Per-group counts and currency from the overview projection (ADR-0010). A group's
+      currency inherits its weakest member, so a heading can show the group as stale even
+      when the rows beneath it each look individually fine. */
+  groupSummaries?: GroupSummary[];
   /** Called after a recalculation lands. The case phase is derived from assessment
       state (ADR-0009), so a run that changes conclusions can move it — without this the
       phase pill keeps showing whatever it was at page load. */
@@ -213,9 +219,10 @@ export function RequirementsList({
               aria-labelledby={`group-${group.key}`}
             >
               <h3 id={`group-${group.key}`}>{GROUP_LABELS[group.key] ?? group.key}</h3>
-              <p className="cw-requirement-group__count">
-                {group.items.length === 1 ? "1 requirement" : `${group.items.length} requirements`}
-              </p>
+              <GroupHeadingSummary
+                summary={groupSummaries.find((s) => s.group_key === group.key)}
+                fallbackCount={group.items.length}
+              />
               <ul className="cw-requirement-list">
                 {group.items.map((requirement) => (
                   <li key={requirement.requirement_key}>
@@ -228,6 +235,41 @@ export function RequirementsList({
         </div>
       ) : null}
     </section>
+  );
+}
+
+/**
+ * A group's state in one line: how many requirements it holds, how many have not been
+ * assessed, and whether any member is stale.
+ *
+ * The stale marker is the point (ADR-0010). Each row below carries its own currency, but
+ * a reader scanning group headings would otherwise see "Residence — 5 requirements" and
+ * take the group as current while one member's arithmetic is out of date.
+ */
+function GroupHeadingSummary({
+  summary,
+  fallbackCount,
+}: {
+  summary: GroupSummary | undefined;
+  fallbackCount: number;
+}) {
+  const total = summary?.total ?? fallbackCount;
+  return (
+    <p className="cw-requirement-group__summary">
+      <span>{total === 1 ? "1 requirement" : `${total} requirements`}</span>
+      {summary && summary.not_yet_assessed > 0 ? (
+        <span>· {summary.not_yet_assessed} not yet assessed</span>
+      ) : null}
+      {summary && summary.stale > 0 ? (
+        <span className="cw-group-stale">
+          <span aria-hidden="true">·</span>
+          <StatusGlyph name="clock" size={14} />
+          <span>
+            {summary.stale === 1 ? "1 conclusion is stale" : `${summary.stale} conclusions are stale`}
+          </span>
+        </span>
+      ) : null}
+    </p>
   );
 }
 

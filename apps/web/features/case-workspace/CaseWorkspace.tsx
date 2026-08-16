@@ -4,11 +4,13 @@ import type { components } from "@cw/api-client";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { RouteOnboarding } from "@/features/onboarding/RouteOnboarding";
+import { CaseOverviewPanel } from "@/features/overview/CaseOverviewPanel";
 import { RequirementsList } from "@/features/requirements/RequirementsList";
 import { ResidencePanel } from "@/features/timeline/ResidencePanel";
 import { useApiClient } from "@/lib/api";
 
 type Case = components["schemas"]["CaseResponse"];
+type Overview = components["schemas"]["CaseOverview"];
 type LoadState = "loading" | "notfound" | "error" | "ready";
 type DeleteState = "idle" | "confirming" | "deleting" | "error";
 
@@ -178,6 +180,7 @@ function WorkspaceShell({
       refetches the results those writes just marked STALE. */
   residenceVersion: number;
 }) {
+  const [overview, setOverview] = useState<Overview | null>(null);
   return (
     <section style={{ marginTop: "var(--cw-space-6)" }}>
       {/* Header block: title + phase pill as one unit. The phase is a state, so it reads
@@ -192,14 +195,66 @@ function WorkspaceShell({
         </span>
       </div>
 
+      <CaseOverview
+        caseId={caseData.id}
+        refreshToken={residenceVersion}
+        onLoaded={setOverview}
+      />
       <ResidencePanel caseId={caseData.id} onResidenceChanged={onResidenceChanged} />
       <RequirementsList
         caseId={caseData.id}
         refreshToken={residenceVersion}
         onAssessmentRun={onAssessmentRun}
+        groupSummaries={overview?.groups ?? []}
       />
     </section>
   );
+}
+
+/**
+ * Fetches the case overview. Kept beside the requirements list rather than folded into
+ * it: the two answer different questions (where does this case stand, versus what does
+ * each requirement say) and a failure in one must not blank the other.
+ */
+function CaseOverview({
+  caseId,
+  refreshToken,
+  onLoaded,
+}: {
+  caseId: string;
+  refreshToken: number;
+  onLoaded: (overview: Overview) => void;
+}) {
+  const api = useApiClient();
+  const [overview, setOverview] = useState<Overview | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    void api
+      .GET("/api/v1/cases/{case_id}/overview", { params: { path: { case_id: caseId } } })
+      .then(({ data, error }) => {
+        if (!active) return;
+        if (error || !data || !Array.isArray(data.groups)) {
+          setFailed(true);
+          return;
+        }
+        setFailed(false);
+        setOverview(data);
+        onLoaded(data);
+      });
+    return () => {
+      active = false;
+    };
+  }, [api, caseId, refreshToken, onLoaded]);
+
+  if (failed) {
+    // Degrade quietly rather than alarm: the requirements list below carries the same
+    // conclusions, so a failed summary costs context, not information.
+    return null;
+  }
+  if (!overview) return null;
+  return <CaseOverviewPanel overview={overview} />;
 }
 
 function DeleteCaseControl({

@@ -730,3 +730,206 @@
   text-decoration: underline;
   text-underline-offset: 0.2em;
 }
+
+/* --- Case overview --------------------------------------------------------- */
+
+.cw-overview {
+  margin-top: var(--cw-space-6);
+  padding-bottom: var(--cw-space-8);
+  border-bottom: 1px solid var(--cw-border);
+}
+
+/* The standing facts, set small and quiet above the heading: they orient without
+   competing with the state of the case. */
+.cw-overview__facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cw-space-6);
+  margin: 0 0 var(--cw-space-5);
+}
+
+.cw-overview__facts dt {
+  font-size: var(--cw-text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--cw-text-muted);
+}
+
+.cw-overview__facts dd {
+  margin: var(--cw-space-1) 0 0;
+  font-size: var(--cw-text-sm);
+}
+
+.cw-overview__heading {
+  margin: 0;
+  font-size: var(--cw-text-2xl);
+  font-weight: var(--cw-weight-semibold);
+  line-height: var(--cw-leading-tight);
+  letter-spacing: -0.01em;
+}
+
+/*
+ * Counts, not a chart. Each line is a number and the name of a state — deliberately not
+ * a bar, ring, or ratio, any of which would read as a readiness measure (CLAUDE.md §2.6).
+ */
+.cw-overview__counts {
+  list-style: none;
+  margin: var(--cw-space-5) 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cw-space-3) var(--cw-space-8);
+}
+
+.cw-overview__counts li {
+  display: flex;
+  align-items: baseline;
+  gap: var(--cw-space-2);
+  font-size: var(--cw-text-sm);
+  color: var(--cw-text-muted);
+}
+
+.cw-overview__count {
+  font-size: var(--cw-text-2xl);
+  font-weight: var(--cw-weight-semibold);
+  color: var(--cw-text);
+  line-height: 1;
+}
+
+/* The unassessed count is given the same weight as the others, not a lesser one: it is a
+   statement about what has not happened, and dimming it would soften that. */
+.cw-overview__counts li[data-unassessed="true"] .cw-overview__count {
+  color: var(--cw-text-muted);
+}
+
+.cw-overview__where {
+  margin: var(--cw-space-5) 0 0;
+  font-size: var(--cw-text-base);
+  color: var(--cw-text-muted);
+  max-width: 60ch;
+}
+
+.cw-overview__empty {
+  margin: var(--cw-space-4) 0 0;
+  color: var(--cw-text-muted);
+}
+
+.cw-overview__stale {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--cw-space-2);
+  margin: var(--cw-space-5) 0 0;
+  padding: var(--cw-space-3) var(--cw-space-4);
+  border-left: 3px solid var(--cw-currency-stale);
+  border-radius: 0 var(--cw-radius-sm) var(--cw-radius-sm) 0;
+  background: var(--cw-surface-sunken);
+  font-size: var(--cw-text-sm);
+  line-height: var(--cw-leading-snug);
+  color: var(--cw-text-muted);
+  max-width: 66ch;
+}
+
+.cw-overview__stale svg {
+  flex: none;
+  margin-top: 0.15em;
+  color: var(--cw-currency-stale);
+}
+
+/* --- Priority actions ------------------------------------------------------ */
+
+.cw-actions {
+  margin-top: var(--cw-space-8);
+}
+
+.cw-actions h3 {
+  margin: 0 0 var(--cw-space-4);
+  font-size: var(--cw-text-sm);
+  font-weight: var(--cw-weight-semibold);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--cw-text-muted);
+}
+
+.cw-actions__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--cw-space-3);
+}
+
+.cw-action-card {
+  padding: var(--cw-space-4);
+  border: 1px solid var(--cw-border);
+  border-left: 3px solid var(--cw-accent);
+  border-radius: 0 var(--cw-radius-md) var(--cw-radius-md) 0;
+  background: var(--cw-surface);
+}
+
+.cw-action-card__title {
+  font-weight: var(--cw-weight-medium);
+  color: var(--cw-text);
+  text-decoration: underline;
+  text-decoration-color: var(--cw-border-strong);
+  text-underline-offset: 0.2em;
+}
+
+.cw-action-card__title:hover {
+  color: var(--cw-accent);
+  text-decoration-color: currentColor;
+}
+
+.cw-action-card__text {
+  margin: var(--cw-space-2) 0 0;
+  line-height: var(--cw-leading-normal);
+  max-width: 62ch;
+}
+
+.cw-action-card__flag {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--cw-space-2);
+  margin: var(--cw-space-3) 0 0;
+  font-size: var(--cw-text-sm);
+  color: var(--cw-status-not-satisfied);
+}
+
+.cw-action-card__flag svg {
+  flex: none;
+  margin-top: 0.15em;
+}
+
+.cw-actions__more {
+  margin: var(--cw-space-3) 0 0;
+  font-size: var(--cw-text-sm);
+  color: var(--cw-text-muted);
+}
+
+/* --- Group heading summary (ADR-0010) -------------------------------------- */
+
+.cw-requirement-group__summary {
+  display: flex;
+  align-items: center;
+  gap: var(--cw-space-3);
+  flex-wrap: wrap;
+  margin: 0 0 var(--cw-space-3);
+  font-size: var(--cw-text-sm);
+  color: var(--cw-text-muted);
+}
+
+@media (max-width: 34rem) {
+  .cw-overview__facts {
+    gap: var(--cw-space-4);
+  }
+  .cw-overview__counts {
+    gap: var(--cw-space-3) var(--cw-space-5);
+  }
+}
+
+.cw-group-stale {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--cw-space-1);
+  color: var(--cw-currency-stale);
+  font-weight: var(--cw-weight-medium);
+}
