@@ -968,3 +968,42 @@
 .cw-requirement-row__link {
   text-decoration-color: var(--cw-neutral-500);
 }
+
+/* --- BeforeAfterValue ------------------------------------------------------ */
+
+.cw-change {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--cw-space-2) var(--cw-space-3);
+  margin: var(--cw-space-2) 0 0;
+  font-size: var(--cw-text-sm);
+}
+
+.cw-change__label {
+  color: var(--cw-text-muted);
+}
+
+.cw-change__values {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--cw-space-2);
+}
+
+/*
+ * The earlier figure is muted but NOT struck through: it was correct under the inputs of
+ * its run, and this product's claim is that historical results stay inspectable. A
+ * strikethrough would read as a correction of something wrong.
+ */
+.cw-change__before {
+  color: var(--cw-text-muted);
+}
+
+.cw-change__arrow {
+  color: var(--cw-text-subtle);
+}
+
+.cw-change__after {
+  color: var(--cw-text);
+  font-weight: var(--cw-weight-medium);
+}

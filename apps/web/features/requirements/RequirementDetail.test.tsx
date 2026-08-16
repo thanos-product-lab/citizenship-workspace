@@ -315,13 +315,85 @@ describe("RequirementDetail", () => {
         ],
       }),
     });
-    render(<RequirementDetail caseId="c1" requirementKey="residence.total_absences" />);
+    const { container } = render(
+      <RequirementDetail caseId="c1" requirementKey="residence.total_absences" />,
+    );
 
     await screen.findByRole("heading", { name: "Assessment history" });
-    expect(screen.getByText("440 days outside the UK.")).toBeInTheDocument();
-    expect(screen.getByText("439 days outside the UK.")).toBeInTheDocument();
-    // Two identical conclusions — the figures are what make the change legible.
+    // Both runs concluded NEAR_THRESHOLD, so the conclusions alone read as no change.
+    // The figures are what make it legible.
+    expect(container.querySelector(".cw-change__before")?.textContent).toBe("439 days");
+    expect(container.querySelector(".cw-change__after")?.textContent).toBe("440 days");
+    expect(screen.getByText("changed to")).toBeInTheDocument();
     expect(screen.getByText("Superseded")).toBeInTheDocument();
+  });
+
+  it("does not manufacture a change when the figure did not move", async () => {
+    // A recalculation that confirms the previous answer is not a change. "439 → 439"
+    // would invent one.
+    get.mockResolvedValue({
+      data: aDetail({
+        history: [
+          {
+            assessment_run_id: "r2",
+            conclusion: "NEAR_THRESHOLD",
+            currency: "CURRENT",
+            summary_code: "TOTAL_ABSENCES_NEAR_THRESHOLD",
+            summary_parameters: { days: 439 },
+            summary: { code: "X", parameters: {}, text: "439 days outside the UK." },
+            created_at: "2026-08-14T11:37:00Z",
+          },
+          {
+            assessment_run_id: "r1",
+            conclusion: "NEAR_THRESHOLD",
+            currency: "SUPERSEDED",
+            summary_code: "TOTAL_ABSENCES_NEAR_THRESHOLD",
+            summary_parameters: { days: 439 },
+            summary: { code: "X", parameters: {}, text: "439 days outside the UK." },
+            created_at: "2026-08-14T11:36:00Z",
+          },
+        ],
+      }),
+    });
+    render(<RequirementDetail caseId="c1" requirementKey="residence.total_absences" />);
+    await screen.findByRole("heading", { name: "Assessment history" });
+    expect(screen.queryByText("changed to")).not.toBeInTheDocument();
+  });
+
+  it("does not strike through the superseded figure", async () => {
+    // A superseded figure was correct under the inputs of its run. Strikethrough would
+    // read as a correction of something wrong, which is the opposite of the claim that
+    // historical results stay inspectable.
+    get.mockResolvedValue({
+      data: aDetail({
+        history: [
+          {
+            assessment_run_id: "r2",
+            conclusion: "NEAR_THRESHOLD",
+            currency: "CURRENT",
+            summary_code: "X",
+            summary_parameters: { days: 440 },
+            summary: { code: "X", parameters: {}, text: "440 days." },
+            created_at: "2026-08-14T11:37:00Z",
+          },
+          {
+            assessment_run_id: "r1",
+            conclusion: "NEAR_THRESHOLD",
+            currency: "SUPERSEDED",
+            summary_code: "X",
+            summary_parameters: { days: 439 },
+            summary: { code: "X", parameters: {}, text: "439 days." },
+            created_at: "2026-08-14T11:36:00Z",
+          },
+        ],
+      }),
+    });
+    const { container } = render(
+      <RequirementDetail caseId="c1" requirementKey="residence.total_absences" />,
+    );
+    await screen.findByText("changed to");
+    expect(container.querySelector("s, del, strike")).toBeNull();
+    expect(container.querySelector(".cw-change__before")?.textContent).toBe("439 days");
   });
 
   it("degrades to the error state when the payload is missing its list fields", async () => {

@@ -3,6 +3,7 @@
 import type { components } from "@cw/api-client";
 import {
   AssessedInput,
+  BeforeAfterValue,
   AssessmentSummary,
   CalculationBreakdown,
   ExplanationLayer,
@@ -13,6 +14,7 @@ import {
   StatusGlyph,
 } from "@cw/design-system";
 import { useQuery } from "@tanstack/react-query";
+import type { JSX } from "react";
 import { useEffect, useRef } from "react";
 
 import { useApiClient } from "@/lib/api";
@@ -347,34 +349,63 @@ export function RequirementDetail({
             emptyMessage="This requirement has been assessed once."
           >
             {detail.history.length > 1 ? (
-              <ul className="cw-history">
-                {detail.history.map((entry, index) => (
-                  <li
-                    key={`${entry.assessment_run_id}-${entry.created_at}`}
-                    className="cw-history__item"
-                    data-current={index === 0 ? "true" : "false"}
-                  >
-                    <span>
-                      <RequirementStatus
-                        conclusion={entry.conclusion}
-                        currency={entry.currency}
-                        size="sm"
-                      />
-                      {entry.summary?.text ? (
-                        <span className="cw-note__meta">{entry.summary.text}</span>
-                      ) : null}
-                    </span>
-                    <span className="cw-history__when cw-figure">
-                      {formatDateTime(entry.created_at)}
-                    </span>
-                  </li>
-                ))}
-              </ul>
+              <>
+                {/* The figure change leads. Both runs can reach the same conclusion — the
+                    canonical 439 → 440 bands as NEAR_THRESHOLD twice — so a history of
+                    conclusions alone reads as nothing having happened. */}
+                <FigureChange history={detail.history} />
+                <ul className="cw-history">
+                  {detail.history.map((entry, index) => (
+                    <li
+                      key={`${entry.assessment_run_id}-${entry.created_at}`}
+                      className="cw-history__item"
+                      data-current={index === 0 ? "true" : "false"}
+                    >
+                      <span>
+                        <RequirementStatus
+                          conclusion={entry.conclusion}
+                          currency={entry.currency}
+                          size="sm"
+                        />
+                        {entry.summary?.text ? (
+                          <span className="cw-note__meta">{entry.summary.text}</span>
+                        ) : null}
+                      </span>
+                      <span className="cw-history__when cw-figure">
+                        {formatDateTime(entry.created_at)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </>
             ) : null}
           </ExplanationLayer>
         </ExplanationStack>
       )}
     </div>
+  );
+}
+
+/**
+ * The headline figure's change between the two most recent runs, when there is one.
+ *
+ * Reads `days` from each run's `summary_parameters` — the trusted total, the same field
+ * the headline figure uses. Renders nothing when the figure did not move: a
+ * "439 → 439" row would manufacture a change out of a recalculation that confirmed the
+ * previous answer.
+ */
+function FigureChange({ history }: { history: Detail["history"] }): JSX.Element | null {
+  const [latest, previous] = history;
+  if (!latest || !previous) return null;
+  const after = (latest.summary_parameters as Record<string, unknown>)["days"];
+  const before = (previous.summary_parameters as Record<string, unknown>)["days"];
+  if (typeof after !== "number" || typeof before !== "number" || after === before) return null;
+  return (
+    <BeforeAfterValue
+      label="Days outside the UK, from confirmed records"
+      before={`${before} ${before === 1 ? "day" : "days"}`}
+      after={`${after} ${after === 1 ? "day" : "days"}`}
+    />
   );
 }
 

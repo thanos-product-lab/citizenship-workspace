@@ -10,3 +10,4 @@ export * from "./CalculationBreakdown";
 export * from "./AssessedInput";
 export * from "./SourceReference";
 export * from "./StaleAssessmentNotice";
+export * from "./BeforeAfterValue";
