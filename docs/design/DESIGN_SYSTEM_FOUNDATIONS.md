@@ -3,7 +3,7 @@
 ### Status
 
 Proposed for implementation
-Version: 0.2 — token foundation (M1 slice 4) + **first components** (M4 slice 1)
+Version: 0.3 — token foundation (M1 slice 4) + components (M4 slices 1–2)
 
 This document specifies the token layer: colour, typography, spacing, surfaces,
 and the status / provenance vocabularies. The implementation lives in
@@ -13,14 +13,19 @@ and the status / provenance vocabularies. The implementation lives in
 |---|---|
 | `src/tokens.css` | raw values as CSS custom properties |
 | `src/tokens.ts` | the typed semantic maps (status, currency, provenance, glyph names) |
-| `src/components.css` | component styles — added M4 slice 1 |
+| `src/components.css` | component styles |
 | `src/StatusGlyph.tsx` | the glyph set, resolved from `GlyphName` |
 | `src/RequirementStatus.tsx` | conclusion + currency as two badges |
+| `src/AssessmentSummary.tsx` | the head of a requirement: status, figure, summary |
+| `src/ExplanationStack.tsx` | `ExplanationStack` + `ExplanationLayer` (UI/UX §7.3) |
+| `src/CalculationBreakdown.tsx` | the arithmetic, as a table |
+| `src/AssessedInput.tsx` | `AssessedInput` + `ProvenanceBadge` |
+| `src/SourceReference.tsx` | the rule version and its guidance citations |
+| `src/StaleAssessmentNotice.tsx` | why a conclusion is no longer current |
 
 See `Evidence_First_Citizenship_Workspace_UI_UX.md` §13 for the direction this
-makes concrete. Remaining M4 components (`ExplanationStack`,
-`CalculationBreakdown`, `SourceReference`, `StaleAssessmentNotice`,
-`AssessmentSummary`, `BeforeAfterValue`) arrive in slice 2.
+makes concrete. `BeforeAfterValue` is the one M4 component still outstanding; it
+belongs with the recalculation loop in slice 4.
 
 ---
 
@@ -116,6 +121,25 @@ each, so an AI proposal is never mistaken for a confirmed fact.
 
 AI-proposed values additionally carry a dashed treatment in M4 components, so the
 distinction survives greyscale.
+
+### 4.1 Known gap: no "entered, not yet confirmed" kind
+
+The eight kinds above describe how a value came to be. They have no entry for
+**a value the user typed but has not confirmed** — a travel record whose
+`review_state` is `DRAFT` or `UNCERTAIN`.
+
+This matters because provenance and the §6.1 trust gate are different questions,
+and conflating them produces false labels. A record the user *confirmed* is
+`user_confirmed` even when its dates are estimated; the date confidence is a
+separate axis, shown on its own line. But a record never confirmed has no honest
+token, and the two nearest are both wrong: `user_confirmed` overstates, and
+`system_calculated` claims something computed a date the user typed.
+
+M4 falls back to `unavailable` and states the rest in words on the row. That is
+least-wrong rather than right. **Decide before M5**, when AI-proposed claims make
+the distinction load-bearing: either add a `user_entered` kind here (a change to
+this document, then `tokens.ts`), or accept the fallback deliberately and record
+why.
 
 ---
 
