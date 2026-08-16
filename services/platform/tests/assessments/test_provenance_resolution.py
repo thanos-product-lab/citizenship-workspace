@@ -172,7 +172,12 @@ def test_an_unconfirmed_trip_is_marked_as_not_counting(api: Api, db_session: Ses
     greece = next(r for r in resolved if r.label == "Trip to Greece")
     assert greece.counts_as_confirmed is False
     assert greece.detail == "Confirmed · estimated dates"
-    assert greece.provenance_kind != "user_confirmed"
+    # Provenance and the trust gate are different questions. The user *did* confirm this
+    # record, so its provenance is user_confirmed; what kept it out of the trusted figure
+    # is the date confidence, which the detail line states on its own. Collapsing the two
+    # is what made a user-typed estimated date render as "Calculated".
+    assert greece.provenance_kind == "user_confirmed"
+    assert greece.is_removed is False
 
     italy = next(r for r in resolved if r.label == "Trip to Italy")
     assert italy.counts_as_confirmed is True

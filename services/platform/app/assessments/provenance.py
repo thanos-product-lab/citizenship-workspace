@@ -174,20 +174,38 @@ def _resolve_travel_record(session: Session, link: AssessmentInputLink) -> Resol
         is_still_current=record.current_version_id == link.input_version_id,
         is_removed=removed,
         counts_as_confirmed=counts,
-        provenance_kind=(
-            "conflicting"
-            if version.date_confidence == DateConfidence.CONFLICTING.value
-            else "user_confirmed"
-            if counts
-            # Not "unavailable": that badge means the version could not be read at all, and
-            # collapsing "did not count" into it destroys the distinction. The record was
-            # entered by the user; it simply did not pass the gate, which the row says in
-            # words directly beneath.
-            else "user_corrected"
-            if removed
-            else "system_calculated"
+        provenance_kind=_travel_provenance(
+            removed=removed, confirmed=confirmed, date_confidence=version.date_confidence
         ),
     )
+
+
+def _travel_provenance(*, removed: bool, confirmed: bool, date_confidence: str) -> str:
+    """How this record's value came to be — *not* whether it counted.
+
+    The two are separate questions and the row answers them separately: this badge
+    describes provenance, while "Did not count towards the confirmed figure" states the
+    §6.1 outcome. Conflating them produced false labels: a deleted record read as
+    "Corrected" (the user deleted it, they did not correct it) and a user-typed estimated
+    date read as "Calculated" (nothing calculated it).
+
+    A record the user confirmed is `user_confirmed` even when its dates are estimated —
+    they did confirm it; the date confidence is a different axis and is shown on its own
+    line. Only a record that was never confirmed lacks an honest token, because the
+    provenance vocabulary (DESIGN_SYSTEM_FOUNDATIONS §4) has no "user entered, not yet
+    confirmed" kind. `unavailable` is the least-wrong of the eight and the row says the
+    rest in words; adding a kind is a design-system change, not a thing to do silently.
+    """
+    if date_confidence == DateConfidence.CONFLICTING.value:
+        return "conflicting"
+    if removed:
+        # Accurate rather than merely convenient: the record is genuinely gone. A version
+        # that could not be *read* carries `unavailable=True` as well, so the two stay
+        # distinguishable structurally and in the row's own wording.
+        return "unavailable"
+    if confirmed:
+        return "user_confirmed"
+    return "unavailable"
 
 
 def _resolve_route_profile(session: Session, link: AssessmentInputLink) -> ResolvedInput:

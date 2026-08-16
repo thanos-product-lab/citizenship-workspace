@@ -329,13 +329,7 @@ export function RequirementDetail({
           <ExplanationLayer
             id="layer-next"
             title="Next action"
-            emptyMessage={
-              // "Nothing to do" beneath an unresolved limitation is false reassurance, and
-              // several evaluators raise limitations without emitting a next action.
-              detail.conclusion === "SUPPORTED" && detail.limitations.length === 0
-                ? "There’s nothing to do for this requirement right now."
-                : "No next action has been recorded for this result. Anything listed under Limitations is still unresolved."
-            }
+            emptyMessage={nextActionEmptyMessage(detail)}
           >
             {detail.next_actions.length > 0 ? (
               <ul className="cw-notes">
@@ -396,6 +390,28 @@ export function RequirementDetail({
       )}
     </div>
   );
+}
+
+/**
+ * What to say when a result carries no next action.
+ *
+ * Three different situations, and only one of them means "you have nothing to do":
+ *
+ * - SUPPORTED with no limitations — genuinely nothing outstanding.
+ * - Any limitations — point at them. Several evaluators raise limitations without
+ *   emitting a next action, and "nothing to do" one layer beneath an unresolved conflict
+ *   is false reassurance.
+ * - Not SUPPORTED but no limitations either — say only that no action was recorded.
+ *   Pointing at the Limitations layer here would contradict it: that layer is empty.
+ */
+function nextActionEmptyMessage(detail: Detail): string {
+  if (detail.limitations.length > 0) {
+    return "No next action has been recorded for this result. Anything listed under Limitations is still unresolved.";
+  }
+  if (detail.conclusion === "SUPPORTED") {
+    return "There’s nothing to do for this requirement right now.";
+  }
+  return "No next action has been recorded for this result.";
 }
 
 /**

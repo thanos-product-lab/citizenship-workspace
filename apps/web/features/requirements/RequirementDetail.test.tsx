@@ -386,6 +386,21 @@ describe("RequirementDetail", () => {
     expect(screen.getByText(/Anything listed under Limitations is still unresolved/)).toBeInTheDocument();
   });
 
+  it("does not point at the Limitations layer when it is empty", async () => {
+    // Caught in the browser: a NEAR_THRESHOLD result with no limitations showed
+    // "Anything listed under Limitations is still unresolved" directly beneath a
+    // Limitations layer reading "No limitations were recorded" — two layers contradicting
+    // each other. Not reassuring, but incoherent, which is its own kind of untrustworthy.
+    get.mockResolvedValue({ data: aDetail({ conclusion: "NEAR_THRESHOLD", limitations: [] }) });
+    render(<RequirementDetail caseId="c1" requirementKey="residence.total_absences" />);
+
+    await screen.findByRole("heading", { name: "Next action" });
+    expect(screen.getByText("No next action has been recorded for this result.")).toBeInTheDocument();
+    expect(screen.queryByText(/Anything listed under Limitations/)).not.toBeInTheDocument();
+    // And it still must not claim there is nothing to do.
+    expect(screen.queryByText(/nothing to do for this requirement/)).not.toBeInTheDocument();
+  });
+
   it("names the headline figure as confirmed and states the threshold in words", async () => {
     // The message registry commits to always naming the trusted total as confirmed; this
     // is the one figure composed outside it, and a middle dot is skipped by screen readers.
