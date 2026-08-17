@@ -30,7 +30,15 @@ const FOREIGN_CASE = "00000000-0000-4000-8000-000000000000";
 test.describe("the M4 surfaces are not public", () => {
   for (const path of [
     `/cases/${FOREIGN_CASE}`,
+    // Dotted requirement keys: the original matcher excluded any path containing a dot.
     `/cases/${FOREIGN_CASE}/requirements/residence.total_absences`,
+    // Appended static extensions: narrowing that exclusion to *known* extensions still
+    // let an attacker opt out of the middleware by suffixing a segment they control.
+    // These four failed on the first attempt at the fix.
+    `/cases/${FOREIGN_CASE}.png`,
+    `/cases/${FOREIGN_CASE}/requirements/foo.png`,
+    `/cases/${FOREIGN_CASE}/requirements/residence.total_absences.png`,
+    `/cases/${FOREIGN_CASE}/requirements/x.svg`,
   ]) {
     test(`${path} redirects an unauthenticated visitor to sign-in`, async ({ page }) => {
       await page.goto(path);
