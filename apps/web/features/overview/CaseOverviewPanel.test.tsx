@@ -277,6 +277,21 @@ describe("CaseOverviewPanel", () => {
     expect(screen.getByRole("list", { name: "Requirements by state" })).toBeInTheDocument();
   });
 
+  it("says the figures are out of date while a refetch is in flight", () => {
+    // The window after a write and before the refetch lands is one where the summary shows
+    // pre-write counts. Silence there is a summary presenting superseded numbers as
+    // current — the same failure as a stale badge that never appears.
+    render(<CaseOverviewPanel overview={anOverview()} updating />);
+    expect(
+      screen.getByText("Updating — these figures are from before your last change."),
+    ).toBeInTheDocument();
+  });
+
+  it("says nothing about updating when no refetch is in flight", () => {
+    render(<CaseOverviewPanel overview={anOverview()} />);
+    expect(screen.queryByText(/Updating —/)).not.toBeInTheDocument();
+  });
+
   it("omits the actions section entirely when there is nothing to do", () => {
     render(<CaseOverviewPanel overview={anOverview({ priority_actions: [] })} />);
     expect(screen.queryByRole("heading", { name: "What to do next" })).not.toBeInTheDocument();

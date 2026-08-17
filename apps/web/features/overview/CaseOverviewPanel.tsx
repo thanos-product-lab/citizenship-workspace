@@ -37,7 +37,16 @@ type Overview = components["schemas"]["CaseOverview"];
  *   one narrative line names where the outstanding work is, from a count comparison.
  *   Nothing predicts whether an application would succeed.
  */
-export function CaseOverviewPanel({ overview }: { overview: Overview }): JSX.Element {
+export function CaseOverviewPanel({
+  overview,
+  updating = false,
+}: {
+  overview: Overview;
+  /** A refetch is in flight, so the figures below describe the state before the write
+      that triggered it. Saying so is the difference between a slow update and a summary
+      quietly presenting superseded counts as current. */
+  updating?: boolean;
+}): JSX.Element {
   const lines = conclusionLines(overview);
   const unassessed = unassessedLine(overview);
   const busiest = busiestGroup(overview);
@@ -64,6 +73,13 @@ export function CaseOverviewPanel({ overview }: { overview: Overview }): JSX.Ele
       </dl>
 
       <h2 className="cw-overview__heading">{phaseHeading(overview.current_phase)}</h2>
+
+      {updating ? (
+        <p className="cw-updating" aria-live="polite">
+          <StatusGlyph name="clock" size={14} />
+          <span>Updating — these figures are from before your last change.</span>
+        </p>
+      ) : null}
 
       {lines.length === 0 && !unassessed ? (
         <p className="cw-overview__empty">

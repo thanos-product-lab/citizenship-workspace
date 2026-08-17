@@ -146,7 +146,7 @@ function WorkspaceShell({
   // The overview lives here rather than inside its panel because the group summaries it
   // returns are also rendered by the requirements list, and one fetch should serve both.
   const api = useApiClient();
-  const { data: overview, status } = useQuery({
+  const { data: overview, status, isFetching } = useQuery({
     queryKey: caseKeys.overview(caseData.id),
     queryFn: async () => {
       const { data } = await api.GET("/api/v1/cases/{case_id}/overview", {
@@ -186,7 +186,7 @@ function WorkspaceShell({
           requirements below are current.
         </p>
       ) : (
-        <CaseOverviewPanel overview={overview} />
+        <CaseOverviewPanel overview={overview} updating={isFetching} />
       )}
 
       <ResidencePanel caseId={caseData.id} />

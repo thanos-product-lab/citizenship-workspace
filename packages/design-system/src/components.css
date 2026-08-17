@@ -1007,3 +1007,23 @@
   color: var(--cw-text);
   font-weight: var(--cw-weight-medium);
 }
+
+/* --- Updating (recalculation in progress) ---------------------------------- */
+
+/*
+ * Shown while a refetch is in flight and the figures on screen are still the previous
+ * run's. Deliberately a statement rather than a spinner: what matters is not that work is
+ * happening but that the numbers currently visible are out of date (UI/UX §16).
+ */
+.cw-updating {
+  display: flex;
+  align-items: center;
+  gap: var(--cw-space-2);
+  margin: var(--cw-space-3) 0 0;
+  font-size: var(--cw-text-sm);
+  color: var(--cw-currency-stale);
+}
+
+.cw-updating svg {
+  flex: none;
+}

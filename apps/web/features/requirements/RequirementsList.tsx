@@ -48,7 +48,7 @@ export function RequirementsList({
   const headingRef = useRef<HTMLHeadingElement>(null);
   const returnFocusToHeading = useRef(false);
 
-  const { data, status, refetch } = useQuery({
+  const { data, status, refetch, isFetching } = useQuery({
     queryKey: caseKeys.requirements(caseId),
     queryFn: async () => {
       const { data } = await api.GET("/api/v1/cases/{case_id}/requirements", {
@@ -100,7 +100,11 @@ export function RequirementsList({
   // conclusion would hide it — including when it is STALE.
   const withResults = requirements.filter((r) => r.currency !== null);
   const groups = groupRequirements(requirements);
-  const busy = recalculate.isPending;
+  // Busy spans the whole operation, not just the POST. The mutation resolves, then
+  // invalidation triggers a refetch — and during that window the rows below still show
+  // the previous run's conclusions. Releasing the button at the halfway point would invite
+  // a second click against numbers that are already being replaced.
+  const busy = recalculate.isPending || (isFetching && status === "success");
 
   return (
     <section className="cw-section" aria-labelledby="requirements-heading">
@@ -133,6 +137,16 @@ export function RequirementsList({
       <p aria-live="polite" className="cw-visually-hidden">
         {status === "pending" ? "Loading requirements." : announcement}
       </p>
+
+      {/* The rows below are the previous run's until the refetch lands. Saying so is the
+          difference between a slow update and a screen quietly showing superseded
+          conclusions (UI/UX §16: recalculation in progress is a state to design). */}
+      {busy && status === "success" ? (
+        <p className="cw-updating">
+          <StatusGlyph name="clock" size={14} />
+          <span>Updating — the conclusions below are from the previous run.</span>
+        </p>
+      ) : null}
 
       {status === "pending" ? (
         <p style={{ color: "var(--cw-text-muted)" }}>Loading requirements…</p>
