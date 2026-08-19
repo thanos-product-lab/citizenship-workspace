@@ -542,6 +542,23 @@
  */
 
 
+
+/* --- Case data destination -------------------------------------------------- */
+
+.cw-case-data__heading {
+  margin: 0;
+  font-size: var(--cw-text-xl);
+  font-weight: var(--cw-weight-semibold);
+  line-height: var(--cw-leading-tight);
+}
+
+.cw-case-data__note {
+  margin: var(--cw-space-2) 0 var(--cw-space-5);
+  font-size: var(--cw-text-sm);
+  color: var(--cw-text-muted);
+  max-width: 62ch;
+}
+
 /* --- Travel history table --------------------------------------------------- */
 
 /*
