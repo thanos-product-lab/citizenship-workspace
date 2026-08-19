@@ -93,6 +93,34 @@ Postgres + Redis to Railway, both auto-deploying from `main`.
 
 ## Status
 
-Milestone 1 — platform foundation. The tooling spine, backend service, contract
-pipeline, design tokens, an authenticated Next.js shell (Clerk + JWKS), and the
-deploy configuration are in place. The domain model begins at M2.
+**In active development. Not open to users, and not intended to be.** This is a
+portfolio prototype built to demonstrate how an AI-native product can keep model
+output from silently becoming truth. It runs on synthetic data only, gives no legal
+advice, predicts no outcomes, and submits nothing.
+
+**Built so far — M0 to M4.** Versioned case inputs with immutable history; a
+deterministic rules engine covering the Section 6(1) five-year route; assessments
+that are never edited in place, each carrying a conclusion, a separate currency, the
+exact input versions and rule version behind it, and structured limitations; and a
+workspace that renders all of it — an overview, the requirement list, and an
+explanation stack that traces any conclusion back to the facts that produced it.
+
+**Next — M6** (issue detection and selective stale invalidation), then M5 (timeline
+and application-date simulation), M7 (evidence), M8 (human-in-the-loop document AI).
+Build order and cut lines are in
+[`docs/IMPLEMENTATION_ROADMAP.md`](docs/IMPLEMENTATION_ROADMAP.md).
+
+### Worth reading first
+
+If you are here to look rather than to run it:
+
+- [`docs/demo-assets/`](docs/demo-assets/) — screens from the current build, and the
+  terminal captures they are checked against. The figures in both agree, which is the
+  point of keeping them side by side.
+- [`docs/decisions/`](docs/decisions/) — the design decisions, each with the
+  alternative it rejected and why.
+- [`docs/architecture/DOMAIN_MODEL_RFC.md`](docs/architecture/DOMAIN_MODEL_RFC.md) and
+  [`DETERMINISTIC_RULES_SPEC.md`](docs/architecture/DETERMINISTIC_RULES_SPEC.md) — the
+  model and the date arithmetic, which is where the real difficulty is.
+
+Everything runs locally against synthetic fixtures — see Setup above.
