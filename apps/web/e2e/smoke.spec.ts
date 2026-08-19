@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 
-const API_URL = process.env["SMOKE_API_URL"] ?? "http://localhost:8000";
+import { API_URL } from "./target";
+
 
 test("web app is reachable and gates unauthenticated users", async ({ page }) => {
   const response = await page.goto("/");

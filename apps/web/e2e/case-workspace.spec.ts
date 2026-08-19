@@ -21,7 +21,8 @@
 
 import { expect, test } from "@playwright/test";
 
-const API_URL = process.env["SMOKE_API_URL"] ?? "http://localhost:8000";
+import { API_URL } from "./target";
+
 const CASE_ID = process.env["E2E_CASE_ID"];
 
 // A case id that is well-formed but certainly not the visitor's, for boundary checks.
