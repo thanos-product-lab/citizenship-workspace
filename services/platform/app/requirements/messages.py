@@ -384,6 +384,13 @@ STALE_REASON_TEMPLATES: dict[str, _Template] = {
         "Your proposed application date changed after this was worked out."
     ),
     "TRAVEL_RECORD_CHANGED": lambda p: "Your travel records changed after this was worked out.",
+    # No reachable writer yet: a confirmed route profile cannot be edited on an active case
+    # (`confirm_route_profile` requires a draft). The reason code and this sentence exist so
+    # that the invalidation service handles the kind its declarations already name, rather
+    # than the profile-edit path arriving later and having to remember to add both.
+    "ROUTE_PROFILE_CHANGED": lambda p: (
+        "Your immigration status details changed after this was worked out."
+    ),
 }
 
 

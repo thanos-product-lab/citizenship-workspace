@@ -86,8 +86,8 @@ def test_an_assessed_group_reports_counts_by_named_state(api: Api) -> None:
 
 
 def test_a_stale_member_makes_its_group_stale_but_not_the_others(api: Api) -> None:
-    """ADR-0010 over the wire. Changing the application date restales the residence group;
-    knowledge and referees are untouched."""
+    """ADR-0010 over the wire. Changing the application date restales the residence group and
+    the route-and-status group; knowledge and referees are untouched."""
     case_id = _assessed_case(api, "user_a")
     current = api("user_a").get(f"/api/v1/cases/{case_id}/application-dates").json()
     api("user_a").post(
@@ -102,7 +102,19 @@ def test_a_stale_member_makes_its_group_stale_but_not_the_others(api: Api) -> No
     # The conclusions are preserved — staleness never rewrites what was concluded.
     assert sum(c["count"] for c in residence["conclusion_counts"]) == 5
     assert _group(overview, "REFEREES")["currency"] is None
-    assert overview["stale"] == 5
+
+    # The date also drives `status.holding_period` and `route.adult_applicant`, and through
+    # the composition edge `route.standard_section_6_1` — so its group is stale too. Under
+    # M3B's blunt rule this group read CURRENT while the date beneath it had moved
+    # (ADR-0008's under-invalidation window, closed by ADR-0014).
+    route_and_status = _group(overview, "ROUTE_AND_STATUS")
+    assert route_and_status["currency"] == "STALE"
+    assert route_and_status["stale"] == 3
+
+    # Not a group with unaffected members: `route.supported_status` reads the status type.
+    assert sum(c["count"] for c in route_and_status["conclusion_counts"]) == 4
+
+    assert overview["stale"] == 8
 
 
 def test_the_overview_reports_no_readiness_score(api: Api) -> None:

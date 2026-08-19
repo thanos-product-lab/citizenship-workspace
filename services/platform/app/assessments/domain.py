@@ -206,10 +206,17 @@ class AssessmentRunCompleted(DomainEvent):
 @dataclass(frozen=True)
 class AssessmentInvalidated(DomainEvent):
     """Current results were marked STALE because an input changed under them (Domain §41.2).
-    Structural only: the reason code and how many results, never a conclusion."""
+
+    Structural only (§38.1): the reason code, which requirements were affected, and how many
+    results. Requirement keys are stable public identifiers from the catalog, not case data,
+    so naming them carries no personal information — and without them the event records that
+    *something* went stale while a consumer auditing selective invalidation cannot tell what.
+    Never a conclusion.
+    """
 
     reason_code: str
     affected_count: int
+    requirement_keys: tuple[str, ...] = ()
 
     aggregate_type: ClassVar[str] = "ApplicationCase"
     event_type: ClassVar[str] = "AssessmentInvalidated"
@@ -219,4 +226,5 @@ class AssessmentInvalidated(DomainEvent):
             "case_id": str(self.aggregate_id),
             "reason_code": self.reason_code,
             "affected_count": self.affected_count,
+            "requirement_keys": list(self.requirement_keys),
         }

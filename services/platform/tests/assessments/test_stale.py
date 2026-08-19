@@ -1,9 +1,14 @@
-"""Blunt stale propagation (Domain §41): a residence input change marks current residence
-results STALE in the same transaction; recalculation supersedes them and writes new current
-results; a failed recalculation promotes nothing; and the change never touches route/status.
+"""Selective stale propagation (Domain §41): an input change marks the results whose rules
+declare a dependency on it STALE in the same transaction; recalculation supersedes them and
+writes new current results; a failed recalculation promotes nothing.
 
 This is the conclusion-vs-currency separation made concrete (ADR-0001): a result can be
 SUPPORTED and STALE at once, and its conclusion is never edited in place.
+
+The counts here are deliberately literal (four stale after a travel change, eight after a
+date change) rather than derived, so a change to the dependency declarations breaks a test
+that names the number a human checked. `test_selective_invalidation.py` owns the derived
+version and the reasoning behind the numbers; ADR-0014 owns the why.
 """
 
 from collections.abc import Callable
@@ -34,6 +39,13 @@ RESIDENCE_KEYS = {
     "residence.final_year_absences",
     "residence.travel_consistency",
 }
+# The four residence rules that declare a TRAVEL_RECORD dependency. `qualifying_period` reads
+# only the application date, so a travel change must leave it CURRENT — the over-invalidation
+# half of ADR-0008, closed by ADR-0014.
+TRAVEL_DEPENDENT_KEYS = RESIDENCE_KEYS - {"residence.qualifying_period"}
+# A travel change stales 4; the other 5 results (3 route + status + qualifying_period) stand.
+TRAVEL_STALE_COUNT = 4
+UNAFFECTED_BY_TRAVEL_COUNT = 5
 
 
 def _case_with_date(api: Api, user: str) -> str:
@@ -78,11 +90,15 @@ def test_travel_change_marks_residence_results_stale(api: Api) -> None:
     _add_trip(api, "user_a", case_id, "2023-06-01", "2023-07-02")
 
     rows = _requirements(api, "user_a", case_id)
-    # Residence results are STALE, but their conclusion still stands (conclusion ⟂ currency).
-    for key in RESIDENCE_KEYS:
+    # The travel-dependent results are STALE, but their conclusion still stands, unedited
+    # (conclusion ⟂ currency).
+    for key in TRAVEL_DEPENDENT_KEYS:
         assert rows[key]["currency"] == "STALE", key
         assert rows[key]["conclusion"] != "NOT_YET_ASSESSED"
-    # Route and status are a different group — the blunt residence trigger leaves them CURRENT.
+    # `qualifying_period` derives from the application date alone. Under blunt invalidation it
+    # was staled here too; selective invalidation leaves it alone.
+    assert rows["residence.qualifying_period"]["currency"] == "CURRENT"
+    # Nothing outside residence declares a travel dependency.
     assert rows["route.supported_status"]["currency"] == "CURRENT"
     assert rows["status.holding_period"]["currency"] == "CURRENT"
 
@@ -90,7 +106,7 @@ def test_travel_change_marks_residence_results_stale(api: Api) -> None:
 def test_recalculation_supersedes_stale_and_restores_current(api: Api) -> None:
     case_id = _case_with_date(api, "user_a")
     api("user_a").post(f"/api/v1/cases/{case_id}/assessments/recalculate")
-    _add_trip(api, "user_a", case_id, "2023-06-01", "2023-07-02")  # → residence STALE
+    _add_trip(api, "user_a", case_id, "2023-06-01", "2023-07-02")  # → travel-dependent STALE
     api("user_a").post(f"/api/v1/cases/{case_id}/assessments/recalculate")  # → refresh
 
     rows = _requirements(api, "user_a", case_id)
@@ -112,13 +128,13 @@ def test_no_current_result_is_ever_reported_stale_and_current(
     api("user_a").post(f"/api/v1/cases/{case_id}/assessments/recalculate")
     _add_trip(api, "user_a", case_id, "2023-06-01", "2023-07-02")
 
-    # After the change: five residence results STALE, none of them also CURRENT.
+    # After the change: the four travel-dependent results STALE, none of them also CURRENT.
     stale = db_session.scalar(
         select(func.count())
         .select_from(AssessmentResult)
         .where(AssessmentResult.currency == Currency.STALE.value)
     )
-    assert stale == 5
+    assert stale == TRAVEL_STALE_COUNT
 
 
 def test_failed_recalculation_promotes_nothing(
@@ -146,8 +162,9 @@ def test_failed_recalculation_promotes_nothing(
             .where(AssessmentResult.currency == currency.value)
         )
 
-    assert _count(Currency.STALE) == 5  # the five residence results, still stale
-    assert _count(Currency.CURRENT) == 4  # route (3) + status (1), untouched
+    assert _count(Currency.STALE) == TRAVEL_STALE_COUNT  # still stale
+    # route (3) + status (1) + qualifying_period, none of which reads a travel record.
+    assert _count(Currency.CURRENT) == UNAFFECTED_BY_TRAVEL_COUNT
     assert _count(Currency.SUPERSEDED) == 0  # the failed run superseded nothing
 
 
@@ -186,9 +203,10 @@ def test_failure_midway_through_persistence_rolls_back_fully(
             .where(AssessmentResult.currency == currency.value)
         )
 
-    # The partial supersede/insert work rolled back: back to 5 STALE + 4 CURRENT, none superseded.
-    assert _count(Currency.STALE) == 5
-    assert _count(Currency.CURRENT) == 4
+    # The partial supersede/insert work rolled back: back to 4 STALE + 5 CURRENT, none
+    # superseded.
+    assert _count(Currency.STALE) == TRAVEL_STALE_COUNT
+    assert _count(Currency.CURRENT) == UNAFFECTED_BY_TRAVEL_COUNT
     assert _count(Currency.SUPERSEDED) == 0
 
 
@@ -202,3 +220,17 @@ def test_selecting_a_new_date_marks_residence_stale(api: Api) -> None:
 
     rows = _requirements(api, "user_a", case_id)
     assert rows["residence.qualifying_period"]["currency"] == "STALE"
+
+    # The date reaches past residence. Under blunt invalidation these three read CURRENT while
+    # the date beneath them had moved — ADR-0008's documented under-invalidation window, and
+    # the reason M6 was not optional. `route.standard_section_6_1` declares no date dependency
+    # at all; it is stale only because it composes `route.adult_applicant`'s conclusion (§25.4).
+    assert rows["status.holding_period"]["currency"] == "STALE"
+    assert rows["route.adult_applicant"]["currency"] == "STALE"
+    assert rows["route.standard_section_6_1"]["currency"] == "STALE"
+
+    # `route.supported_status` reads the status type, not the date, so it stands.
+    assert rows["route.supported_status"]["currency"] == "CURRENT"
+
+    stale = {key for key, row in rows.items() if row["currency"] == "STALE"}
+    assert len(stale) == 8, sorted(stale)

@@ -7,7 +7,7 @@ resolves a requirement key to its ids through one seam.
 """
 
 import uuid
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from datetime import datetime
 
 from sqlalchemy import and_, func, select
@@ -15,9 +15,9 @@ from sqlalchemy.orm import Session
 
 from app.assessments.domain import AssessmentInputLink, AssessmentResult, AssessmentRun
 from app.requirements.domain import Currency
-from app.requirements.evaluation import RESIDENCE_REQUIREMENT_KEYS
 from app.requirements.models import (
     RequirementDefinition,
+    RuleCompositionEdge,
     RuleDependencyDefinition,
     RuleLifecycleStatus,
     RuleVersion,
@@ -67,6 +67,48 @@ class RequirementCatalogRepository:
                 )
             )
         )
+
+    @staticmethod
+    def list_active_dependencies(session: Session) -> list[tuple[str, RuleDependencyDefinition]]:
+        """Every ACTIVE rule's declared dependencies, paired with its requirement key.
+
+        This is what selective invalidation resolves against, so it reads the same rows the
+        strict-equality provenance test checks a result's input links against. A rule with no
+        ACTIVE version contributes nothing and is therefore never invalidated — correct, since
+        it produces no results either.
+        """
+        return [
+            (requirement_key, dependency)
+            for requirement_key, dependency in session.execute(
+                select(RequirementDefinition.requirement_key, RuleDependencyDefinition)
+                .join(RuleVersion, RuleVersion.requirement_id == RequirementDefinition.id)
+                .join(
+                    RuleDependencyDefinition,
+                    RuleDependencyDefinition.rule_version_id == RuleVersion.id,
+                )
+                .where(RuleVersion.lifecycle_status == RuleLifecycleStatus.ACTIVE.value)
+            ).all()
+        ]
+
+    @staticmethod
+    def list_active_composition_edges(session: Session) -> list[tuple[str, str]]:
+        """(downstream requirement key, upstream requirement key) for every ACTIVE rule that
+        composes another requirement's conclusion (§25.4)."""
+        return [
+            (downstream, upstream)
+            for downstream, upstream in session.execute(
+                select(
+                    RequirementDefinition.requirement_key,
+                    RuleCompositionEdge.upstream_requirement_key,
+                )
+                .join(RuleVersion, RuleVersion.requirement_id == RequirementDefinition.id)
+                .join(
+                    RuleCompositionEdge,
+                    RuleCompositionEdge.rule_version_id == RuleVersion.id,
+                )
+                .where(RuleVersion.lifecycle_status == RuleLifecycleStatus.ACTIVE.value)
+            ).all()
+        ]
 
     @staticmethod
     def count_definitions(session: Session) -> int:
@@ -139,24 +181,34 @@ class AssessmentRepository:
         )
 
     @staticmethod
-    def mark_current_residence_results_stale(
-        session: Session, case_id: uuid.UUID, reason_code: str, at: datetime
-    ) -> list[uuid.UUID]:
-        """Blunt invalidation (M3B): mark every CURRENT residence-group result STALE. Returns
-        the affected result ids. Selective, per-dependency invalidation is M6 (ADR-0008)."""
-        residence_ids = select(RequirementDefinition.id).where(
-            RequirementDefinition.requirement_key.in_(RESIDENCE_REQUIREMENT_KEYS)
-        )
-        results = session.scalars(
-            select(AssessmentResult).where(
+    def mark_current_results_stale(
+        session: Session,
+        case_id: uuid.UUID,
+        requirement_keys: Collection[str],
+        reason_code: str,
+        at: datetime,
+    ) -> list[tuple[str, uuid.UUID]]:
+        """Mark the CURRENT results for the named requirements STALE (Domain §41.2). Returns
+        (requirement_key, result_id) pairs for those actually marked.
+
+        Only CURRENT rows are selected, so an already-STALE result keeps the reason code of
+        the change that *ended* its currency rather than being overwritten by every later
+        change. Superseded rows are never touched: staling one would rewrite history.
+        """
+        if not requirement_keys:
+            return []
+        rows = session.execute(
+            select(RequirementDefinition.requirement_key, AssessmentResult)
+            .join(AssessmentResult, AssessmentResult.requirement_id == RequirementDefinition.id)
+            .where(
+                RequirementDefinition.requirement_key.in_(tuple(requirement_keys)),
                 AssessmentResult.case_id == case_id,
-                AssessmentResult.requirement_id.in_(residence_ids),
                 AssessmentResult.currency == Currency.CURRENT.value,
             )
         ).all()
-        for result in results:
+        for _, result in rows:
             result.mark_stale(reason_code=reason_code, at=at)
-        return [result.id for result in results]
+        return [(key, result.id) for key, result in rows]
 
     @staticmethod
     def list_requirements_with_active_result(

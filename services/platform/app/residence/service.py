@@ -19,10 +19,11 @@ from datetime import date
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
 
-from app.assessments.invalidation import StaleReason, invalidate_residence_results
+from app.assessments.invalidation import StaleReason, invalidate_for_input_change
 from app.auth.schemas import CurrentUser
 from app.cases import service as cases_service
 from app.cases.domain import ApplicationCase, LifecycleStatus
+from app.requirements.models import DependencyInputKind
 from app.residence.csv_import import ParsedImport, parse_import
 from app.residence.domain import (
     EntrySource,
@@ -135,10 +136,16 @@ def select_application_date(
         target_type="ProposedApplicationDateVersion",
         target_id=version.id,
     )
-    # Blunt stale propagation in the same transaction (§41.2): the date drives every residence
-    # rule, so any current residence result is now stale. No-op on the first selection.
-    invalidate_residence_results(
-        session, uow, case_id=case.id, reason_code=StaleReason.APPLICATION_DATE_CHANGED
+    # Selective stale propagation in the same transaction (§41.2). The date reaches further
+    # than residence — `status.holding_period` and, through the composite, the route rules
+    # declare it too — so the affected set is resolved from the declarations, not from this
+    # module's idea of which requirements care. No-op on the first selection.
+    invalidate_for_input_change(
+        session,
+        uow,
+        case_id=case.id,
+        input_kind=DependencyInputKind.PROPOSED_APPLICATION_DATE,
+        reason_code=StaleReason.APPLICATION_DATE_CHANGED,
     )
     uow.commit()
     session.refresh(root)
@@ -356,8 +363,14 @@ def import_travel_records(
             target_id=version.id,
         )
         outcomes.append(TravelRecordOutcome(record=record, version=version))
-    invalidate_residence_results(
-        session, uow, case_id=case.id, reason_code=StaleReason.TRAVEL_RECORD_CHANGED
+    # One invalidation for the whole batch, not one per row: the affected set is identical
+    # for every travel write, and staling a result twice would only reset its reason code.
+    invalidate_for_input_change(
+        session,
+        uow,
+        case_id=case.id,
+        input_kind=DependencyInputKind.TRAVEL_RECORD,
+        reason_code=StaleReason.TRAVEL_RECORD_CHANGED,
     )
     uow.commit()
     for outcome in outcomes:
@@ -409,9 +422,15 @@ def _emit_travel(
         target_type="TravelRecord",
         target_id=target_id,
     )
-    # Any travel change restales the current residence results in the same transaction (§41.2).
-    invalidate_residence_results(
-        session, uow, case_id=case_id, reason_code=StaleReason.TRAVEL_RECORD_CHANGED
+    # Any travel change restales the rules declaring a travel dependency, in the same
+    # transaction (§41.2). `residence.qualifying_period` declares none — it reads only the
+    # application date — so it is correctly left alone.
+    invalidate_for_input_change(
+        session,
+        uow,
+        case_id=case_id,
+        input_kind=DependencyInputKind.TRAVEL_RECORD,
+        reason_code=StaleReason.TRAVEL_RECORD_CHANGED,
     )
     uow.commit()
 

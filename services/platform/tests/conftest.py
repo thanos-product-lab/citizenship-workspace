@@ -16,13 +16,26 @@ from sqlalchemy.orm import Session
 from app.auth.dependencies import get_current_user
 from app.auth.schemas import CurrentUser
 from app.main import app
+from app.requirements import models as requirements_models
 from app.shared.db import Base, get_db, get_sessionmaker
 from app.shared.tenant import set_tenant
 
-# Global reference data seeded by migrations, not per-test state: excluded from the
-# per-test TRUNCATE so the catalog persists across the session (like the schema itself).
+# Global reference data seeded by migrations, not per-test state: excluded from the per-test
+# TRUNCATE so the catalog persists across the session (like the schema itself).
+#
+# Derived from the models rather than listed by hand. A hand-written list silently wipes any
+# catalog table added later: the seed vanishes after the first test, every read returns empty,
+# and the feature reading it fails in a way that looks like a logic bug. That is exactly how
+# `rule_composition_edges` first appeared to be broken.
 _REFERENCE_TABLES = frozenset(
-    {"requirement_definitions", "rule_versions", "rule_dependency_definitions"}
+    table.name for table in requirements_models.Base.metadata.sorted_tables
+    if table.name in {
+        model.__tablename__
+        for model in vars(requirements_models).values()
+        if isinstance(model, type)
+        and issubclass(model, requirements_models.Base)
+        and model is not requirements_models.Base
+    }
 )
 
 
