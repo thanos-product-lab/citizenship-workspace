@@ -12,9 +12,9 @@ Two table families with deliberately different security postures:
   app role is granted SELECT only and the rows are seeded here, at owner privilege,
   so the catalog ships with the schema (§23 "code-controlled and database-seeded").
   A new rule set is a new migration (RULES_SPEC §12), so binding catalog data to a
-  revision is correct, not a smell. The app (`app/requirements/catalog.py`) owns the
-  *evaluator/dependency logic* by key and looks these rows up by key; a drift test
-  keeps the two in step.
+  revision is correct, not a smell. The app (`app/requirements/evaluation.py`) owns the
+  *evaluator* logic by key and looks these rows up by key; a drift test keeps the two
+  in step.
 - **Assessment tables are case-scoped** and get the full 0004/0005 RLS treatment:
   ENABLE + FORCE row-level security, a per-tenant policy, and DML grants. Results
   reach the case directly (`case_id`); input links reach it through their result.

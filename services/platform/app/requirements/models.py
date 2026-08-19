@@ -6,9 +6,10 @@ no row-level-security policy; the app role is granted SELECT only. The models ex
 the assessment layer can resolve a requirement key to its `requirement_id` and current
 `rule_version_id`, and read a rule's declared dependencies.
 
-The catalog values (titles, groups, guidance citations) live in the migration, which is
-their single source. `app/requirements/catalog.py` owns the complementary *evaluator and
-dependency logic* by key; a drift test asserts the two agree.
+The catalog values (titles, groups, guidance citations) live in the migrations, which are
+their single source, as do the dependency and composition rows that drive selective
+invalidation. `app/requirements/evaluation.py` owns the complementary *evaluator* logic by
+key; `tests/assessments/test_catalog.py` asserts the two agree.
 """
 
 import uuid
@@ -90,4 +91,25 @@ class RuleDependencyDefinition(Base):
     input_kind: Mapped[str] = mapped_column(String(40))
     input_key: Mapped[str | None] = mapped_column(String(60))
     dependency_scope: Mapped[str] = mapped_column(String(40))
+    required: Mapped[bool] = mapped_column(Boolean)
+
+
+class RuleCompositionEdge(Base):
+    """A rule that reads another requirement's *conclusion* rather than a raw input.
+
+    `route.standard_section_6_1` composes the adult and status conclusions. §25.1 has no
+    input kind for a result, and adding one would be wrong — a conclusion is not a
+    versioned input and has no version to link in `AssessmentInputLink`. So the edge is
+    its own relation, versioned with the rule that declares it (§25.3).
+
+    Selective invalidation takes the transitive closure over these edges: if an upstream
+    result is stale, its conclusion is no longer known-current, so every rule composing it
+    is stale too — regardless of whether recalculation would change anything.
+    """
+
+    __tablename__ = "rule_composition_edges"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    rule_version_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("rule_versions.id"))
+    upstream_requirement_key: Mapped[str] = mapped_column(String(60))
     required: Mapped[bool] = mapped_column(Boolean)
