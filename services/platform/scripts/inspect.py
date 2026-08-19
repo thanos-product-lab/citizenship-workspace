@@ -57,10 +57,21 @@ def main() -> None:
         for action in current.next_actions:
             print(f"next action: {action.get('code')} {action.get('label_parameters')}")
 
-        print("input links:")
-        for link in view.input_links:
+        # Resolved inputs rather than bare link rows: M4 turned `input_links` into
+        # `inputs`, each carrying the value that was read and whether that version is
+        # still the current one. This capture is the oracle the screens are checked
+        # against, so it prints what the screen prints.
+        print("inputs read:")
+        for link in view.inputs:
             key_note = f" [{link.input_key}]" if link.input_key else ""
-            print(f"  - {link.input_kind}{key_note} -> {link.input_version_id}")
+            stale_note = "" if link.is_still_current else "  (superseded since)"
+            counted = {True: "counted", False: "not counted", None: "n/a"}[
+                link.counts_as_confirmed
+            ]
+            print(
+                f"  - {link.input_kind}{key_note}: {link.label} = {link.value}"
+                f"  v{link.version_number}  {counted}{stale_note}"
+            )
 
         print("history (newest first):")
         for row in view.history:
