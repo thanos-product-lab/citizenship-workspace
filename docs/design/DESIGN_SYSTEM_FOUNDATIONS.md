@@ -190,9 +190,89 @@ glyph `StatusGlyph` does not draw is a compile error, not a missing signal.
 
 ---
 
-## 9. Known gaps
+## 9. Layout and interaction patterns
 
-### 9.1 `SourceReference` cannot show a guidance version or retrieval date (M4)
+Patterns that recur across surfaces, recorded here because each has a failure mode
+that is invisible once shipped. Screen-level information architecture lives in
+`Evidence_First_Citizenship_Workspace_UI_UX.md` §4 and ADR-0012; this section is the
+component-level rules that serve it.
+
+### 9.1 Local navigation is links, never ARIA tabs
+
+Destinations within a case are separate pages with their own URLs, document titles
+and history entries. Render a `<nav>` with an accessible name and a list of links,
+marking the current one with `aria-current="page"`.
+
+**Never `role="tab"` / `tablist`.** It promises assistive technology that the panels
+are interchangeable views inside one document, and it suppresses the link semantics
+that make bookmarking, open-in-new-tab, and back/forward work.
+
+The current destination is marked **three ways** — `aria-current`, a weight change,
+and an underline — because a colour shift alone fails the non-colour rule that
+applies to every state in this product, not only assessment states.
+
+A sub-page marks its **parent** current: a requirement detail is within Requirements,
+and a navigation highlighting nothing there tells a screen-reader user they have left
+the workspace.
+
+### 9.2 A deep link into async content must be resolved after the fetch
+
+A fragment (`#group-RESIDENCE`) is resolved by the browser at navigation time. If the
+target is rendered from a client fetch, it does not exist yet, so the jump silently
+does nothing and the reader lands at the top of a long page.
+
+Resolve it once the data has arrived, and do **both** halves:
+
+- **move focus** to the target, so the deep link means the same thing to a keyboard or
+  screen-reader user as to a sighted one;
+- **scroll** to it, which is what a sighted user actually sees.
+
+Scroll **instantly**. An animated scroll here was cancelled before it arrived, leaving
+the reader at the top while the focus move had already succeeded — a state that looks
+correct to any test asserting only focus. Do not set `scroll-behavior: smooth` globally
+to solve a single feature's problem.
+
+### 9.3 A table that reflows keeps its semantics explicitly
+
+Below ~34rem a wide table becomes one record per row rather than columns squeezed into
+a phone width. Reflow in **CSS on one DOM** — a screen-reader user is unaffected by
+visual layout, so a second copy of the markup solves a problem they do not have while
+creating two of everything.
+
+Two rules make it safe:
+
+- **`display: block` strips a table's implicit ARIA roles.** This is the best-known flaw
+  in the pattern and it fails silently, turning the table into a pile of divs at exactly
+  the width where the layout is hardest to follow. Carry explicit `role="table"`,
+  `rowgroup`, `row`, `columnheader` and `cell`. They are no-ops at desktop width.
+- **Hide the header row visually, not with `display: none`.** It stays in the
+  accessibility tree so each cell keeps its column header; sighted users do not need
+  "Destination" above a country name. Give the `<caption>` `display: block` too, or it
+  is wrapped in an anonymous table box and shrinks to its longest word.
+
+A concrete reason to prefer one DOM beyond the principled one: focus restoration after
+a dialog commonly resolves its trigger by `getElementById`, and with two copies that
+returns whichever comes first in the DOM — frequently the hidden one, where `.focus()`
+does nothing at all.
+
+### 9.4 Group row anatomy
+
+A row compressing several requirements carries, in order: the group **name** as a link
+to that group; **counts of named states**; and a **stale count** when the group has one.
+
+Never a fraction, ratio or `n of m` — see UI/UX §6.2 for why `4 / 5` is both a readiness
+score and a misreading of a failed conclusion. Never a single verdict for the group:
+that would be a claim about all its members on the strength of one.
+
+The link is **described by** its state (`aria-describedby`) rather than containing it, so
+a screen-reader user listing links hears "Residence" and not a forty-character sentence,
+while focusing it still announces how the group stands.
+
+---
+
+## 10. Known gaps
+
+### 10.1 `SourceReference` cannot show a guidance version or retrieval date (M4)
 
 MVP §8.8 requires that "source links display source version and retrieval date".
 Neither value exists in the data at M4: `RuleVersion.configuration["guidance"]`

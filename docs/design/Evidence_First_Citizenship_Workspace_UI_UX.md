@@ -181,6 +181,38 @@ Requirement-level states should remain explicit and inspectable.
 
 ## 4. Information Architecture
 
+> **Amendment (M4, 2026-08-19) — what ships today, and why it is not yet this.**
+>
+> The six-area sidebar below is the **target** architecture and remains so. Four of its six
+> areas do not exist: Timeline is M5, Issues M6, Evidence M7, Preparation later. The case
+> workspace currently ships **three** destinations with **horizontal** local navigation:
+>
+> ```text
+> /cases/{caseId}              Overview
+> /cases/{caseId}/requirements Requirements
+> /cases/{caseId}/data         Case data
+> ```
+>
+> Two deliberate divergences, both with an expiry:
+>
+> - **Horizontal navigation, not a sidebar.** Three destinations do not justify the
+>   horizontal space a sidebar costs. Reassess at M7, when Evidence and Issues make it
+>   five or six.
+> - **No Evidence destination.** There is no `evidence` module in the backend. A primary
+>   destination leading to an empty room is a promise the product cannot keep. Until M7
+>   the evidence-first claim is carried where it is true — the "Evidence used" layer on a
+>   requirement detail, which states that no documents are linked and every figure rests
+>   on dates the user typed.
+>
+> The navigation is built from a list of destinations, so each area below is one entry when
+> its milestone lands. Navigation is **links with `aria-current="page"`, never ARIA tabs**:
+> these are separate pages with their own URLs, titles and history entries, and `role="tab"`
+> would promise interchangeable panels and suppress the link semantics that make
+> bookmarking, open-in-new-tab and back/forward work. See **ADR-0012**.
+>
+> Case-level currency and the recalculate command belong to the persistent header rather
+> than to any destination — see **ADR-0013**, and §6.2 below.
+
 The workspace should contain six primary areas.
 
 ```text
@@ -329,6 +361,39 @@ Primary actions:
 - Review open issues.
 
 ### 6.2 Readiness narrative
+
+> **Amendment (M4, 2026-08-19) — the rule extends to every compression, and fractions are
+> the form it comes back in.**
+>
+> §3.6 forbids `You are 82% ready`. The rule is broader than the percentage sign: **no
+> fraction, ratio or "n of m" framing, anywhere.** A group row reading
+>
+> ```text
+> Residence                    4 / 5
+> Knowledge and language       0 / 2 assessed
+> ```
+>
+> is the same readiness score arrived at sideways — a reader converts `4 / 5` to 80% — and
+> it does not look like a score, so it passes review as a fact. It carries a second, worse
+> error: the fifth requirement is `NOT_CURRENTLY_SATISFIED`, a reached conclusion, and a
+> fraction renders it as *missing* — as though finding a fifth thing would complete the
+> set. It silently converts a failure into an incomplete.
+>
+> Group rows therefore state what their members concluded, in counts of named states:
+>
+> ```text
+> Identity and status          4 supported
+> Residence                    1 not currently satisfied · 1 near threshold · 3 supported
+> Knowledge and language       2 not yet assessed
+> ```
+>
+> And a group is never given a **verdict of its own**. "Residence: not currently satisfied"
+> would be a claim about five requirements on the strength of one, and no rule concludes
+> anything about a group (ADR-0010).
+>
+> Unassessed requirements are stated as their own fact, never as a remainder — `6 not yet
+> assessed` is a fact, `9 / 15` is a completion measure. This is enforced by test rather
+> than by eye, on every destination.
 
 Use a structured summary rather than a percentage.
 

@@ -23,12 +23,12 @@ function groupLabel(key: string): string {
 /**
  * Where the case stands by group, and the way through to Requirements.
  *
- * **Every row is counts of named states — never a fraction.** The design brief's mockups
- * priced these as `4 / 4 supported` and `0 / 2 assessed`, and both are readiness scores
- * arrived at sideways: a reader converts `4 / 5` to 80%. Worse, `Residence 4 / 5` renders
- * a `NOT_CURRENTLY_SATISFIED` conclusion as *missing* — as though finding a fifth thing
- * would complete the set — silently converting a reached failure into an incomplete. The
- * sanctioned form is UI/UX §6.2's: counts, no denominator (CLAUDE.md §2.6).
+ * **Every row is counts of named states — never a fraction.** `4 / 4 supported` and
+ * `0 / 2 assessed` are readiness scores arrived at sideways: a reader converts `4 / 5` to
+ * 80%. Worse, `Residence 4 / 5` renders a `NOT_CURRENTLY_SATISFIED` conclusion as
+ * *missing* — as though finding a fifth thing would complete the set — silently converting
+ * a reached failure into an incomplete. The sanctioned form is counts with no denominator:
+ * UI/UX §6.2, CLAUDE.md §2.6.
  *
  * Nor is a group given a single verdict of its own. "Residence: not currently satisfied"
  * would be a claim about five requirements on the strength of one, and there is no rule

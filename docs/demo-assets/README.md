@@ -40,7 +40,7 @@ that agreement is the point, so check it when regenerating either set.
   the heading — context, not the answer to "where do I stand". The header above the
   navigation carries identity, metadata, currency and Recalculate on every destination.
   No percentage, no fraction, no ratio, no score anywhere. See
-  `docs/design/CASE_OVERVIEW_REDESIGN.md` and the information-architecture brief beside it.
+  `docs/design/Evidence_First_Citizenship_Workspace_UI_UX.md` §4 and §6.2, and ADR-0012.
 - `m4-explanation-stack.jpg` — the signature interaction: "439 confirmed days against a
   threshold of 450", then the calculation naming which records it counted.
 - `m4-supported-and-stale.jpg` — the ADR-0001 pair. `Near threshold` beside `Stale` as
