@@ -70,6 +70,22 @@ web_modules/
 .env.*
 !.env.example
 
+# Key material. Nothing here has ever been committed; these patterns exist so a stray
+# key cannot be swept in by `git add -A`, which is how a secret usually escapes.
+*.pem
+*.key
+*.p12
+*.pfx
+*.keystore
+id_rsa
+id_rsa.*
+id_ed25519
+id_ed25519.*
+
+# Machine-local Claude Code permissions. `settings.json` is shared and tracked
+# deliberately; the `.local` variant accumulates per-machine approvals and paths.
+.claude/settings.local.json
+
 # parcel-bundler cache (https://parceljs.org/)
 .cache
 .parcel-cache
