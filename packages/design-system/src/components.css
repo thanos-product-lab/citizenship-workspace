@@ -541,6 +541,180 @@
  * one feature.
  */
 
+
+/* --- Travel history table --------------------------------------------------- */
+
+/*
+ * A real table on desktop; a stack of records at narrow widths.
+ *
+ * The reflow is CSS only, and the semantics never change: a screen-reader user is not
+ * affected by visual layout, so the fix for "three columns squeezed into 360px" belongs
+ * here and not in a second copy of the markup. Two consequences worth knowing:
+ *
+ * 1. `display: block` on table elements **strips their implicit ARIA roles** — the
+ *    best-known flaw in this pattern, and it silently turns a table into a pile of divs
+ *    for assistive technology. The markup therefore carries explicit `role="table"`,
+ *    `rowgroup`, `row`, `columnheader` and `cell`, which are no-ops at desktop width and
+ *    load-bearing below the breakpoint.
+ * 2. The header row is *visually* hidden at narrow widths, not `display: none`. It stays
+ *    in the accessibility tree so cells keep their column headers; sighted users do not
+ *    need "Destination" above a country name.
+ *
+ * A second copy of the markup was rejected for a concrete reason as well as a principled
+ * one: focus restoration after the edit and remove dialogs resolves the trigger by
+ * `getElementById`, and with two copies that returns whichever came first in the DOM —
+ * frequently the hidden one, where `.focus()` silently does nothing.
+ */
+.cw-trips-wrap {
+  margin-top: var(--cw-space-4);
+  overflow-x: auto;
+}
+
+.cw-trips {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.cw-trips__caption {
+  text-align: left;
+  font-size: var(--cw-text-xs);
+  color: var(--cw-text-subtle);
+  margin-bottom: var(--cw-space-2);
+}
+
+/* Quiet, label-like headers — lighter than a bold black row, so the data reads first. */
+.cw-trips th {
+  text-align: left;
+  padding: var(--cw-space-2) var(--cw-space-3);
+  border-bottom: 1px solid var(--cw-border-strong);
+  font-size: var(--cw-text-xs);
+  font-weight: var(--cw-weight-semibold);
+  letter-spacing: 0.02em;
+  color: var(--cw-text-subtle);
+  white-space: nowrap;
+}
+
+.cw-trips td {
+  padding: var(--cw-space-3);
+  border-bottom: 1px solid var(--cw-border);
+  vertical-align: middle;
+}
+
+/* The first column aligns with the card edge rather than being inset by cell padding. */
+.cw-trips th:first-child,
+.cw-trips td:first-child {
+  padding-left: 0;
+}
+
+.cw-trips__destination {
+  font-weight: var(--cw-weight-medium);
+}
+
+/* Dates use the tabular mono face (tokens.css: mono is "for dates, thresholds, and
+   calculation breakdowns") and do not wrap, so the column stays scannable. */
+.cw-trips__dates {
+  font-family: var(--cw-font-mono);
+  font-size: var(--cw-text-sm);
+  white-space: nowrap;
+}
+
+.cw-trips__return {
+  color: var(--cw-text-subtle);
+}
+
+.cw-trips__actions {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.cw-trips__actions > span {
+  display: inline-flex;
+  gap: var(--cw-space-4);
+}
+
+.cw-trips__flag {
+  display: block;
+  margin-top: var(--cw-space-2);
+  font-weight: var(--cw-weight-regular);
+}
+
+.cw-trips__flag-detail {
+  display: block;
+  margin-top: var(--cw-space-1);
+  font-size: var(--cw-text-xs);
+  color: var(--cw-text-subtle);
+}
+
+/*
+ * Below ~34rem — and equivalently at 200% zoom — each trip becomes one record rather than
+ * a row squeezed into three columns. Same breakpoint as the requirement rows, so the two
+ * lists reflow together rather than at different widths.
+ */
+@media (max-width: 34rem) {
+  .cw-trips,
+  .cw-trips thead,
+  .cw-trips tbody,
+  .cw-trips tr,
+  .cw-trips td {
+    display: block;
+  }
+
+  /* The caption too. Left as `table-caption` inside a block-level table it is wrapped in
+     an anonymous table box and shrinks to its longest word — the sentence then renders one
+     word per line. */
+  .cw-trips__caption {
+    display: block;
+  }
+
+  /* Visually hidden, not display:none: the column headers stay in the accessibility tree
+     so each cell keeps its header, while the record reads for itself on screen. */
+  .cw-trips thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .cw-trips tr {
+    padding: var(--cw-space-4) 0;
+    border-bottom: 1px solid var(--cw-border);
+  }
+
+  .cw-trips td {
+    padding: 0;
+    border-bottom: 0;
+  }
+
+  .cw-trips td + td {
+    margin-top: var(--cw-space-2);
+  }
+
+  /* Nothing is right-aligned in a single-column record — it would leave the controls
+     floating away from the trip they belong to. */
+  .cw-trips__actions {
+    text-align: left;
+    white-space: normal;
+  }
+
+  /* Roomier targets where the pointer is a finger. The 16px gap plus this height keeps
+     Edit and Remove comfortably apart (WCAG 2.2 AA, 2.5.8). */
+  .cw-trips__actions .cw-action {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+  }
+
+  /* A long destination wraps rather than widening the page. */
+  .cw-trips__destination {
+    overflow-wrap: anywhere;
+  }
+}
+
 /* --- Narrow widths --------------------------------------------------------- */
 
 /*

@@ -185,6 +185,59 @@ describe("TravelHistory", () => {
     expect(screen.getByRole("button", { name: /add a trip/i })).toHaveFocus();
   });
 
+  describe("the table stays a table when it reflows", () => {
+    // Below 34rem the stylesheet sets `display: block` on these elements so each trip
+    // reads as a record rather than three squeezed columns. That is the well-known flaw in
+    // the pattern: `display: block` strips a table's implicit ARIA roles, silently turning
+    // it into a pile of divs for assistive technology. The markup carries explicit roles
+    // to survive it, and these assert they are present — jsdom applies no stylesheet, so
+    // the roles are the only part of the mechanism a unit test can see. The layout itself
+    // is checked in the browser.
+    async function renderOneTrip() {
+      get.mockResolvedValue({ data: [aRecord()], error: undefined });
+      const result = render(<TravelHistory caseId="c1" />);
+      await screen.findByRole("table");
+      return result;
+    }
+
+    it("exposes the table, its rows and its cells explicitly", async () => {
+      await renderOneTrip();
+      const table = screen.getByRole("table");
+      // Header row plus one trip.
+      expect(within(table).getAllByRole("row")).toHaveLength(2);
+      expect(within(table).getAllByRole("columnheader").map((h) => h.textContent)).toEqual([
+        "Destination",
+        "Dates",
+        "Actions",
+      ]);
+      expect(within(table).getAllByRole("cell")).toHaveLength(3);
+    });
+
+    it("keeps the column headers reachable, rather than removing them from the tree", async () => {
+      // The header row is visually hidden at narrow widths, not `display: none`, so each
+      // cell keeps its column header. Removing the row would leave a screen-reader user
+      // with three unlabelled cells per trip.
+      await renderOneTrip();
+      expect(screen.getByRole("columnheader", { name: "Destination" })).toBeInTheDocument();
+    });
+
+    it("keeps one set of controls per trip, so focus restoration resolves the right one", async () => {
+      // A second copy of the markup for narrow widths was rejected partly for this: the
+      // edit and remove dialogs restore focus by getElementById, which returns whichever
+      // copy comes first in the DOM — frequently the hidden one, where focus() does
+      // nothing at all.
+      await renderOneTrip();
+      expect(screen.getAllByRole("button", { name: "Edit" })).toHaveLength(1);
+      expect(document.querySelectorAll("#edit-t1")).toHaveLength(1);
+      expect(document.querySelectorAll("#remove-t1")).toHaveLength(1);
+    });
+
+    it("names the table for anyone listing tables on the page", async () => {
+      await renderOneTrip();
+      expect(screen.getByRole("table", { name: /recorded trips, earliest first/i })).toBeInTheDocument();
+    });
+  });
+
   it("shows an error with retry when the list fails to load", async () => {
     get.mockResolvedValue({ data: undefined, error: {} });
     render(<TravelHistory caseId="c1" />);

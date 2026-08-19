@@ -65,38 +65,8 @@ export const cardStyle: React.CSSProperties = {
 
 export const errorTextStyle: React.CSSProperties = { color: "var(--cw-status-not-satisfied)" };
 
-// Quiet, label-like table headers (xs, subtle, slight tracking) — lighter than a
-// bold black row, so the data reads first.
-export const thStyle: React.CSSProperties = {
-  textAlign: "left",
-  padding: "var(--cw-space-2) var(--cw-space-3)",
-  borderBottom: "1px solid var(--cw-border-strong)",
-  fontSize: "var(--cw-text-xs)",
-  fontWeight: "var(--cw-weight-semibold)",
-  letterSpacing: "0.02em",
-  color: "var(--cw-text-subtle)",
-  whiteSpace: "nowrap",
-};
-
-export const tdStyle: React.CSSProperties = {
-  padding: "var(--cw-space-3)",
-  borderBottom: "1px solid var(--cw-border)",
-  verticalAlign: "middle",
-};
-
-/** Drop a header/cell's left padding so the first column aligns with the card edge. */
-export function firstColStyle(base: React.CSSProperties): React.CSSProperties {
-  return { ...base, paddingLeft: 0 };
-}
-
-// Dates use the tabular mono face (tokens.css: mono is "for dates, thresholds, and
-// calculation breakdowns") and never wrap, so columns stay aligned and scannable.
-export const dateCellStyle: React.CSSProperties = {
-  ...tdStyle,
-  fontFamily: "var(--cw-font-mono)",
-  fontSize: "var(--cw-text-sm)",
-  whiteSpace: "nowrap",
-};
+// The travel table's cell styles moved to `components.css` as `.cw-trips`: they have to
+// reflow below 34rem, and a media query is one of the things inline styles cannot express.
 
 /**
  * A status pill: soft tinted surface, matching-hue text, a hairline border, and a

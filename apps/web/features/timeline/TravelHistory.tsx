@@ -19,12 +19,8 @@ import {
   StatusBadge,
   buttonStyle,
   cardStyle,
-  dateCellStyle,
   errorTextStyle,
-  firstColStyle,
   secondaryButtonStyle,
-  tdStyle,
-  thStyle,
 } from "./ui";
 
 type Travel = components["schemas"]["TravelRecordResponse"];
@@ -317,29 +313,36 @@ export function TravelHistory({
               No trips recorded yet. Add one below, or import a spreadsheet.
             </p>
           ) : (
-            <div style={{ marginTop: "var(--cw-space-4)", overflowX: "auto" }}>
-              <table style={{ borderCollapse: "collapse", width: "100%" }}>
-                <caption style={{ textAlign: "left", fontSize: "var(--cw-text-xs)", color: "var(--cw-text-subtle)", marginBottom: "var(--cw-space-2)" }}>
+            /*
+              Explicit roles throughout. Below 34rem the stylesheet sets `display: block`
+              on these elements so each trip reads as a record rather than three squeezed
+              columns — and `display: block` strips a table's implicit ARIA roles, which
+              would quietly turn this into a pile of divs for assistive technology. At
+              desktop width every role below matches the implicit one and changes nothing.
+            */
+            <div className="cw-trips-wrap">
+              <table className="cw-trips" role="table">
+                <caption className="cw-trips__caption">
                   Your recorded trips, earliest first
                 </caption>
-                <thead>
-                  <tr>
-                    <th scope="col" style={firstColStyle(thStyle)}>Destination</th>
-                    <th scope="col" style={thStyle}>Dates</th>
-                    <th scope="col" style={{ ...thStyle, textAlign: "right" }}>Actions</th>
+                <thead role="rowgroup">
+                  <tr role="row">
+                    <th role="columnheader" scope="col">Destination</th>
+                    <th role="columnheader" scope="col">Dates</th>
+                    <th role="columnheader" scope="col" style={{ textAlign: "right" }}>Actions</th>
                   </tr>
                 </thead>
-                <tbody>
+                <tbody role="rowgroup">
                   {sorted.map((r) => {
                     const t = trust(r);
                     return (
-                      <tr key={r.id}>
-                        <td style={firstColStyle({ ...tdStyle, fontWeight: "var(--cw-weight-medium)" })}>
+                      <tr role="row" key={r.id}>
+                        <td role="cell" className="cw-trips__destination">
                           {r.destination_label}
                           {/* Confirmed is the quiet default; only uncertain trips are
                               flagged — the exception is what needs the user's attention. */}
                           {!t.confirmed && (
-                            <span style={{ display: "block", marginTop: "var(--cw-space-2)", fontWeight: "var(--cw-weight-regular)" }}>
+                            <span className="cw-trips__flag">
                               <StatusBadge
                                 colorVar={t.colorVar}
                                 surfaceVar={t.surfaceVar}
@@ -347,21 +350,17 @@ export function TravelHistory({
                                 label={t.label}
                               />
                               {t.detail && (
-                                <span style={{ display: "block", marginTop: "var(--cw-space-1)", fontSize: "var(--cw-text-xs)", color: "var(--cw-text-subtle)" }}>
-                                  {t.detail}
-                                </span>
+                                <span className="cw-trips__flag-detail">{t.detail}</span>
                               )}
                             </span>
                           )}
                         </td>
-                        <td style={dateCellStyle}>
+                        <td role="cell" className="cw-trips__dates">
                           <div>{formatDate(r.departure_date)}</div>
-                          <div style={{ color: "var(--cw-text-subtle)" }}>
-                            to {formatDate(r.return_date)}
-                          </div>
+                          <div className="cw-trips__return">to {formatDate(r.return_date)}</div>
                         </td>
-                        <td style={{ ...tdStyle, textAlign: "right", whiteSpace: "nowrap" }}>
-                          <span style={{ display: "inline-flex", gap: "var(--cw-space-4)" }}>
+                        <td role="cell" className="cw-trips__actions">
+                          <span>
                             <button
                               type="button"
                               id={`edit-${r.id}`}
