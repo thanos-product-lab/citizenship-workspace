@@ -3,7 +3,7 @@ import "@testing-library/jest-dom/vitest";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 
 import { renderWithQuery as render } from "@/test/render";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const get = vi.fn();
 const post = vi.fn();
@@ -147,6 +147,67 @@ describe("RequirementsList", () => {
     // that false, and the user would be told the case is unchanged while looking at a
     // list that is out of date.
     expect(alert).toHaveTextContent("couldn’t confirm whether that recalculation ran");
+  });
+
+  describe("group deep links from the Overview", () => {
+    // jsdom implements no layout and so has no real scrollIntoView (test/setup.ts stubs
+    // it). Spying here makes the scroll observable.
+    const scrollIntoView = vi.spyOn(Element.prototype, "scrollIntoView");
+
+    afterEach(() => {
+      window.location.hash = "";
+      scrollIntoView.mockClear();
+    });
+
+    it("resolves #group-<key> after the data arrives, not at navigation time", async () => {
+      // The browser resolves a fragment when the page loads, at which point this list has
+      // not fetched and the heading does not exist — so the jump silently does nothing and
+      // the reader lands at the top of a long page instead of at the group they chose.
+      window.location.hash = "#group-RESIDENCE";
+      get.mockResolvedValue({ data: [aRequirement()] });
+      render(<RequirementsList caseId="c1" />);
+
+      const heading = await screen.findByRole("heading", { name: "Residence" });
+      // Focus, so the deep link means the same thing to a keyboard or screen-reader user
+      // as it does to a sighted one.
+      await waitFor(() => expect(heading).toHaveFocus());
+      expect(heading).toHaveAttribute("tabindex", "-1");
+
+      // And the scroll, which is what a sighted user actually sees. Asserted separately
+      // because an earlier version moved focus and failed to scroll — the animated scroll
+      // was cancelled before it arrived — and a focus-only assertion called that a pass.
+      // jsdom has no layout, so the call itself is the observable behaviour; `instant` is
+      // part of it, since that is what stops the scroll being cancelled.
+      expect(scrollIntoView).toHaveBeenCalledWith({ block: "start", behavior: "instant" });
+      expect(scrollIntoView.mock.instances[0]).toBe(heading);
+    });
+
+    it("leaves the page alone when there is no group fragment", async () => {
+      get.mockResolvedValue({ data: [aRequirement()] });
+      render(<RequirementsList caseId="c1" />);
+      const heading = await screen.findByRole("heading", { name: "Residence" });
+      expect(heading).not.toHaveFocus();
+      expect(heading).not.toHaveAttribute("tabindex");
+      expect(scrollIntoView).not.toHaveBeenCalled();
+    });
+
+    it("ignores a fragment naming a group this case does not have", async () => {
+      window.location.hash = "#group-NOT_A_GROUP";
+      get.mockResolvedValue({ data: [aRequirement()] });
+      render(<RequirementsList caseId="c1" />);
+      const heading = await screen.findByRole("heading", { name: "Residence" });
+      expect(heading).not.toHaveFocus();
+      expect(scrollIntoView).not.toHaveBeenCalled();
+    });
+
+    it("ignores a fragment that is not a group at all", async () => {
+      window.location.hash = "#something-else";
+      get.mockResolvedValue({ data: [aRequirement()] });
+      render(<RequirementsList caseId="c1" />);
+      const heading = await screen.findByRole("heading", { name: "Residence" });
+      expect(heading).not.toHaveFocus();
+      expect(scrollIntoView).not.toHaveBeenCalled();
+    });
   });
 
   it("leaves Recalculate to the case header", () => {

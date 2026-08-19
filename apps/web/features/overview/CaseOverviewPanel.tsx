@@ -6,6 +6,7 @@ import type { JSX } from "react";
 
 import { GROUP_LABELS } from "@/features/requirements/groups";
 
+import { AssessmentGroups } from "./AssessmentGroups";
 import { busiestGroup, conclusionLines, readinessHeadline, unassessedLine } from "./narrative";
 
 type Overview = components["schemas"]["CaseOverview"];
@@ -34,6 +35,9 @@ function groupLabel(key: string): string {
  * - **Immediate action** is one card per action, each carrying the requirement's own
  *   conclusion badge and the server's action text. No sentence here is composed in this
  *   file — assessment copy comes from the deterministic templates.
+ * - **Assessment** is one row per requirement group, stating what its members concluded
+ *   and linking through to the group on the Requirements destination. It orchestrates the
+ *   journey rather than containing it.
  *
  * What this screen must not do:
  *
@@ -74,6 +78,8 @@ export function CaseOverviewPanel({ overview }: { overview: Overview }): JSX.Ele
       )}
 
       <PriorityActions overview={overview} busiestGroupKey={busiest?.group_key ?? null} />
+
+      <AssessmentGroups overview={overview} />
     </section>
   );
 }

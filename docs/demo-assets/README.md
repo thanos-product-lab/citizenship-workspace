@@ -32,8 +32,11 @@ that agreement is the point, so check it when regenerating either set.
 
 - `m4-case-overview.jpg` — the Overview destination. It leads with what the reader has to
   do ("1 requirement needs your attention"), then the counts by named state, then the one
-  blocking action, and it ends there: the requirements list and the editable inputs are
-  their own destinations now. The derived phase is a quiet chip beside the case title, not
+  blocking action, then one row per requirement group stating what its members concluded
+  in counts of named states and linking through to that group. It ends there: the
+  requirements themselves and the editable inputs are their own destinations now. Note
+  what the group rows are *not* — `Residence 4 / 5`, which would be a readiness score
+  arrived at sideways and would render a reached failure as a missing requirement. The derived phase is a quiet chip beside the case title, not
   the heading — context, not the answer to "where do I stand". The header above the
   navigation carries identity, metadata, currency and Recalculate on every destination.
   No percentage, no fraction, no ratio, no score anywhere. See

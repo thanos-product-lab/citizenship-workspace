@@ -66,6 +66,27 @@ export function RequirementsList({
   const { mutation: recalculate, announcement } = useRecalculate(caseId);
   const requirements = data ?? [];
 
+  // A group row on the Overview links to `#group-<key>` here. The browser resolves a
+  // fragment at navigation time, when this list has not fetched and the target heading does
+  // not exist — so the jump silently does nothing and the reader lands at the top of a long
+  // page. Resolve it once the data has arrived.
+  //
+  // Both halves matter. The focus move is what makes the deep link mean the same thing to a
+  // keyboard or screen-reader user as to a sighted one; the scroll is what a sighted user
+  // actually sees. `behavior: "instant"` is not a style choice: an animated scroll here was
+  // cancelled before it arrived, leaving the reader at the top of the list while the focus
+  // move had already succeeded — correct to any test that checked only focus.
+  useEffect(() => {
+    if (status !== "success") return;
+    const key = window.location.hash.slice(1);
+    if (!key.startsWith("group-")) return;
+    const target = document.getElementById(key);
+    if (!target) return;
+    target.setAttribute("tabindex", "-1");
+    target.focus({ preventScroll: true });
+    target.scrollIntoView({ block: "start", behavior: "instant" });
+  }, [status]);
+
   // A button that unmounts takes the keyboard focus with it, dropping the user to
   // <body>. Park focus on the section heading instead, post-render so the target exists.
   useEffect(() => {

@@ -448,6 +448,99 @@
   }
 }
 
+
+/* --- Assessment groups (the Overview's way through to Requirements) --------- */
+
+/*
+ * One row per requirement group: name, then what its members concluded, in counts of
+ * named states. Never a fraction, a ratio or an "n of m" — see AssessmentGroups.tsx for
+ * why `4 / 5` is both a readiness score and a misreading of a failed conclusion.
+ *
+ * Rows, not cards. A grid of tiles here would read as a dashboard and would give six
+ * groups equal visual weight regardless of what they say.
+ */
+.cw-assessment-groups {
+  margin-top: var(--cw-space-8);
+}
+
+.cw-assessment-groups > h3 {
+  margin: 0 0 var(--cw-space-3);
+  font-size: var(--cw-text-sm);
+  font-weight: var(--cw-weight-semibold);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--cw-text-muted);
+}
+
+.cw-group-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--cw-border);
+}
+
+.cw-group-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--cw-space-2) var(--cw-space-4);
+  flex-wrap: wrap;
+  padding: var(--cw-space-3) 0;
+  border-bottom: 1px solid var(--cw-border);
+}
+
+.cw-group-row__link {
+  font-weight: var(--cw-weight-medium);
+  color: var(--cw-text);
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+  /* Not --cw-border-strong (1.56:1): the repo already rejected that token for
+     affordances, and this link is the route from a group to its requirements. */
+  text-decoration-color: var(--cw-neutral-500);
+}
+
+.cw-group-row__state {
+  font-size: var(--cw-text-sm);
+  color: var(--cw-text-muted);
+  /* Pushed to the trailing edge, but it wraps beneath the name rather than compressing
+     when the line is long — the counts are the content, not a right-aligned decoration. */
+  margin-left: auto;
+}
+
+.cw-group-row__stale {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--cw-space-1);
+  font-size: var(--cw-text-sm);
+  font-weight: var(--cw-weight-medium);
+  color: var(--cw-currency-stale);
+}
+
+.cw-assessment-groups__all {
+  display: inline-block;
+  margin-top: var(--cw-space-4);
+  font-size: var(--cw-text-sm);
+  font-weight: var(--cw-weight-medium);
+  color: var(--cw-accent);
+  text-decoration: none;
+}
+
+.cw-assessment-groups__all:hover {
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+/*
+ * No `scroll-behavior: smooth` here, deliberately. It was tried for the group deep link
+ * and the animated scroll was cancelled before it arrived — the reader landed at the top
+ * of the list instead of at the group they picked, while the focus move still succeeded,
+ * so the behaviour looked correct to a test that only checked focus. The deep link scrolls
+ * explicitly and instantly instead; see RequirementsList.
+ *
+ * It would also have been a global change to every in-page jump in the product, made for
+ * one feature.
+ */
+
 /* --- Narrow widths --------------------------------------------------------- */
 
 /*

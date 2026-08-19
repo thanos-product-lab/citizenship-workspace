@@ -94,12 +94,26 @@ test.describe("the canonical case walkthrough", () => {
     await expect(page.getByRole("link", { name: "Total absences" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: /delete case/i })).toHaveCount(0);
 
-    // Into the assessment workspace, then the signature interaction.
-    await page.getByRole("navigation", { name: "Case navigation" })
-      .getByRole("link", { name: "Requirements" })
-      .click();
-    await expect(page).toHaveURL(new RegExp(`/cases/${CASE_ID}/requirements$`));
+    // The assessment rows state each group in counts of named states, never a verdict of
+    // the group's own and never a fraction.
+    await expect(page.getByText("1 not currently satisfied · 1 near threshold · 3 supported"))
+      .toBeVisible();
+    await expect(page.getByText("2 not yet assessed").first()).toBeVisible();
+
+    // Into the assessment workspace by deep link, which has to land on the group itself:
+    // the fragment resolves at navigation time, before this list has fetched, so an
+    // unhandled one leaves the reader at the top of a long page instead.
+    await page.getByRole("link", { name: "Residence" }).click();
+    await expect(page).toHaveURL(new RegExp(`/cases/${CASE_ID}/requirements#group-RESIDENCE$`));
     await expect(page).toHaveTitle(/Requirements/);
+    await expect(page.locator("#group-RESIDENCE")).toBeFocused();
+    await expect(page.locator("#group-RESIDENCE")).toBeInViewport();
+
+    // A sub-page of Requirements keeps the parent destination marked current.
+    await expect(
+      page.getByRole("navigation", { name: "Case navigation" })
+        .getByRole("link", { name: "Requirements" }),
+    ).toHaveAttribute("aria-current", "page");
 
     await page.getByRole("link", { name: "Total absences" }).click();
     await expect(page).toHaveTitle(/Total absences/);
