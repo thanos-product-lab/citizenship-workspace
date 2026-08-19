@@ -37,6 +37,7 @@ from app.assessments.priority import CandidateAction, PriorityActions, select_pr
 from app.assessments.provenance import ResolvedInput, resolve_input_links
 from app.assessments.repository import AssessmentRepository, RequirementCatalogRepository
 from app.auth.schemas import CurrentUser
+from app.cases import service as cases_service
 from app.cases.domain import ApplicationCase, CasePhase, LifecycleStatus
 from app.cases.phase import RequirementState, derive_phase
 from app.requirements.domain import Conclusion
@@ -76,6 +77,15 @@ def recalculate(
     results. Requires an active case with a selected application date."""
     if case.lifecycle_status is not LifecycleStatus.ACTIVE:
         raise CaseNotActive(case.lifecycle_status.value)
+
+    # Lock the case row before reading any input — the three residence write commands take
+    # the same lock, so this serialises against them. Without it, under READ COMMITTED: this
+    # run reads application-date v1; a concurrent date change writes v2, marks the results
+    # STALE and commits; this run's supersede then retires that stale row and writes a new
+    # CURRENT result derived from v1. The case ends with a current conclusion built on a
+    # superseded input, nothing stale, and nothing failing — exactly the state selective
+    # invalidation exists to make impossible.
+    cases_service.lock_writable_case(session, case.id)
 
     profile_version = _current_route_profile_version(session, case.id)
     date_version = _current_application_date_version(session, case.id)

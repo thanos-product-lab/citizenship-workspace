@@ -46,7 +46,7 @@ def test_travel_change_keeps_everything_blunt_caught_that_declares_travel(
     db_session: Session,
 ) -> None:
     selective = resolve_affected_requirements(
-        db_session, input_kind=DependencyInputKind.TRAVEL_RECORD, input_key=None
+        db_session, input_kind=DependencyInputKind.TRAVEL_RECORD
     )
     blunt = set(RESIDENCE_REQUIREMENT_KEYS)
     independent = blunt - _declaring(db_session, DependencyInputKind.TRAVEL_RECORD)
@@ -63,7 +63,7 @@ def test_application_date_change_is_a_superset_of_the_blunt_residence_set(
     db_session: Session,
 ) -> None:
     selective = resolve_affected_requirements(
-        db_session, input_kind=DependencyInputKind.PROPOSED_APPLICATION_DATE, input_key=None
+        db_session, input_kind=DependencyInputKind.PROPOSED_APPLICATION_DATE
     )
     # Every residence rule declares the date, so here selective strictly *widens* the blunt
     # set rather than narrowing it — this is the direction ADR-0008 got wrong.
@@ -92,7 +92,7 @@ def test_application_date_fan_out_is_the_declared_set_plus_composition_closure(
     }
 
     selective = resolve_affected_requirements(
-        db_session, input_kind=DependencyInputKind.PROPOSED_APPLICATION_DATE, input_key=None
+        db_session, input_kind=DependencyInputKind.PROPOSED_APPLICATION_DATE
     )
     assert selective == expected
 
@@ -117,38 +117,46 @@ def test_the_composite_is_reachable_only_through_its_composition_edge(
     assert "route.standard_section_6_1" not in direct
 
     selective = resolve_affected_requirements(
-        db_session, input_kind=DependencyInputKind.PROPOSED_APPLICATION_DATE, input_key=None
+        db_session, input_kind=DependencyInputKind.PROPOSED_APPLICATION_DATE
     )
     assert "route.standard_section_6_1" in selective
 
 
-def test_an_unspecified_input_key_matches_every_declaration_of_its_kind(
+def test_a_change_matches_every_declaration_of_its_kind_regardless_of_key(
     db_session: Session,
 ) -> None:
-    """Three rules declare keyed ROUTE_PROFILE dependencies (`date_of_birth`, `status_type`,
-    `status_granted_on`). A change that does not say which field moved must match all of
-    them: over-firing costs a recalculation, under-firing costs the truth."""
-    unspecified = resolve_affected_requirements(
-        db_session, input_kind=DependencyInputKind.ROUTE_PROFILE, input_key=None
-    )
-    assert _declaring(db_session, DependencyInputKind.ROUTE_PROFILE) <= unspecified
+    """Resolution matches on input *kind* only; a declared `input_key` never narrows it.
 
-    named = resolve_affected_requirements(
-        db_session, input_kind=DependencyInputKind.ROUTE_PROFILE, input_key="status_granted_on"
+    Three rules declare keyed ROUTE_PROFILE dependencies (`date_of_birth`, `status_type`,
+    `status_granted_on`), and narrowing on them looks free: why stale a rule reading only the
+    grant date when the date of birth moved? Because `RouteProfileVersion` is a whole-row
+    snapshot — `confirmed_copy` mints a new version id for a change to *any* field — so after
+    that change every rule reading the profile holds a CURRENT result whose recorded
+    ROUTE_PROFILE_VERSION link names a superseded version. Narrowing would leave it there,
+    breaking "every current trusted assessment references current relevant input versions"
+    (CLAUDE.md §9), and nothing in the suite would catch it.
+
+    Narrowing on a key is sound only for an input versioned *per key*. None is. If one ever
+    exists, revisit this citing that input's versioning — not the key's mere presence.
+    """
+    declaring = _declaring(db_session, DependencyInputKind.ROUTE_PROFILE)
+    resolved = resolve_affected_requirements(
+        db_session, input_kind=DependencyInputKind.ROUTE_PROFILE
     )
-    assert named <= unspecified
-    assert "status.holding_period" in named
-    # A rule declaring a *different* named field is not matched by this change.
-    assert "route.supported_status" not in named
+    assert declaring <= resolved
+    # Every keyed declarer is included, including those naming a field that did not move.
+    assert {
+        "route.adult_applicant",
+        "route.supported_status",
+        "status.holding_period",
+    } <= resolved
 
 
 def test_a_kind_no_rule_declares_invalidates_nothing(db_session: Session) -> None:
     """Domain §41.5's last row: an unrelated input invalidates nothing, unless a rule declares
     it. No rule reads evidence support yet."""
     assert (
-        resolve_affected_requirements(
-            db_session, input_kind=DependencyInputKind.EVIDENCE_SUPPORT, input_key=None
-        )
+        resolve_affected_requirements(db_session, input_kind=DependencyInputKind.EVIDENCE_SUPPORT)
         == frozenset()
     )
 
@@ -158,7 +166,7 @@ def test_resolution_never_names_a_requirement_without_an_evaluator(db_session: S
     invalidation set: there is no result to stale, and naming them would make the affected
     count disagree with what the user can see."""
     for kind in DependencyInputKind:
-        resolved = resolve_affected_requirements(db_session, input_kind=kind, input_key=None)
+        resolved = resolve_affected_requirements(db_session, input_kind=kind)
         assert resolved <= set(IN_SCOPE_REQUIREMENT_KEYS), sorted(
             resolved - set(IN_SCOPE_REQUIREMENT_KEYS)
         )

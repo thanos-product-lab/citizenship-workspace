@@ -73,9 +73,16 @@ class RequirementCatalogRepository:
         """Every ACTIVE rule's declared dependencies, paired with its requirement key.
 
         This is what selective invalidation resolves against, so it reads the same rows the
-        strict-equality provenance test checks a result's input links against. A rule with no
-        ACTIVE version contributes nothing and is therefore never invalidated — correct, since
-        it produces no results either.
+        strict-equality provenance test checks a result's input links against.
+
+        Known gap: dependencies are read from the *currently active* rule version, not from
+        the version that produced the result being invalidated. If a rule's v2 drops a
+        dependency its v1 declared, a change to that input resolves against v2, misses the
+        requirement, and a v1-produced result stays CURRENT while an input it genuinely read
+        has moved. Not reachable today — every requirement has exactly one rule version and
+        nothing emits `RULE_VERSION_CHANGED` (Domain §41.1 lists it as a trigger; no path
+        exists). Closing it means joining dependencies to `AssessmentResult.rule_version_id`
+        instead, and belongs with the first rule-set migration (M9).
         """
         return [
             (requirement_key, dependency)
@@ -181,15 +188,22 @@ class AssessmentRepository:
         )
 
     @staticmethod
-    def mark_current_results_stale(
+    def mark_named_results_stale(
         session: Session,
         case_id: uuid.UUID,
         requirement_keys: Collection[str],
         reason_code: str,
         at: datetime,
     ) -> list[tuple[str, uuid.UUID]]:
-        """Mark the CURRENT results for the named requirements STALE (Domain §41.2). Returns
-        (requirement_key, result_id) pairs for those actually marked.
+        """Mark the CURRENT results for exactly the named requirements STALE (Domain §41.2).
+        Returns (requirement_key, result_id) pairs for those actually marked.
+
+        **The caller owns the set, including composition closure.** This marks what it is
+        given and resolves nothing — pass a set that has not been closed over
+        `rule_composition_edges` and the composite silently stays CURRENT while the
+        conclusion it composes has moved, which is the defect ADR-0014 exists to close. Use
+        `invalidation.resolve_affected_requirements` to build the set; do not assemble one
+        by hand at a call site.
 
         Only CURRENT rows are selected, so an already-STALE result keeps the reason code of
         the change that *ended* its currency rather than being overwritten by every later

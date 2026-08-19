@@ -2188,7 +2188,7 @@ Examples:
 
 | Changed input | Requirements invalidated |
 |---|---|
-| Proposed application date | status holding period, qualifying period, physical presence, total absences, final-year absences, adult applicant, **and the composite via §25.4** |
+| Proposed application date | status holding period, qualifying period, physical presence, total absences, final-year absences, travel consistency, adult applicant, **and the composite via §25.4** |
 | Travel record | physical presence, total absences, final-year absences, travel consistency — **not** qualifying period, which reads only the application date |
 | English record | English-language requirement, preparation completeness |
 | Second referee | second-referee requirement, preparation completeness |

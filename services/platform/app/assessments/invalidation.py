@@ -60,20 +60,27 @@ class InvalidationOutcome:
 
 
 def resolve_affected_requirements(
-    session: Session, *, input_kind: DependencyInputKind, input_key: str | None
+    session: Session, *, input_kind: DependencyInputKind
 ) -> frozenset[str]:
     """The requirement keys a change of this kind invalidates, by declaration.
 
-    Key matching, which is the subtlest part of this file:
+    **Matching is on input *kind* only, never on `input_key`.** Some dependency rows do name
+    a field — `status.holding_period` declares `ROUTE_PROFILE/status_granted_on` — and it is
+    tempting to narrow on that: a change to `date_of_birth` need not stale a rule that reads
+    only the grant date.
 
-    | declared `input_key` | change names a key | change names no key |
-    |---|---|---|
-    | NULL                 | matches            | matches             |
-    | "status_granted_on"  | matches iff equal  | matches             |
+    It is unsound, because narrowing on a key is only correct when the input is versioned
+    *per key*, and none of ours is. A `RouteProfileVersion` is a whole-row snapshot: change
+    any field and every rule reading that profile now links a superseded version id. Narrow
+    on the key and a rule keeps a CURRENT result whose recorded `ROUTE_PROFILE_VERSION` link
+    points at a version that no longer exists — breaking "every current trusted assessment
+    references current relevant input versions" (CLAUDE.md §9) in a way nothing would catch.
 
-    A change that does not say *which* field moved matches every declaration of its kind.
-    That over-fires, and over-firing is safe — it costs a needless recalculation. The
-    opposite default would under-fire, which is the failure this module exists to prevent.
+    So keys stay what they already are: provenance, recorded on `AssessmentInputLink` and
+    checked by the strict-equality test. They are documentation of what a rule reads, not a
+    filter on what a change touches. If a per-field-versioned input kind ever exists, this is
+    the decision to revisit — with that input's versioning as the reason, not the key's mere
+    presence.
     """
     directly_affected = {
         requirement_key
@@ -81,7 +88,6 @@ def resolve_affected_requirements(
             session
         )
         if dependency.input_kind == input_kind.value
-        and (dependency.input_key is None or input_key is None or dependency.input_key == input_key)
     }
     return _close_over_composition(
         directly_affected, RequirementCatalogRepository.list_active_composition_edges(session)
@@ -93,11 +99,16 @@ def _close_over_composition(
 ) -> frozenset[str]:
     """Expand a set of stale requirements over composition edges to a fixed point.
 
-    Iterates rather than recursing one level, and tracks what it has already added, because
-    the edges are not guaranteed acyclic: RULES_SPEC §8 makes `referees.first` and
-    `referees.second` mutually dependent through their cross-slot check. Neither has an
-    evaluator yet, so no cycle exists in the seeded data today — but a loop written on the
-    assumption of a DAG would hang rather than fail when one arrives.
+    Iterates to a fixed point rather than expanding one level, because composition chains
+    can be deeper than one hop. Today's only edge is one hop, but `preparation.case_complete`
+    composes every other result (RULES_SPEC §8), so once it has an evaluator
+    `case_complete → standard_section_6_1 → adult_applicant` is a two-hop walk that a
+    single-level expansion would under-fire on.
+
+    The loop also tolerates a cycle — it tracks what it has already added and stops on the
+    first empty delta — but no cycle exists in the composition graph. (The mutual dependency
+    between the two referee slots is a `REFEREE_RECORD` *input* dependency on both sides, not
+    a composition edge, so it is matched in a single pass and never reaches this function.)
     """
     affected = set(seed)
     while True:
@@ -118,16 +129,13 @@ def invalidate_for_input_change(
     case_id: uuid.UUID,
     input_kind: DependencyInputKind,
     reason_code: str,
-    input_key: str | None = None,
 ) -> InvalidationOutcome:
     """Mark every result depending on this input STALE and, if any were, emit
     `AssessmentInvalidated` on the caller's unit of work — so the marks, the event and the
     input change commit atomically or not at all (§41.2). A no-op before the first assessment
     run exists: there is nothing to invalidate."""
-    requirement_keys = resolve_affected_requirements(
-        session, input_kind=input_kind, input_key=input_key
-    )
-    marked = AssessmentRepository.mark_current_results_stale(
+    requirement_keys = resolve_affected_requirements(session, input_kind=input_kind)
+    marked = AssessmentRepository.mark_named_results_stale(
         session, case_id, requirement_keys, reason_code, datetime.now(UTC)
     )
     outcome = InvalidationOutcome(

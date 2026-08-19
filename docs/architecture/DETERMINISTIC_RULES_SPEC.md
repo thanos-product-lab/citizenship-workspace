@@ -723,9 +723,17 @@ Summary codes: `CHARACTER_ACKNOWLEDGED`, `CHARACTER_DISCLOSURE_PRESENT`,
 
 Aggregate. Derived, never independently calculated.
 
+**Reads results only, never issues.** An earlier version of this table also required "no
+open blocking issues". It must not: issues are derived *from* results, so a rule reading
+issues makes results depend on issues depend on results, which breaks the issue reconciler's
+idempotency guarantee and puts this rule on the wrong side of "an issue never directly
+changes an assessment conclusion" (CLAUDE.md §2). Nothing is lost — an issue is a projection,
+so a blocking issue's cause is already present as a limitation or conclusion on the result it
+was derived from. See §8 and ADR-0014.
+
 | Condition | Conclusion |
 |---|---|
-| all other current results `SUPPORTED`, no open blocking issues | `SUPPORTED` |
+| all other current results `SUPPORTED` | `SUPPORTED` |
 | any `NOT_CURRENTLY_SATISFIED` | `NOT_CURRENTLY_SATISFIED` |
 | any `PROFESSIONAL_REVIEW_RECOMMENDED` | `PROFESSIONAL_REVIEW_RECOMMENDED` |
 | any `INCONSISTENT` | `INCONSISTENT` |
@@ -780,6 +788,12 @@ it composes `route.adult_applicant`, which does — so the full closure is **nin
 Count the direct dependants and the composite separately; conflating them is how the
 composite gets dropped from an invalidation set.
 
+> `preparation.case_complete` is excluded from every count in this section. It composes
+> *all* current results (and reacts to their currency, per §7.13), so it is in every
+> non-empty closure — including it would add one to every number here and distinguish
+> nothing. Its edges land with its evaluator; until then it has no rule version and resolves
+> to nothing.
+
 > Implemented today the number is **eight**: seven declared dependants plus the
 > composite, because `knowledge.english_language` has no evaluator yet. Those two
 > eights are not the same eight. `test_selective_invalidation.py` therefore *derives*
@@ -789,8 +803,14 @@ composite gets dropped from an invalidation set.
 > regression against this section.
 
 **The referee slots are mutually dependent** because of the cross-slot combination
-check. That is a genuine cycle, so closure over composition edges must run to a fixed
-point rather than to a fixed depth.
+check. That mutuality is expressed as a `REFEREE_RECORD` *input* dependency on both
+sides — each slot reads the other slot's recorded fields, not its conclusion — so it is
+matched in a single pass and is not a composition cycle.
+
+**Composition closure must run to a fixed point** all the same, because chains can be
+deeper than one hop: once `preparation.case_complete` has an evaluator,
+`case_complete → standard_section_6_1 → adult_applicant` is two hops, and a single-level
+expansion would under-fire on it.
 
 **`route.standard_section_6_1` is the only requirement that depends on other
 requirements' *conclusions*** rather than on raw inputs; invalidating either upstream
@@ -863,7 +883,7 @@ qualifying_period_start == application_date − 5 years + 1 day, for all dates
   including 29 February and 1 March in leap and non-leap years.
 
 The Guide AN worked example holds exactly:
-  application 2022-01-05 → presence date 2022-01-06.
+  application 2022-01-05 → presence date 2017-01-06.
 
 A trip departing on day D and returning on day D+1 contributes zero absent days.
 

@@ -30,8 +30,10 @@ directive 7 inverted, and the reason M6 was never optional.
 
 **Stale propagation resolves the affected requirement set from the declared dependencies of
 each ACTIVE rule, then closes over composition edges, in the same transaction as the input
-change.** `AssessmentInvalidationService` (Domain §48.5) replaces
-`invalidate_residence_results`; the blunt function and its repository primitive are deleted.
+change.** `invalidate_for_input_change` and `resolve_affected_requirements` in
+`app/assessments/invalidation.py` fill the role Domain §48.5 names
+`AssessmentInvalidationService`; they replace `invalidate_residence_results`, and the blunt
+function and its repository primitive are deleted.
 
 ### Composition edges are a first-class relation
 
@@ -45,19 +47,30 @@ dependency to be (new Domain §25.4).
 Closure is transitive on **staling**, not on conclusion-change: if an upstream result is
 STALE its conclusion is no longer known-current, so everything composing it is STALE too,
 regardless of what recalculation would eventually produce. The closure iterates to a fixed
-point with a visited set rather than recursing one level, because RULES_SPEC §8 makes
-`referees.first` and `referees.second` mutually dependent — a genuine cycle, not yet wired,
-which a DAG-shaped loop would hang on rather than fail on.
+point rather than expanding one level, because chains can be deeper than one hop: once
+`preparation.case_complete` has an evaluator, `case_complete → standard_section_6_1 →
+adult_applicant` is a two-hop walk a single-level expansion would under-fire on. It also
+tolerates a cycle, though none exists — the referee slots' mutual dependency (RULES_SPEC §8)
+is a `REFEREE_RECORD` *input* dependency on both sides, matched in one pass, never a
+composition edge.
 
-### The key-matching rule
+### Matching is on input kind only, never on `input_key`
 
-| declared `input_key` | change names a key | change names no key |
-|---|---|---|
-| `NULL`               | matches            | matches             |
-| `"status_granted_on"`| matches iff equal  | **matches**         |
+Some dependency rows name a field — `status.holding_period` declares
+`ROUTE_PROFILE/status_granted_on` — and narrowing on that looks free: why stale a rule
+reading only the grant date when the date of birth moved?
 
-A change that does not say which field moved matches every declaration of its kind. That
-over-fires, and over-firing is safe. The opposite default under-fires.
+Because narrowing on a key is sound only when the input is versioned *per key*, and none of
+ours is. A `RouteProfileVersion` is a whole-row snapshot: `confirmed_copy` mints a new
+version id for a change to any field. Narrow on the key and a rule keeps a CURRENT result
+whose recorded `ROUTE_PROFILE_VERSION` link points at a superseded version — breaking "every
+current trusted assessment references current relevant input versions" (CLAUDE.md §9), with
+nothing to catch it.
+
+So `input_key` stays what it already is: provenance, recorded on `AssessmentInputLink` and
+held to strict equality by the provenance test. It documents what a rule reads; it does not
+filter what a change touches. Revisit only if a per-field-versioned input kind appears, and
+cite that input's versioning as the reason.
 
 ### What changed in the numbers
 
@@ -73,9 +86,16 @@ over-fires, and over-firing is safe. The opposite default under-fires.
   drift between them and the evaluators is now load-bearing rather than decorative.
 - **Harder / committed:** correctness now depends on declarations being complete, so three
   test layers hold them (below). The `ROUTE_PROFILE` path is implemented and tested but has
-  no reachable writer — `confirm_route_profile` requires a draft case, so a confirmed
-  profile cannot be edited on an active case. Whoever builds that edit path inherits the
-  key-matching rule above, and the only thing guarding it today is a synthetic test.
+  no reachable writer — `confirm_route_profile` requires a draft case, so a confirmed profile
+  cannot be edited on an active case. Because matching ignores `input_key`, whoever builds
+  that edit path inherits nothing subtle: any profile write stales every rule reading the
+  profile.
+- **Known gap, not closed here.** Dependencies resolve against the *currently active* rule
+  version, not the version that produced the result being invalidated. If a rule's v2 drops a
+  dependency its v1 declared, a change to that input misses a v1-produced result which stays
+  CURRENT. Unreachable today (one rule version each, nothing emits `RULE_VERSION_CHANGED`);
+  closing it means joining dependencies to `AssessmentResult.rule_version_id`, and belongs
+  with the first rule-set migration at M9. Recorded in the repository docstring.
 
 ## How under-firing is prevented
 

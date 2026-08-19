@@ -114,6 +114,11 @@ def _payloads(session: Session, case_id: str) -> dict[str, tuple[Any, ...]]:
             repr(sorted(result.summary_parameters.items())),
             repr(result.calculation_breakdown),
             repr(result.limitations),
+            # next_actions is user-visible output too — it drives the priority actions on the
+            # overview, and for `physical_presence_start_date` it is the *only* place the
+            # resolving date appears. Omitting it left a rule free to read an undeclared input
+            # and surface it as an action while its currency stayed CURRENT.
+            repr(result.next_actions),
             tuple(links),
         )
     return payloads
