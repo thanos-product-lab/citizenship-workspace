@@ -2,11 +2,12 @@
 
 import type { components } from "@cw/api-client";
 import { RequirementStatus, StaleAssessmentNotice, StatusGlyph } from "@cw/design-system";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useEffect, useRef } from "react";
 
+import { useRecalculate } from "@/features/case-workspace/useRecalculate";
 import { useApiClient } from "@/lib/api";
-import { assessmentTouched, caseKeys } from "@/lib/queries";
+import { caseKeys } from "@/lib/queries";
 
 import { GROUP_LABELS, groupRequirements } from "./groups";
 
@@ -43,12 +44,10 @@ export function RequirementsList({
   groupSummaries?: GroupSummary[];
 }) {
   const api = useApiClient();
-  const client = useQueryClient();
-  const [announcement, setAnnouncement] = useState("");
   const headingRef = useRef<HTMLHeadingElement>(null);
   const returnFocusToHeading = useRef(false);
 
-  const { data, status, refetch, isFetching } = useQuery({
+  const { data, status, refetch } = useQuery({
     queryKey: caseKeys.requirements(caseId),
     queryFn: async () => {
       const { data } = await api.GET("/api/v1/cases/{case_id}/requirements", {
@@ -61,29 +60,10 @@ export function RequirementsList({
     },
   });
 
-  const recalculate = useMutation({
-    mutationFn: async () => {
-      const { data } = await api.POST("/api/v1/cases/{case_id}/assessments/recalculate", {
-        params: { path: { case_id: caseId } },
-      });
-      if (!data || !Array.isArray(data.requirements)) throw new Error("recalculation failed");
-      return data;
-    },
-    onSuccess: async (data) => {
-      // One statement — "this case's assessment state moved" — reaches every reader,
-      // including the overview and the case's derived phase. Previously each was wired by
-      // hand and one was missed three separate times.
-      await assessmentTouched(client, caseId);
-      // Emptying a live region announces nothing, so the completion has to be its own
-      // message: badges change in place, which gives a screen-reader user no other cue.
-      const current = data.requirements.filter((r) => r.conclusion !== "NOT_YET_ASSESSED").length;
-      setAnnouncement(
-        `Recalculation finished. ${current} ${current === 1 ? "requirement" : "requirements"} assessed.`,
-      );
-    },
-    onError: () => setAnnouncement("Recalculation did not complete."),
-  });
-
+  // The first-run affordance below shares the header's mutation, so one definition of
+  // recalculation serves both. Only one of the two is ever on screen: this appears in the
+  // empty state, the header's Recalculate only once something has been assessed.
+  const { mutation: recalculate, announcement } = useRecalculate(caseId);
   const requirements = data ?? [];
 
   // A button that unmounts takes the keyboard focus with it, dropping the user to
@@ -100,11 +80,6 @@ export function RequirementsList({
   // conclusion would hide it — including when it is STALE.
   const withResults = requirements.filter((r) => r.currency !== null);
   const groups = groupRequirements(requirements);
-  // Busy spans the whole operation, not just the POST. The mutation resolves, then
-  // invalidation triggers a refetch — and during that window the rows below still show
-  // the previous run's conclusions. Releasing the button at the halfway point would invite
-  // a second click against numbers that are already being replaced.
-  const busy = recalculate.isPending || (isFetching && status === "success");
 
   return (
     <section className="cw-section" aria-labelledby="requirements-heading">
@@ -118,35 +93,14 @@ export function RequirementsList({
             current. Open a requirement to see the facts and rule behind it.
           </p>
         </div>
-        {status === "success" && withResults.length > 0 ? (
-          <button
-            type="button"
-            className="cw-button cw-button--secondary"
-            onClick={() => (busy ? undefined : recalculate.mutate())}
-            // aria-disabled, not disabled: a focused button that becomes `disabled` is
-            // blurred by the browser, silently dropping focus mid-operation.
-            aria-disabled={busy}
-          >
-            {busy ? "Recalculating…" : "Recalculate"}
-          </button>
-        ) : null}
       </div>
 
       {/* Mounted unconditionally: a live region whose container and text appear in the
-          same commit is frequently missed by NVDA and JAWS. */}
+          same commit is frequently missed by NVDA and JAWS. The recalculation completion
+          is announced by the header, which owns that command. */}
       <p aria-live="polite" className="cw-visually-hidden">
         {status === "pending" ? "Loading requirements." : announcement}
       </p>
-
-      {/* The rows below are the previous run's until the refetch lands. Saying so is the
-          difference between a slow update and a screen quietly showing superseded
-          conclusions (UI/UX §16: recalculation in progress is a state to design). */}
-      {busy && status === "success" ? (
-        <p className="cw-updating">
-          <StatusGlyph name="clock" size={14} />
-          <span>Updating — the conclusions below are from the previous run.</span>
-        </p>
-      ) : null}
 
       {status === "pending" ? (
         <p style={{ color: "var(--cw-text-muted)" }}>Loading requirements…</p>
@@ -186,10 +140,10 @@ export function RequirementsList({
             <button
               type="button"
               className="cw-button"
-              onClick={() => (busy ? undefined : recalculate.mutate())}
-              aria-disabled={busy}
+              onClick={() => (recalculate.isPending ? undefined : recalculate.mutate())}
+              aria-disabled={recalculate.isPending}
             >
-              {busy ? "Assessing…" : "Run assessment"}
+              {recalculate.isPending ? "Assessing…" : "Run assessment"}
             </button>
           </div>
         </div>

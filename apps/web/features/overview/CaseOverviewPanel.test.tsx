@@ -1,6 +1,6 @@
 import "@testing-library/jest-dom/vitest";
 
-import { render, screen, within } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import { CaseOverviewPanel } from "./CaseOverviewPanel";
@@ -104,17 +104,72 @@ describe("CaseOverviewPanel", () => {
     expect(screen.getByText("2")).toBeInTheDocument();
   });
 
-  it("derives the heading from the case phase, not from a verdict it invented", () => {
-    render(<CaseOverviewPanel overview={anOverview({ current_phase: "BUILDING_CASE" })} />);
+  it("leads with the count of requirements needing attention, from the server", () => {
+    // Not a bucket assembled here: `needs_attention` excludes NEAR_THRESHOLD, which sits
+    // below the attention boundary. Grouping the blocker with the near-threshold one
+    // would read "2" and disagree with the engine and with the phase pill above.
+    render(<CaseOverviewPanel overview={anOverview({ needs_attention: 1 })} />);
     expect(
-      screen.getByRole("heading", { name: "Your case is taking shape" }),
+      screen.getByRole("heading", { name: "1 requirement needs your attention", level: 2 }),
     ).toBeInTheDocument();
   });
 
+  it("pluralises the headline and never invents a count", () => {
+    render(<CaseOverviewPanel overview={anOverview({ needs_attention: 3 })} />);
+    expect(
+      screen.getByRole("heading", { name: "3 requirements need your attention" }),
+    ).toBeInTheDocument();
+  });
+
+  it("scopes the all-clear while requirements remain unassessed", () => {
+    // "Nothing needs your attention" would be an all-clear the engine has not given while
+    // six requirements have never been looked at.
+    render(<CaseOverviewPanel overview={anOverview({ needs_attention: 0, not_yet_assessed: 6 })} />);
+    expect(
+      screen.getByRole("heading", { name: "Nothing assessed so far needs your attention" }),
+    ).toBeInTheDocument();
+  });
+
+  it("gives a plain all-clear only when everything has been assessed", () => {
+    render(<CaseOverviewPanel overview={anOverview({ needs_attention: 0, not_yet_assessed: 0 })} />);
+    expect(
+      screen.getByRole("heading", { name: "Nothing needs your attention" }),
+    ).toBeInTheDocument();
+  });
+
+  it("says so when the case has not been assessed at all", () => {
+    render(
+      <CaseOverviewPanel
+        overview={anOverview({ conclusion_counts: [], needs_attention: 0, not_yet_assessed: 15 })}
+      />,
+    );
+    expect(
+      screen.getByRole("heading", { name: "This case hasn’t been assessed yet" }),
+    ).toBeInTheDocument();
+  });
+
+  it("does not restate the case phase — the pill beside the title carries it", () => {
+    const { container } = render(<CaseOverviewPanel overview={anOverview()} />);
+    expect(container.textContent).not.toMatch(/taking shape|work to do on your case/i);
+  });
+
   it("names where the outstanding work is, from a count comparison", () => {
-    render(<CaseOverviewPanel overview={anOverview()} />);
-    expect(screen.getByText(/Of the requirements that need attention, most are in/)).toBeInTheDocument();
-    expect(screen.getByText("Residence")).toBeInTheDocument();
+    const overview = anOverview({
+      priority_actions: [
+        {
+          requirement_key: "residence.physical_presence_start_date",
+          requirement_title: "Presence on the first day",
+          conclusion: "NOT_CURRENTLY_SATISFIED",
+          code: "SELECT_APPLICATION_DATE",
+          parameters: {},
+          currency: "CURRENT",
+          text: "Consider moving your proposed application date to 25 April 2027.",
+          blocking: true,
+        },
+      ],
+    });
+    render(<CaseOverviewPanel overview={overview} />);
+    expect(screen.getByText(/Most of what needs attention is in Residence/)).toBeInTheDocument();
   });
 
   it("says nothing about where the work is when nothing needs attention", () => {
@@ -129,14 +184,11 @@ describe("CaseOverviewPanel", () => {
     expect(screen.queryByText(/most are in/)).not.toBeInTheDocument();
   });
 
-  it("surfaces staleness at case level", () => {
+  it("leaves currency to the case header, which every destination shows", () => {
+    // Staleness is caused by editing an input under Case data, so the signal has to
+    // follow the user rather than living on this page. Duplicating it here would put the
+    // same claim in two places and let them drift.
     render(<CaseOverviewPanel overview={anOverview({ stale: 5 })} />);
-    expect(screen.getByText(/5 conclusions have not been rechecked/)).toBeInTheDocument();
-    expect(screen.getByText(/shown as they were reached, marked stale/)).toBeInTheDocument();
-  });
-
-  it("says nothing about staleness when nothing is stale", () => {
-    render(<CaseOverviewPanel overview={anOverview({ stale: 0 })} />);
     expect(screen.queryByText(/have not been rechecked/)).not.toBeInTheDocument();
   });
 
@@ -179,14 +231,15 @@ describe("CaseOverviewPanel", () => {
     });
     render(<CaseOverviewPanel overview={overview} />);
 
-    const link = screen.getByRole("link", { name: "Presence on the first day" });
+    const link = screen.getByRole("link", { name: /Review requirement/ });
     expect(link).toHaveAttribute(
       "href",
       "/cases/c1/requirements/residence.physical_presence_start_date",
     );
-    expect(
-      screen.getByText(/This requirement cannot be satisfied until this is resolved/),
-    ).toBeInTheDocument();
+    // The requirement's own conclusion, not a "Blocking" chip standing in for one.
+    expect(screen.getByText("Not currently satisfied")).toBeInTheDocument();
+    // Blocking is stated once, as the action's meta.
+    expect(screen.getByText("Blocks this requirement")).toBeInTheDocument();
   });
 
   it("renders the server's action text, never a code", () => {
@@ -211,9 +264,8 @@ describe("CaseOverviewPanel", () => {
 
   it("marks an action derived from a stale result", () => {
     // Displayed results include STALE, so an action can be computed from arithmetic the
-    // system has already flagged as not rechecked. Unlike a group tile, an action card has
-    // no second badge — if the card says nothing, "cannot be satisfied until this is
-    // resolved" reads as a settled fact.
+    // system has flagged as not rechecked. The card now carries the requirement's own
+    // conclusion *and* currency, which is the per-item badge that was missing before.
     const overview = anOverview({
       priority_actions: [
         {
@@ -229,9 +281,8 @@ describe("CaseOverviewPanel", () => {
       ],
     });
     render(<CaseOverviewPanel overview={overview} />);
-    expect(
-      screen.getByText(/haven’t been rechecked since your inputs changed/),
-    ).toBeInTheDocument();
+    expect(screen.getByText("Stale")).toBeInTheDocument();
+    expect(screen.getByText("Not currently satisfied")).toBeInTheDocument();
   });
 
   it("does not mark a current action as stale", () => {
@@ -250,26 +301,37 @@ describe("CaseOverviewPanel", () => {
       ],
     });
     render(<CaseOverviewPanel overview={overview} />);
-    expect(screen.queryByText(/haven’t been rechecked/)).not.toBeInTheDocument();
+    expect(screen.queryByText("Stale")).not.toBeInTheDocument();
   });
 
   it("scopes the attention claim when requirements remain unassessed", () => {
-    // "Most of the outstanding work" was a claim about the whole case computed only over
-    // assessed requirements with a severe conclusion — it excluded every unassessed one.
-    render(<CaseOverviewPanel overview={anOverview({ not_yet_assessed: 6 })} />);
+    // The comparison runs over assessed requirements with a severe conclusion only, so
+    // without this bound it reads as a claim about the whole case.
+    const overview = anOverview({
+      not_yet_assessed: 6,
+      priority_actions: [
+        {
+          requirement_key: "x.y",
+          requirement_title: "X",
+          conclusion: "NOT_CURRENTLY_SATISFIED",
+          code: "SELECT_APPLICATION_DATE",
+          parameters: {},
+          currency: "CURRENT",
+          text: "Do the thing.",
+          blocking: false,
+        },
+      ],
+    });
+    render(<CaseOverviewPanel overview={overview} />);
     expect(
-      screen.getByText(/Requirements that haven’t been assessed yet aren’t counted here/),
+      screen.getByText(/Requirements that haven’t been assessed yet aren’t counted/),
     ).toBeInTheDocument();
   });
 
-  it("pairs each header fact with its value in a description list", () => {
-    // dt/dd outside a dl lose the pairing entirely; the proposed application date would
-    // read as two unrelated fragments.
+  it("leaves case metadata to the header", () => {
     const { container } = render(<CaseOverviewPanel overview={anOverview()} />);
-    const dl = container.querySelector("dl.cw-overview__facts");
-    expect(dl).not.toBeNull();
-    expect(dl?.querySelectorAll("dt")).toHaveLength(3);
-    expect(dl?.querySelectorAll("dd")).toHaveLength(3);
+    expect(container.querySelector("dl")).toBeNull();
+    expect(screen.queryByText("Proposed application date")).not.toBeInTheDocument();
   });
 
   it("names the counts list so the numbers are not announced bare", () => {
@@ -277,33 +339,9 @@ describe("CaseOverviewPanel", () => {
     expect(screen.getByRole("list", { name: "Requirements by state" })).toBeInTheDocument();
   });
 
-  it("says the figures are out of date while a refetch is in flight", () => {
-    // The window after a write and before the refetch lands is one where the summary shows
-    // pre-write counts. Silence there is a summary presenting superseded numbers as
-    // current — the same failure as a stale badge that never appears.
-    render(<CaseOverviewPanel overview={anOverview()} updating />);
-    expect(
-      screen.getByText("Updating — these figures are from before your last change."),
-    ).toBeInTheDocument();
-  });
-
-  it("says nothing about updating when no refetch is in flight", () => {
-    render(<CaseOverviewPanel overview={anOverview()} />);
-    expect(screen.queryByText(/Updating —/)).not.toBeInTheDocument();
-  });
-
   it("omits the actions section entirely when there is nothing to do", () => {
     render(<CaseOverviewPanel overview={anOverview({ priority_actions: [] })} />);
     expect(screen.queryByRole("heading", { name: "What to do next" })).not.toBeInTheDocument();
   });
 
-  it("renders a case with no application date", () => {
-    const { container } = render(
-      <CaseOverviewPanel
-        overview={anOverview({ application_date: null, last_assessed_at: null })}
-      />,
-    );
-    expect(screen.queryByText("Proposed application date")).not.toBeInTheDocument();
-    expect(within(container).getByText("Standard five-year route")).toBeInTheDocument();
-  });
 });

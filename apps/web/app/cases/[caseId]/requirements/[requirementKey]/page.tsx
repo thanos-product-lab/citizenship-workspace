@@ -26,9 +26,8 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
 // anyway so a key needing escaping still resolves.
 export default async function RequirementPage({ params }: { params: Params }) {
   const { caseId, requirementKey } = await params;
-  return (
-    <main style={{ maxWidth: "52rem", margin: "0 auto", padding: "var(--cw-space-8)" }}>
-      <RequirementDetail caseId={caseId} requirementKey={decodeURIComponent(requirementKey)} />
-    </main>
-  );
+  // No <main> here: this page renders inside the case layout, which owns the landmark,
+  // the header and the navigation. A requirement is a sub-page of Requirements, so the
+  // nav marks Requirements current while it is open.
+  return <RequirementDetail caseId={caseId} requirementKey={decodeURIComponent(requirementKey)} />;
 }

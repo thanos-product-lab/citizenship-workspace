@@ -276,6 +276,165 @@
   background: var(--cw-surface-sunken);
 }
 
+
+/* --- Case workspace shell --------------------------------------------------- */
+
+/*
+ * One column, one measure, across every destination. Wide content (the travel table, a
+ * calculation row) scrolls inside its own container rather than widening the page.
+ */
+.cw-workspace {
+  max-width: 52rem;
+  margin: 0 auto;
+  padding: var(--cw-space-8);
+}
+
+.cw-case-header {
+  margin-bottom: var(--cw-space-6);
+}
+
+.cw-case-header__back {
+  display: inline-block;
+  margin-bottom: var(--cw-space-5);
+  color: var(--cw-text-muted);
+  font-size: var(--cw-text-sm);
+}
+
+.cw-case-header__identity {
+  display: flex;
+  align-items: center;
+  gap: var(--cw-space-3);
+  flex-wrap: wrap;
+}
+
+.cw-case-header__title {
+  margin: 0;
+  font-size: var(--cw-text-2xl);
+  line-height: var(--cw-leading-tight);
+}
+
+/* Pushed to the trailing edge so the command does not sit between the case name and its
+   phase, which read as one unit. `margin-left: auto` rather than a spacer element, so a
+   wrap at narrow widths drops it onto its own line instead of stretching the row. */
+.cw-case-header__recalculate {
+  margin-left: auto;
+}
+
+/* Full width so it drops below the identity row rather than squeezing in beside the
+   button that produced it. */
+.cw-case-header__error {
+  flex-basis: 100%;
+  margin: var(--cw-space-3) 0 0;
+  color: var(--cw-status-not-satisfied);
+  font-size: var(--cw-text-sm);
+  max-width: 62ch;
+}
+
+.cw-phase-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px var(--cw-space-2);
+  border-radius: var(--cw-radius-sm);
+  background: var(--cw-surface-sunken);
+  border: 1px solid var(--cw-border);
+  color: var(--cw-text-muted);
+  font-size: var(--cw-text-xs);
+  font-weight: var(--cw-weight-medium);
+  white-space: nowrap;
+}
+
+/* --- Case navigation -------------------------------------------------------- */
+
+/*
+ * Links, not tabs. The current destination is marked by weight, an underline and
+ * `aria-current` — never by colour alone, which is the same rule the status tokens keep.
+ *
+ * The rule sits under the list rather than on the nav so the active link's underline
+ * overlaps it, which is what visually attaches the destination to its page.
+ */
+.cw-case-nav {
+  margin-top: var(--cw-space-5);
+}
+
+.cw-case-nav__list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cw-space-1) var(--cw-space-5);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-bottom: 1px solid var(--cw-border);
+}
+
+.cw-case-nav__link {
+  display: inline-block;
+  /* Vertical padding gives the target its height; 44px total keeps it comfortably above
+     the 24px minimum for pointer targets (WCAG 2.2 AA, 2.5.8). */
+  padding: var(--cw-space-3) 0;
+  color: var(--cw-text-muted);
+  text-decoration: none;
+  font-size: var(--cw-text-sm);
+  font-weight: var(--cw-weight-medium);
+  border-bottom: 2px solid transparent;
+  /* Offset onto the list's own rule, so the active marker replaces it rather than
+     stacking two lines. */
+  margin-bottom: -1px;
+}
+
+.cw-case-nav__link:hover {
+  color: var(--cw-text);
+  border-bottom-color: var(--cw-border-strong);
+}
+
+.cw-case-nav__link[aria-current="page"] {
+  color: var(--cw-text);
+  font-weight: var(--cw-weight-semibold);
+  border-bottom-color: var(--cw-accent);
+}
+
+/* The focus ring is a box-shadow, which a zero-height inline box clips awkwardly against
+   the rule; a small radius keeps it legible without detaching the link from the border. */
+.cw-case-nav__link:focus-visible {
+  border-radius: var(--cw-radius-sm);
+}
+
+/* --- Danger zone ------------------------------------------------------------ */
+
+/*
+ * Deletion is terminal, so it is separated from the work above it rather than being the
+ * next control in a sequence. It sits at the foot of Case data, never in the readiness
+ * journey.
+ */
+.cw-danger-zone {
+  margin-top: var(--cw-space-8);
+  padding-top: var(--cw-space-6);
+  border-top: 1px solid var(--cw-border);
+}
+
+.cw-danger-zone__heading {
+  margin: 0;
+  font-size: var(--cw-text-base);
+  font-weight: var(--cw-weight-semibold);
+}
+
+.cw-danger-zone__note {
+  margin: var(--cw-space-2) 0 var(--cw-space-4);
+  color: var(--cw-text-muted);
+  font-size: var(--cw-text-sm);
+  max-width: 62ch;
+}
+
+.cw-danger-zone__confirm {
+  display: grid;
+  gap: var(--cw-space-3);
+}
+
+.cw-button--danger {
+  background: var(--cw-status-not-satisfied);
+  color: var(--cw-accent-contrast);
+  border-color: transparent;
+}
+
 /* --- Motion ---------------------------------------------------------------- */
 
 /*
@@ -733,36 +892,47 @@
 
 /* --- Case overview --------------------------------------------------------- */
 
+/* No bottom rule: it separated the summary from the requirements list that used to
+   follow it on the same page. Requirements is its own destination now, so the rule
+   would divide the summary from nothing. */
 .cw-overview {
-  margin-top: var(--cw-space-6);
-  padding-bottom: var(--cw-space-8);
-  border-bottom: 1px solid var(--cw-border);
+  margin-top: var(--cw-space-5);
 }
 
-/* The standing facts, set small and quiet above the heading: they orient without
-   competing with the state of the case. */
-.cw-overview__facts {
+/*
+ * Metadata is orientation, not information the user acts on, so it reads as one quiet
+ * line rather than three stacked label/value blocks. Each pair stays inside the `dl` so
+ * the label remains programmatically attached to its value.
+ */
+.cw-case-header__facts {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--cw-space-6);
-  margin: 0 0 var(--cw-space-5);
+  gap: var(--cw-space-2) var(--cw-space-5);
+  margin: 0 0 var(--cw-space-4);
+  font-size: var(--cw-text-sm);
 }
 
-.cw-overview__facts dt {
+.cw-case-header__facts > div {
+  display: flex;
+  align-items: baseline;
+  gap: var(--cw-space-2);
+}
+
+.cw-case-header__facts dt {
   font-size: var(--cw-text-xs);
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  color: var(--cw-text-muted);
+  color: var(--cw-text-subtle);
 }
 
-.cw-overview__facts dd {
-  margin: var(--cw-space-1) 0 0;
-  font-size: var(--cw-text-sm);
+.cw-case-header__facts dd {
+  margin: 0;
+  color: var(--cw-text-muted);
 }
 
 .cw-overview__heading {
   margin: 0;
-  font-size: var(--cw-text-2xl);
+  font-size: var(--cw-text-xl);
   font-weight: var(--cw-weight-semibold);
   line-height: var(--cw-leading-tight);
   letter-spacing: -0.01em;
@@ -774,26 +944,25 @@
  */
 .cw-overview__counts {
   list-style: none;
-  margin: var(--cw-space-5) 0 0;
+  margin: var(--cw-space-3) 0 0;
   padding: 0;
   display: flex;
   flex-wrap: wrap;
-  gap: var(--cw-space-3) var(--cw-space-8);
+  gap: var(--cw-space-2) var(--cw-space-5);
 }
 
 .cw-overview__counts li {
-  display: flex;
   align-items: baseline;
-  gap: var(--cw-space-2);
   font-size: var(--cw-text-sm);
   color: var(--cw-text-muted);
 }
 
+/* Tabular but not shouted: the headline above carries the emphasis now, and four
+   large numerals competing with it was most of why the page felt like a dashboard. */
 .cw-overview__count {
-  font-size: var(--cw-text-2xl);
+  font-size: var(--cw-text-base);
   font-weight: var(--cw-weight-semibold);
   color: var(--cw-text);
-  line-height: 1;
 }
 
 /* The unassessed count is given the same weight as the others, not a lesser one: it is a
@@ -802,19 +971,12 @@
   color: var(--cw-text-muted);
 }
 
-.cw-overview__where {
-  margin: var(--cw-space-5) 0 0;
-  font-size: var(--cw-text-base);
-  color: var(--cw-text-muted);
-  max-width: 60ch;
-}
-
 .cw-overview__empty {
   margin: var(--cw-space-4) 0 0;
   color: var(--cw-text-muted);
 }
 
-.cw-overview__stale {
+.cw-case-header__stale {
   display: flex;
   align-items: flex-start;
   gap: var(--cw-space-2);
@@ -829,7 +991,7 @@
   max-width: 66ch;
 }
 
-.cw-overview__stale svg {
+.cw-case-header__stale svg {
   flex: none;
   margin-top: 0.15em;
   color: var(--cw-currency-stale);
@@ -838,7 +1000,7 @@
 /* --- Priority actions ------------------------------------------------------ */
 
 .cw-actions {
-  margin-top: var(--cw-space-8);
+  margin-top: var(--cw-space-6);
 }
 
 .cw-actions h3 {
@@ -861,22 +1023,30 @@
 .cw-action-card {
   padding: var(--cw-space-4);
   border: 1px solid var(--cw-border);
-  border-left: 3px solid var(--cw-accent);
+  border-left: 3px solid var(--cw-border-strong);
   border-radius: 0 var(--cw-radius-md) var(--cw-radius-md) 0;
   background: var(--cw-surface);
 }
 
-.cw-action-card__title {
-  font-weight: var(--cw-weight-medium);
-  color: var(--cw-text);
-  text-decoration: underline;
-  text-decoration-color: var(--cw-border-strong);
-  text-underline-offset: 0.2em;
+/* A blocking action is weighted, not badged. The colour is redundant with the conclusion
+   badge and the "Blocks this requirement" meta, so nothing here is colour-only. */
+.cw-action-card[data-blocking="true"] {
+  border-left-color: var(--cw-status-not-satisfied);
 }
 
-.cw-action-card__title:hover {
-  color: var(--cw-accent);
-  text-decoration-color: currentColor;
+.cw-action-card__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--cw-space-3);
+  flex-wrap: wrap;
+}
+
+.cw-action-card__title {
+  font-size: var(--cw-text-lg);
+  font-weight: var(--cw-weight-medium);
+  color: var(--cw-text);
+  line-height: var(--cw-leading-snug);
 }
 
 .cw-action-card__text {
@@ -885,24 +1055,34 @@
   max-width: 62ch;
 }
 
-.cw-action-card__flag {
+.cw-action-card__meta {
   display: flex;
-  align-items: flex-start;
-  gap: var(--cw-space-2);
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--cw-space-3);
+  flex-wrap: wrap;
   margin: var(--cw-space-3) 0 0;
   font-size: var(--cw-text-sm);
-  color: var(--cw-status-not-satisfied);
+  color: var(--cw-text-muted);
 }
 
-.cw-action-card__flag svg {
-  flex: none;
-  margin-top: 0.15em;
+.cw-action-card__link {
+  color: var(--cw-accent);
+  font-weight: var(--cw-weight-medium);
+  text-decoration: none;
+  margin-left: auto;
+}
+
+.cw-action-card__link:hover {
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
 }
 
 .cw-actions__more {
   margin: var(--cw-space-3) 0 0;
   font-size: var(--cw-text-sm);
   color: var(--cw-text-muted);
+  max-width: 66ch;
 }
 
 /* --- Group heading summary (ADR-0010) -------------------------------------- */
@@ -918,7 +1098,7 @@
 }
 
 @media (max-width: 34rem) {
-  .cw-overview__facts {
+  .cw-case-header__facts {
     gap: var(--cw-space-4);
   }
   .cw-overview__counts {

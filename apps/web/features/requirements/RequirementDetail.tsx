@@ -102,7 +102,7 @@ export function RequirementDetail({
         <h1 style={{ fontSize: "var(--cw-text-2xl)" }}>Requirement not found</h1>
         <p style={{ color: "var(--cw-text-muted)" }}>
           There’s no requirement with that name in this case.{" "}
-          <a href={`/cases/${caseId}`}>Back to the case</a>.
+          <a href={`/cases/${caseId}/requirements`}>Back to requirements</a>.
         </p>
       </div>
     );
@@ -139,8 +139,12 @@ export function RequirementDetail({
 
   return (
     <div>
-      <a className="cw-back" href={`/cases/${caseId}`}>
-        ← Back to the case
+      {/* Requirements is this page's parent now, not the case root. "Back to the case"
+          pointed at Overview, which is not where the reader came from and not where the
+          sibling requirements are. The header's navigation handles moving between
+          destinations; this handles going back up one level. */}
+      <a className="cw-back" href={`/cases/${caseId}/requirements`}>
+        ← Back to requirements
       </a>
 
       <AssessmentSummary

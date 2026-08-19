@@ -131,92 +131,30 @@ describe("RequirementsList", () => {
     await waitFor(() => expect(screen.getByText("Total absences")).toBeInTheDocument());
   });
 
-  it("shows the recalculated results, refetched rather than taken from the response", async () => {
-    // The mutation no longer writes the POST body into local state. It invalidates, and
-    // the query refetches — so the list and every other reader see the same fetch, and
-    // there is one source of truth rather than two that can disagree.
-    get.mockResolvedValue({ data: [aRequirement()] });
+  it("offers the first assessment from the empty state, and reports it failing", async () => {
+    // The one recalculation control this list owns: the header's Recalculate is hidden
+    // until something has been assessed, so before the first run this is the only way in.
+    get.mockResolvedValue({ data: [aRequirement({ conclusion: "NOT_YET_ASSESSED", currency: null })] });
     render(<RequirementsList caseId="c1" />);
-    await screen.findByText("Total absences");
-
-    post.mockResolvedValue({
-      data: {
-        assessment_run_id: "r1",
-        mode: "TRUSTED",
-        trigger_type: "USER_REQUESTED",
-        result_count: 1,
-        requirements: [aRequirement()],
-      },
-    });
-    get.mockResolvedValue({
-      data: [
-        aRequirement({
-          summary: {
-            code: "TOTAL_ABSENCES_NEAR_THRESHOLD",
-            parameters: { days: 440, threshold: 450 },
-            text: "440 days outside the UK across your five-year qualifying period, from confirmed travel records, against a threshold of 450. That is close to the standard threshold.",
-          },
-        }),
-      ],
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Recalculate" }));
-    await waitFor(() => expect(screen.getByText(/440 days outside the UK/)).toBeInTheDocument());
-  });
-
-  it("invalidates every case-scoped query when a recalculation lands", async () => {
-    // This replaces four hand-wired refresh counters. The bug they kept producing was a
-    // reader nobody remembered to wire: the phase pill, the detail page, and the overview
-    // each went stale in turn during M4. Invalidating the case subtree reaches readers
-    // that did not exist when this code was written.
-    get.mockResolvedValue({ data: [aRequirement()] });
-    const { client } = render(<RequirementsList caseId="c1" />);
-    await screen.findByText("Total absences");
-
-    const invalidate = vi.spyOn(client, "invalidateQueries");
-    post.mockResolvedValue({
-      data: {
-        assessment_run_id: "r1",
-        mode: "TRUSTED",
-        trigger_type: "USER_REQUESTED",
-        result_count: 1,
-        requirements: [aRequirement()],
-      },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Recalculate" }));
-
-    await waitFor(() =>
-      expect(invalidate).toHaveBeenCalledWith({ queryKey: ["cases", "c1"] }),
-    );
-  });
-
-  it("does not invalidate when a recalculation fails", async () => {
-    get.mockResolvedValue({ data: [aRequirement()] });
-    const { client } = render(<RequirementsList caseId="c1" />);
-    await screen.findByText("Total absences");
-
-    const invalidate = vi.spyOn(client, "invalidateQueries");
-    post.mockResolvedValue({ error: { detail: "boom" } });
-    fireEvent.click(screen.getByRole("button", { name: "Recalculate" }));
-
-    await screen.findByRole("alert");
-    expect(invalidate).not.toHaveBeenCalled();
-  });
-
-  it("reports a failed recalculation without changing what is shown", async () => {
-    get.mockResolvedValue({ data: [aRequirement()] });
-    render(<RequirementsList caseId="c1" />);
-    await screen.findByText("Total absences");
+    // With nothing assessed the list shows its empty state rather than the rows.
+    const run = await screen.findByRole("button", { name: "Run assessment" });
 
     post.mockResolvedValue({ error: { detail: "boom" } });
-    fireEvent.click(screen.getByRole("button", { name: "Recalculate" }));
+    fireEvent.click(run);
 
     const alert = await screen.findByRole("alert");
     // Not "nothing has changed": a timeout or a dropped response after commit would make
     // that false, and the user would be told the case is unchanged while looking at a
     // list that is out of date.
     expect(alert).toHaveTextContent("couldn’t confirm whether that recalculation ran");
-    // The previous conclusion is untouched — a failed run never replaces a result.
-    expect(screen.getByText(/439 days outside the UK/)).toBeInTheDocument();
+  });
+
+  it("leaves Recalculate to the case header", () => {
+    // It is a case-level command — a new AssessmentRun for every requirement, not only the
+    // ones on this destination — so it belongs to the case, not to this page.
+    get.mockResolvedValue({ data: [aRequirement()] });
+    render(<RequirementsList caseId="c1" />);
+    expect(screen.queryByRole("button", { name: "Recalculate" })).not.toBeInTheDocument();
   });
 
   it("never claims a stale conclusion still stands", async () => {

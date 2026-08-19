@@ -30,6 +30,10 @@ const FOREIGN_CASE = "00000000-0000-4000-8000-000000000000";
 test.describe("the M4 surfaces are not public", () => {
   for (const path of [
     `/cases/${FOREIGN_CASE}`,
+    // Every destination the workspace split introduced. A new route tree is a new chance
+    // to fall outside the middleware matcher, so each one is pinned here explicitly.
+    `/cases/${FOREIGN_CASE}/requirements`,
+    `/cases/${FOREIGN_CASE}/data`,
     // Dotted requirement keys: the original matcher excluded any path containing a dot.
     `/cases/${FOREIGN_CASE}/requirements/residence.total_absences`,
     // Appended static extensions: narrowing that exclusion to *known* extensions still
@@ -69,15 +73,43 @@ test.describe("the canonical case walkthrough", () => {
   test("reads the overview, opens a requirement, and traces its conclusion", async ({ page }) => {
     await page.goto(`/cases/${CASE_ID}`);
 
-    // The overview states where the case stands, in counts of named states.
-    await expect(page.getByRole("heading", { level: 2 })).toContainText(/your case/i);
+    // The overview leads with what the reader has to do, not with the phase name: the
+    // heading is the readiness headline, and the phase stays a quiet chip by the title.
+    await expect(page.getByRole("heading", { level: 2 }).first()).toContainText(
+      /needs your attention/i,
+    );
+    await expect(page.getByRole("heading", { level: 2 }).first()).not.toContainText(
+      /resolving issues/i,
+    );
     await expect(page.getByRole("list", { name: "Requirements by state" })).toBeVisible();
-    // No readiness score reaches the screen (CLAUDE.md §2.6).
-    await expect(page.locator("body")).not.toContainText("%");
 
-    // Into the signature interaction.
+    // No readiness score reaches the screen, in any of its forms (CLAUDE.md §2.6). The
+    // ratio check matters as much as the percentage: "4 / 5" is the same measure arrived
+    // at sideways, and it renders a failed conclusion as a missing one.
+    await expect(page.locator("body")).not.toContainText("%");
+    await expect(page.locator("main")).not.toContainText(/\d+\s*\/\s*\d+/);
+
+    // Overview is a summary, not the whole product: the requirements themselves and the
+    // editable inputs live on their own destinations.
+    await expect(page.getByRole("link", { name: "Total absences" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /delete case/i })).toHaveCount(0);
+
+    // Into the assessment workspace, then the signature interaction.
+    await page.getByRole("navigation", { name: "Case navigation" })
+      .getByRole("link", { name: "Requirements" })
+      .click();
+    await expect(page).toHaveURL(new RegExp(`/cases/${CASE_ID}/requirements$`));
+    await expect(page).toHaveTitle(/Requirements/);
+
     await page.getByRole("link", { name: "Total absences" }).click();
     await expect(page).toHaveTitle(/Total absences/);
+
+    // A requirement is a sub-page of Requirements, so the nav still marks it current —
+    // the reader has not left the workspace.
+    await expect(
+      page.getByRole("navigation", { name: "Case navigation" })
+        .getByRole("link", { name: "Requirements" }),
+    ).toHaveAttribute("aria-current", "page");
 
     // The M3B oracle, on screen: 439 confirmed days against a threshold of 450.
     await expect(page.getByText("439 confirmed days against a threshold of 450")).toBeVisible();
@@ -100,14 +132,16 @@ test.describe("the canonical case walkthrough", () => {
     // The guidance gap is declared, never filled.
     await expect(page.getByText(/are not recorded yet/)).toBeVisible();
 
-    await page.getByRole("link", { name: /Back to the case/ }).click();
-    await expect(page).toHaveURL(new RegExp(`/cases/${CASE_ID}$`));
+    // Up one level, to the requirement's parent destination — not to the case root.
+    await page.getByRole("link", { name: /Back to requirements/ }).click();
+    await expect(page).toHaveURL(new RegExp(`/cases/${CASE_ID}/requirements$`));
   });
 
   test("shows a stale conclusion, then the figure that changed after recalculating", async ({
     page,
   }) => {
-    await page.goto(`/cases/${CASE_ID}`);
+    // Inputs are edited under Case data.
+    await page.goto(`/cases/${CASE_ID}/data`);
 
     // Change an input: the trip departing 4 May 2026 returns a day later.
     await page.getByRole("button", { name: "Edit" }).first().click();
@@ -115,15 +149,18 @@ test.describe("the canonical case walkthrough", () => {
     await returnDate.fill("2026-05-11");
     await page.getByRole("button", { name: /save|update/i }).click();
 
-    // Staleness surfaces at case level and on the group, without the conclusions moving.
+    // Staleness is stated *here*, on the destination where the edit was made. If it only
+    // appeared on Overview, the split would have separated staleness from its own cause.
     await expect(page.getByText(/have not been rechecked/)).toBeVisible();
-    await expect(page.getByText(/conclusions are stale/)).toBeVisible();
 
-    // Recalculate, and the change becomes legible as a figure — both runs conclude
-    // NEAR_THRESHOLD, so the conclusions alone would read as nothing having happened.
+    // Recalculate is a case-level command, available from every destination.
     await page.getByRole("button", { name: "Recalculate" }).click();
     await expect(page.getByText(/have not been rechecked/)).toBeHidden();
 
+    // The change becomes legible as a figure — both runs conclude NEAR_THRESHOLD, so the
+    // conclusions alone would read as nothing having happened.
+    await page.goto(`/cases/${CASE_ID}/requirements`);
+    await expect(page.getByText(/conclusions are stale/)).toHaveCount(0);
     await page.getByRole("link", { name: "Total absences" }).click();
     await expect(page.getByRole("heading", { name: "Assessment history" })).toBeVisible();
     await expect(page.getByText("changed to")).toBeVisible();

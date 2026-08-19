@@ -22,18 +22,36 @@ import { statusTokens, toConclusionState } from "@cw/design-system";
 type Overview = components["schemas"]["CaseOverview"];
 type Group = components["schemas"]["GroupSummaryView"];
 
-/** Phase → heading. The phase is derived from assessment state, so this is not a verdict
- *  the UI invented; it is the domain's own qualitative state, put into a sentence. */
-const PHASE_HEADINGS: Record<string, string> = {
-  SETTING_UP: "Setting up your case",
-  BUILDING_CASE: "Your case is taking shape",
-  RESOLVING_ISSUES: "There’s work to do on your case",
-  NEARLY_PREPARED: "Your case is nearly prepared",
-  FINAL_REVIEW: "Your case is ready for a final review",
-};
+/**
+ * The readiness headline: how many requirements need the user, in a sentence.
+ *
+ * This replaces the phase-derived prose heading. The phase is still shown — once, as the
+ * pill beside the case title — and restating it here was the page's clearest redundancy.
+ *
+ * `needs_attention` is the server's count, not a bucket assembled here. It excludes
+ * `NEAR_THRESHOLD`, which sits below the attention boundary
+ * (`severity(REQUIRES_JUDGEMENT)`) because a near-threshold figure is a caution and not
+ * something the user can act on. Grouping it in would overstate by one and disagree with
+ * both the phase ladder and `GroupSummaryView.needs_attention`.
+ *
+ * The three no-attention cases are deliberately distinct. "Nothing needs your attention"
+ * is only true when everything has been assessed; while requirements remain unassessed
+ * the sentence has to say what it is scoped to, or it reads as an all-clear the engine
+ * has not given.
+ */
+export function readinessHeadline(overview: Overview): string {
+  const assessed = overview.conclusion_counts.reduce((total, c) => total + c.count, 0);
+  if (assessed === 0) return "This case hasn’t been assessed yet";
 
-export function phaseHeading(phase: string): string {
-  return PHASE_HEADINGS[phase] ?? "Your case";
+  const needs = overview.needs_attention;
+  if (needs > 0) {
+    return needs === 1
+      ? "1 requirement needs your attention"
+      : `${needs} requirements need your attention`;
+  }
+  return overview.not_yet_assessed > 0
+    ? "Nothing assessed so far needs your attention"
+    : "Nothing needs your attention";
 }
 
 export interface CountLine {
