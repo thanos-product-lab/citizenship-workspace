@@ -770,16 +770,40 @@ Drives selective invalidation (Domain Model §41.5, roadmap M6).
 | `referees.first` | referee slot FIRST, referee slot SECOND (cross-check) |
 | `referees.second` | referee slot SECOND, referee slot FIRST (cross-check) |
 | `character.review` | `character.review_acknowledged` |
-| `preparation.case_complete` | all current assessment results, all open issues |
+| `preparation.case_complete` | all current assessment results |
 
-Two consequences worth noting: changing the application date invalidates **eight**
-requirements, and the referee slots are mutually dependent because of the
-cross-slot combination check. Both are easy to get wrong in a naive dependency
-graph.
+Four consequences worth noting.
 
-`route.standard_section_6_1` is the only requirement that depends on other
-requirements' *conclusions* rather than on raw inputs; invalidating either
-upstream result must re-evaluate it.
+**The application-date fan-out is nine, not eight.** Eight requirements above name
+the application date directly. `route.standard_section_6_1` names none of its own —
+it composes `route.adult_applicant`, which does — so the full closure is **nine**.
+Count the direct dependants and the composite separately; conflating them is how the
+composite gets dropped from an invalidation set.
+
+> Implemented today the number is **eight**: seven declared dependants plus the
+> composite, because `knowledge.english_language` has no evaluator yet. Those two
+> eights are not the same eight. `test_selective_invalidation.py` therefore *derives*
+> the expected set from the declaration rows plus composition closure, treating the
+> literal as a sanity check that carries its own derivation — so giving
+> `english_language` an evaluator raises the count honestly rather than looking like a
+> regression against this section.
+
+**The referee slots are mutually dependent** because of the cross-slot combination
+check. That is a genuine cycle, so closure over composition edges must run to a fixed
+point rather than to a fixed depth.
+
+**`route.standard_section_6_1` is the only requirement that depends on other
+requirements' *conclusions*** rather than on raw inputs; invalidating either upstream
+result must re-evaluate it. Since ADR-0014 that edge is declared in
+`rule_composition_edges` (Domain §25.4) rather than left implicit.
+
+**`preparation.case_complete` depends on current results only.** An earlier version of
+this table had it depending on open issues as well. It must not: issues are *derived
+from* results, so a rule reading issues makes results depend on issues depend on
+results. That cycle breaks the issue reconciler's idempotency guarantee, and it puts a
+rule on the wrong side of "an issue never directly changes an assessment conclusion"
+(CLAUDE.md §2). Nothing is lost — an issue is a projection, so everything it could tell
+this rule is already present in the results and limitations it was derived from.
 
 ---
 

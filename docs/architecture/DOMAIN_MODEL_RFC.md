@@ -1437,6 +1437,39 @@ REFEREE_SLOT_SECOND
 - Selective stale propagation uses dependency definitions and recorded result inputs.
 - An undeclared input must not influence evaluator output.
 
+### 25.4 RuleCompositionEdge
+
+A rule may read another requirement's **conclusion** rather than a raw input.
+`route.standard_section_6_1` composes `route.adult_applicant` and
+`route.supported_status`.
+
+That edge is not a dependency row. §25.1 has no result kind, deliberately: a
+conclusion is not a versioned input, so there is no version for an
+`AssessmentInputLink` to name. It is a separate relation, versioned with the rule
+that declares it on the same grounds as §25.3.
+
+```text
+RuleCompositionEdge
+├── id
+├── rule_version_id
+├── upstream_requirement_key
+└── required
+```
+
+**Invariants**
+
+- Every rule that composes another requirement's conclusion declares an edge for it.
+- Composition edges are versioned with the rule.
+- Selective stale propagation takes the **transitive closure** over these edges: if an
+  upstream result is stale its conclusion is no longer known-current, so every rule
+  composing it is stale too — independent of whether recalculation would change it.
+- Edges are not guaranteed acyclic (RULES_SPEC §8 makes the two referee slots mutually
+  dependent), so closure runs to a fixed point rather than to a fixed depth.
+- A composed conclusion that is not declared as an edge is an under-invalidation defect,
+  not a modelling shortcut.
+
+See **ADR-0014**.
+
 ---
 
 ## 26. GuidanceSource Aggregate
@@ -2142,12 +2175,21 @@ If recalculation fails:
 
 ### 41.5 Selective Invalidation
 
+The affected set is **resolved from the declarations**, never from a hand-maintained
+list: the `RuleDependencyDefinition` rows of every active rule, matched on input kind
+and key, then closed transitively over `RuleCompositionEdge` (§25.4).
+
+Key matching: a dependency declaring no `input_key` matches any change of its kind, and
+a change that does not name a key matches every declaration of its kind. The unspecified
+case therefore over-invalidates. That is the correct default — over-invalidating costs a
+recalculation, under-invalidating shows a conclusion whose inputs have moved.
+
 Examples:
 
 | Changed input | Requirements invalidated |
 |---|---|
-| Proposed application date | status holding period, qualifying period, physical presence, total absences, final-year absences |
-| Travel record | qualifying period where boundary affected, physical presence, total absences, final-year absences, travel consistency |
+| Proposed application date | status holding period, qualifying period, physical presence, total absences, final-year absences, adult applicant, **and the composite via §25.4** |
+| Travel record | physical presence, total absences, final-year absences, travel consistency — **not** qualifying period, which reads only the application date |
 | English record | English-language requirement, preparation completeness |
 | Second referee | second-referee requirement, preparation completeness |
 | Evidence deletion | requirements depending on facts supported by that evidence |

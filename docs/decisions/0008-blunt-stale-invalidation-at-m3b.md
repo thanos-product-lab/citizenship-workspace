@@ -1,6 +1,6 @@
 # ADR-0008: Stale invalidation is blunt at M3B; selective invalidation waits for M6
 
-**Status:** Accepted
+**Status:** Superseded by [ADR-0014](0014-selective-dependency-invalidation.md) (2026-08-19)
 **Date:** 2026-08-13
 **Milestone:** M3B (Deterministic Rules and Immutable Assessments)
 
