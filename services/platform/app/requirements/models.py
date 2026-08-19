@@ -113,3 +113,16 @@ class RuleCompositionEdge(Base):
     rule_version_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("rule_versions.id"))
     upstream_requirement_key: Mapped[str] = mapped_column(String(60))
     required: Mapped[bool] = mapped_column(Boolean)
+
+
+#: The catalog tables: global reference data seeded by migrations, identical for every
+#: tenant, never per-case state. Declared here rather than repeated by each consumer, so a
+#: new catalog table joins the set by existing. The test suite excludes these from its
+#: per-test TRUNCATE — a table missing from this tuple has its seed wiped after the first
+#: test, and every read then returns empty in a way that reads as a logic bug.
+CATALOG_TABLES: tuple[str, ...] = (
+    RequirementDefinition.__tablename__,
+    RuleVersion.__tablename__,
+    RuleDependencyDefinition.__tablename__,
+    RuleCompositionEdge.__tablename__,
+)
