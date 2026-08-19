@@ -7,10 +7,16 @@ A rule *declares* dependencies by input class (ROUTE_PROFILE); a result *links* 
 concrete version read (ROUTE_PROFILE_VERSION). The test maps one to the other and asserts
 the (kind, input_key) sets are equal.
 
-Scope: this checks *input-version* provenance only. `route.standard_section_6_1` also
-depends on the adult/status *conclusions* — a result→result edge §25.1 has no input kind
-for — which is deliberately not a link and is owned by selective invalidation (M6,
-ADR-0007). So a green here does not by itself prove the composite is invalidation-complete.
+`route.standard_section_6_1` also depends on the adult/status *conclusions* — a
+result→result edge §25.1 has no input kind for, so deliberately not a link. Since ADR-0014
+that edge is declared in `rule_composition_edges`, and
+`test_composition_edges_match_the_conclusions_the_composite_records` below holds it to the
+same strict equality. Between the two, every input a rule reads is declared somewhere the
+invalidation service also reads.
+
+What this file still cannot prove: that a rule does not read an input it neither links nor
+declares. Nothing structural reveals that — only behaviour does, which is what
+`test_invalidation_completeness.py` is for.
 """
 
 from collections.abc import Callable
@@ -22,8 +28,10 @@ from sqlalchemy.orm import Session
 
 from app.assessments.domain import AssessmentInputLink, AssessmentResult
 from app.requirements.domain import Currency
+from app.requirements.evaluation import IN_SCOPE_REQUIREMENT_KEYS
 from app.requirements.models import (
     RequirementDefinition,
+    RuleCompositionEdge,
     RuleDependencyDefinition,
     RuleVersion,
 )
@@ -41,13 +49,34 @@ SUPPORTED_ANSWERS = {
     "may_already_be_british": False,
 }
 # Rules with only scalar (ANY_CURRENT_VERSION) dependencies, so links == declared deps as a
-# strict (kind, input_key) set. status.holding_period joins the three route rules here.
-ROUTE_KEYS = (
+# strict (kind, input_key) set. `residence.qualifying_period` belongs here despite its group:
+# it reads the application date and nothing else, which is exactly why a travel change must
+# not stale it (ADR-0014). It was previously in neither provenance test — the one rule whose
+# narrowing selective invalidation depends on was the one rule with no provenance check.
+SCALAR_DEPENDENCY_KEYS = (
     "route.adult_applicant",
     "route.supported_status",
     "route.standard_section_6_1",
     "status.holding_period",
+    "residence.qualifying_period",
 )
+
+# Rules declaring ALL_ACTIVE_TRAVEL_RECORDS, which fans out to one link per active record —
+# so kinds are checked strictly and the travel links are checked against the active set.
+TRAVEL_FANOUT_KEYS = (
+    "residence.physical_presence_start_date",
+    "residence.total_absences",
+    "residence.final_year_absences",
+    "residence.travel_consistency",
+)
+
+# The composite records each upstream conclusion under its own summary-parameter name.
+# Spelled out rather than derived by string surgery, so a third upstream added to the rule
+# fails the assertion below with a readable message instead of being silently mis-mapped.
+_SUMMARY_PARAMETER_TO_REQUIREMENT = {
+    "adult_conclusion": "route.adult_applicant",
+    "status_conclusion": "route.supported_status",
+}
 
 # A rule's declared dependency kind → the version-link kind a result records for it.
 _DEPENDENCY_TO_LINK = {
@@ -72,7 +101,7 @@ def test_input_links_equal_declared_dependencies(api: Api, db_session: Session) 
     case_id = _case_with_date(api, "user_a")
     api("user_a").post(f"/api/v1/cases/{case_id}/assessments/recalculate")
 
-    for key in ROUTE_KEYS:
+    for key in SCALAR_DEPENDENCY_KEYS:
         definition = db_session.scalar(
             select(RequirementDefinition).where(RequirementDefinition.requirement_key == key)
         )
@@ -137,12 +166,7 @@ def test_residence_links_cover_declared_kinds_and_every_active_trip(
         # every seeded trip has exactly one version here, all active
     }
 
-    for key in (
-        "residence.physical_presence_start_date",
-        "residence.total_absences",
-        "residence.final_year_absences",
-        "residence.travel_consistency",
-    ):
+    for key in TRAVEL_FANOUT_KEYS:
         definition = db_session.scalar(
             select(RequirementDefinition).where(RequirementDefinition.requirement_key == key)
         )
@@ -178,3 +202,73 @@ def test_residence_links_cover_declared_kinds_and_every_active_trip(
             link.input_version_id for link in links if link.input_kind == "TRAVEL_RECORD_VERSION"
         }
         assert travel_ids == active_travel_version_ids  # every active trip, exactly
+
+
+def test_every_in_scope_rule_is_covered_by_a_provenance_test() -> None:
+    """No evaluated rule may sit outside both checks above.
+
+    `residence.qualifying_period` did exactly that until ADR-0014: in neither key list, so
+    its links were never compared to its declarations, so nothing would have caught it
+    reading an input it had not declared. The gap was invisible because both tests passed.
+    A coverage assertion is cheap; noticing the omission by eye evidently is not.
+    """
+    covered = set(SCALAR_DEPENDENCY_KEYS) | set(TRAVEL_FANOUT_KEYS)
+    assert covered == set(IN_SCOPE_REQUIREMENT_KEYS), (
+        "requirements with an evaluator but no provenance check: "
+        f"{sorted(set(IN_SCOPE_REQUIREMENT_KEYS) - covered)}"
+    )
+
+
+def test_composition_edges_match_the_conclusions_the_composite_records(
+    api: Api, db_session: Session
+) -> None:
+    """The composite's declared composition edges equal the upstream conclusions it actually
+    composed — strict equality, the same standard as input links.
+
+    This is the result→result half of provenance. Selective invalidation stales the composite
+    by walking these edges, so an edge missing here is an under-fire: the composite would read
+    CURRENT after an upstream conclusion moved beneath it. An edge that is declared but not
+    composed is the reverse — an over-fire, harmless, but still a lie about what the rule reads.
+    """
+    case_id = _case_with_date(api, "user_a")
+    api("user_a").post(f"/api/v1/cases/{case_id}/assessments/recalculate")
+
+    definition = db_session.scalar(
+        select(RequirementDefinition).where(
+            RequirementDefinition.requirement_key == "route.standard_section_6_1"
+        )
+    )
+    assert definition is not None
+    rule_version = db_session.scalar(
+        select(RuleVersion).where(RuleVersion.requirement_id == definition.id)
+    )
+    assert rule_version is not None
+
+    declared = {
+        edge.upstream_requirement_key
+        for edge in db_session.scalars(
+            select(RuleCompositionEdge).where(
+                RuleCompositionEdge.rule_version_id == rule_version.id
+            )
+        )
+    }
+    result = db_session.scalar(
+        select(AssessmentResult).where(
+            AssessmentResult.requirement_id == definition.id,
+            AssessmentResult.currency == Currency.CURRENT.value,
+        )
+    )
+    assert result is not None
+
+    composed = set()
+    for name in result.summary_parameters:
+        if not name.endswith("_conclusion"):
+            continue
+        assert name in _SUMMARY_PARAMETER_TO_REQUIREMENT, (
+            f"the composite records {name!r} but no requirement is mapped to it — add the "
+            "mapping and the matching composition edge, or this conclusion is composed "
+            "without being declared, which selective invalidation cannot see"
+        )
+        composed.add(_SUMMARY_PARAMETER_TO_REQUIREMENT[name])
+
+    assert composed == declared, f"composed {sorted(composed)} != declared {sorted(declared)}"

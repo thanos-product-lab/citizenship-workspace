@@ -36,11 +36,14 @@ test-be:
 # does not error.
 
 # Hypothesis property suite for the deterministic rules (DETERMINISTIC_RULES_SPEC.md §10).
+# Selects by marker across the whole suite, not by directory: the invalidation-completeness
+# properties are DB-backed and live under tests/assessments, and a directory-scoped recipe
+# silently skipped them while still reporting green.
 test-rules:
-    @if [ -d services/platform/tests/rules ]; then \
-        cd services/platform && uv run pytest tests/rules -m property -q; \
+    @if [ -d services/platform/tests ]; then \
+        cd services/platform && uv run pytest -m property -q; \
     else \
-        echo "test-rules: services/platform/tests/rules not present yet (pre-M3B); skipping."; \
+        echo "test-rules: services/platform/tests not present yet (pre-M3B); skipping."; \
     fi
 
 # Frontend tests (vitest + testing-library).
