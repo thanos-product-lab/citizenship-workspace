@@ -287,18 +287,30 @@ describe("issues destination accessibility", () => {
     // The button that clears the queue is destroyed by the success it reports. Without a
     // region outside the card and a focus target, a screen-reader user hears nothing and
     // lands on <body>.
-    queueReturns(
-      aQueue({
-        open_count: 2,
-        groups: [
-          {
-            action_group: "CONFIRM_INFORMATION",
-            issues: [anIssue(), anIssue({ id: "i2" })],
-          },
-        ],
-      }),
-    );
-    post.mockResolvedValue({ data: { requirements: [{ conclusion: "SUPPORTED" }] } });
+    // The queue must actually empty. The announcement is derived from the count changing,
+    // not from a mutation callback — React Query drops mutate() callbacks when the calling
+    // component unmounts, and clearing the queue unmounts the group the button lives in.
+    // A mock that returns the same payload twice would let that defect pass, as it did.
+    const populated = aQueue({
+      open_count: 2,
+      groups: [
+        { action_group: "CONFIRM_INFORMATION", issues: [anIssue(), anIssue({ id: "i2" })] },
+      ],
+    });
+    const cleared = aQueue({
+      history: [anIssue({ status: "RESOLVED", resolved_at: "2026-08-20T11:00:00Z" })],
+    });
+    let recalculated = false;
+    get.mockImplementation((path: string) => {
+      if (path === "/api/v1/cases/{case_id}/issues") {
+        return Promise.resolve({ data: recalculated ? cleared : populated });
+      }
+      return Promise.resolve({ data: { groups: [], stale: 0 } });
+    });
+    post.mockImplementation(() => {
+      recalculated = true;
+      return Promise.resolve({ data: { requirements: [{ conclusion: "SUPPORTED" }] } });
+    });
     renderWithQuery(<IssuesDestination caseId={CASE} />);
 
     fireEvent.click(await screen.findByRole("button", { name: /recheck now/i }));

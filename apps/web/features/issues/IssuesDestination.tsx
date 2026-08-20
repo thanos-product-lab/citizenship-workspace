@@ -52,6 +52,34 @@ export function IssuesDestination({ caseId }: { caseId: string }): JSX.Element {
 
   const openCount = queue?.open_count ?? 0;
 
+  // Announce from *observed* state, not from a mutation callback.
+  //
+  // The obvious implementation passes onSuccess to mutate() from the button. React Query
+  // drops those callbacks when the calling component unmounts — and clearing the queue
+  // unmounts the group the button lives in, so the announcement never fires and focus is
+  // never returned. A jsdom test does not catch it, because the mocked mutation settles
+  // before the unmount; the browser does. So the parent records only that a recheck was
+  // asked for, and derives what to say from the count actually changing.
+  const [recheckRequested, setRecheckRequested] = useState(false);
+  const previousOpenCount = useRef(openCount);
+
+  useEffect(() => {
+    const previous = previousOpenCount.current;
+    previousOpenCount.current = openCount;
+    if (!recheckRequested || isFetching || status === "pending") return;
+    if (previous === openCount) return;
+
+    const cleared = previous - openCount;
+    setAnnouncement(
+      cleared > 0
+        ? `Recheck finished. ${cleared === 1 ? "1 issue" : `${cleared} issues`} resolved.` +
+            (openCount === 0 ? " Nothing needs your attention." : "")
+        : "Recheck finished.",
+    );
+    setRecheckRequested(false);
+    setReturnFocus(true);
+  }, [openCount, recheckRequested, isFetching, status]);
+
   return (
     <section aria-labelledby="issues-heading">
       <h2 id="issues-heading" className="cw-case-data__heading" ref={headingRef} tabIndex={-1}>
@@ -101,9 +129,10 @@ export function IssuesDestination({ caseId }: { caseId: string }): JSX.Element {
               key={group.action_group}
               caseId={caseId}
               group={group}
-              onResolved={(message) => {
-                setReturnFocus(true);
-                setAnnouncement(message);
+              onRecheckRequested={() => setRecheckRequested(true)}
+              onRecheckFailed={() => {
+                setAnnouncement("The recheck did not complete. Nothing has changed.");
+                setRecheckRequested(false);
               }}
             />
           ))}
@@ -145,11 +174,13 @@ function SettledStatement({ caseId }: { caseId: string }): JSX.Element {
 function IssueGroupSection({
   caseId,
   group,
-  onResolved,
+  onRecheckRequested,
+  onRecheckFailed,
 }: {
   caseId: string;
   group: IssueGroup;
-  onResolved: (message: string) => void;
+  onRecheckRequested: () => void;
+  onRecheckFailed: () => void;
 }): JSX.Element {
   const headingId = `issue-group-${group.action_group}`;
   const recheckable = group.issues.some((issue) => issue.issue_type === "STALE_ASSESSMENT");
@@ -167,7 +198,11 @@ function IssueGroupSection({
       </div>
 
       {recheckable ? (
-        <RecheckAction caseId={caseId} count={group.issues.length} onResolved={onResolved} />
+        <RecheckAction
+          caseId={caseId}
+          onRequested={onRecheckRequested}
+          onFailed={onRecheckFailed}
+        />
       ) : null}
 
       <ul className="cw-issue-group__list" role="list">
@@ -218,15 +253,19 @@ function AffectedLink({ caseId, issue }: { caseId: string; issue: Issue }): JSX.
  */
 function RecheckAction({
   caseId,
-  count,
-  onResolved,
+  onRequested,
+  onFailed,
 }: {
   caseId: string;
-  count: number;
-  onResolved: (message: string) => void;
+  onRequested: () => void;
+  onFailed: () => void;
 }): JSX.Element {
   const { mutation } = useRecalculate(caseId);
   const busy = mutation.isPending;
+
+  useEffect(() => {
+    if (mutation.isError) onFailed();
+  }, [mutation.isError, onFailed]);
 
   return (
     <div className="cw-issue-group__action">
@@ -236,17 +275,10 @@ function RecheckAction({
         aria-disabled={busy}
         onClick={() => {
           if (busy) return;
-          mutation.mutate(undefined, {
-            onSuccess: () =>
-              // Describe the queue, not the run: the user is reading a list, and what
-              // they need to hear is that it changed under them.
-              onResolved(
-                count === 1
-                  ? "Recheck finished. 1 issue resolved."
-                  : `Recheck finished. ${count} issues resolved.`,
-              ),
-            onError: () => onResolved("The recheck did not complete. Nothing has changed."),
-          });
+          // Only a flag, set synchronously while this component is certainly mounted.
+          // The outcome is announced by the parent, which survives the queue emptying.
+          onRequested();
+          mutation.mutate();
         }}
       >
         {busy ? "Rechecking…" : "Recheck now"}
