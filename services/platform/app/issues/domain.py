@@ -203,8 +203,9 @@ class IssuesReconciled(DomainEvent):
     exactly what an append-only log exists not to depend on (§39).
 
     Structural only (§38.1): a deduplication key is issue type + affected object type +
-    a catalogue identifier (a requirement key). No conclusion, date, destination or other
-    case content.
+    an identifier — a requirement key from the catalogue, or an opaque travel-record UUID,
+    both of which §38.1 admits. Never a conclusion, a date, a destination label or any
+    other case content.
 
     This replaces §38's per-issue `IssueOpened` / `IssueResolved` / `IssueReopened`, which
     presuppose issues being created one at a time by a handler. Reconciliation moves the

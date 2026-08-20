@@ -1670,15 +1670,33 @@
   margin-bottom: var(--cw-space-1);
 }
 
-/* A quiet action: available, but not competing with the primary one on the card. */
-.cw-button--quiet {
-  background: transparent;
-  border-color: transparent;
-  color: var(--cw-text-muted);
-  text-decoration: underline;
-  text-underline-offset: 3px;
+/* The card's action slot. Gives the failure alert a full-width row of its own rather than
+   letting it be width-bound by the control beside it. */
+.cw-issue-card__actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--cw-space-2);
 }
 
-.cw-button--quiet:hover {
-  color: var(--cw-text);
+.cw-issue-card__dismiss {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--cw-space-1);
+}
+
+.cw-issue-card__dismiss-error {
+  font-size: var(--cw-text-sm);
+  color: var(--cw-status-not-satisfied);
+  text-align: right;
+}
+
+.cw-issue-queue__caveat {
+  margin: 0 0 var(--cw-space-5);
+  padding-left: var(--cw-space-3);
+  border-left: 3px solid var(--cw-currency-stale);
+  font-size: var(--cw-text-sm);
+  color: var(--cw-text-muted);
+  max-width: 62ch;
 }

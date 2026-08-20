@@ -225,6 +225,37 @@ class AssessmentRepository:
         return [(key, result.id) for key, result in rows]
 
     @staticmethod
+    def list_travel_input_version_ids(
+        session: Session, case_id: uuid.UUID, requirement_key: str
+    ) -> list[uuid.UUID]:
+        """The travel-record versions a requirement's displayed result recorded reading.
+
+        This is the provenance graph answering "what did the rule actually look at" — which
+        is how issue derivation tells a record the evaluator judged to be out of scope from
+        one it has never seen. Both are absent from the limitation; only one of them is
+        safe to describe as harmless.
+        """
+        return list(
+            session.scalars(
+                select(AssessmentInputLink.input_version_id)
+                .join(
+                    AssessmentResult,
+                    AssessmentResult.id == AssessmentInputLink.assessment_result_id,
+                )
+                .join(
+                    RequirementDefinition,
+                    RequirementDefinition.id == AssessmentResult.requirement_id,
+                )
+                .where(
+                    AssessmentResult.case_id == case_id,
+                    RequirementDefinition.requirement_key == requirement_key,
+                    AssessmentResult.currency.in_(_SUPERSEDABLE),
+                    AssessmentInputLink.input_kind == "TRAVEL_RECORD_VERSION",
+                )
+            )
+        )
+
+    @staticmethod
     def list_requirements_with_active_result(
         session: Session, case_id: uuid.UUID
     ) -> list[tuple[RequirementDefinition, AssessmentResult | None]]:

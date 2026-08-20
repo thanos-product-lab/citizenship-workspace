@@ -103,6 +103,22 @@ class TravelRecordRepository:
         return [(record, version) for record, version in session.execute(stmt)]
 
     @staticmethod
+    def map_versions_to_records(session: Session, case_id: uuid.UUID) -> dict[str, str]:
+        """Every travel-record version in the case, mapped to the record it belongs to —
+        superseded versions included.
+
+        A limitation names the *versions* an evaluator read. When the result carrying it is
+        stale, those versions are no longer current, so a current-only lookup silently drops
+        them: the overlap a rule found looks resolved and the queue under-reports it.
+        """
+        rows = session.execute(
+            select(TravelRecordVersion.id, TravelRecordVersion.travel_record_id)
+            .join(TravelRecord, TravelRecord.id == TravelRecordVersion.travel_record_id)
+            .where(TravelRecord.case_id == case_id)
+        ).all()
+        return {str(version_id): str(record_id) for version_id, record_id in rows}
+
+    @staticmethod
     def add_record(session: Session, record: TravelRecord) -> None:
         session.add(record)
 

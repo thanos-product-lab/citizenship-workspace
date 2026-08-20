@@ -312,7 +312,7 @@ edit path. Recorded here rather than shipped as an unreachable branch.
 **Three other issue types are producible but not by this fixture**, and are covered by
 `tests/issues/test_derived_types.py` instead: `OVERLAPPING_TRAVEL`, `UNCERTAIN_TRAVEL_DATE`
 (in-window, not dismissible; out-of-window, dismissible — the only dismissible thing in the
-product today), and `UNSUPPORTED_COMPLEXITY`, which the absence bands raise above 460 days.
+product today), and `UNSUPPORTED_COMPLEXITY`, which the absence bands raise above 450 days.
 The canonical case is deliberately clean of all three: it demonstrates a well-kept case, and
 loading it with every defect at once would make the stale transition harder to see.
 

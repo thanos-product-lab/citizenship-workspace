@@ -367,7 +367,7 @@ describe("dismissing an issue", () => {
 
     // Two cards, one Dismiss: the control's absence mirrors the server's refusal.
     await screen.findAllByRole("article");
-    expect(screen.getAllByRole("button", { name: /^dismiss$/i })).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: /^dismiss/i })).toHaveLength(1);
   });
 
   it("does not hide the card before the server has agreed", async () => {
@@ -383,7 +383,7 @@ describe("dismissing an issue", () => {
     post.mockImplementation(() => new Promise((resolve) => (resolveDismiss = resolve)));
     renderWithQuery(<IssuesDestination caseId={CASE} />);
 
-    fireEvent.click(await screen.findByRole("button", { name: /^dismiss$/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /^dismiss/i }));
 
     await waitFor(() => expect(screen.getByText("Dismissing…")).toBeInTheDocument());
     expect(screen.getByRole("article", { name: /Japan/i })).toBeInTheDocument();
@@ -411,7 +411,7 @@ describe("dismissing an issue", () => {
     });
     renderWithQuery(<IssuesDestination caseId={CASE} />);
 
-    fireEvent.click(await screen.findByRole("button", { name: /^dismiss$/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /^dismiss/i }));
 
     await waitFor(() =>
       expect(screen.getByText(/Japan has uncertain dates dismissed/i)).toBeInTheDocument(),
@@ -429,9 +429,108 @@ describe("dismissing an issue", () => {
     post.mockResolvedValue({ data: undefined, error: { detail: "nope" } });
     renderWithQuery(<IssuesDestination caseId={CASE} />);
 
-    fireEvent.click(await screen.findByRole("button", { name: /^dismiss$/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /^dismiss/i }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(/still open/i);
     expect(screen.getByRole("article", { name: /Japan/i })).toBeInTheDocument();
+  });
+});
+
+describe("dismissing more than one issue", () => {
+  it("allows only one dismissal in flight", async () => {
+    // Every card shares one mutation observer. Starting a second detaches it from the
+    // first, so the first dismissal is never announced, focus is never returned, and a
+    // failure renders no alert. Owning the mutation in the parent fixed unmount, not
+    // supersession.
+    const first = anIssue({
+      id: "d1",
+      dismissibility: "DISMISSIBLE",
+      severity: "INFORMATION",
+      action_group: "FOR_YOUR_AWARENESS",
+      title: "Trip A has uncertain dates",
+      affected_object_type: "TravelRecord",
+      affected_object_id: "rec-a",
+    });
+    const second = anIssue({
+      id: "d2",
+      dismissibility: "DISMISSIBLE",
+      severity: "INFORMATION",
+      action_group: "FOR_YOUR_AWARENESS",
+      title: "Trip B has uncertain dates",
+      affected_object_type: "TravelRecord",
+      affected_object_id: "rec-b",
+    });
+    queueReturns(
+      aQueue({
+        open_count: 2,
+        groups: [{ action_group: "FOR_YOUR_AWARENESS", issues: [first, second] }],
+      }),
+    );
+    post.mockImplementation(() => new Promise(() => {}));
+    renderWithQuery(<IssuesDestination caseId={CASE} />);
+
+    const buttons = await screen.findAllByRole("button", { name: /^dismiss/i });
+    expect(buttons).toHaveLength(2);
+    fireEvent.click(buttons[0]!);
+
+    await waitFor(() => expect(screen.getByText("Dismissing…")).toBeInTheDocument());
+    // The other card's control is refused while the first is in flight.
+    const stillIdle = screen.getAllByRole("button", { name: /^dismiss/i })[1]!;
+    expect(stillIdle).toHaveAttribute("aria-disabled", "true");
+    fireEvent.click(stillIdle);
+    expect(post).toHaveBeenCalledTimes(1);
+  });
+
+  it("names the issue in the Dismiss control so a control list stays unambiguous", async () => {
+    queueReturns(
+      aQueue({
+        open_count: 1,
+        groups: [
+          {
+            action_group: "FOR_YOUR_AWARENESS",
+            issues: [
+              anIssue({
+                id: "d1",
+                dismissibility: "DISMISSIBLE",
+                severity: "INFORMATION",
+                action_group: "FOR_YOUR_AWARENESS",
+                title: "Your trip to Japan has uncertain dates",
+              }),
+            ],
+          },
+        ],
+      }),
+    );
+    renderWithQuery(<IssuesDestination caseId={CASE} />);
+
+    // Contains the visible label as its prefix, so 2.5.3 Label in Name holds.
+    const button = await screen.findByRole("button", {
+      name: /^Dismiss Your trip to Japan has uncertain dates$/,
+    });
+    expect(button).toBeInTheDocument();
+  });
+
+  it("gives a travel-record issue a way through to the trip", async () => {
+    queueReturns(
+      aQueue({
+        open_count: 1,
+        groups: [
+          {
+            action_group: "CONFIRM_INFORMATION",
+            issues: [
+              anIssue({
+                affected_object_type: "TravelRecord",
+                affected_object_id: "rec-1",
+                title: "Confirm the dates of your trip to Greece",
+              }),
+            ],
+          },
+        ],
+      }),
+    );
+    renderWithQuery(<IssuesDestination caseId={CASE} />);
+
+    const link = await screen.findByRole("link", { name: /travel history/i });
+    expect(link).toHaveAttribute("href", "/cases/c1/data");
   });
 });

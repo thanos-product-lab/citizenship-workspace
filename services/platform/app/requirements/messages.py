@@ -433,8 +433,11 @@ def render_stale_reason(code: str | None, parameters: Parameters | None = None) 
 #: described as standing, holding, or still valid.
 ISSUE_TITLE_TEMPLATES: dict[str, _Template] = {
     "ISSUE_STALE_ASSESSMENT": lambda p: f"Recheck {p.get('requirement_title', 'this requirement')}",
-    "ISSUE_NEAR_THRESHOLD": lambda p: (
+    "ISSUE_NEAR_THRESHOLD_ABSENCES": lambda p: (
         f"{p.get('requirement_title', 'This requirement')} is close to its threshold"
+    ),
+    "ISSUE_NEAR_THRESHOLD_STATUS_PERIOD": lambda p: (
+        "Your application date is close to the earliest one that qualifies"
     ),
     "ISSUE_UNSUPPORTED_COMPLEXITY": lambda p: (
         f"{p.get('requirement_title', 'This requirement')} needs further review"
@@ -455,9 +458,13 @@ ISSUE_BODY_TEMPLATES: dict[str, _Template] = {
         "An input behind this conclusion changed, so it has not been rechecked. "
         "The conclusion shown is the one reached before that change."
     ),
-    "ISSUE_NEAR_THRESHOLD": lambda p: (
-        "The figure behind this conclusion sits close to the threshold it is measured "
-        "against. Small changes to your records could move it across."
+    "ISSUE_NEAR_THRESHOLD_ABSENCES": lambda p: (
+        "The number of days behind this conclusion sits close to the threshold it is "
+        "measured against. Small changes to your travel records could move it across."
+    ),
+    "ISSUE_NEAR_THRESHOLD_STATUS_PERIOD": lambda p: (
+        "You will have held your settled status free of time restrictions for just over "
+        "the required 12 months on your proposed application date."
     ),
     # UI/UX §10.2, close to verbatim. The point of the wording is that stopping is a
     # deliberate outcome, not a breakdown: the product says what it will not do and why.
@@ -488,8 +495,14 @@ ISSUE_IMPACT_TEMPLATES: dict[str, _Template] = {
     # States the sensitivity, never the outcome. "You may be refused" is a prediction this
     # product does not make (CLAUDE.md §1); "a few days either way changes the band" is a
     # property of the calculation the user can check.
-    "ISSUE_NEAR_THRESHOLD": lambda p: (
+    "ISSUE_NEAR_THRESHOLD_ABSENCES": lambda p: (
         "A small correction to your travel records could change which band this falls in."
+    ),
+    # Names the inputs that actually move this figure. Travel records cannot: the holding
+    # period reads the grant date and the application date, and has no bands.
+    "ISSUE_NEAR_THRESHOLD_STATUS_PERIOD": lambda p: (
+        "A correction to your grant date, or an earlier application date, could put this "
+        "below the required period."
     ),
     "ISSUE_UNSUPPORTED_COMPLEXITY": lambda p: (
         "This requirement has no conclusion from us. It needs a person who can advise on "

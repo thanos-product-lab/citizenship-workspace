@@ -144,7 +144,9 @@ def test_an_absence_total_the_prototype_will_not_assess_raises_a_blocking_issue(
 
     issues = _of_type(_queue(api, case_id), "UNSUPPORTED_COMPLEXITY")
     assert issues, _queue(api, case_id)
-    assert issues[0]["severity"] == "BLOCKING"
+    # REVIEW_REQUIRED, not BLOCKING: the bands escalate here because guidance normally
+    # exercises discretion in this range, and nothing in the product is gated on it.
+    assert issues[0]["severity"] == "REVIEW_REQUIRED"
     assert issues[0]["dismissibility"] == "NOT_DISMISSIBLE"
     assert "paused" in (issues[0]["body"] or "")
     # And it does not also raise a near-threshold item for the same requirement.
@@ -152,7 +154,7 @@ def test_an_absence_total_the_prototype_will_not_assess_raises_a_blocking_issue(
     assert "residence.total_absences" not in affected
 
 
-def test_a_blocking_issue_cannot_be_dismissed(api: Api) -> None:
+def test_an_escalated_issue_cannot_be_dismissed(api: Api) -> None:
     case_id = _case(api)
     _trip(api, case_id, "2023-01-01", "2025-01-01")
     _recalc(api, case_id)
@@ -375,3 +377,132 @@ def test_a_dismissed_issue_reopens_when_its_cause_goes_and_returns(api: Api) -> 
         "SYSTEM_AUTO_RESOLVED",
         "USER_DISMISSED",
     ]
+
+
+# --- the two defects a reviewer reproduced -----------------------------------
+
+
+def test_an_issue_reshapes_when_its_cause_changes_shape(api: Api) -> None:
+    """A live issue's severity, dismissibility and wording are reconciled, not frozen at
+    open time.
+
+    `UNCERTAIN_TRAVEL_DATE` is the one type whose shape varies under a fixed deduplication
+    key. Freeze it and the queue keeps saying "this trip falls outside your qualifying
+    period, so it does not affect any figure" — with a Dismiss button beside it — about a
+    date that is now holding a figure back.
+    """
+    case_id = _case(api)
+    _trip(api, case_id, "2021-01-10", "2021-02-10", label="Japan", confidence="ESTIMATED")
+    _recalc(api, case_id)
+    before = _of_type(_queue(api, case_id), "UNCERTAIN_TRAVEL_DATE")[0]
+    assert before["dismissibility"] == "DISMISSIBLE"
+
+    # Move the application date so the same trip now sits inside the qualifying period.
+    current = api("user_a").get(f"/api/v1/cases/{case_id}/application-dates").json()
+    api("user_a").post(
+        f"/api/v1/cases/{case_id}/application-dates/select",
+        json={"application_date": "2025-06-01", "expected_revision": current["revision"]},
+    )
+    _recalc(api, case_id)
+
+    after = _of_type(_queue(api, case_id), "UNCERTAIN_TRAVEL_DATE")[0]
+    assert after["id"] == before["id"], "the same cause should keep its issue"
+    assert after["severity"] == "ACTION_REQUIRED"
+    assert after["dismissibility"] == "NOT_DISMISSIBLE"
+    assert "outside your qualifying period" not in (after["body"] or "")
+
+
+def test_a_dismissal_does_not_survive_the_issue_becoming_serious(api: Api) -> None:
+    """The user set the issue aside *as it was presented*. Presented differently, it is a
+    different judgement, and the dismissal is spent."""
+    case_id = _case(api)
+    _trip(api, case_id, "2021-01-10", "2021-02-10", label="Japan", confidence="ESTIMATED")
+    _recalc(api, case_id)
+    issue = _of_type(_queue(api, case_id), "UNCERTAIN_TRAVEL_DATE")[0]
+    api("user_a").post(f"/api/v1/cases/{case_id}/issues/{issue['id']}/dismiss")
+    assert _queue(api, case_id)["open_count"] == 0
+
+    current = api("user_a").get(f"/api/v1/cases/{case_id}/application-dates").json()
+    api("user_a").post(
+        f"/api/v1/cases/{case_id}/application-dates/select",
+        json={"application_date": "2025-06-01", "expected_revision": current["revision"]},
+    )
+    _recalc(api, case_id)
+
+    reopened = _of_type(_queue(api, case_id), "UNCERTAIN_TRAVEL_DATE")
+    assert len(reopened) == 1
+    assert reopened[0]["id"] == issue["id"]
+    assert reopened[0]["dismissibility"] == "NOT_DISMISSIBLE"
+
+
+def test_a_stale_result_does_not_make_an_overlap_look_resolved(api: Api) -> None:
+    """A limitation names the record *versions* the evaluator read. Match those against
+    current versions only and a stale result drops them all — so an overlap that still
+    exists reads as fixed, and the queue records a resolution that never happened."""
+    case_id = _case(api)
+    _trip(api, case_id, "2023-06-01", "2023-07-01", label="Spain")
+    _trip(api, case_id, "2023-06-15", "2023-07-20", label="Portugal")
+    _recalc(api, case_id)
+    assert len(_of_type(_queue(api, case_id), "OVERLAPPING_TRAVEL")) == 2
+
+    # Edit one trip so it still overlaps, leaving the result stale.
+    records = api("user_a").get(f"/api/v1/cases/{case_id}/travel-records").json()
+    portugal = next(r for r in records if r["destination_label"] == "Portugal")
+    api("user_a").patch(
+        f"/api/v1/cases/{case_id}/travel-records/{portugal['id']}",
+        json={
+            "destination_label": "Portugal",
+            "departure_date": "2023-06-15",
+            "return_date": "2023-07-21",
+            "date_confidence": "EXACT",
+            "review_state": "CONFIRMED",
+            "expected_revision": portugal["revision"],
+        },
+    )
+
+    still_open = _of_type(_queue(api, case_id), "OVERLAPPING_TRAVEL")
+    assert len(still_open) == 2, "the trips still overlap; the issues must not self-resolve"
+
+
+def test_a_trip_the_evaluator_has_not_seen_is_never_called_harmless(api: Api) -> None:
+    """A record added since the last assessment is absent from the limitation for the same
+    reason a genuinely out-of-window one is. Only provenance separates them: absent *and*
+    judged means out of scope; absent and unjudged means unknown, which takes the stronger
+    shape rather than offering a Dismiss button."""
+    case_id = _case(api)
+    _trip(api, case_id, "2024-02-01", "2024-03-01", label="Italy")
+    _recalc(api, case_id)
+
+    # Added after the run: clearly inside the window, and unjudged.
+    _trip(api, case_id, "2023-06-01", "2023-07-01", label="Greece", confidence="ESTIMATED")
+
+    issues = _of_type(_queue(api, case_id), "UNCERTAIN_TRAVEL_DATE")
+    assert len(issues) == 1
+    assert issues[0]["dismissibility"] == "NOT_DISMISSIBLE"
+    assert "outside your qualifying period" not in (issues[0]["body"] or "")
+
+
+def test_the_narrow_margin_issue_names_the_inputs_that_move_it(api: Api) -> None:
+    """The holding period reads the grant date and the application date. It has no bands and
+    a travel record cannot shift it, so it must not borrow the absence copy."""
+    case_id = str(api("user_a").post("/api/v1/cases", json={"title": "Margin"}).json()["id"])
+    api("user_a").put(
+        f"/api/v1/cases/{case_id}/route-profile",
+        json={**SUPPORTED_ANSWERS, "status_granted_on": "2026-06-01"},
+    )
+    api("user_a").post(f"/api/v1/cases/{case_id}/route-profile/confirm", json={})
+    api("user_a").post(
+        f"/api/v1/cases/{case_id}/application-dates/select",
+        json={"application_date": "2027-06-05"},
+    )
+    _recalc(api, case_id)
+
+    issues = [
+        i
+        for i in _of_type(_queue(api, case_id), "NEAR_THRESHOLD")
+        if i["affected_object_id"] == "status.holding_period"
+    ]
+    assert issues, _queue(api, case_id)
+    text = f"{issues[0]['body']} {issues[0]['impact']}"
+    assert "travel records" not in text
+    assert "grant date" in text

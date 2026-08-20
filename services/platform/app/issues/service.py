@@ -27,17 +27,26 @@ from datetime import UTC, datetime
 from sqlalchemy.orm import Session
 
 from app.assessments.repository import AssessmentRepository
-from app.issues.derivation import DesiredIssue, RequirementSnapshot, TravelSnapshot, derive
+from app.issues.derivation import (
+    LIMITATION_OVERLAPPING,
+    LIMITATION_UNCERTAIN,
+    DesiredIssue,
+    LimitationTargets,
+    RequirementSnapshot,
+    TravelSnapshot,
+    derive,
+)
 from app.issues.domain import (
     Dismissibility,
     Issue,
     IssueDismissed,
+    IssueSeverity,
     IssuesReconciled,
     IssueStatus,
     ResolutionType,
 )
 from app.issues.repository import IssueRepository
-from app.requirements.evaluation import UNCERTAIN_CONFIDENCES
+from app.requirements.evaluation import KEY_TRAVEL_CONSISTENCY, UNCERTAIN_CONFIDENCES
 from app.residence.repository import TravelRecordRepository
 from app.shared.errors import IllegalTransition
 from app.shared.unit_of_work import UnitOfWork
@@ -70,9 +79,17 @@ def reconcile(
     asserts that rather than trusting it.
     """
     now = at or datetime.now(UTC)
+    # The session is autoflush=False and reconciliation runs mid-command, so pending travel
+    # writes are invisible to a query until flushed: a new record has no version row yet, an
+    # edited one still joins to its previous version, a removed one still reads ACTIVE. The
+    # derivation would then see half pre-write and half post-write state, which is not the
+    # "pure function of durable state" it is documented to be.
+    session.flush()
+    requirements = _requirement_snapshots(session, case_id)
     desired = derive(
-        requirements=_requirement_snapshots(session, case_id),
+        requirements=requirements,
         travel=_travel_snapshots(session, case_id),
+        targets=_limitation_targets(session, case_id, requirements),
     )
     desired_by_key = {issue.deduplication_key: issue for issue in desired}
 
@@ -84,10 +101,18 @@ def reconcile(
     for key, wanted in desired_by_key.items():
         live = live_by_key.get(key)
         if live is not None:
-            # Already represented — including one the user dismissed. Keep its payload
-            # current so the queue reports the present cause, not the one that opened it.
-            if live.message_parameters != wanted.message_parameters:
-                live.message_parameters = dict(wanted.message_parameters)
+            # Already represented — including one the user dismissed. Its *shape* is
+            # reconciled too, not only its parameters: one cause can present differently
+            # over time. An uncertain travel date is INFORMATION and dismissible while it
+            # sits outside the qualifying period, and ACTION_REQUIRED and not dismissible
+            # once the application date moves it inside. Freezing the shape at open time
+            # would leave the queue saying "this does not affect any figure", with a Dismiss
+            # button beside it, about a date now holding a figure back.
+            if _reshape(live, wanted) and live.status == IssueStatus.DISMISSED.value:
+                # The user set aside the issue *as it was presented*. It is presented
+                # differently now, so the dismissal is spent and the item comes back.
+                live.reopen(at=now)
+                reopened.append(key)
             continue
         existing = IssueRepository.get_by_deduplication_key(session, case_id, key)
         if existing is not None and existing.status == IssueStatus.RESOLVED.value:
@@ -231,7 +256,6 @@ def _travel_snapshots(session: Session, case_id: uuid.UUID) -> list[TravelSnapsh
     return [
         TravelSnapshot(
             record_id=str(record.id),
-            version_id=str(version.id),
             label=version.destination_label,
             is_uncertain=version.date_confidence in UNCERTAIN_CONFIDENCES,
         )
@@ -239,3 +263,72 @@ def _travel_snapshots(session: Session, case_id: uuid.UUID) -> list[TravelSnapsh
             session, case_id
         )
     ]
+
+
+def _limitation_targets(
+    session: Session, case_id: uuid.UUID, requirements: list[RequirementSnapshot]
+) -> LimitationTargets:
+    """Turn the travel-record *version* ids a limitation carries into the *record* ids the
+    queue is keyed on, and say whether the window judgement behind them is still current.
+
+    Versions are resolved through the whole version history, not the current ones. A stale
+    result names the versions the evaluator read at the time; matching those against current
+    versions only would silently drop them, and an overlap the rules found would look
+    resolved.
+    """
+    versions_to_records = TravelRecordRepository.map_versions_to_records(session, case_id)
+
+    def _records(code: str) -> frozenset[str]:
+        records: set[str] = set()
+        for requirement in requirements:
+            limitation = requirement.limitation(code)
+            if limitation is None:
+                continue
+            for version_id in limitation.get("affected_input_ids", []):
+                record_id = versions_to_records.get(str(version_id))
+                if record_id is not None:
+                    records.add(record_id)
+        return frozenset(records)
+
+    # Which records the window judgement actually covers: the travel inputs the consistency
+    # result recorded reading. Provenance answering a question about provenance.
+    judged = {
+        record_id
+        for version_id in AssessmentRepository.list_travel_input_version_ids(
+            session, case_id, KEY_TRAVEL_CONSISTENCY
+        )
+        if (record_id := versions_to_records.get(str(version_id))) is not None
+    }
+
+    return LimitationTargets(
+        overlapping_records=_records(LIMITATION_OVERLAPPING),
+        uncertain_in_window_records=_records(LIMITATION_UNCERTAIN),
+        judged_records=frozenset(judged),
+    )
+
+
+def _reshape(issue: Issue, wanted: DesiredIssue) -> bool:
+    """Bring a live issue in line with what it should look like now. Returns True when the
+    change is an *escalation* — the item became more serious or stopped being dismissible —
+    which is the only case where a dismissal should not survive it."""
+    escalated = (
+        issue.dismissibility == Dismissibility.DISMISSIBLE.value
+        and wanted.dismissibility is Dismissibility.NOT_DISMISSIBLE
+    ) or _SEVERITY_RANK[wanted.severity.value] > _SEVERITY_RANK.get(issue.severity, 0)
+
+    issue.severity = wanted.severity.value
+    issue.dismissibility = wanted.dismissibility.value
+    issue.title_code = wanted.title_code
+    if issue.message_parameters != wanted.message_parameters:
+        issue.message_parameters = dict(wanted.message_parameters)
+    return escalated
+
+
+#: How serious each severity is, for deciding whether a re-shape is an escalation. Mirrors
+#: the queue's own ordering in `schemas._SEVERITY_ORDER`, inverted.
+_SEVERITY_RANK = {
+    IssueSeverity.INFORMATION.value: 0,
+    IssueSeverity.REVIEW_REQUIRED.value: 1,
+    IssueSeverity.ACTION_REQUIRED.value: 2,
+    IssueSeverity.BLOCKING.value: 3,
+}

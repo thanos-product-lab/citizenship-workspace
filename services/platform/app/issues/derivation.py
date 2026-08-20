@@ -82,13 +82,39 @@ class TravelSnapshot:
     opening another, which would read as progress where there is none."""
 
     record_id: str
-    version_id: str
     label: str
     is_uncertain: bool
 
 
+@dataclass(frozen=True)
+class LimitationTargets:
+    """Which *records* the evaluator's limitations named, resolved from the version ids they
+    actually carry, and whether that judgement is still current.
+
+    `judged_records` is load-bearing. The in-window / out-of-window split decides whether
+    an uncertain date is holding a figure back or is merely noted — the difference between
+    an issue the user must act on and one they may set aside — and it comes from a
+    limitation, which describes the case as the evaluator last saw it. A record the
+    evaluator has never seen is *absent* from that limitation for the same reason a genuinely
+    out-of-window one is, and treating the two alike would offer a Dismiss button for a trip
+    that has never been assessed.
+
+    So the two are distinguished by provenance: `judged_records` is what the consistency
+    result actually read (its recorded input links). Absent from the limitation *and* judged
+    means out of window. Absent and unjudged means unknown, and unknown takes the stronger
+    shape.
+    """
+
+    overlapping_records: frozenset[str]
+    uncertain_in_window_records: frozenset[str]
+    judged_records: frozenset[str]
+
+
 def derive(
-    *, requirements: list[RequirementSnapshot], travel: list[TravelSnapshot]
+    *,
+    requirements: list[RequirementSnapshot],
+    travel: list[TravelSnapshot],
+    targets: LimitationTargets,
 ) -> list[DesiredIssue]:
     """The complete desired open-issue set for a case.
 
@@ -98,7 +124,7 @@ def derive(
     issues: list[DesiredIssue] = []
     for requirement in requirements:
         issues.extend(_requirement_issues(requirement))
-    issues.extend(_travel_issues(requirements, travel))
+    issues.extend(_travel_issues(travel, targets))
     return issues
 
 
@@ -130,7 +156,15 @@ def _requirement_issues(requirement: RequirementSnapshot) -> list[DesiredIssue]:
         issues.append(
             DesiredIssue(
                 issue_type=IssueType.UNSUPPORTED_COMPLEXITY,
-                severity=IssueSeverity.BLOCKING,
+                # REVIEW_REQUIRED, not BLOCKING. Every producer today is an absence band,
+                # and RULES_SPEC bands 451 to 480 REQUIRES_JUDGEMENT *because* guidance
+                # normally exercises discretion there — nothing in the product is gated on
+                # it. Escalating is a successful outcome (CLAUDE.md §2.7), not a blockage,
+                # and ranking it above everything would put the discretionary case at the
+                # top of a queue where the definitive one (>900 days,
+                # NOT_CURRENTLY_SATISFIED) is a requirement outcome and raises nothing.
+                # BLOCKING is reserved for route scope, which cannot reach an active case.
+                severity=IssueSeverity.REVIEW_REQUIRED,
                 dismissibility=Dismissibility.NOT_DISMISSIBLE,
                 title_code="ISSUE_UNSUPPORTED_COMPLEXITY",
                 affected_object_type=AFFECTED_REQUIREMENT,
@@ -141,16 +175,26 @@ def _requirement_issues(requirement: RequirementSnapshot) -> list[DesiredIssue]:
     elif requirement.conclusion == Conclusion.NEAR_THRESHOLD.value or requirement.limitation(
         LIMITATION_NARROW_MARGIN
     ):
-        # A narrow margin on a SUPPORTED conclusion is the case worth having separately: the
-        # requirement reads "supported" and nothing else on the page says the margin is
-        # thin. Suppressed when the conclusion is already unsupported-complexity — one
-        # requirement should not produce two overlapping "watch this" items.
+        # Two triggers, two codes. The absence bands move with travel records; the status
+        # holding period moves with the grant date and the application date, has no bands,
+        # and cannot be shifted by a trip at all. One shared sentence would send the user to
+        # an input that does not affect the figure.
+        #
+        # A narrow margin on a SUPPORTED conclusion is worth its own item: the requirement
+        # reads "supported" and nothing else on the page says the margin is thin. Suppressed
+        # when the conclusion is already unsupported-complexity — one requirement should not
+        # produce two overlapping "watch this" items.
+        narrow_margin = requirement.limitation(LIMITATION_NARROW_MARGIN) is not None
         issues.append(
             DesiredIssue(
                 issue_type=IssueType.NEAR_THRESHOLD,
                 severity=IssueSeverity.REVIEW_REQUIRED,
                 dismissibility=Dismissibility.NOT_DISMISSIBLE,
-                title_code="ISSUE_NEAR_THRESHOLD",
+                title_code=(
+                    "ISSUE_NEAR_THRESHOLD_STATUS_PERIOD"
+                    if narrow_margin
+                    else "ISSUE_NEAR_THRESHOLD_ABSENCES"
+                ),
                 affected_object_type=AFFECTED_REQUIREMENT,
                 affected_object_id=requirement.requirement_key,
                 message_parameters={"requirement_title": requirement.title},
@@ -160,19 +204,14 @@ def _requirement_issues(requirement: RequirementSnapshot) -> list[DesiredIssue]:
     return issues
 
 
-def _travel_issues(
-    requirements: list[RequirementSnapshot], travel: list[TravelSnapshot]
-) -> list[DesiredIssue]:
-    by_version = {trip.version_id: trip for trip in travel}
-    overlapping = _affected_versions(requirements, LIMITATION_OVERLAPPING)
-    uncertain_in_window = _affected_versions(requirements, LIMITATION_UNCERTAIN)
-
+def _travel_issues(travel: list[TravelSnapshot], targets: LimitationTargets) -> list[DesiredIssue]:
+    by_record = {trip.record_id: trip for trip in travel}
     issues: list[DesiredIssue] = []
 
     # One issue per overlapping record, not one per pair: the user fixes an overlap by
     # editing a record, and a pair has no single affected object to name (§36.1).
-    for version_id in sorted(overlapping):
-        trip = by_version.get(version_id)
+    for record_id in sorted(targets.overlapping_records):
+        trip = by_record.get(record_id)
         if trip is None:
             continue
         issues.append(
@@ -190,7 +229,15 @@ def _travel_issues(
     for trip in travel:
         if not trip.is_uncertain:
             continue
-        in_window = trip.version_id in uncertain_in_window
+        # Out-of-window is the weaker shape — information the user may set aside — so it is
+        # claimed only about a record the evaluator has actually judged. A trip added since
+        # the last assessment is absent from the limitation because nothing has looked at it
+        # yet, and saying "this does not affect any figure" about it would be a guess with a
+        # Dismiss button beside it.
+        in_window = (
+            trip.record_id in targets.uncertain_in_window_records
+            or trip.record_id not in targets.judged_records
+        )
         issues.append(
             DesiredIssue(
                 issue_type=IssueType.UNCERTAIN_TRAVEL_DATE,
@@ -212,14 +259,3 @@ def _travel_issues(
         )
 
     return issues
-
-
-def _affected_versions(requirements: list[RequirementSnapshot], code: str) -> set[str]:
-    """Travel-record *version* ids named by a limitation, across every displayed result."""
-    affected: set[str] = set()
-    for requirement in requirements:
-        limitation = requirement.limitation(code)
-        if limitation is None:
-            continue
-        affected.update(str(i) for i in limitation.get("affected_input_ids", []))
-    return affected

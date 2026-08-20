@@ -128,7 +128,11 @@ export function IssuesDestination({ caseId }: { caseId: string }): JSX.Element {
 
       {status === "success" && queue ? (
         <>
-          {openCount === 0 ? <SettledStatement caseId={caseId} /> : null}
+          {openCount === 0 ? (
+            <SettledStatement caseId={caseId} />
+          ) : (
+            <NotRecheckedNote queue={queue} />
+          )}
 
           {queue.groups.map((group) => (
             <IssueGroupSection
@@ -158,6 +162,34 @@ export function IssuesDestination({ caseId }: { caseId: string }): JSX.Element {
         </>
       ) : null}
     </section>
+  );
+}
+
+/**
+ * The caveat that has to sit above the list when part of it is out of date.
+ *
+ * Items are derived from the *displayed* result, stale or current — suppressing them
+ * during a stale window would make them vanish and reappear around every recalculation.
+ * The cost is that a card can assert something in the present tense ("two of your trips
+ * cover some of the same dates") from a computation the product knows is superseded.
+ *
+ * The stale items themselves say so, but they sit in their own action group and are never
+ * adjacent to the ones they qualify. This states it once, above everything.
+ */
+function NotRecheckedNote({
+  queue,
+}: {
+  queue: { groups: { issues: Issue[] }[] };
+}): JSX.Element | null {
+  const stale = queue.groups
+    .flatMap((group) => group.issues)
+    .filter((issue) => issue.issue_type === "STALE_ASSESSMENT").length;
+  if (stale === 0) return null;
+  return (
+    <p className="cw-issue-queue__caveat">
+      Some of these were worked out before your last change and have not been rechecked, so
+      what they describe may have moved.
+    </p>
   );
 }
 
@@ -257,18 +289,38 @@ function IssueGroupSection({
   );
 }
 
+/**
+ * A way in to whatever the issue is about.
+ *
+ * Travel-record issues are precisely the ones a user must edit something to clear, so
+ * without this they offer exactly one action — dismiss, where that is even allowed — and
+ * "For your awareness" becomes a dead end with no keyboard path to the trip.
+ */
 function AffectedLink({ caseId, issue }: { caseId: string; issue: Issue }): JSX.Element | null {
-  if (issue.affected_object_type !== "Requirement") return null;
-  const key = issue.affected_object_id;
-  const label = REQUIREMENT_TITLES[key] ?? key;
-  return (
-    <a
-      className="cw-issue-card__link"
-      href={`/cases/${caseId}/requirements/${encodeURIComponent(key)}`}
-    >
-      Open {label}
-    </a>
-  );
+  if (issue.affected_object_type === "Requirement") {
+    const key = issue.affected_object_id;
+    const label = REQUIREMENT_TITLES[key] ?? key;
+    return (
+      <a
+        className="cw-issue-card__link"
+        href={`/cases/${caseId}/requirements/${encodeURIComponent(key)}`}
+      >
+        Open {label}
+      </a>
+    );
+  }
+
+  if (issue.affected_object_type === "TravelRecord") {
+    // Case data owns the travel table. There is no per-trip route yet — the IA brief's
+    // `/data/travel` is still deferred — so this lands on the page that owns the edit.
+    return (
+      <a className="cw-issue-card__link" href={`/cases/${caseId}/data`}>
+        Open your travel history
+      </a>
+    );
+  }
+
+  return null;
 }
 
 /**
@@ -341,23 +393,32 @@ function DismissAction({
 }): JSX.Element {
   const busy = state.isPending && state.variables === issue.id;
   const failed = state.isError && state.variables === issue.id;
+  // Every card shares one mutation observer, and starting a second dismissal detaches it
+  // from the first: the first card's callbacks never run, so its dismissal is never
+  // announced, focus is never returned, and a failure renders no alert anywhere. Owning
+  // the mutation in the parent fixed unmount, not supersession. One at a time.
+  const blocked = state.isPending;
 
   return (
-    <>
+    <span className="cw-issue-card__dismiss">
       <button
         type="button"
-        className="cw-button cw-button--quiet"
-        aria-disabled={busy}
-        onClick={() => (busy ? undefined : onDismiss(issue))}
+        className="cw-action cw-action--muted"
+        aria-disabled={blocked}
+        onClick={() => (blocked ? undefined : onDismiss(issue))}
       >
         {busy ? "Dismissing…" : "Dismiss"}
+        {/* Several cards can offer "Dismiss" at once, and a screen reader's control list
+            strips the surrounding card. The hidden suffix names the target without
+            replacing the visible label, so "click Dismiss" still matches (2.5.3). */}
+        {busy ? null : <span className="cw-visually-hidden"> {issue.title}</span>}
       </button>
       {failed ? (
-        <p role="alert" className="cw-case-header__error">
-          We couldn’t dismiss this. It is still open.
-        </p>
+        <span role="alert" className="cw-issue-card__dismiss-error">
+          We couldn’t dismiss “{issue.title}”. It is still open.
+        </span>
       ) : null}
-    </>
+    </span>
   );
 }
 
