@@ -48,6 +48,7 @@ function anOverview(overrides: Record<string, unknown> = {}) {
     needs_attention: 0,
     not_yet_assessed: 6,
     stale: 0,
+    open_issue_count: 0,
     open_issues: 0,
     total_requirements: 15,
     ...overrides,
@@ -234,6 +235,24 @@ describe("CaseHeader", () => {
         "href",
         "/cases/c1/requirements",
       );
+    });
+
+    it("carries the open issue count inside the Issues link, not as an orphan badge", async () => {
+      mock({ open_issue_count: 4 });
+      renderHeader();
+      // One accessible name, "Issues 4 open issues" — a number rendered beside the link
+      // would be announced with nothing tying it to what it counts.
+      const link = await screen.findByRole("link", { name: /Issues\s*4\s*open issues/i });
+      expect(link).toHaveAttribute("href", "/cases/c1/issues");
+    });
+
+    it("shows no count when nothing is open", async () => {
+      // A "0" reads as a state worth looking at. Absence is the honest rendering of
+      // nothing to do.
+      mock({ open_issue_count: 0 });
+      renderHeader();
+      const link = await screen.findByRole("link", { name: "Issues" });
+      expect(link.textContent).toBe("Issues");
     });
 
     it("marks the current destination with aria-current", async () => {

@@ -11,3 +11,4 @@ export * from "./AssessedInput";
 export * from "./SourceReference";
 export * from "./StaleAssessmentNotice";
 export * from "./BeforeAfterValue";
+export * from "./IssueCard";

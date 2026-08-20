@@ -38,6 +38,7 @@ function anOverview(groups: Group[]) {
     needs_attention: 0,
     not_yet_assessed: 0,
     stale: 0,
+    open_issue_count: 0,
     open_issues: 0,
     total_requirements: 15,
     ...{},

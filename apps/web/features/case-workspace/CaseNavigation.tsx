@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import type { JSX } from "react";
 
 import { CASE_DESTINATIONS, activeSegment, destinationHref } from "./destinations";
+import { useCaseOverview } from "./useCaseOverview";
 
 /**
  * Local navigation for one case.
@@ -23,6 +24,8 @@ import { CASE_DESTINATIONS, activeSegment, destinationHref } from "./destination
 export function CaseNavigation({ caseId }: { caseId: string }): JSX.Element {
   const pathname = usePathname() ?? "";
   const active = activeSegment(pathname, caseId);
+  const { data: overview } = useCaseOverview(caseId);
+  const openIssues = overview?.open_issue_count ?? 0;
 
   return (
     <nav aria-label="Case navigation" className="cw-case-nav">
@@ -37,6 +40,17 @@ export function CaseNavigation({ caseId }: { caseId: string }): JSX.Element {
                 aria-current={isCurrent ? "page" : undefined}
               >
                 {destination.label}
+                {/* The count is inside the link text, not a floating badge, so a screen
+                    reader announces "Issues 4" as one label rather than leaving the number
+                    orphaned. Absent at zero: a "0" is visual noise that reads as a state. */}
+                {destination.segment === "issues" && openIssues > 0 ? (
+                  <span className="cw-nav-count">
+                    {openIssues}
+                    <span className="cw-visually-hidden">
+                      {openIssues === 1 ? " open issue" : " open issues"}
+                    </span>
+                  </span>
+                ) : null}
               </Link>
             </li>
           );

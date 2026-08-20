@@ -4,6 +4,9 @@
  * A list rather than hard-coded markup, because the set grows on a known schedule and
  * each addition should be one entry here rather than a structural change.
  *
+ * Issues joined at M6, ordered after Requirements: the queue is about the conclusions,
+ * so it reads second.
+ *
  * **Evidence is deliberately absent.** It is a destination in the IA brief, but there is
  * no `evidence` module in `services/platform/app/` and the roadmap places Evidence
  * Foundation at M7 — after M6 (issues) and M5 (timeline). A primary destination that
@@ -22,6 +25,7 @@ export interface CaseDestination {
 export const CASE_DESTINATIONS: readonly CaseDestination[] = [
   { segment: "", label: "Overview" },
   { segment: "requirements", label: "Requirements" },
+  { segment: "issues", label: "Issues" },
   { segment: "data", label: "Case data" },
 ] as const;
 

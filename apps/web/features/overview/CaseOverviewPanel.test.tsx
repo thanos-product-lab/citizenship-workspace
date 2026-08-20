@@ -62,6 +62,7 @@ function anOverview(overrides: Record<string, unknown> = {}) {
     not_yet_assessed: 2,
     needs_attention: 1,
     stale: 0,
+    open_issue_count: 0,
     total_requirements: 7,
     last_assessed_at: "2026-08-14T11:36:00Z",
     ...overrides,

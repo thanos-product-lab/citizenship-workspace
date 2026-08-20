@@ -5,12 +5,14 @@ import { CASE_DESTINATIONS, activeSegment, destinationHref } from "./destination
 const CASE = "c1";
 
 describe("case destinations", () => {
-  it("does not offer Evidence yet", () => {
-    // Evidence is M7 and has no backend module. A destination leading to an empty room is
-    // a promise the product cannot keep; this fails the moment one is added early.
+  it("offers Issues but not Evidence yet", () => {
+    // Issues landed at M6 with a backend module behind it. Evidence is M7 and has none —
+    // a destination leading to an empty room is a promise the product cannot keep, and
+    // this fails the moment one is added early.
     expect(CASE_DESTINATIONS.map((d) => d.label)).toEqual([
       "Overview",
       "Requirements",
+      "Issues",
       "Case data",
     ]);
   });

@@ -1491,3 +1491,161 @@
 .cw-updating svg {
   flex: none;
 }
+
+/* --- Issue queue (UI/UX §10) -------------------------------------------------
+   Calm, not alarming. No red banner and no alert colouring on the card itself:
+   severity reads from a glyph, a word and a border weight, so the queue survives
+   greyscale and does not train the reader to flinch at it. */
+
+.cw-issue-card {
+  padding: var(--cw-space-4);
+  border: 1px solid var(--cw-border);
+  border-left: 3px solid var(--cw-border-strong);
+  border-radius: 0 var(--cw-radius-md) var(--cw-radius-md) 0;
+  background: var(--cw-surface);
+  display: flex;
+  flex-direction: column;
+  gap: var(--cw-space-2);
+}
+
+/* Colour is redundant with the severity word and glyph, never a substitute. */
+.cw-issue-card[data-severity="BLOCKING"] {
+  border-left-color: var(--cw-status-not-satisfied);
+}
+
+.cw-issue-card[data-severity="ACTION_REQUIRED"] {
+  border-left-color: var(--cw-currency-stale);
+}
+
+.cw-issue-card[data-severity="REVIEW_REQUIRED"] {
+  border-left-color: var(--cw-status-requires-judgement);
+}
+
+.cw-issue-card__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--cw-space-3);
+  flex-wrap: wrap;
+}
+
+.cw-issue-card__title {
+  font-size: var(--cw-text-lg);
+  font-weight: var(--cw-weight-medium);
+  color: var(--cw-text);
+  margin: 0;
+}
+
+.cw-issue-card__severity {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--cw-space-1);
+  font-size: var(--cw-text-sm);
+  color: var(--cw-text-muted);
+  white-space: nowrap;
+}
+
+.cw-issue-card__body {
+  margin: 0;
+  color: var(--cw-text);
+}
+
+.cw-issue-card__impact {
+  margin: 0;
+  font-size: var(--cw-text-sm);
+  color: var(--cw-text-muted);
+}
+
+.cw-issue-card__impact-label {
+  display: block;
+  font-weight: var(--cw-weight-medium);
+  color: var(--cw-text);
+}
+
+.cw-issue-card__recurrence {
+  display: flex;
+  align-items: center;
+  gap: var(--cw-space-1);
+  margin: 0;
+  font-size: var(--cw-text-sm);
+  color: var(--cw-text-muted);
+}
+
+.cw-issue-card__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--cw-space-3);
+  flex-wrap: wrap;
+  margin-top: var(--cw-space-1);
+}
+
+.cw-issue-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cw-space-3);
+  margin-bottom: var(--cw-space-6);
+}
+
+.cw-issue-group__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--cw-space-3);
+  flex-wrap: wrap;
+}
+
+.cw-issue-group__heading {
+  font-size: var(--cw-text-base);
+  font-weight: var(--cw-weight-medium);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--cw-text-muted);
+  margin: 0;
+}
+
+.cw-issue-group__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--cw-space-3);
+}
+
+.cw-issue-queue__settled {
+  margin: 0;
+  color: var(--cw-text-muted);
+}
+
+.cw-issue-history {
+  list-style: none;
+  margin: var(--cw-space-3) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--cw-space-2);
+}
+
+.cw-issue-history__item {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--cw-space-3);
+  flex-wrap: wrap;
+  padding: var(--cw-space-2) 0;
+  border-bottom: 1px solid var(--cw-border);
+  font-size: var(--cw-text-sm);
+  color: var(--cw-text-muted);
+}
+
+.cw-issue-history__title {
+  color: var(--cw-text);
+}
+
+.cw-nav-count {
+  margin-left: var(--cw-space-1);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--cw-text-sm);
+  color: var(--cw-text-muted);
+}
