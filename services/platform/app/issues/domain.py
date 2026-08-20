@@ -198,15 +198,23 @@ class IssueResolution(Base):
 class IssuesReconciled(DomainEvent):
     """The open-issue set was recomputed for a case.
 
-    Structural only (§38.1): counts and the issue types involved, never a conclusion, a
-    date, a destination or any other case content. Issue *types* are catalogue vocabulary,
-    the same class of identifier as a requirement key.
+    Deduplication keys rather than counts, because "four issues opened" leaves the audit
+    trail unable to answer *which* — recoverable only from current table state, which is
+    exactly what an append-only log exists not to depend on (§39).
+
+    Structural only (§38.1): a deduplication key is issue type + affected object type +
+    a catalogue identifier (a requirement key). No conclusion, date, destination or other
+    case content.
+
+    This replaces §38's per-issue `IssueOpened` / `IssueResolved` / `IssueReopened`, which
+    presuppose issues being created one at a time by a handler. Reconciliation moves the
+    whole set at once, and one event per pass records that faithfully where three event
+    types would imply an ordering that does not exist. See ADR-0015.
     """
 
-    opened: int
-    resolved: int
-    reopened: int
-    issue_types: tuple[str, ...] = ()
+    opened: tuple[str, ...] = ()
+    resolved: tuple[str, ...] = ()
+    reopened: tuple[str, ...] = ()
 
     aggregate_type: ClassVar[str] = "ApplicationCase"
     event_type: ClassVar[str] = "IssuesReconciled"
@@ -214,10 +222,9 @@ class IssuesReconciled(DomainEvent):
     def payload(self) -> dict[str, Any]:
         return {
             "case_id": str(self.aggregate_id),
-            "opened": self.opened,
-            "resolved": self.resolved,
-            "reopened": self.reopened,
-            "issue_types": list(self.issue_types),
+            "opened": list(self.opened),
+            "resolved": list(self.resolved),
+            "reopened": list(self.reopened),
         }
 
 

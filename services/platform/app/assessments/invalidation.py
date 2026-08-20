@@ -34,6 +34,7 @@ from sqlalchemy.orm import Session
 
 from app.assessments.domain import AssessmentInvalidated
 from app.assessments.repository import AssessmentRepository, RequirementCatalogRepository
+from app.issues import service as issues_service
 from app.requirements.models import DependencyInputKind
 from app.shared.unit_of_work import UnitOfWork
 
@@ -155,4 +156,12 @@ def invalidate_for_input_change(
             target_type="ApplicationCase",
             target_id=case_id,
         )
+
+    # Reconcile the issue queue here rather than at each call site. A stale result and the
+    # issue announcing it must never disagree, and a convention repeated at four call sites
+    # is one a future writer forgets — the CSV-import seam had already been added without
+    # it, which would have left a bulk import staling conclusions while the queue read
+    # "nothing needs your attention". Same session, same unit of work, so both commit or
+    # neither does.
+    issues_service.reconcile(session, uow, case_id=case_id)
     return outcome

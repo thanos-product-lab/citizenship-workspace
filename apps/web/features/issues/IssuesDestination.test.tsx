@@ -1,6 +1,6 @@
 import "@testing-library/jest-dom/vitest";
 
-import { screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { renderWithQuery } from "@/test/render";
@@ -45,13 +45,24 @@ beforeEach(() => {
   post.mockReset();
 });
 
-function queueReturns(body: unknown) {
-  get.mockResolvedValue({ data: body });
+function queueReturns(body: unknown, overview: Record<string, unknown> | null = null) {
+  get.mockImplementation((path: string) => {
+    if (path === "/api/v1/cases/{case_id}/issues") return Promise.resolve({ data: body });
+    if (path === "/api/v1/cases/{case_id}/overview") {
+      return Promise.resolve({ data: overview ?? { groups: [], stale: 0 } });
+    }
+    return Promise.resolve({ data: undefined, error: {} });
+  });
 }
 
 /** A payload the reader must refuse rather than render as an empty queue. */
 function queueFails() {
-  get.mockResolvedValue({ data: undefined, error: { detail: "boom" } });
+  get.mockImplementation((path: string) => {
+    if (path === "/api/v1/cases/{case_id}/issues") {
+      return Promise.resolve({ data: undefined, error: { detail: "boom" } });
+    }
+    return Promise.resolve({ data: { groups: [], stale: 0 } });
+  });
 }
 
 describe("issues destination", () => {
@@ -205,5 +216,112 @@ describe("issues destination", () => {
     await waitFor(() =>
       expect(screen.getByRole("button", { name: /recheck now/i })).toBeInTheDocument(),
     );
+  });
+});
+
+describe("issues destination accessibility", () => {
+  it("nests a card title below its group heading rather than beside it", async () => {
+    // A card title at the same level as the heading that contains it flattens the
+    // outline, and the grouping-by-action this destination exists for disappears from
+    // heading navigation.
+    queueReturns(
+      aQueue({
+        open_count: 1,
+        groups: [{ action_group: "CONFIRM_INFORMATION", issues: [anIssue()] }],
+      }),
+    );
+    renderWithQuery(<IssuesDestination caseId={CASE} />);
+
+    await screen.findByRole("heading", { level: 3, name: /confirm information/i });
+    expect(
+      screen.getByRole("heading", { level: 4, name: /Recheck Total absences/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("names each issue card by its own title", async () => {
+    queueReturns(
+      aQueue({
+        open_count: 1,
+        groups: [{ action_group: "CONFIRM_INFORMATION", issues: [anIssue()] }],
+      }),
+    );
+    renderWithQuery(<IssuesDestination caseId={CASE} />);
+
+    expect(
+      await screen.findByRole("article", { name: /Recheck Total absences/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("offers one recheck for the group, not one per card", async () => {
+    // Every stale issue is cleared by the same case-wide recalculation. N identically
+    // named controls let a second fire while the first was in flight.
+    queueReturns(
+      aQueue({
+        open_count: 2,
+        groups: [
+          {
+            action_group: "CONFIRM_INFORMATION",
+            issues: [anIssue(), anIssue({ id: "i2" })],
+          },
+        ],
+      }),
+    );
+    renderWithQuery(<IssuesDestination caseId={CASE} />);
+
+    await screen.findAllByRole("article");
+    expect(screen.getAllByRole("button", { name: /recheck now/i })).toHaveLength(1);
+  });
+
+  it("mounts the live region before it has anything to say", async () => {
+    // A live region whose container and text arrive in the same commit is frequently
+    // missed by NVDA and JAWS.
+    queueReturns(aQueue());
+    const { container } = renderWithQuery(<IssuesDestination caseId={CASE} />);
+
+    expect(container.querySelector("[aria-live='polite']")).toBeInTheDocument();
+    await screen.findByText(/Nothing needs your attention/i);
+    expect(container.querySelector("[aria-live='polite']")).toBeInTheDocument();
+  });
+
+  it("announces what happened to the queue and returns focus to the heading", async () => {
+    // The button that clears the queue is destroyed by the success it reports. Without a
+    // region outside the card and a focus target, a screen-reader user hears nothing and
+    // lands on <body>.
+    queueReturns(
+      aQueue({
+        open_count: 2,
+        groups: [
+          {
+            action_group: "CONFIRM_INFORMATION",
+            issues: [anIssue(), anIssue({ id: "i2" })],
+          },
+        ],
+      }),
+    );
+    post.mockResolvedValue({ data: { requirements: [{ conclusion: "SUPPORTED" }] } });
+    renderWithQuery(<IssuesDestination caseId={CASE} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /recheck now/i }));
+
+    await waitFor(() =>
+      expect(screen.getByText(/2 issues resolved/i)).toBeInTheDocument(),
+    );
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        screen.getByRole("heading", { level: 2, name: "Issues" }),
+      ),
+    );
+  });
+
+  it("does not claim everything is current when conclusions are stale", async () => {
+    // The queue is a write-time projection, so an empty queue is not by itself proof that
+    // no conclusion is out of date.
+    queueReturns(aQueue(), { groups: [], stale: 3 });
+    renderWithQuery(<IssuesDestination caseId={CASE} />);
+
+    expect(
+      await screen.findByText(/have not been rechecked since your inputs changed/i),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Every conclusion reached so far is current/i)).toBeNull();
   });
 });

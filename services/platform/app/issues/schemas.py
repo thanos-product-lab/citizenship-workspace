@@ -146,7 +146,16 @@ class IssueQueue(BaseModel):
             else:
                 history.append(view)
 
-        open_views.sort(key=lambda v: (_SEVERITY_ORDER.get(v.severity, 9), v.opened_at))
+        # Every issue from one reconcile shares `opened_at`, so severity and time alone
+        # leave ties to Postgres' arbitrary row order and the queue reorders between
+        # requests. The affected object is the stable tiebreaker.
+        open_views.sort(
+            key=lambda v: (
+                _SEVERITY_ORDER.get(v.severity, 9),
+                v.opened_at,
+                v.affected_object_id,
+            )
+        )
         grouped: dict[str, list[IssueView]] = {}
         for view in open_views:
             grouped.setdefault(view.action_group, []).append(view)

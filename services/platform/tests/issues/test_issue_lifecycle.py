@@ -151,14 +151,22 @@ def test_reconciliation_is_idempotent(api: Api, db_session: Session) -> None:
             db_session.scalar(select(func.count()).select_from(IssueResolution)),
         )
 
-    before = _counts()
-    # A second write that changes no conclusion still reconciles on its own unit of work.
+    # The non-trivial case: reconcile repeatedly while four causes are still live. An
+    # empty desired set diffed against an empty stored set would pass whatever the logic
+    # does, so the causes must still be there.
+    with_causes = _counts()
+    assert with_causes[0] == 4
+
+    for _ in range(3):
+        _add_trip(api, "user_a", case_id, "2024-02-01", "2024-03-01")
+    assert _counts() == with_causes, "reconciling live causes opened or resolved something"
+
+    # And again once they are gone: resolving must happen once, not once per pass.
     api("user_a").post(f"/api/v1/cases/{case_id}/assessments/recalculate")
+    settled = _counts()
+    assert settled[1] == 4, "expected exactly one resolution per issue"
     api("user_a").post(f"/api/v1/cases/{case_id}/assessments/recalculate")
-    after_first = _counts()
-    api("user_a").post(f"/api/v1/cases/{case_id}/assessments/recalculate")
-    assert _counts() == after_first, "a no-change reconcile wrote rows"
-    assert before[0] == after_first[0], "a no-change reconcile created an issue"
+    assert _counts() == settled, "a no-change reconcile wrote rows"
 
 
 def test_deduplication_is_enforced_by_the_database_not_only_the_service(
@@ -274,3 +282,73 @@ def test_a_dismissed_issue_resolves_when_its_cause_goes_and_reopens_when_it_retu
     assert issue.id == original_id
     assert issue.status == IssueStatus.OPEN.value
     assert issue.reopened_at is not None
+
+
+def test_the_queue_and_the_stale_marks_commit_together_or_not_at_all(
+    api: Api, db_session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """§41.2, held by a test rather than by a comment.
+
+    A stale conclusion and the issue announcing it must never disagree, so both are written
+    on the input command's own unit of work. This was true by convention at four call sites
+    and a reviewer showed the whole coupling could be deleted with the suite still green —
+    moving reconciliation onto its own transaction changed nothing that failed. It now lives
+    inside `invalidate_for_input_change`, and this test is what keeps it there.
+    """
+    from sqlalchemy import func
+
+    from app.assessments.domain import AssessmentResult
+    from app.requirements.domain import Currency
+
+    case_id = _assessed_case(api, "user_a")
+
+    def _stale_count() -> int | None:
+        return db_session.scalar(
+            select(func.count())
+            .select_from(AssessmentResult)
+            .where(AssessmentResult.currency == Currency.STALE.value)
+        )
+
+    assert _stale_count() == 0
+    assert db_session.scalar(select(func.count()).select_from(Issue)) == 0
+
+    # Fail after the results are staled and the issues derived, before the commit.
+    import app.issues.service as issues
+
+    real_reconcile = issues.reconcile
+
+    def _boom(*args: object, **kwargs: object) -> object:
+        real_reconcile(*args, **kwargs)  # type: ignore[arg-type]
+        raise RuntimeError("failed after reconciling, before commit")
+
+    monkeypatch.setattr(issues, "reconcile", _boom)
+    with pytest.raises(RuntimeError):
+        _add_trip(api, "user_a", case_id, "2023-06-01", "2023-07-02")
+
+    # In production the failed request's session closes uncommitted; the shared test
+    # session models that with an explicit rollback.
+    db_session.rollback()
+
+    # Neither half survives. The dangerous asymmetry is stale-without-issue: conclusions
+    # marked out of date while the queue says nothing needs attention.
+    assert _stale_count() == 0
+    assert db_session.scalar(select(func.count()).select_from(Issue)) == 0
+
+
+def test_a_csv_import_populates_the_queue_like_any_other_travel_change(api: Api) -> None:
+    """The seam a reviewer found unguarded: bulk import staled results and, before the
+    reconcile moved into the invalidation service, left the queue empty — a case reading
+    "nothing needs your attention" over conclusions the system knew were out of date."""
+    case_id = _assessed_case(api, "user_a")
+    csv = (
+        "destination_label,departure_date,return_date,date_confidence\n"
+        "Spain,2023-06-01,2023-07-02,EXACT\n"
+    )
+    response = api("user_a").post(
+        f"/api/v1/cases/{case_id}/travel-records/import",
+        json={"content": csv},
+    )
+    assert response.status_code in (200, 201), response.text
+
+    queue = _queue(api, "user_a", case_id)
+    assert queue["open_count"] == 4, queue

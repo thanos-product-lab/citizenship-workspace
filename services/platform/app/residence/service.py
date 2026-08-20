@@ -23,7 +23,6 @@ from app.assessments.invalidation import StaleReason, invalidate_for_input_chang
 from app.auth.schemas import CurrentUser
 from app.cases import service as cases_service
 from app.cases.domain import ApplicationCase, LifecycleStatus
-from app.issues import service as issues_service
 from app.requirements.models import DependencyInputKind
 from app.residence.csv_import import ParsedImport, parse_import
 from app.residence.domain import (
@@ -148,9 +147,6 @@ def select_application_date(
         input_kind=DependencyInputKind.PROPOSED_APPLICATION_DATE,
         reason_code=StaleReason.APPLICATION_DATE_CHANGED,
     )
-    # The queue is reconciled in the same transaction as the change that caused it, so a
-    # stale conclusion and the issue telling the user about it can never disagree (§41.2).
-    issues_service.reconcile(session, uow, case_id=case.id)
     uow.commit()
     session.refresh(root)
     return ApplicationDateOutcome(root=root, version=version)
@@ -376,7 +372,6 @@ def import_travel_records(
         input_kind=DependencyInputKind.TRAVEL_RECORD,
         reason_code=StaleReason.TRAVEL_RECORD_CHANGED,
     )
-    issues_service.reconcile(session, uow, case_id=case.id)
     uow.commit()
     for outcome in outcomes:
         session.refresh(outcome.record)
@@ -437,7 +432,6 @@ def _emit_travel(
         input_kind=DependencyInputKind.TRAVEL_RECORD,
         reason_code=StaleReason.TRAVEL_RECORD_CHANGED,
     )
-    issues_service.reconcile(session, uow, case_id=case_id)
     uow.commit()
 
 

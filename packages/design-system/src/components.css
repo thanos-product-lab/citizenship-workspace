@@ -1665,3 +1665,7 @@
 .cw-issue-history__heading {
   margin: var(--cw-space-6) 0 0;
 }
+
+.cw-issue-group__action {
+  margin-bottom: var(--cw-space-1);
+}

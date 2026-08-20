@@ -59,6 +59,15 @@ export interface IssueCardProps {
   actions?: ReactNode | undefined;
   /** A link back to whatever the issue is about. */
   affectedLink?: ReactNode | undefined;
+  /**
+   * The card title's heading level. Defaults to 3 so the component is usable on its own,
+   * but a card nested under a group heading must go one deeper — otherwise the title is a
+   * *sibling* of the heading that contains it, and heading navigation flattens the
+   * grouping this queue is organised by.
+   */
+  headingLevel?: 2 | 3 | 4 | 5 | undefined;
+  /** Id for the title, so the card's `<article>` can be named by it. */
+  titleId?: string | undefined;
 }
 
 export function IssueCard({
@@ -69,13 +78,20 @@ export function IssueCard({
   hasRecurred = false,
   actions,
   affectedLink,
+  headingLevel = 3,
+  titleId,
 }: IssueCardProps): JSX.Element {
   const token = issueSeverityTokens[severity] ?? issueSeverityTokens.REVIEW_REQUIRED;
+  const Heading = `h${headingLevel}` as const;
 
   return (
-    <article className="cw-issue-card" data-severity={severity}>
+    // Named by its own title: an <article> is exposed to assistive technology as a
+    // landmark-like region, and an unnamed one announces as "article" and nothing else.
+    <article className="cw-issue-card" data-severity={severity} aria-labelledby={titleId}>
       <div className="cw-issue-card__head">
-        <h3 className="cw-issue-card__title">{title}</h3>
+        <Heading className="cw-issue-card__title" id={titleId}>
+          {title}
+        </Heading>
         <span className="cw-issue-card__severity">
           <StatusGlyph name={token.glyph} size={14} />
           {token.label}

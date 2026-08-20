@@ -46,10 +46,12 @@ SYSTEM_ACTOR = "system"
 
 @dataclass(frozen=True)
 class ReconciliationOutcome:
-    opened: int
-    resolved: int
-    reopened: int
-    issue_types: tuple[str, ...]
+    """What moved. Deduplication keys rather than counts, so the caller and the audit log
+    can both say which causes changed."""
+
+    opened: tuple[str, ...]
+    resolved: tuple[str, ...]
+    reopened: tuple[str, ...]
 
     @property
     def changed(self) -> bool:
@@ -69,22 +71,32 @@ def reconcile(
     desired = derive(requirements=_stale_requirements(session, case_id))
     desired_by_key = {issue.deduplication_key: issue for issue in desired}
 
-    live = IssueRepository.list_live(session, case_id)
-    live_by_key = {issue.deduplication_key: issue for issue in live}
+    live_issues = IssueRepository.list_live(session, case_id)
+    live_by_key = {issue.deduplication_key: issue for issue in live_issues}
 
-    opened = reopened = 0
+    opened: list[str] = []
+    reopened: list[str] = []
     for key, wanted in desired_by_key.items():
-        if key in live_by_key:
-            continue  # already represented — including one the user dismissed
+        live = live_by_key.get(key)
+        if live is not None:
+            # Already represented — including one the user dismissed. Keep its payload
+            # current so the queue reports the present cause, not the one that opened it.
+            if live.message_parameters != wanted.message_parameters:
+                live.message_parameters = dict(wanted.message_parameters)
+            continue
         existing = IssueRepository.get_by_deduplication_key(session, case_id, key)
         if existing is not None and existing.status == IssueStatus.RESOLVED.value:
             existing.reopen(at=now)
-            reopened += 1
+            # The new episode's parameters, not the old one's. A cause can return for a
+            # different reason — staled by a date change where it was last staled by a trip
+            # edit — and reopening with the previous payload would misreport why.
+            existing.message_parameters = dict(wanted.message_parameters)
+            reopened.append(key)
         else:
             IssueRepository.add(session, _new_issue(case_id, wanted, now))
-            opened += 1
+            opened.append(key)
 
-    resolved = 0
+    resolved: list[str] = []
     for key, issue in live_by_key.items():
         if key in desired_by_key:
             continue
@@ -97,23 +109,21 @@ def reconcile(
             resolved_by=SYSTEM_ACTOR,
             at=now,
         )
-        resolved += 1
+        resolved.append(key)
 
     session.flush()
     outcome = ReconciliationOutcome(
-        opened=opened,
-        resolved=resolved,
-        reopened=reopened,
-        issue_types=tuple(sorted({issue.issue_type.value for issue in desired})),
+        opened=tuple(sorted(opened)),
+        resolved=tuple(sorted(resolved)),
+        reopened=tuple(sorted(reopened)),
     )
     if outcome.changed:
         uow.emit(
             IssuesReconciled(
                 aggregate_id=case_id,
-                opened=opened,
-                resolved=resolved,
-                reopened=reopened,
-                issue_types=outcome.issue_types,
+                opened=outcome.opened,
+                resolved=outcome.resolved,
+                reopened=outcome.reopened,
             ),
             case_id=case_id,
             action="issues.reconciled",
@@ -141,6 +151,11 @@ def dismiss(
         raise IllegalTransition("this issue cannot be dismissed")
     if issue.status == IssueStatus.DISMISSED.value:
         return issue
+    # Only a live issue can be set aside. Dismissing a RESOLVED one would pull a history
+    # row back into the live set — where it suppresses its cause reopening — and clear the
+    # timestamp of the resolution that actually happened.
+    if issue.status not in (IssueStatus.OPEN.value, IssueStatus.IN_PROGRESS.value):
+        raise IllegalTransition("only an open issue can be dismissed")
 
     now = at or datetime.now(UTC)
     issue.dismiss(at=now)

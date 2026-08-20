@@ -2029,9 +2029,7 @@ AssessmentResultCreated
 AssessmentResultMarkedStale
 AssessmentResultSuperseded
 
-IssueOpened
-IssueResolved
-IssueReopened
+IssuesReconciled
 IssueDismissed
 
 GuidanceVersionCaptured
