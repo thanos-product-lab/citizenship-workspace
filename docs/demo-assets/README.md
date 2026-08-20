@@ -70,3 +70,38 @@ no real account appears; the visible name is synthetic seed data.
 A short screen recording of the stale → recalculate loop. The four stills carry the
 states, but §3.6 asks for a recording per milestone and this one has the motion that
 makes the loop legible.
+
+
+## M6 — Issue Detection and Stale-State Workflow
+
+### Slice 1 — selective invalidation
+
+`m6/m6-slice1-selective-invalidation.gif` — the stale → recalculate loop on the canonical
+case, captured in the browser. Trip 11's return moves 10 → 11 May 2026; **four** conclusions
+go stale (not five — `residence.qualifying_period` reads only the application date);
+Recalculate supersedes them; total absences moves 439 → 440 with both earlier runs still
+inspectable and marked Superseded.
+
+This closes the gap M4 carried forward ("no screen recording of the stale → recalculate
+loop").
+
+Not captured as stills: the application-date case, where the header reads **8** conclusions
+and the Identity-and-status group shows 3 of its 4 requirements stale. Under M3B's blunt rule
+that group read entirely CURRENT while the date beneath it had moved — the ADR-0008
+under-invalidation window. `route.supported_status` correctly stays current: it reads the
+status type, not the date.
+
+### Slice 2 — the issue queue
+
+`m6/m6-slice2-issue-queue.gif` — the lifecycle end to end. A trip edit opens four issues,
+one per stale requirement, grouped under "Confirm information". **Recheck now** resolves all
+four at once — not through a special case in the recalculation path, but because the
+reconciler finds those causes gone — and they move to Settled with their history retained
+rather than deleted. A further edit **reopens the same four rows**, each marked "This was
+resolved before and has come back", so a recurrence is never shown as a first occurrence.
+
+Note for the walkthrough: the phase pill reads "Resolving issues" while the queue reads
+"Nothing needs your attention". Both are correct and they measure different things — the
+phase derives from requirement conclusions (ADR-0009), and this case has a requirement that
+is `NOT_CURRENTLY_SATISFIED`, which is a requirement outcome and deliberately not an issue
+(ADR-0014). Side by side it reads as a contradiction. Logged as a gap.

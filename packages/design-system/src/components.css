@@ -1649,3 +1649,19 @@
   font-size: var(--cw-text-sm);
   color: var(--cw-text-muted);
 }
+
+.cw-issue-group__count {
+  font-size: var(--cw-text-sm);
+  color: var(--cw-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.cw-issue-card__link {
+  font-size: var(--cw-text-sm);
+}
+
+/* The settled list sits under either an empty state or the last open group, so it owns
+   its own top separation rather than relying on a previous sibling's margin. */
+.cw-issue-history__heading {
+  margin: var(--cw-space-6) 0 0;
+}

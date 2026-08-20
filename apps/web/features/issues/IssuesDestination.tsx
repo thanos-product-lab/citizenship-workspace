@@ -38,7 +38,9 @@ export function IssuesDestination({ caseId }: { caseId: string }): JSX.Element {
   if (status === "error" || !queue) {
     return (
       <section aria-labelledby="issues-heading">
-        <h2 id="issues-heading">Issues</h2>
+        <h2 id="issues-heading" className="cw-case-data__heading">
+        Issues
+      </h2>
         <p role="alert" className="cw-overview__unavailable">
           This queue couldn’t be loaded, so we can’t tell you whether anything needs your
           attention. This is not the same as nothing being wrong.
@@ -57,8 +59,10 @@ export function IssuesDestination({ caseId }: { caseId: string }): JSX.Element {
 
   return (
     <section aria-labelledby="issues-heading">
-      <h2 id="issues-heading">Issues</h2>
-      <p className="cw-destination__lede">
+      <h2 id="issues-heading" className="cw-case-data__heading">
+        Issues
+      </h2>
+      <p className="cw-case-data__note">
         Data problems and conclusions awaiting a recheck. Requirement outcomes live under
         Requirements.
       </p>
@@ -175,7 +179,7 @@ function RecalculateAction({ caseId }: { caseId: string }): JSX.Element {
 function ResolvedHistory({ issues }: { issues: Issue[] }): JSX.Element {
   return (
     <section aria-labelledby="issue-history-heading">
-      <h3 id="issue-history-heading" className="cw-issue-group__heading">
+      <h3 id="issue-history-heading" className="cw-issue-group__heading cw-issue-history__heading">
         Settled
       </h3>
       <ul className="cw-issue-history">
