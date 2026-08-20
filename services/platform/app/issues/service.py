@@ -27,7 +27,7 @@ from datetime import UTC, datetime
 from sqlalchemy.orm import Session
 
 from app.assessments.repository import AssessmentRepository
-from app.issues.derivation import DesiredIssue, StaleRequirement, derive
+from app.issues.derivation import DesiredIssue, RequirementSnapshot, TravelSnapshot, derive
 from app.issues.domain import (
     Dismissibility,
     Issue,
@@ -37,6 +37,8 @@ from app.issues.domain import (
     ResolutionType,
 )
 from app.issues.repository import IssueRepository
+from app.requirements.evaluation import UNCERTAIN_CONFIDENCES
+from app.residence.repository import TravelRecordRepository
 from app.shared.errors import IllegalTransition
 from app.shared.unit_of_work import UnitOfWork
 
@@ -68,7 +70,10 @@ def reconcile(
     asserts that rather than trusting it.
     """
     now = at or datetime.now(UTC)
-    desired = derive(requirements=_stale_requirements(session, case_id))
+    desired = derive(
+        requirements=_requirement_snapshots(session, case_id),
+        travel=_travel_snapshots(session, case_id),
+    )
     desired_by_key = {issue.deduplication_key: issue for issue in desired}
 
     live_issues = IssueRepository.list_live(session, case_id)
@@ -195,18 +200,42 @@ def _new_issue(case_id: uuid.UUID, desired: DesiredIssue, at: datetime) -> Issue
     )
 
 
-def _stale_requirements(session: Session, case_id: uuid.UUID) -> list[StaleRequirement]:
-    """Read the displayed result for every requirement and hand the derivation the fields
-    it needs. Reads only — nothing here writes an assessment row (§36.6)."""
+def _requirement_snapshots(session: Session, case_id: uuid.UUID) -> list[RequirementSnapshot]:
+    """The displayed result for every requirement, reduced to what derivation reads. Reads
+    only — nothing in this module writes an assessment row (§36.6)."""
     return [
-        StaleRequirement(
+        RequirementSnapshot(
             requirement_key=definition.requirement_key,
             title=definition.title,
+            conclusion=result.conclusion,
             currency=result.currency,
             stale_reason_code=result.stale_reason_code,
+            limitations=tuple(result.limitations or ()),
         )
         for definition, result in AssessmentRepository.list_requirements_with_active_result(
             session, case_id
         )
         if result is not None
+    ]
+
+
+def _travel_snapshots(session: Session, case_id: uuid.UUID) -> list[TravelSnapshot]:
+    """Active travel records, so a limitation naming version ids can be turned into the
+    record identity and destination a user recognises.
+
+    `is_uncertain` mirrors the evaluator's own definition (`_UNCERTAIN_CONFIDENCES`) rather
+    than restating it: a record whose date confidence is not exact. Whether that matters —
+    whether the trip falls inside the qualifying period — is the evaluator's judgement, read
+    from its limitation, never recomputed here.
+    """
+    return [
+        TravelSnapshot(
+            record_id=str(record.id),
+            version_id=str(version.id),
+            label=version.destination_label,
+            is_uncertain=version.date_confidence in UNCERTAIN_CONFIDENCES,
+        )
+        for record, version in TravelRecordRepository.list_active_with_current_version(
+            session, case_id
+        )
     ]

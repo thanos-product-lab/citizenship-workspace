@@ -15,6 +15,7 @@ import pytest
 from app.assessments.invalidation import StaleReason
 from app.requirements import messages, route_rules
 from app.requirements.messages import (
+    ISSUE_TITLE_TEMPLATES,
     LIMITATION_TEMPLATES,
     NEXT_ACTION_TEMPLATES,
     STALE_REASON_TEMPLATES,
@@ -307,3 +308,59 @@ def test_day_pluralisation() -> None:
     assert one is not None and "1 day outside" in one
     two = render_summary("TOTAL_ABSENCES_WITHIN_THRESHOLD", {"days": 2, "threshold": 450})
     assert two is not None and "2 days outside" in two
+
+
+def test_every_issue_title_code_has_all_three_templates() -> None:
+    """A queue item is a heading, a body and a "why it matters" line. A code with only
+    some of them renders a card that trails off, and the omission is invisible until
+    someone opens the destination with that issue type live."""
+    from app.requirements.messages import (
+        ISSUE_BODY_TEMPLATES,
+        ISSUE_IMPACT_TEMPLATES,
+        ISSUE_TITLE_TEMPLATES,
+    )
+
+    assert set(ISSUE_TITLE_TEMPLATES) == set(ISSUE_BODY_TEMPLATES) == set(ISSUE_IMPACT_TEMPLATES)
+
+
+def test_every_derived_issue_has_its_templates() -> None:
+    """The codes the derivation can emit, against the codes the copy defines. This is the
+    drift that produces a card titled `ISSUE_OVERLAPPING_TRAVEL` on a user's screen."""
+    import ast
+    import pathlib
+
+    from app.requirements.messages import ISSUE_TITLE_TEMPLATES
+
+    source = pathlib.Path("app/issues/derivation.py").read_text()
+    emitted: set[str] = {
+        node.value.value
+        for node in ast.walk(ast.parse(source))
+        if isinstance(node, ast.keyword)
+        and node.arg == "title_code"
+        and isinstance(node.value, ast.Constant)
+        and isinstance(node.value.value, str)
+    }
+    # The conditional expression for the in/out-of-window uncertain codes is not a bare
+    # constant keyword, so pick those up too.
+    emitted |= {
+        value
+        for node in ast.walk(ast.parse(source))
+        if isinstance(node, ast.Constant)
+        and isinstance(value := node.value, str)
+        and value.startswith("ISSUE_")
+    }
+    assert emitted, "expected derivation.py to name at least one title code"
+    assert emitted <= set(ISSUE_TITLE_TEMPLATES), sorted(emitted - set(ISSUE_TITLE_TEMPLATES))
+
+
+@pytest.mark.parametrize("code", sorted(ISSUE_TITLE_TEMPLATES))
+def test_every_issue_template_renders_without_its_parameters(code: str) -> None:
+    from app.requirements.messages import (
+        render_issue_body,
+        render_issue_impact,
+        render_issue_title,
+    )
+
+    assert render_issue_title(code, {})
+    assert render_issue_body(code, {})
+    assert render_issue_impact(code, {})

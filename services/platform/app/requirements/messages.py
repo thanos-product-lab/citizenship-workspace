@@ -433,12 +433,49 @@ def render_stale_reason(code: str | None, parameters: Parameters | None = None) 
 #: described as standing, holding, or still valid.
 ISSUE_TITLE_TEMPLATES: dict[str, _Template] = {
     "ISSUE_STALE_ASSESSMENT": lambda p: f"Recheck {p.get('requirement_title', 'this requirement')}",
+    "ISSUE_NEAR_THRESHOLD": lambda p: (
+        f"{p.get('requirement_title', 'This requirement')} is close to its threshold"
+    ),
+    "ISSUE_UNSUPPORTED_COMPLEXITY": lambda p: (
+        f"{p.get('requirement_title', 'This requirement')} needs further review"
+    ),
+    "ISSUE_OVERLAPPING_TRAVEL": lambda p: (
+        f"Your trip to {p.get('destination', 'this destination')} overlaps another trip"
+    ),
+    "ISSUE_UNCERTAIN_TRAVEL_DATE": lambda p: (
+        f"Confirm the dates of your trip to {p.get('destination', 'this destination')}"
+    ),
+    "ISSUE_UNCERTAIN_DATE_OUTSIDE": lambda p: (
+        f"Your trip to {p.get('destination', 'this destination')} has uncertain dates"
+    ),
 }
 
 ISSUE_BODY_TEMPLATES: dict[str, _Template] = {
     "ISSUE_STALE_ASSESSMENT": lambda p: (
         "An input behind this conclusion changed, so it has not been rechecked. "
         "The conclusion shown is the one reached before that change."
+    ),
+    "ISSUE_NEAR_THRESHOLD": lambda p: (
+        "The figure behind this conclusion sits close to the threshold it is measured "
+        "against. Small changes to your records could move it across."
+    ),
+    # UI/UX §10.2, close to verbatim. The point of the wording is that stopping is a
+    # deliberate outcome, not a breakdown: the product says what it will not do and why.
+    "ISSUE_UNSUPPORTED_COMPLEXITY": lambda p: (
+        "This part of your case falls in a range the prototype cannot assess reliably. "
+        "We have paused this assessment rather than reaching an uncertain conclusion."
+    ),
+    "ISSUE_OVERLAPPING_TRAVEL": lambda p: (
+        "Two of your trips cover some of the same dates. Overlapping records make the "
+        "days outside the UK ambiguous."
+    ),
+    "ISSUE_UNCERTAIN_TRAVEL_DATE": lambda p: (
+        "These dates are recorded as uncertain, so they are not counted in the confirmed "
+        "totals."
+    ),
+    "ISSUE_UNCERTAIN_DATE_OUTSIDE": lambda p: (
+        "These dates are recorded as uncertain. This trip falls outside your qualifying "
+        "period, so it does not affect any figure."
     ),
 }
 
@@ -447,6 +484,26 @@ ISSUE_BODY_TEMPLATES: dict[str, _Template] = {
 ISSUE_IMPACT_TEMPLATES: dict[str, _Template] = {
     "ISSUE_STALE_ASSESSMENT": lambda p: (
         "Until it is rechecked, this conclusion may no longer match your case data."
+    ),
+    # States the sensitivity, never the outcome. "You may be refused" is a prediction this
+    # product does not make (CLAUDE.md §1); "a few days either way changes the band" is a
+    # property of the calculation the user can check.
+    "ISSUE_NEAR_THRESHOLD": lambda p: (
+        "A small correction to your travel records could change which band this falls in."
+    ),
+    "ISSUE_UNSUPPORTED_COMPLEXITY": lambda p: (
+        "This requirement has no conclusion from us. It needs a person who can advise on "
+        "your circumstances."
+    ),
+    "ISSUE_OVERLAPPING_TRAVEL": lambda p: (
+        "While the records overlap, the total days outside the UK cannot be relied on."
+    ),
+    "ISSUE_UNCERTAIN_TRAVEL_DATE": lambda p: (
+        "Your confirmed totals exclude these days, so they read lower than your full "
+        "history."
+    ),
+    "ISSUE_UNCERTAIN_DATE_OUTSIDE": lambda p: (
+        "No figure changes either way. You can set this aside."
     ),
 }
 

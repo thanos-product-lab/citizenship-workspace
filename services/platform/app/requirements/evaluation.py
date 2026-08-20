@@ -316,7 +316,10 @@ def evaluate_status_holding_period(inputs: RouteAssessmentInputs) -> EvaluatedRe
 
 _SATISFIED_OR_NEAR = frozenset({Conclusion.SUPPORTED, Conclusion.NEAR_THRESHOLD})
 _UNCONFIRMED_LIMITATION = "UNCONFIRMED_RECORDS_AFFECT_CONCLUSION"
-_UNCERTAIN_CONFIDENCES = frozenset({"ESTIMATED", "UNKNOWN"})
+#: Date confidences that make a record's dates questionable (RULES_SPEC §7.8). Exported
+#: rather than private because issue derivation asks the same question, and a second
+#: copy of this set would drift from the rule silently.
+UNCERTAIN_CONFIDENCES = frozenset({"ESTIMATED", "UNKNOWN"})
 
 
 @dataclass(frozen=True)
@@ -570,7 +573,7 @@ def _evaluate_travel_consistency(inputs: ResidenceAssessmentInputs) -> Evaluated
         )
 
     uncertain = [
-        t for t in trips if t.date_confidence in _UNCERTAIN_CONFIDENCES and _in_window(t)
+        t for t in trips if t.date_confidence in UNCERTAIN_CONFIDENCES and _in_window(t)
     ]
     if uncertain:
         limitations.append(
