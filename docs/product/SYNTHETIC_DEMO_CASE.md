@@ -283,17 +283,38 @@ fully prepared state.
 
 ## 10. Expected open issues
 
-Issues are a durable, user-actionable model owned by **M6** (Issue Detection); at M3B
-the equivalent signals are the structured limitations/next-actions on each result, and
-the transient STALE currency. The eventual issue set:
+Issues are a durable, user-actionable model owned by **M6** (Issue Detection). The
+eventual issue set, and what of it is live:
 
-| Issue type | Cause | Dismissible | Milestone |
+| Issue type | Cause | Dismissible | Status |
 |---|---|---|---|
-| `CONFLICTING_CLAIMS` | trip 11 return date 10 vs 11 May | No | M4 (conflict) / M6 (issue) |
-| `MISSING_EVIDENCE` | trip 6 (Greece) unevidenced | Yes (INFORMATION) | M4 / M6 |
-| `NEAR_THRESHOLD` | total absences 439, 11 below limit | No | M6 |
-| `MISSING_REQUIRED_FACT` | second referee absent | No | M4 / M6 |
-| `STALE_ASSESSMENT` | appears transiently after §7 step 5 | No (auto-resolves) | M6 |
+| `NEAR_THRESHOLD` | total absences 439, against a threshold of 450 | No | ✅ **live** — the one issue the case shows standing still |
+| `STALE_ASSESSMENT` | appears transiently after §7 step 5 | No (auto-resolves) | ✅ **live** — four issues, not five (§7) |
+| `CONFLICTING_CLAIMS` | trip 11 return date 10 vs 11 May | No | ❌ M8 — needs somewhere to hold the competing value |
+| `MISSING_EVIDENCE` | trip 6 (Greece) unevidenced | Yes (INFORMATION) | ❌ M7 — no evidence model |
+| `MISSING_REQUIRED_FACT` | second referee absent | No | ❌ no reachable producer (below) |
+
+**What the canonical case produces at M6.** Exactly one standing issue: `NEAR_THRESHOLD`
+on `residence.total_absences`. Editing trip 11 opens four `STALE_ASSESSMENT` issues in the
+same transaction; recalculation resolves all four into the settled list while the
+near-threshold issue **stays open**, because 439 → 440 does not widen the margin. That
+contrast is the demo — issues that clear themselves beside one that does not, for a visible
+reason.
+
+**`MISSING_REQUIRED_FACT` has no reachable producer, and not only because referees are
+unmodelled.** The type derives from a requirement concluding INCOMPLETE for want of a fact.
+The only such branch today is `status.holding_period` when `status_granted_on` is missing —
+and route confirmation *requires* that field for exactly the status types that activate a
+case (§9.4), so an active case always has it. The type becomes reachable when a subsystem
+with optional facts arrives: referees and knowledge records (M9/M10), or a route-profile
+edit path. Recorded here rather than shipped as an unreachable branch.
+
+**Three other issue types are producible but not by this fixture**, and are covered by
+`tests/issues/test_derived_types.py` instead: `OVERLAPPING_TRAVEL`, `UNCERTAIN_TRAVEL_DATE`
+(in-window, not dismissible; out-of-window, dismissible — the only dismissible thing in the
+product today), and `UNSUPPORTED_COMPLEXITY`, which the absence bands raise above 460 days.
+The canonical case is deliberately clean of all three: it demonstrates a well-kept case, and
+loading it with every defect at once would make the stale transition harder to see.
 
 ---
 

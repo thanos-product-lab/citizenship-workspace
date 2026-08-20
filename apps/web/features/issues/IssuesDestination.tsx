@@ -10,6 +10,7 @@ import { formatDateTime } from "@/features/requirements/dates";
 import { REQUIREMENT_TITLES } from "@/features/requirements/groups";
 
 import { groupHeading, type Issue, type IssueGroup } from "./groups";
+import { useDismissIssue } from "./useDismissIssue";
 import { useIssueQueue } from "./useIssueQueue";
 
 /**
@@ -60,6 +61,11 @@ export function IssuesDestination({ caseId }: { caseId: string }): JSX.Element {
   // never returned. A jsdom test does not catch it, because the mocked mutation settles
   // before the unmount; the browser does. So the parent records only that a recheck was
   // asked for, and derives what to say from the count actually changing.
+  // The dismiss mutation lives here, not in the card. React Query drops callbacks passed
+  // to mutate() when the calling component unmounts, and a dismissed card is removed by
+  // the refetch its own success triggers — the same trap that swallowed the recheck
+  // announcement. A parent that outlives the list is the only safe owner.
+  const dismiss = useDismissIssue(caseId);
   const [recheckRequested, setRecheckRequested] = useState(false);
   const previousOpenCount = useRef(openCount);
 
@@ -134,6 +140,17 @@ export function IssuesDestination({ caseId }: { caseId: string }): JSX.Element {
                 setAnnouncement("The recheck did not complete. Nothing has changed.");
                 setRecheckRequested(false);
               }}
+              dismissState={dismiss}
+              onDismiss={(issue) => {
+                dismiss.mutate(issue.id, {
+                  onSuccess: () => {
+                    setAnnouncement(
+                      `${issue.title} dismissed. It is listed under Settled.`,
+                    );
+                    setReturnFocus(true);
+                  },
+                });
+              }}
             />
           ))}
 
@@ -176,11 +193,15 @@ function IssueGroupSection({
   group,
   onRecheckRequested,
   onRecheckFailed,
+  onDismiss,
+  dismissState,
 }: {
   caseId: string;
   group: IssueGroup;
   onRecheckRequested: () => void;
   onRecheckFailed: () => void;
+  onDismiss: (issue: Issue) => void;
+  dismissState: { isPending: boolean; isError: boolean; variables?: string | undefined };
 }): JSX.Element {
   const headingId = `issue-group-${group.action_group}`;
   const recheckable = group.issues.some((issue) => issue.issue_type === "STALE_ASSESSMENT");
@@ -223,6 +244,11 @@ function IssueGroupSection({
               impact={issue.impact}
               hasRecurred={issue.has_recurred}
               affectedLink={<AffectedLink caseId={caseId} issue={issue} />}
+              actions={
+                issue.dismissibility === "DISMISSIBLE" ? (
+                  <DismissAction issue={issue} onDismiss={onDismiss} state={dismissState} />
+                ) : null
+              }
             />
           </li>
         ))}
@@ -290,6 +316,48 @@ function RecheckAction({
         </p>
       ) : null}
     </div>
+  );
+}
+
+/**
+ * Setting an issue aside.
+ *
+ * Only offered where the server marks the issue dismissible, and the server refuses
+ * anything else with a domain error — the control's absence and the refusal are two
+ * expressions of one rule, not a client-side convention.
+ *
+ * **Not optimistic.** Hiding the card immediately would show the item leaving the queue in
+ * exactly the cases where the server refuses, which is the one thing a dismissal must not
+ * do. The mutation itself is owned by the destination; this renders its state.
+ */
+function DismissAction({
+  issue,
+  onDismiss,
+  state,
+}: {
+  issue: Issue;
+  onDismiss: (issue: Issue) => void;
+  state: { isPending: boolean; isError: boolean; variables?: string | undefined };
+}): JSX.Element {
+  const busy = state.isPending && state.variables === issue.id;
+  const failed = state.isError && state.variables === issue.id;
+
+  return (
+    <>
+      <button
+        type="button"
+        className="cw-button cw-button--quiet"
+        aria-disabled={busy}
+        onClick={() => (busy ? undefined : onDismiss(issue))}
+      >
+        {busy ? "Dismissing…" : "Dismiss"}
+      </button>
+      {failed ? (
+        <p role="alert" className="cw-case-header__error">
+          We couldn’t dismiss this. It is still open.
+        </p>
+      ) : null}
+    </>
   );
 }
 

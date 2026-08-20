@@ -1669,3 +1669,16 @@
 .cw-issue-group__action {
   margin-bottom: var(--cw-space-1);
 }
+
+/* A quiet action: available, but not competing with the primary one on the card. */
+.cw-button--quiet {
+  background: transparent;
+  border-color: transparent;
+  color: var(--cw-text-muted);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.cw-button--quiet:hover {
+  color: var(--cw-text);
+}

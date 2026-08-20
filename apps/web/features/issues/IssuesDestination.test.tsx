@@ -337,3 +337,101 @@ describe("issues destination accessibility", () => {
     expect(screen.queryByText(/Every conclusion reached so far is current/i)).toBeNull();
   });
 });
+
+describe("dismissing an issue", () => {
+  function dismissibleIssue(overrides: Record<string, unknown> = {}) {
+    return anIssue({
+      id: "i-dismissible",
+      issue_type: "UNCERTAIN_TRAVEL_DATE",
+      severity: "INFORMATION",
+      dismissibility: "DISMISSIBLE",
+      action_group: "FOR_YOUR_AWARENESS",
+      title: "Your trip to Japan has uncertain dates",
+      affected_object_type: "TravelRecord",
+      affected_object_id: "rec-1",
+      ...overrides,
+    });
+  }
+
+  it("offers Dismiss only where the server says the issue may be set aside", async () => {
+    queueReturns(
+      aQueue({
+        open_count: 2,
+        groups: [
+          { action_group: "CONFIRM_INFORMATION", issues: [anIssue()] },
+          { action_group: "FOR_YOUR_AWARENESS", issues: [dismissibleIssue()] },
+        ],
+      }),
+    );
+    renderWithQuery(<IssuesDestination caseId={CASE} />);
+
+    // Two cards, one Dismiss: the control's absence mirrors the server's refusal.
+    await screen.findAllByRole("article");
+    expect(screen.getAllByRole("button", { name: /^dismiss$/i })).toHaveLength(1);
+  });
+
+  it("does not hide the card before the server has agreed", async () => {
+    // Optimistic dismissal would show the item leaving the queue in exactly the cases the
+    // server refuses — the one thing a dismissal must not do.
+    let resolveDismiss: (value: unknown) => void = () => {};
+    queueReturns(
+      aQueue({
+        open_count: 1,
+        groups: [{ action_group: "FOR_YOUR_AWARENESS", issues: [dismissibleIssue()] }],
+      }),
+    );
+    post.mockImplementation(() => new Promise((resolve) => (resolveDismiss = resolve)));
+    renderWithQuery(<IssuesDestination caseId={CASE} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /^dismiss$/i }));
+
+    await waitFor(() => expect(screen.getByText("Dismissing…")).toBeInTheDocument());
+    expect(screen.getByRole("article", { name: /Japan/i })).toBeInTheDocument();
+    resolveDismiss({ data: { id: "i-dismissible", status: "DISMISSED" } });
+  });
+
+  it("announces the dismissal from outside the card it removes", async () => {
+    const populated = aQueue({
+      open_count: 1,
+      groups: [{ action_group: "FOR_YOUR_AWARENESS", issues: [dismissibleIssue()] }],
+    });
+    const cleared = aQueue({
+      history: [dismissibleIssue({ status: "DISMISSED" })],
+    });
+    let dismissed = false;
+    get.mockImplementation((path: string) => {
+      if (path === "/api/v1/cases/{case_id}/issues") {
+        return Promise.resolve({ data: dismissed ? cleared : populated });
+      }
+      return Promise.resolve({ data: { groups: [], stale: 0 } });
+    });
+    post.mockImplementation(() => {
+      dismissed = true;
+      return Promise.resolve({ data: { id: "i-dismissible", status: "DISMISSED" } });
+    });
+    renderWithQuery(<IssuesDestination caseId={CASE} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /^dismiss$/i }));
+
+    await waitFor(() =>
+      expect(screen.getByText(/Japan has uncertain dates dismissed/i)).toBeInTheDocument(),
+    );
+    expect(screen.getByRole("heading", { name: /settled/i })).toBeInTheDocument();
+  });
+
+  it("says the issue is still open when dismissal fails", async () => {
+    queueReturns(
+      aQueue({
+        open_count: 1,
+        groups: [{ action_group: "FOR_YOUR_AWARENESS", issues: [dismissibleIssue()] }],
+      }),
+    );
+    post.mockResolvedValue({ data: undefined, error: { detail: "nope" } });
+    renderWithQuery(<IssuesDestination caseId={CASE} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /^dismiss$/i }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/still open/i);
+    expect(screen.getByRole("article", { name: /Japan/i })).toBeInTheDocument();
+  });
+});
