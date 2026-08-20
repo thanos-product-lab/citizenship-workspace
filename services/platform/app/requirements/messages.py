@@ -422,3 +422,42 @@ def render_next_action(code: str | None, parameters: Parameters | None = None) -
 
 def render_stale_reason(code: str | None, parameters: Parameters | None = None) -> str | None:
     return _render(STALE_REASON_TEMPLATES, code, parameters)
+
+
+#: `Issue.title_code` → the queue's heading and body for that issue (Domain §36, UI/UX §10).
+#:
+#: UI/UX §10 governs the register: calm, specific, non-alarmist. No "Something went wrong",
+#: no urgency the situation does not carry, and — for a stale issue especially — nothing
+#: implying the preserved conclusion still holds. The same trap `StaleAssessmentNotice`
+#: names on the frontend: a stale conclusion has *not* been rechecked, so it may not be
+#: described as standing, holding, or still valid.
+ISSUE_TITLE_TEMPLATES: dict[str, _Template] = {
+    "ISSUE_STALE_ASSESSMENT": lambda p: f"Recheck {p.get('requirement_title', 'this requirement')}",
+}
+
+ISSUE_BODY_TEMPLATES: dict[str, _Template] = {
+    "ISSUE_STALE_ASSESSMENT": lambda p: (
+        "An input behind this conclusion changed, so it has not been rechecked. "
+        "The conclusion shown is the one reached before that change."
+    ),
+}
+
+#: Why the user should care — the "why it matters" line of Domain §44.5. States the
+#: consequence, never a prediction and never advice.
+ISSUE_IMPACT_TEMPLATES: dict[str, _Template] = {
+    "ISSUE_STALE_ASSESSMENT": lambda p: (
+        "Until it is rechecked, this conclusion may no longer match your case data."
+    ),
+}
+
+
+def render_issue_title(code: str | None, parameters: Parameters | None = None) -> str | None:
+    return _render(ISSUE_TITLE_TEMPLATES, code, parameters)
+
+
+def render_issue_body(code: str | None, parameters: Parameters | None = None) -> str | None:
+    return _render(ISSUE_BODY_TEMPLATES, code, parameters)
+
+
+def render_issue_impact(code: str | None, parameters: Parameters | None = None) -> str | None:
+    return _render(ISSUE_IMPACT_TEMPLATES, code, parameters)

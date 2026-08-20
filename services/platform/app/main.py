@@ -20,6 +20,7 @@ from app.core.db import connection_is_superuser
 from app.core.logging import configure_logging
 from app.core.middleware import TraceIdMiddleware
 from app.health.routes import router as health_router
+from app.issues.routes import router as issues_router
 from app.residence.routes import router as application_dates_router
 from app.residence.routes import travel_records_router
 from app.shared.errors import register_exception_handlers
@@ -66,6 +67,7 @@ def create_app() -> FastAPI:
     app.include_router(overview_router)
     app.include_router(requirements_router)
     app.include_router(assessments_router)
+    app.include_router(issues_router)
 
     structlog.get_logger().info("app.startup", environment=settings.environment)
     return app

@@ -94,6 +94,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/cases/{case_id}/issues": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Issue Queue */
+        get: operations["get_issue_queue_api_v1_cases__case_id__issues_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cases/{case_id}/issues/{issue_id}/dismiss": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Dismiss Issue */
+        post: operations["dismiss_issue_api_v1_cases__case_id__issues__issue_id__dismiss_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/cases/{case_id}/overview": {
         parameters: {
             query?: never;
@@ -309,10 +343,10 @@ export interface components {
          * CaseOverview
          * @description The case overview read model (Domain §44.1).
          *
-         *     **`open_issue_count` and `evidence_coverage` are deliberately absent.** §44.1 lists
-         *     both, but issue detection is M6 and evidence is M5. A zero here would say the system
-         *     checked and found nothing, which is a stronger claim than the product can make. The
-         *     fields arrive with the subsystems that populate them.
+         *     `open_issue_count` is present from M6: with issue derivation running, a zero genuinely
+         *     means the system looked and found nothing. **`evidence_coverage` is still absent** —
+         *     there is no evidence subsystem until M7, and a zero there would claim a check nobody
+         *     ran, which is a stronger statement than the product can make.
          */
         CaseOverview: {
             /** Application Date */
@@ -336,6 +370,8 @@ export interface components {
             needs_attention: number;
             /** Not Yet Assessed */
             not_yet_assessed: number;
+            /** Open Issue Count */
+            open_issue_count: number;
             /** Priority Actions */
             priority_actions: components["schemas"]["PriorityActionView"][];
             /** Priority Actions Hidden */
@@ -524,6 +560,97 @@ export interface components {
             total: number;
             /** Valid Count */
             valid_count: number;
+        };
+        /**
+         * IssueGroupView
+         * @description Open issues sharing one user action (UI/UX §10).
+         */
+        IssueGroupView: {
+            /** Action Group */
+            action_group: string;
+            /** Issues */
+            issues: components["schemas"]["IssueView"][];
+        };
+        /**
+         * IssueQueue
+         * @description Domain §44.5.
+         *
+         *     `open_count` counts OPEN and IN_PROGRESS only. A dismissed issue is not awaiting the
+         *     user, and counting it would leave a badge nobody can clear.
+         */
+        IssueQueue: {
+            /**
+             * Case Id
+             * Format: uuid
+             */
+            case_id: string;
+            /** Groups */
+            groups: components["schemas"]["IssueGroupView"][];
+            /** History */
+            history: components["schemas"]["IssueView"][];
+            /** Open Count */
+            open_count: number;
+        };
+        /** IssueResolutionView */
+        IssueResolutionView: {
+            /** Notes */
+            notes?: string | null;
+            /** Resolution Type */
+            resolution_type: string;
+            /**
+             * Resolved At
+             * Format: date-time
+             */
+            resolved_at: string;
+            /** Resolved By */
+            resolved_by: string;
+        };
+        /** IssueView */
+        IssueView: {
+            /** Action Group */
+            action_group: string;
+            /** Affected Object Id */
+            affected_object_id: string;
+            /** Affected Object Type */
+            affected_object_type: string;
+            /** Body */
+            body?: string | null;
+            /** Dismissibility */
+            dismissibility: string;
+            /**
+             * Has Recurred
+             * @default false
+             */
+            has_recurred: boolean;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Impact */
+            impact?: string | null;
+            /** Issue Type */
+            issue_type: string;
+            /**
+             * Opened At
+             * Format: date-time
+             */
+            opened_at: string;
+            /** Reopened At */
+            reopened_at?: string | null;
+            /**
+             * Resolutions
+             * @default []
+             */
+            resolutions: components["schemas"]["IssueResolutionView"][];
+            /** Resolved At */
+            resolved_at?: string | null;
+            /** Severity */
+            severity: string;
+            /** Status */
+            status: string;
+            /** Title */
+            title: string;
         };
         /**
          * LimitationView
@@ -1270,6 +1397,69 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RecalculateResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_issue_queue_api_v1_cases__case_id__issues_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IssueQueue"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    dismiss_issue_api_v1_cases__case_id__issues__issue_id__dismiss_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                issue_id: string;
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IssueView"];
                 };
             };
             /** @description Validation Error */

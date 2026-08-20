@@ -446,10 +446,10 @@ class PriorityActionView(BaseModel):
 class CaseOverview(BaseModel):
     """The case overview read model (Domain §44.1).
 
-    **`open_issue_count` and `evidence_coverage` are deliberately absent.** §44.1 lists
-    both, but issue detection is M6 and evidence is M5. A zero here would say the system
-    checked and found nothing, which is a stronger claim than the product can make. The
-    fields arrive with the subsystems that populate them.
+    `open_issue_count` is present from M6: with issue derivation running, a zero genuinely
+    means the system looked and found nothing. **`evidence_coverage` is still absent** —
+    there is no evidence subsystem until M7, and a zero there would claim a check nobody
+    ran, which is a stronger statement than the product can make.
     """
 
     case_id: uuid.UUID
@@ -472,6 +472,9 @@ class CaseOverview(BaseModel):
     needs_attention: int
     #: Requirements whose displayed result is stale.
     stale: int
+    #: Issues awaiting the user (OPEN or IN_PROGRESS). Dismissed issues are not counted:
+    #: the user has decided about them, and a badge they cannot clear is a nag, not a signal.
+    open_issue_count: int
     total_requirements: int
     last_assessed_at: datetime | None
 
@@ -494,6 +497,7 @@ class CaseOverview(BaseModel):
             not_yet_assessed=sum(g.not_yet_assessed for g in view.groups),
             needs_attention=sum(g.needs_attention for g in view.groups),
             stale=sum(g.stale for g in view.groups),
+            open_issue_count=view.open_issue_count,
             total_requirements=sum(g.total for g in view.groups),
             last_assessed_at=view.last_assessed_at,
         )

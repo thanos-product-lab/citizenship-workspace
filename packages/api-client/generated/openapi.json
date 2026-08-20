@@ -2,7 +2,7 @@
   "components": {
     "schemas": {
       "CaseOverview": {
-        "description": "The case overview read model (Domain \u00a744.1).\n\n**`open_issue_count` and `evidence_coverage` are deliberately absent.** \u00a744.1 lists\nboth, but issue detection is M6 and evidence is M5. A zero here would say the system\nchecked and found nothing, which is a stronger claim than the product can make. The\nfields arrive with the subsystems that populate them.",
+        "description": "The case overview read model (Domain \u00a744.1).\n\n`open_issue_count` is present from M6: with issue derivation running, a zero genuinely\nmeans the system looked and found nothing. **`evidence_coverage` is still absent** \u2014\nthere is no evidence subsystem until M7, and a zero there would claim a check nobody\nran, which is a stronger statement than the product can make.",
         "properties": {
           "application_date": {
             "anyOf": [
@@ -63,6 +63,10 @@
             "title": "Not Yet Assessed",
             "type": "integer"
           },
+          "open_issue_count": {
+            "title": "Open Issue Count",
+            "type": "integer"
+          },
           "priority_actions": {
             "items": {
               "$ref": "#/components/schemas/PriorityActionView"
@@ -105,6 +109,7 @@
           "not_yet_assessed",
           "needs_attention",
           "stale",
+          "open_issue_count",
           "total_requirements",
           "last_assessed_at"
         ],
@@ -533,6 +538,218 @@
           "rows"
         ],
         "title": "ImportValidationResponse",
+        "type": "object"
+      },
+      "IssueGroupView": {
+        "description": "Open issues sharing one user action (UI/UX \u00a710).",
+        "properties": {
+          "action_group": {
+            "title": "Action Group",
+            "type": "string"
+          },
+          "issues": {
+            "items": {
+              "$ref": "#/components/schemas/IssueView"
+            },
+            "title": "Issues",
+            "type": "array"
+          }
+        },
+        "required": [
+          "action_group",
+          "issues"
+        ],
+        "title": "IssueGroupView",
+        "type": "object"
+      },
+      "IssueQueue": {
+        "description": "Domain \u00a744.5.\n\n`open_count` counts OPEN and IN_PROGRESS only. A dismissed issue is not awaiting the\nuser, and counting it would leave a badge nobody can clear.",
+        "properties": {
+          "case_id": {
+            "format": "uuid",
+            "title": "Case Id",
+            "type": "string"
+          },
+          "groups": {
+            "items": {
+              "$ref": "#/components/schemas/IssueGroupView"
+            },
+            "title": "Groups",
+            "type": "array"
+          },
+          "history": {
+            "items": {
+              "$ref": "#/components/schemas/IssueView"
+            },
+            "title": "History",
+            "type": "array"
+          },
+          "open_count": {
+            "title": "Open Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "case_id",
+          "open_count",
+          "groups",
+          "history"
+        ],
+        "title": "IssueQueue",
+        "type": "object"
+      },
+      "IssueResolutionView": {
+        "properties": {
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "resolution_type": {
+            "title": "Resolution Type",
+            "type": "string"
+          },
+          "resolved_at": {
+            "format": "date-time",
+            "title": "Resolved At",
+            "type": "string"
+          },
+          "resolved_by": {
+            "title": "Resolved By",
+            "type": "string"
+          }
+        },
+        "required": [
+          "resolution_type",
+          "resolved_by",
+          "resolved_at"
+        ],
+        "title": "IssueResolutionView",
+        "type": "object"
+      },
+      "IssueView": {
+        "properties": {
+          "action_group": {
+            "title": "Action Group",
+            "type": "string"
+          },
+          "affected_object_id": {
+            "title": "Affected Object Id",
+            "type": "string"
+          },
+          "affected_object_type": {
+            "title": "Affected Object Type",
+            "type": "string"
+          },
+          "body": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Body"
+          },
+          "dismissibility": {
+            "title": "Dismissibility",
+            "type": "string"
+          },
+          "has_recurred": {
+            "default": false,
+            "title": "Has Recurred",
+            "type": "boolean"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "impact": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Impact"
+          },
+          "issue_type": {
+            "title": "Issue Type",
+            "type": "string"
+          },
+          "opened_at": {
+            "format": "date-time",
+            "title": "Opened At",
+            "type": "string"
+          },
+          "reopened_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reopened At"
+          },
+          "resolutions": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/IssueResolutionView"
+            },
+            "title": "Resolutions",
+            "type": "array"
+          },
+          "resolved_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolved At"
+          },
+          "severity": {
+            "title": "Severity",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "issue_type",
+          "severity",
+          "status",
+          "dismissibility",
+          "action_group",
+          "title",
+          "affected_object_type",
+          "affected_object_id",
+          "opened_at"
+        ],
+        "title": "IssueView",
         "type": "object"
       },
       "LimitationView": {
@@ -2301,6 +2518,112 @@
         "summary": "Recalculate",
         "tags": [
           "assessments"
+        ]
+      }
+    },
+    "/api/v1/cases/{case_id}/issues": {
+      "get": {
+        "operationId": "get_issue_queue_api_v1_cases__case_id__issues_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Case Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IssueQueue"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Issue Queue",
+        "tags": [
+          "issues"
+        ]
+      }
+    },
+    "/api/v1/cases/{case_id}/issues/{issue_id}/dismiss": {
+      "post": {
+        "operationId": "dismiss_issue_api_v1_cases__case_id__issues__issue_id__dismiss_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "issue_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Issue Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Case Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IssueView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Dismiss Issue",
+        "tags": [
+          "issues"
         ]
       }
     },

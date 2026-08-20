@@ -40,6 +40,8 @@ from app.auth.schemas import CurrentUser
 from app.cases import service as cases_service
 from app.cases.domain import ApplicationCase, CasePhase, LifecycleStatus
 from app.cases.phase import RequirementState, derive_phase
+from app.issues import service as issues_service
+from app.issues.repository import IssueRepository
 from app.requirements.domain import Conclusion
 from app.requirements.evaluation import (
     EvaluatedResult,
@@ -138,6 +140,11 @@ def recalculate(
         target_type="AssessmentRun",
         target_id=run.id,
     )
+    # Same unit of work as the run: the results and the issues describing them commit
+    # together. This is what auto-resolves the STALE_ASSESSMENT issues the change opened —
+    # not a special case in the recalculation path, just the reconciler finding those
+    # causes gone.
+    issues_service.reconcile(session, uow, case_id=case.id)
     uow.commit()
 
     return RecalculationOutcome(
@@ -195,10 +202,10 @@ def derive_case_phase(session: Session, *, case: ApplicationCase) -> CasePhase:
 class CaseOverviewView:
     """Everything the overview screen reads, gathered once (Domain §44.1).
 
-    Deliberately absent: **open issue count** and **evidence coverage**. §44.1 lists both,
-    but neither subsystem exists — issues arrive at M6, evidence at M5. Reporting "0 open
-    issues" would state that the system looked and found none, which is a stronger and
-    falser claim than saying nothing. The fields join when the things they count do.
+    `open_issue_count` joins here now that issues exist: a zero is a real statement that the
+    system looked and found nothing, which it could not honestly make before. **Evidence
+    coverage is still absent** for the same reason it was — there is no evidence subsystem
+    until M7, and a zero would claim a check nobody ran.
     """
 
     case: ApplicationCase
@@ -207,6 +214,8 @@ class CaseOverviewView:
     groups: list[GroupSummary]
     #: Every requirement with its group, so the overview can list and link them.
     members: list[GroupMember]
+    #: Issues awaiting the user: OPEN or IN_PROGRESS, dismissed ones excluded.
+    open_issue_count: int
     actions: PriorityActions
     last_assessed_at: datetime | None
 
@@ -260,6 +269,7 @@ def get_case_overview(session: Session, *, case: ApplicationCase) -> CaseOvervie
         application_date=date_version.application_date if date_version else None,
         groups=summarise_groups(members),
         members=members,
+        open_issue_count=IssueRepository.count_open(session, case.id),
         actions=select_priority_actions(candidates),
         last_assessed_at=last_assessed,
     )

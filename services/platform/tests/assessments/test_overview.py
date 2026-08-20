@@ -127,12 +127,30 @@ def test_the_overview_reports_no_readiness_score(api: Api) -> None:
         assert not (forbidden & set(group))
 
 
-def test_issue_count_and_evidence_coverage_are_absent_not_zero(api: Api) -> None:
-    """Domain §44.1 lists both, but issues are M6 and evidence is M5. A zero would say the
-    system looked and found none — a stronger claim than the product can make."""
+def test_open_issue_count_is_reported_and_evidence_coverage_is_still_absent(api: Api) -> None:
+    """Domain §44.1 lists both. Issue derivation exists from M6, so a zero here is a real
+    statement that the system looked and found nothing. Evidence is M7 and still absent —
+    a zero there would claim a check nobody ran, which is the stronger, falser claim."""
     overview = _overview(api, "user_a", _assessed_case(api, "user_a"))
-    assert "open_issue_count" not in overview
+    assert overview["open_issue_count"] == 0
     assert "evidence_coverage" not in overview
+
+
+def test_the_open_issue_count_follows_the_stale_conclusions(api: Api) -> None:
+    """The count is not decorative: it is the queue the header badge and the Issues
+    destination both read."""
+    case_id = _assessed_case(api, "user_a")
+    current = api("user_a").get(f"/api/v1/cases/{case_id}/application-dates").json()
+    api("user_a").post(
+        f"/api/v1/cases/{case_id}/application-dates/select",
+        json={"application_date": "2027-05-20", "expected_revision": current["revision"]},
+    )
+    # One issue per stale requirement — the eight a date change stales (ADR-0014).
+    assert _overview(api, "user_a", case_id)["open_issue_count"] == 8
+
+    api("user_a").post(f"/api/v1/cases/{case_id}/assessments/recalculate")
+    # Recalculation removes the cause, so every one of them resolves itself.
+    assert _overview(api, "user_a", case_id)["open_issue_count"] == 0
 
 
 def test_priority_actions_are_capped_at_three_and_carry_rendered_text(api: Api) -> None:
