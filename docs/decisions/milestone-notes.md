@@ -345,3 +345,123 @@ _Known gaps carried forward:_
   was current when the image was last built. This has cost real debugging time twice.
 
 ---
+
+## M5 — Timeline and application-date simulation
+
+*Built after M6, per the roadmap's reordering. In progress; this section grows per slice.*
+
+_Date gated:_
+_Outcome:_ Pass | Pass with gaps | Fail
+
+### Slice 1 — the RLS test harness
+
+M5 adds no tables, which made it the cheapest moment to retrofit the harness the RLS
+policies had been living without — and it had to exist before M7 adds evidence tables and
+private storage.
+
+The framing that started the slice was half wrong, and worth correcting because the wrong
+half is reassuring. RLS *was* verified: `set_tenant` issues `SET ROLE app_rls`, switching
+into a non-superuser role drops the owner's bypass, and `tests/cases/test_rls.py` had four
+passing isolation tests. Two things were not verified. Six of the thirteen case-scoped
+tables had no isolation test at all — `case_memberships`, the three assessment tables,
+`issues`, `issue_resolutions` — their policies asserted only by the migration that wrote
+them. And no test could see a code path that *forgets* `set_tenant`, because the login role
+is a superuser (ADR-0006 R1). That second one is the M6 bug.
+
+Four commits. One migration: 0012 (catalog grants). No application code changed.
+
+**New suite, `tests/security/`.** `test_rls_matrix.py` covers all thirteen tables both ways
+a policy can be wrong — failing to hide (`USING`) and failing to reject (`WITH CHECK`).
+The write probe copies a real row into a temp table, gives it a fresh id, and has the
+tenant role insert it back, so it needs no per-table row builder and cannot drift from the
+schema. `test_rls_coverage.py` derives the protected set from the schema — reachable from
+`cases` by foreign key, or carrying a `case_id` — rather than from a list, and asserts
+ENABLE, FORCE and a policy on each. `test_tenant_wiring.py` walks the FastAPI dependency
+graph and requires `get_tenant_session` under every `{case_id}` route.
+
+**The non-superuser connection.** `app_test_login` (LOGIN, NOSUPERUSER, `app_rls`'s grants)
+is provisioned by a session fixture and used by a second engine. Test-only: nothing in
+`docker-compose.yml`, `ci.yml`, `railway.json` or `app/core/config.py` moved, and the app
+still connects as the owner. `test_the_recovery_enters_the_rls_tenant_context` now runs the
+recovery on that connection instead of hand-building `SET ROLE app_rls` in the test body —
+the old version simulated the enforcement it was checking, so deleting the test's own setup
+line would have silently stopped it testing anything.
+
+### What went wrong, and what it taught
+
+- **The harness found a real defect on its first end-to-end request, and it is not small.**
+  `set_tenant` binds role and tenant at *session* scope, deliberately, because the unit of
+  work commits mid-request and `SET LOCAL` would not survive that (ADR-0006, deviating from
+  ADR-0005). But SQLAlchemy releases the connection when a session's transaction ends, and
+  `app/core/db.py` resets role and tenant on checkin — so the statement after a commit runs
+  with neither:
+
+  ```
+  set_tenant(session, "user_a")   ->  (app_rls, 'user_a')
+  session.commit()                ->  connection returns to the pool, reset fires
+  session.execute(...)            ->  (app_test_login, '')
+  ```
+
+  `create_case` does exactly this — `uow.commit()`, then `session.refresh(case)` for the
+  server-defaulted timestamps — so the very first command in the product raises
+  `InvalidRequestError` on a non-superuser connection. On the owner connection it is
+  invisible, because a superuser bypasses RLS and the tenantless read simply succeeds.
+  Recorded as `xfail(strict=True)` in `tests/security/test_rls_login_role.py` rather than
+  fixed inside a test slice: the fix is to re-establish the tenant per transaction
+  (`Session.info` plus an `after_begin` listener), which changes every request and wants
+  its own reviewed change. **ADR-0006 R1 Option A cannot be adopted until it lands** — a
+  non-superuser runtime role would 500 on every write command today.
+
+- **`ALTER DEFAULT PRIVILEGES` is retroactive in the direction nobody checks.** Migration
+  0004 granted `app_rls` full DML on every table the owner creates *after* it, so the
+  catalog tables in 0007 and 0010 were born writable and their explicit `GRANT SELECT`
+  granted nothing they did not already have — a no-op sitting beside a comment reading
+  "SELECT for the app role". The request role could rewrite `rule_versions`, which is what
+  makes a past conclusion reproducible. Migration 0012 revokes it.
+
+- **A dropped policy is not the mutation to test with.** Postgres reads a table with RLS
+  enabled and no policy as deny-all, so dropping one fails closed and breaks the feature
+  rather than leaking. `DISABLE ROW LEVEL SECURITY` is the mutation that models the real
+  regression.
+
+- **`FORCE` is invisible to behavioural tests.** Policies apply to a non-owner role whether
+  or not a table is forced, so `NO FORCE` leaves every isolation test green. FORCE is what
+  applies policies to the *owner* — the role a forgotten `set_tenant` runs as. Only catalog
+  introspection can see it, which is why the two files exist and why neither covers the
+  other.
+
+- **A route-graph scan finds nothing if it does not recurse.** `include_router` does not
+  splice handlers into `app.routes` on FastAPI 0.139; it appends a wrapper holding the
+  original router. The first version of `test_tenant_wiring.py` scanned one level, found
+  ten wrappers and zero endpoints, and passed. Every "assert the bad set is empty" test in
+  that file now has a coverage guard beside it.
+
+### Gate evidence — slice 1
+
+Six mutations, each restored after:
+
+| # | Mutation | Result |
+|---|---|---|
+| 1 | `ALTER TABLE issues DISABLE ROW LEVEL SECURITY` | 4 reds, incl. *"issues leaked rows to another tenant"* and *"readable without a tenant on a non-superuser connection"* |
+| 2 | `ALTER TABLE issues NO FORCE ROW LEVEL SECURITY` | 1 red — *"case-scoped tables without FORCE"*. Invisible to every behavioural test |
+| 3 | `DROP POLICY issue_resolutions_tenant` | red (fails closed: the arrangement can no longer write) |
+| 4 | `GRANT UPDATE ON rule_versions TO app_rls` | 1 red — *"app_rls can \['UPDATE'\] on rule_versions"* |
+| 5 | delete `set_tenant` from `_record_failed_run` | 1 red — `assert 'COMPLETED' == 'FAILED'`; the policy refused the insert and the recovery swallowed it |
+| 6 | add `evidence_items(id, case_id → cases)` with no policy — the M7 shape | 3 reds, with no test written for the table |
+
+Mutation 6 is the one the slice exists for: a table added in a later milestone is covered
+the moment its migration runs, not when someone remembers to write a test.
+
+`just lint`, `just typecheck`, 490 backend tests + 1 xfailed, migration 0012 applied.
+
+_Known gaps carried forward:_
+
+- **The mid-request tenant loss is unfixed** and blocks the production half of ADR-0006 R1.
+  `xfail(strict=True)`, so the marker fails the moment the defect is fixed.
+- **`domain_events`, `audit_entries` and `outbox_events` still have no policy** — now an
+  allowlist in `test_rls_coverage.py` rather than prose, so removing a name from the list
+  is what closing the gap looks like. Carried from M2.
+- **The non-superuser role is test-only.** Local, CI and Railway still connect as a
+  superuser, and `rls.login_role_superuser` still logs at boot.
+- **`just lint` still does not enforce `ruff format`**, and swept unrelated files into the
+  working tree again during this slice; reverted by hand for the third time.
