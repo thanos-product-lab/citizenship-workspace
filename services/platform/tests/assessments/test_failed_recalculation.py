@@ -319,8 +319,10 @@ def test_the_failure_sorts_above_the_stale_items_it_explains(
     with pytest.raises(RuntimeError):
         api("user_a").post(f"/api/v1/cases/{case_id}/assessments/recalculate")
 
+    # Both types are cleared by the same recalculation, so they share one action group —
+    # named for that action rather than for their severity (see `TYPE_ACTION_GROUPS`).
     group = next(
-        g for g in _queue(api, case_id)["groups"] if g["action_group"] == "CONFIRM_INFORMATION"
+        g for g in _queue(api, case_id)["groups"] if g["action_group"] == "RECHECK_CONCLUSIONS"
     )
     assert group["issues"][0]["issue_type"] == IssueType.PROCESSING_FAILURE.value
     assert {i["issue_type"] for i in group["issues"][1:]} == {IssueType.STALE_ASSESSMENT.value}

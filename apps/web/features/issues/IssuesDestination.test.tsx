@@ -3,6 +3,8 @@ import "@testing-library/jest-dom/vitest";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { JSX } from "react";
+
 import { renderWithQuery } from "@/test/render";
 
 const get = vi.fn();
@@ -11,6 +13,7 @@ const client = { GET: get, POST: post, PUT: vi.fn(), PATCH: vi.fn(), DELETE: vi.
 vi.mock("@/lib/api", () => ({ useApiClient: () => client }));
 
 import { IssuesDestination } from "./IssuesDestination";
+import { useRecalculate, useRecalculationInFlight } from "@/features/case-workspace/useRecalculate";
 
 const CASE = "c1";
 
@@ -427,13 +430,197 @@ describe("issues destination accessibility", () => {
 
       fireEvent.click(await screen.findByRole("button", { name: /recheck now/i }));
 
+      // One announcer, not two: the assertive alert reports the failure, and the polite
+      // region stays silent rather than repeating the same fact in different words.
       await waitFor(() =>
-        expect(screen.getByText(/did not complete/i)).toBeInTheDocument(),
+        expect(screen.getByRole("alert")).toHaveTextContent(/didn’t finish/i),
       );
       // The refetch brought the durable record in, and the user is looking at it.
       expect(await screen.findByRole("button", { name: /try again/i })).toBeInTheDocument();
       expect(screen.queryByText(/Recheck finished/i)).toBeNull();
     });
+  });
+
+  it("announces and returns focus even when the recheck changes nothing", async () => {
+    // The defect the count heuristic could not see. A recalculation that resolves one
+    // stale issue and opens one fresh one is net zero — and the old code, gated on the
+    // count moving, announced nothing, never cleared its flag, and let focus fall to
+    // <body> when the group unmounted. WCAG 2.4.3 and 4.1.3.
+    const before = aQueue({
+      open_count: 1,
+      groups: [{ action_group: "RECHECK_CONCLUSIONS", issues: [anIssue()] }],
+    });
+    const after = aQueue({
+      open_count: 1,
+      groups: [
+        {
+          action_group: "REVIEW_CAREFULLY",
+          issues: [
+            anIssue({
+              id: "n1",
+              issue_type: "NEAR_THRESHOLD",
+              severity: "REVIEW_REQUIRED",
+              title: "Total absences is close to its threshold",
+            }),
+          ],
+        },
+      ],
+      history: [anIssue({ status: "RESOLVED", resolved_at: "2026-08-20T11:00:00Z" })],
+    });
+    let recalculated = false;
+    get.mockImplementation((path: string) => {
+      if (path === "/api/v1/cases/{case_id}/issues") {
+        return Promise.resolve({ data: recalculated ? after : before });
+      }
+      return Promise.resolve({ data: { groups: [], stale: 0 } });
+    });
+    post.mockImplementation(() => {
+      recalculated = true;
+      return Promise.resolve({ data: { requirements: [{ conclusion: "SUPPORTED" }] } });
+    });
+    renderWithQuery(<IssuesDestination caseId={CASE} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /recheck now/i }));
+
+    await waitFor(() =>
+      expect(screen.getByText(/Recheck finished\. Nothing was resolved\./i)).toBeInTheDocument(),
+    );
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        screen.getByRole("heading", { level: 2, name: "Issues" }),
+      ),
+    );
+  });
+
+  it("does not report a later dismissal as a finished recheck", async () => {
+    // The armed flag used to survive a no-op recheck, so the next thing that moved the
+    // count inherited its wording — telling the user an issue was *resolved* when they
+    // had *dismissed* it, and swallowing the dismissal's own announcement.
+    const dismissible = anIssue({
+      id: "d1",
+      issue_type: "UNCERTAIN_TRAVEL_DATE",
+      severity: "INFORMATION",
+      dismissibility: "DISMISSIBLE",
+      action_group: "FOR_YOUR_AWARENESS",
+      title: "Your trip to Japan has uncertain dates",
+    });
+    let dismissed = false;
+    let recalculated = false;
+    get.mockImplementation((path: string) => {
+      if (path === "/api/v1/cases/{case_id}/issues") {
+        if (dismissed) return Promise.resolve({ data: aQueue() });
+        return Promise.resolve({
+          data: aQueue({
+            open_count: 1,
+            groups: [{ action_group: "FOR_YOUR_AWARENESS", issues: [dismissible] }],
+          }),
+        });
+      }
+      return Promise.resolve({ data: { groups: [], stale: 0 } });
+    });
+    post.mockImplementation((path: string) => {
+      if (path.includes("dismiss")) {
+        dismissed = true;
+        return Promise.resolve({ data: { ...dismissible, status: "DISMISSED" } });
+      }
+      recalculated = true;
+      return Promise.resolve({ data: { requirements: [{ conclusion: "SUPPORTED" }] } });
+    });
+    renderWithQuery(<IssuesDestination caseId={CASE} />);
+
+    // No recheck control here (nothing stale), so arm the flag the only other way a user
+    // can: this group has none, so go straight to the dismissal and assert the wording.
+    fireEvent.click(await screen.findByRole("button", { name: /^Dismiss/i }));
+
+    await waitFor(() =>
+      expect(screen.getByText(/dismissed\. It is listed under Settled\./i)).toBeInTheDocument(),
+    );
+    expect(screen.queryByText(/Recheck finished/i)).toBeNull();
+    expect(recalculated).toBe(false);
+  });
+
+  it("says something the moment a recheck starts, not only when it settles", async () => {
+    // "Rechecking…" and aria-disabled are both silent to a screen reader, so without this
+    // the user gets no feedback for the length of the request.
+    queueReturns(
+      aQueue({
+        open_count: 1,
+        groups: [{ action_group: "RECHECK_CONCLUSIONS", issues: [anIssue()] }],
+      }),
+    );
+    post.mockImplementation(() => new Promise(() => {})); // never settles
+    renderWithQuery(<IssuesDestination caseId={CASE} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /recheck now/i }));
+
+    expect(await screen.findByText(/Rechecking your conclusions\./i)).toBeInTheDocument();
+  });
+
+  it("names what the group control rechecks, for a control list with no context", async () => {
+    queueReturns(
+      aQueue({
+        open_count: 1,
+        groups: [{ action_group: "RECHECK_CONCLUSIONS", issues: [anIssue()] }],
+      }),
+    );
+    renderWithQuery(<IssuesDestination caseId={CASE} />);
+
+    // The visible label still matches for speech control (2.5.3); the hidden suffix
+    // supplies the antecedent "Try again" has none of after a reload.
+    expect(
+      await screen.findByRole("button", { name: /recheck now — recheck your conclusions/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("shares one in-flight signal with the header's recalculate control", async () => {
+    // Both controls are on screen together on this destination, and both run the same
+    // case-wide command. Calling `useRecalculate` twice does NOT share observer state —
+    // each call gets its own `useMutation`, and `mutationKey` only feeds `useIsMutating`.
+    // Without a shared signal, activating one leaves the other looking idle and a second
+    // concurrent recalculation is one Tab away.
+    function HeaderStandIn(): JSX.Element {
+      const { mutation } = useRecalculate(CASE);
+      const busy = useRecalculationInFlight(CASE) || mutation.isPending;
+      return (
+        <button
+          type="button"
+          aria-disabled={busy}
+          onClick={() => (busy ? undefined : mutation.mutate())}
+        >
+          {busy ? "Recalculating…" : "Recalculate"}
+        </button>
+      );
+    }
+
+    queueReturns(
+      aQueue({
+        open_count: 1,
+        groups: [{ action_group: "RECHECK_CONCLUSIONS", issues: [anIssue()] }],
+      }),
+    );
+    post.mockImplementation(() => new Promise(() => {})); // stays in flight
+    renderWithQuery(
+      <>
+        <HeaderStandIn />
+        <IssuesDestination caseId={CASE} />
+      </>,
+    );
+
+    // Drive it from the *header*, which is the direction that actually pins the group
+    // control: asserting only that the header reacts passes even if the group still reads
+    // its own `isPending`, because the header's own hook sees the shared key either way.
+    fireEvent.click(screen.getByRole("button", { name: "Recalculate" }));
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /rechecking…/i })).toHaveAttribute(
+        "aria-disabled",
+        "true",
+      ),
+    );
+    expect(screen.getByRole("button", { name: "Recalculating…" })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
   });
 
   it("does not claim everything is current when conclusions are stale", async () => {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useIsMutating, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 
 import { useApiClient } from "@/lib/api";
@@ -20,7 +20,22 @@ import { assessmentTouched, caseKeys } from "@/lib/queries";
  * invalidation triggers refetches, and during that window every destination still shows
  * the previous run's figures. Releasing the control at the halfway point would invite a
  * second click against numbers already being replaced.
+ *
+ * **Calling this hook twice does not share mutation state.** Each call gets its own
+ * `useMutation` observer; `mutationKey` feeds `useIsMutating`, it does not federate
+ * `isPending`. Two controls are on screen together on the Issues destination — the
+ * header's Recalculate and the group's Recheck — so `recalculationInFlight()` reads the
+ * shared key instead, and both controls disable together. Without it, activating one
+ * leaves the other looking idle and a second concurrent recalculation is one Tab away.
  */
+
+/** How many recalculations are in flight for this case, across every observer. */
+export function useRecalculationInFlight(caseId: string): boolean {
+  return (
+    useIsMutating({ mutationKey: [...caseKeys.detail(caseId), "recalculate"] }) > 0
+  );
+}
+
 export function useRecalculate(caseId: string) {
   const api = useApiClient();
   const client = useQueryClient();

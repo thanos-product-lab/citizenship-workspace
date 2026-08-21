@@ -8,7 +8,7 @@ import { formatDate } from "@/features/requirements/dates";
 
 import { CaseNavigation } from "./CaseNavigation";
 import { useCaseOverview } from "./useCaseOverview";
-import { useRecalculate } from "./useRecalculate";
+import { useRecalculate, useRecalculationInFlight } from "./useRecalculate";
 
 type Case = components["schemas"]["CaseResponse"];
 
@@ -143,7 +143,12 @@ function RecalculateButton({ caseId }: { caseId: string }): JSX.Element | null {
   const { data: overview, isFetching, status } = useCaseOverview(caseId);
   const { mutation: recalculate, announcement } = useRecalculate(caseId);
 
-  const busy = recalculate.isPending || (isFetching && status === "success");
+  // Shared across every recalculation control on the page, not just this one's observer.
+  // The group's Recheck on the Issues destination runs the same case-wide command, and
+  // two controls each tracking only their own `isPending` leave the other looking idle
+  // while a run is in flight.
+  const inFlight = useRecalculationInFlight(caseId);
+  const busy = inFlight || recalculate.isPending || (isFetching && status === "success");
 
   // Nothing to recalculate until the case has been assessed once. `conclusion_counts`
   // excludes NOT_YET_ASSESSED, so this is "at least one requirement has a conclusion" —
@@ -174,13 +179,15 @@ function RecalculateButton({ caseId }: { caseId: string }): JSX.Element | null {
           so the report has to live here too — a sighted user would otherwise see the
           button settle and nothing change.
 
-          Deliberately not "nothing has changed": a timeout or a dropped response after
-          the run committed would make that false, and the user would be told the case is
-          unchanged while looking at figures that are out of date. */}
+          Says nothing about whether the figures moved. A server-side failure leaves them
+          alone, but a timeout or a dropped response *after* the run committed lands here
+          too and there they changed — one sentence has to be true of both. It no longer
+          tells the user to reload either: the hook refetches on error, so the screen is
+          already showing whatever the server has. */}
       {recalculate.isError ? (
         <p role="alert" className="cw-case-header__error">
-          We couldn’t confirm whether that recalculation ran. Reload the page to see the
-          current state.
+          That recalculation didn’t finish. The screen has been refreshed with what the
+          server recorded.
         </p>
       ) : null}
     </>

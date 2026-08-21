@@ -5,7 +5,10 @@ import { type JSX, useEffect, useRef, useState } from "react";
 import { IssueCard } from "@cw/design-system";
 
 import { useCaseOverview } from "@/features/case-workspace/useCaseOverview";
-import { useRecalculate } from "@/features/case-workspace/useRecalculate";
+import {
+  useRecalculate,
+  useRecalculationInFlight,
+} from "@/features/case-workspace/useRecalculate";
 import { formatDateTime } from "@/features/requirements/dates";
 import { REQUIREMENT_TITLES } from "@/features/requirements/groups";
 
@@ -67,24 +70,35 @@ export function IssuesDestination({ caseId }: { caseId: string }): JSX.Element {
   // announcement. A parent that outlives the list is the only safe owner.
   const dismiss = useDismissIssue(caseId);
   const [recheckRequested, setRecheckRequested] = useState(false);
-  const previousOpenCount = useRef(openCount);
+  const recheckBaseline = useRef(openCount);
+  const recheckInFlight = useRecalculationInFlight(caseId);
 
+  // Fire when the recheck *settles*, not when the count moves.
+  //
+  // Gating on the count was wrong in a way no test covered: a recalculation that resolves
+  // one stale issue and opens one fresh one is net zero, so nothing was announced, the
+  // flag was never cleared, and — because the group unmounts with its last stale item —
+  // focus was never returned and the user landed on <body>. That is the same 2.4.3 / 4.1.3
+  // failure two earlier commits were written to fix, still reachable through the one path
+  // the count heuristic could not see. Worse, the flag stayed armed, so the *next* thing
+  // to move the count (a dismissal) was announced as "recheck finished, 1 issue resolved"
+  // — reporting a recheck that never happened and calling a dismissal a resolution.
+  //
+  // The count now only chooses the wording.
   useEffect(() => {
-    const previous = previousOpenCount.current;
-    previousOpenCount.current = openCount;
-    if (!recheckRequested || isFetching || status === "pending") return;
-    if (previous === openCount) return;
+    if (!recheckRequested || recheckInFlight || isFetching || status === "pending") return;
 
+    const previous = recheckBaseline.current;
     const cleared = previous - openCount;
     setAnnouncement(
       cleared > 0
         ? `Recheck finished. ${cleared === 1 ? "1 issue" : `${cleared} issues`} resolved.` +
             (openCount === 0 ? " Nothing needs your attention." : "")
-        : "Recheck finished.",
+        : "Recheck finished. Nothing was resolved.",
     );
     setRecheckRequested(false);
     setReturnFocus(true);
-  }, [openCount, recheckRequested, isFetching, status]);
+  }, [openCount, recheckRequested, recheckInFlight, isFetching, status]);
 
   return (
     <section aria-labelledby="issues-heading">
@@ -100,7 +114,7 @@ export function IssuesDestination({ caseId }: { caseId: string }): JSX.Element {
           rather than inside a card because the card is destroyed by the very action it
           announces — a state update on an unmounted component says nothing at all. */}
       <p aria-live="polite" className="cw-visually-hidden">
-        {status === "pending" ? "Loading issues." : announcement}
+        {announcement}
       </p>
 
       {status === "error" || (status !== "pending" && !queue) ? (
@@ -139,22 +153,25 @@ export function IssuesDestination({ caseId }: { caseId: string }): JSX.Element {
               key={group.action_group}
               caseId={caseId}
               group={group}
-              onRecheckRequested={() => setRecheckRequested(true)}
+              onRecheckRequested={() => {
+                // Snapshot the count the outcome will be measured against, and say
+                // something now: the label changing to "Rechecking…" and `aria-disabled`
+                // going true are both silent to a screen reader, so without this the
+                // user gets no feedback at all for the length of the request.
+                recheckBaseline.current = openCount;
+                setAnnouncement("Rechecking your conclusions.");
+                setRecheckRequested(true);
+              }}
               onRecheckFailed={() => {
-                // Clearing the flag matters as much as the sentence. A failure refetches
-                // the queue, which adds the processing-failure item — so the count moves,
-                // and a still-armed recheck would announce "recheck finished" over a
-                // recheck that did not.
+                // Clear the flag but say nothing here. `RecheckAction` renders a
+                // `role="alert"` for the same failure, which is assertive and lands first;
+                // a polite message behind it repeats the same fact in slightly different
+                // words and sounds like a second event. One failure, one announcer.
                 //
-                // Says nothing about whether the figures moved. A timeout or a dropped
-                // response *after* the run committed also lands here, and there the
-                // conclusions did change — claiming otherwise would be the product
-                // asserting certainty in the one case it has just admitted it does not
-                // have any (CLAUDE.md §2.7).
-                setAnnouncement(
-                  "The recheck did not complete. This list has been refreshed with what " +
-                    "the server recorded.",
-                );
+                // Clearing matters on its own: a failure refetches the queue, which adds
+                // the processing-failure item, so the count moves — and a still-armed
+                // recheck would report "recheck finished" over a recheck that did not.
+                setAnnouncement("");
                 setRecheckRequested(false);
               }}
               dismissState={dismiss}
@@ -295,7 +312,7 @@ function IssueGroupSection({
               body={issue.body}
               impact={issue.impact}
               hasRecurred={issue.has_recurred}
-              affectedLink={<AffectedLink caseId={caseId} issue={issue} />}
+              affectedLink={affectedLinkFor(caseId, issue)}
               actions={
                 issue.dismissibility === "DISMISSIBLE" ? (
                   <DismissAction issue={issue} onDismiss={onDismiss} state={dismissState} />
@@ -315,8 +332,13 @@ function IssueGroupSection({
  * Travel-record issues are precisely the ones a user must edit something to clear, so
  * without this they offer exactly one action — dismiss, where that is even allowed — and
  * "For your awareness" becomes a dead end with no keyboard path to the trip.
+ *
+ * A plain function rather than a component, because `IssueCard` decides whether to render
+ * its footer from `affectedLink || actions` — and a JSX element is truthy even when it
+ * renders `null`. As a component this left the processing-failure card, whose affected
+ * object is the case itself, with an empty footer and its margin.
  */
-function AffectedLink({ caseId, issue }: { caseId: string; issue: Issue }): JSX.Element | null {
+function affectedLinkFor(caseId: string, issue: Issue): JSX.Element | null {
   if (issue.affected_object_type === "Requirement") {
     const key = issue.affected_object_id;
     const label = REQUIREMENT_TITLES[key] ?? key;
@@ -362,7 +384,12 @@ function RecheckAction({
   onFailed: () => void;
 }): JSX.Element {
   const { mutation } = useRecalculate(caseId);
-  const busy = mutation.isPending;
+  // Not `mutation.isPending`. The header renders its own Recalculate for the same
+  // case-wide command, and calling the same hook does *not* share observer state — each
+  // call gets its own `useMutation`. Reading the shared mutation key instead is what
+  // makes both controls go busy together; otherwise activating one leaves the other
+  // looking idle and a second concurrent run is one Tab away.
+  const busy = useRecalculationInFlight(caseId) || mutation.isPending;
 
   useEffect(() => {
     if (mutation.isError) onFailed();
@@ -383,11 +410,20 @@ function RecheckAction({
         }}
       >
         {busy ? "Rechecking…" : retry ? "Try again" : "Recheck now"}
+        {/* "Try again" has no antecedent in a screen reader's control list, and after a
+            reload — the whole point of making the failure durable — there is no alert
+            left to supply one. Same hidden-suffix pattern as Dismiss (2.4.6, 2.5.3). */}
+        {busy ? null : (
+          <span className="cw-visually-hidden"> — recheck your conclusions</span>
+        )}
       </button>
       {/* Deliberately silent about whether anything changed. A server-side failure
           leaves the figures alone and the durable item below says so — but a timeout or
           a dropped response after the run committed lands here too, and there the
           conclusions moved. One sentence has to be true of both. */}
+      {/* The single announcer for a failed recheck: assertive, so it lands first, and
+          visible, so a sighted user is not left watching the button settle. The
+          destination deliberately sets no polite message for this. */}
       {mutation.isError ? (
         <p role="alert" className="cw-case-header__error">
           That recheck didn’t finish. This list has been refreshed with what the server

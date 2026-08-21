@@ -12,6 +12,7 @@ export type Issue = IssueGroup["issues"][number];
  */
 const GROUP_HEADINGS: Record<string, string> = {
   RESOLVE_TO_CONTINUE: "Resolve to continue",
+  RECHECK_CONCLUSIONS: "Recheck your conclusions",
   CONFIRM_INFORMATION: "Confirm information",
   REVIEW_CAREFULLY: "Review carefully",
   FOR_YOUR_AWARENESS: "For your awareness",

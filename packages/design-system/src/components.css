@@ -253,11 +253,22 @@
   transition: background-color 120ms ease;
 }
 
-.cw-button:hover:not(:disabled) {
+.cw-button:hover:not(:disabled):not([aria-disabled="true"]) {
   background: var(--cw-accent-hover);
 }
 
-.cw-button:disabled {
+/*
+ * Both spellings, deliberately.
+ *
+ * This codebase uses `aria-disabled` rather than `disabled` on busy controls, because the
+ * browser blurs a focused element the moment it becomes `disabled`, silently dropping
+ * keyboard focus mid-operation. The cost is that the *visual* half of the state stops
+ * being free: `:disabled` never matches, so a blocked control kept `cursor: pointer`, lit
+ * up on hover and looked identical to a live one. A screen-reader user heard
+ * "unavailable"; everyone else got no signal at all.
+ */
+.cw-button:disabled,
+.cw-button[aria-disabled="true"] {
   opacity: 0.6;
   cursor: not-allowed;
 }
@@ -272,7 +283,7 @@
   border-color: var(--cw-neutral-500);
 }
 
-.cw-button--secondary:hover:not(:disabled) {
+.cw-button--secondary:hover:not(:disabled):not([aria-disabled="true"]) {
   background: var(--cw-surface-sunken);
 }
 

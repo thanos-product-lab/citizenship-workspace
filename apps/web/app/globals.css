@@ -73,14 +73,22 @@ a:hover {
   cursor: pointer;
   border-radius: var(--cw-radius-sm);
 }
-.cw-action:hover {
+.cw-action:hover:not([aria-disabled="true"]) {
   color: var(--cw-accent-hover);
   text-decoration: underline;
+}
+/* See the note on .cw-button: `aria-disabled` is used instead of `disabled` so focus is
+   not dropped mid-operation, which means the visual state has to be spelled out. Without
+   this, a Dismiss refused while another dismissal is in flight still underlines on hover
+   and does nothing when clicked. */
+.cw-action[aria-disabled="true"] {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 .cw-action--muted {
   color: var(--cw-text-muted);
 }
-.cw-action--muted:hover {
+.cw-action--muted:hover:not([aria-disabled="true"]) {
   color: var(--cw-text);
 }
 

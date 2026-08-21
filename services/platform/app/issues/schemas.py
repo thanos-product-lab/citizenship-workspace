@@ -25,7 +25,20 @@ from app.requirements.messages import (
     render_issue_title,
 )
 
-#: Severity → the group a user acts on, per UI/UX §10 ("group issues by user action").
+#: Issue type → action group, where the *type* names a more specific action than its
+#: severity implies. Severity alone put "Recheck Total absences" and "We could not recheck
+#: your conclusions" under "Confirm information", which is not what either asks for — and
+#: because the heading labels an `aria-labelledby` region, a screen-reader user navigating
+#: by landmark was routed away from the one item explaining why their figures are stale
+#: (WCAG 2.4.6). Both types are cleared by the same case-wide recalculation, which is what
+#: makes them one group.
+TYPE_ACTION_GROUPS: dict[str, str] = {
+    IssueType.STALE_ASSESSMENT.value: "RECHECK_CONCLUSIONS",
+    IssueType.PROCESSING_FAILURE.value: "RECHECK_CONCLUSIONS",
+}
+
+#: Severity → the group a user acts on, per UI/UX §10 ("group issues by user action"). The
+#: fallback when the type says nothing more specific.
 ACTION_GROUPS: dict[str, str] = {
     IssueSeverity.BLOCKING.value: "RESOLVE_TO_CONTINUE",
     IssueSeverity.ACTION_REQUIRED.value: "CONFIRM_INFORMATION",
@@ -95,7 +108,9 @@ class IssueView(BaseModel):
             severity=issue.severity,
             status=issue.status,
             dismissibility=issue.dismissibility,
-            action_group=ACTION_GROUPS.get(issue.severity, "REVIEW_CAREFULLY"),
+            action_group=TYPE_ACTION_GROUPS.get(
+                issue.issue_type, ACTION_GROUPS.get(issue.severity, "REVIEW_CAREFULLY")
+            ),
             # An unknown title_code renders its code rather than an invented sentence: the
             # screen shows something traceable, and `test_messages.py` fails the packaging
             # bug that produced it.

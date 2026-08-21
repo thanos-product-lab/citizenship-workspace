@@ -133,7 +133,7 @@ def test_the_near_threshold_issue_clears_when_the_margin_widens(api: Api) -> Non
 # --- UNSUPPORTED_COMPLEXITY --------------------------------------------------
 
 
-def test_an_absence_total_the_prototype_will_not_assess_raises_a_blocking_issue(
+def test_an_absence_total_the_prototype_will_not_assess_raises_a_review_issue(
     api: Api,
 ) -> None:
     """UI/UX §10.2. Stopping is a successful outcome (CLAUDE.md §2.7), so it is surfaced

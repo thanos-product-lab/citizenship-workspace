@@ -228,10 +228,14 @@ describe("CaseHeader", () => {
       fireEvent.click(button);
 
       const alert = await screen.findByRole("alert");
-      expect(alert).toHaveTextContent("couldn’t confirm whether that recalculation ran");
+      expect(alert).toHaveTextContent("didn’t finish");
       // Not "nothing has changed": a dropped response after the run committed would make
       // that false while the figures on screen were already out of date.
       expect(alert).not.toHaveTextContent(/nothing has changed/i);
+      expect(alert).not.toHaveTextContent(/unchanged/i);
+      // And no longer "reload the page": the hook refetches on error, so the screen is
+      // already showing whatever the server recorded.
+      expect(alert).not.toHaveTextContent(/reload/i);
     });
   });
 
