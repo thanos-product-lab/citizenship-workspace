@@ -30,7 +30,7 @@ and no policy as deny-all. The mutation that models the real regression is
 
 import pytest
 from sqlalchemy import text
-from sqlalchemy.exc import ProgrammingError
+from sqlalchemy.exc import IntegrityError, ProgrammingError
 from sqlalchemy.orm import Session
 
 from app.shared.tenant import APP_ROLE, set_tenant
@@ -86,12 +86,44 @@ def test_a_case_scoped_table_rejects_a_write_for_another_tenant(
     owner_session.rollback()
 
 
+@pytest.mark.parametrize("table", CASE_SCOPED_TABLES)
+def test_a_case_scoped_table_accepts_the_same_write_from_its_own_owner(
+    seeded_case: str, owner_session: Session, table: str
+) -> None:
+    """The positive control the test above needs to mean anything.
+
+    `WITH CHECK (false)` — deny every write to everyone — satisfies all thirteen rejection
+    tests. The distinction being drawn is *whose* write is refused, so the same probe row
+    is offered again as `user_a`, and the policy must not be what stops it. Some tables
+    then hit a unique constraint instead (six of the thirteen do: version numbers, the
+    one-current partial indexes, the membership key) and that is fine — the assertion is
+    only that the refusal is not the policy's.
+    """
+    _assert_populated(owner_session, table)
+
+    owner_session.execute(text(f'CREATE TEMP TABLE rls_probe AS SELECT * FROM "{table}" LIMIT 1'))
+    owner_session.execute(text(f"UPDATE rls_probe SET {PRIMARY_KEY} = gen_random_uuid()"))
+    owner_session.execute(text(f"GRANT SELECT ON rls_probe TO {APP_ROLE}"))
+
+    set_tenant(owner_session, "user_a")
+    try:
+        owner_session.execute(text(f'INSERT INTO "{table}" SELECT * FROM rls_probe'))
+    except (ProgrammingError, IntegrityError) as exc:
+        assert "row-level security policy" not in str(exc), (
+            f"{table}'s policy refuses a write from the row's own owner — a deny-all "
+            "policy would make every rejection test above pass while proving nothing"
+        )
+    owner_session.rollback()
+
+
 def test_every_case_scoped_table_fails_closed_with_no_tenant_set(
     seeded_case: str, owner_session: Session
 ) -> None:
     """The backstop ADR-0006 relies on: under `app_rls` with no `app.user_id` bound, the
     GUC reads NULL and matches no row. A query that forgets to establish a tenant returns
     nothing rather than returning everything."""
+    for table in CASE_SCOPED_TABLES:
+        _assert_populated(owner_session, table)  # or every count below is vacuously zero
     owner_session.execute(text(f"SET ROLE {APP_ROLE}"))  # role set, but no tenant GUC
 
     leaked = [table for table in CASE_SCOPED_TABLES if count_rows(owner_session, table) > 0]

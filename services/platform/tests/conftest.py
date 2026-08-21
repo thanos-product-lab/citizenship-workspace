@@ -6,6 +6,7 @@ migrations — tests exercise the same DDL that ships, not a `create_all` shortc
 that could silently drift from the migrations.
 """
 
+import secrets
 from collections.abc import Callable, Iterator
 
 import pytest
@@ -112,15 +113,29 @@ def api(db_session: Session) -> Iterator[Api]:
 # `app/core/config.py` changes; the application still connects as the owner and still logs
 # `rls.login_role_superuser` at boot. Closing R1 in production is a separate decision.
 RLS_TEST_ROLE = "app_test_login"
-# A fixed password on a local/CI test database, provisioned by this file and used
-# nowhere else. It is not a secret and is not read from the environment.
-RLS_TEST_PASSWORD = "app_test_login"
+# Generated per session and never written down. A constant would be a durable credential on
+# whatever database the suite happened to run against, and `CREATE ROLE ... PASSWORD` is not
+# redacted by `log_statement`, so a fixed one would sit in the server log verbatim.
+RLS_TEST_PASSWORD = secrets.token_urlsafe(24)
+
+# Creating a LOGIN role is the one thing this suite does that outlives the run, so it refuses
+# to do it anywhere but a local database. The TRUNCATE teardown and the Alembic upgrade would
+# already be catastrophic against a shared one, but both are loud and immediate; a login role
+# with schema-wide DML is silent and permanent. `just test-be` inherits whatever DATABASE_URL
+# the shell exports, which is exactly how a debugging session ends up pointed at a deployment.
+LOCAL_DB_HOSTS = frozenset({"localhost", "127.0.0.1", "::1", "postgres", "db"})
 
 
 @pytest.fixture(scope="session")
-def _rls_login_role(_schema: None) -> str:
-    """Provision `app_test_login` idempotently, as the owner. Depends on `_schema`
-    because the grants need the tables to exist."""
+def _rls_login_role(_schema: None) -> Iterator[str]:
+    """Provision `app_test_login` for the session, as the owner, and drop it afterwards.
+    Depends on `_schema` because the grants need the tables to exist."""
+    host = make_url(get_settings().database_url).host
+    if host not in LOCAL_DB_HOSTS:
+        pytest.fail(
+            f"refusing to create a login role on a non-local database ({host}). "
+            "Point DATABASE_URL at a local Postgres before running the suite"
+        )
     with get_sessionmaker()() as session:
         session.execute(
             text(
@@ -137,15 +152,27 @@ def _rls_login_role(_schema: None) -> str:
                 f"IN SCHEMA public TO {RLS_TEST_ROLE}"
             )
         )
-        # The catalog is read-only for the request role (migration 0012), so it is
-        # read-only here too. A test role holding privileges the runtime role does not
-        # can only ever let a test pass where production would be refused.
+        # The catalog is read-only for the request role (migration 0012), so it is read-only
+        # here too — a test role holding privileges the runtime role lacks can only ever let
+        # a test pass where production would be refused. This revoke covers the *direct*
+        # grant made above; `app_rls` membership is what keeps the property true, because
+        # migration 0012 revoked the same writes there. Neither mechanism is trusted:
+        # `test_catalog_grants.py` asserts the outcome for both roles.
         for table in CATALOG_TABLES:
             session.execute(text(f"REVOKE INSERT, UPDATE, DELETE ON {table} FROM {RLS_TEST_ROLE}"))
         # Membership in app_rls, so `set_tenant`'s own `SET ROLE` still works from here.
         session.execute(text(f"GRANT {APP_ROLE} TO {RLS_TEST_ROLE}"))
         session.commit()
-    return RLS_TEST_ROLE
+
+    yield RLS_TEST_ROLE
+
+    with get_sessionmaker()() as session:
+        # `DROP OWNED BY` clears the grants first; without it the DROP fails on dependent
+        # privileges and the role outlives the run that created it.
+        session.execute(text(f"REVOKE {APP_ROLE} FROM {RLS_TEST_ROLE}"))
+        session.execute(text(f"DROP OWNED BY {RLS_TEST_ROLE}"))
+        session.execute(text(f"DROP ROLE IF EXISTS {RLS_TEST_ROLE}"))
+        session.commit()
 
 
 @pytest.fixture(scope="session")

@@ -402,15 +402,38 @@ line would have silently stopped it testing anything.
   session.execute(...)            ->  (app_test_login, '')
   ```
 
-  `create_case` does exactly this — `uow.commit()`, then `session.refresh(case)` for the
-  server-defaulted timestamps — so the very first command in the product raises
-  `InvalidRequestError` on a non-superuser connection. On the owner connection it is
-  invisible, because a superuser bypasses RLS and the tenantless read simply succeeds.
-  Recorded as `xfail(strict=True)` in `tests/security/test_rls_login_role.py` rather than
-  fixed inside a test slice: the fix is to re-establish the tenant per transaction
-  (`Session.info` plus an `after_begin` listener), which changes every request and wants
-  its own reviewed change. **ADR-0006 R1 Option A cannot be adopted until it lands** — a
-  non-superuser runtime role would 500 on every write command today.
+  The security review found the blast radius is eleven call sites across six modules —
+  every state-mutating endpoint in the product. Six of them raise `InvalidRequestError`
+  from a `session.refresh` after the commit, which is loud.
+
+  **The seventh does not, and it is the one that matters.**
+  `_run_trusted_assessment` commits, then the route builds its response from
+  `list_requirements` (`app/assessments/service.py:160`), which queries afterwards and
+  tenantless. `POST /assessments/recalculate` therefore returns **HTTP 200** with
+  `result_count: 9` and every requirement reading `NOT_YET_ASSESSED`, currency `null` —
+  while the rows it just wrote say `SUPPORTED` / `CURRENT`, as the next `GET /requirements`
+  confirms. A silent wrong answer on the assessment path, on the one endpoint whose job is
+  to report what the rules concluded, and invisible on the owner connection where the same
+  call returns the correct mix. The first draft of these notes said "the very first command
+  in the product fails", which reads as a startup-shaped bug you would notice in seconds.
+  This is not that.
+
+  Two `xfail(strict=True)` tests in `tests/security/test_rls_login_role.py` carry it — the
+  raising half and the silent half separately, because a fix that only restored the
+  refreshes would leave the second one green and wrong. **This blocks M7, not just "wants
+  its own change".** M7 is the first surface where a forgotten tenant is a document leak
+  rather than a row leak, and the control that catches a forgotten tenant is ADR-0006 R1
+  Option A — which this defect makes un-adoptable. The fix is to re-establish the tenant
+  per transaction: record the user id on `Session.info` and re-apply role and GUC from an
+  `after_begin` listener.
+
+- **ADR-0006 R5 is the same defect through a different door, and should be merged into it.**
+  R5 records that a pre-first-commit `ROLLBACK` reverts the non-LOCAL role and GUC —
+  verified on a `NullPool` engine: `('app_rls', 'user_a')` before, `('citizenship', None)`
+  after. Its blast-radius claim still holds (no handler re-queries after such a rollback),
+  so it stays latent. But R5 and the commit case are one root cause — tenant state has
+  connection and transaction lifetime while being recorded at session scope — and the
+  `after_begin` fix closes both. The ADR files them as separate risks; they are one.
 
 - **`ALTER DEFAULT PRIVILEGES` is retroactive in the direction nobody checks.** Migration
   0004 granted `app_rls` full DML on every table the owner creates *after* it, so the
@@ -418,6 +441,29 @@ line would have silently stopped it testing anything.
   granted nothing they did not already have — a no-op sitting beside a comment reading
   "SELECT for the app role". The request role could rewrite `rule_versions`, which is what
   makes a past conclusion reproducible. Migration 0012 revokes it.
+
+- **And the same table list missed `alembic_version`,** which 0004 also granted full DML
+  and which every request role could therefore use to rewrite the migration head. It
+  escaped 0012 *and* the new coverage test for one shared reason: both derived their
+  universe from `Base.metadata`, and it has no ORM model. Migration 0013 revokes it, and
+  the coverage test now reads `pg_class`, so the next table Postgres knows about and Python
+  does not has to be classified rather than skipped. A derived rule is only as wide as
+  what it derives from.
+
+- **A rejection test needs a positive control.** All thirteen write-rejection tests would
+  pass against a `WITH CHECK (false)` policy that denies every write to everyone — the
+  distinction being drawn is *whose* write is refused, and only one side of it was
+  asserted. The same probe row is now offered again as the row's own owner, and the policy
+  must not be what stops it. Six of the thirteen hit a unique constraint instead, which is
+  fine: the assertion is only that the refusal is not the policy's.
+
+- **A test-only login role is the one thing a test run leaves behind.** The first version
+  created `app_test_login` with a fixed password and no teardown, against whatever
+  `DATABASE_URL` resolved to. The `TRUNCATE` teardown and the Alembic upgrade would already
+  be catastrophic against a shared database, but both are loud; a permanent
+  password-authenticated role with schema-wide DML is silent. It now refuses any non-local
+  host, generates the password per session (`CREATE ROLE ... PASSWORD` is not redacted by
+  `log_statement`), and drops the role afterwards.
 
 - **A dropped policy is not the mutation to test with.** Postgres reads a table with RLS
   enabled and no policy as deny-all, so dropping one fails closed and breaks the feature
@@ -447,17 +493,35 @@ Six mutations, each restored after:
 | 3 | `DROP POLICY issue_resolutions_tenant` | red (fails closed: the arrangement can no longer write) |
 | 4 | `GRANT UPDATE ON rule_versions TO app_rls` | 1 red — *"app_rls can \['UPDATE'\] on rule_versions"* |
 | 5 | delete `set_tenant` from `_record_failed_run` | 1 red — `assert 'COMPLETED' == 'FAILED'`; the policy refused the insert and the recovery swallowed it |
-| 6 | add `evidence_items(id, case_id → cases)` with no policy — the M7 shape | 3 reds, with no test written for the table |
+| 6 | add `evidence_items(id, case_id → cases)` with no policy — the M7 shape, created in raw SQL with no ORM model | 4 reds, with no test written for the table |
+| 7 | `GRANT UPDATE ON alembic_version TO app_rls` | 1 red (migration 0013) |
 
 Mutation 6 is the one the slice exists for: a table added in a later milestone is covered
-the moment its migration runs, not when someone remembers to write a test.
+the moment its migration runs, not when someone remembers to write a test. **That claim was
+only half true as first written**, and the review caught it. Coverage was structural —
+enabled, forced, has *a* policy — which cannot tell a correct policy from
+`FOR SELECT USING (true)`, and the behavioural matrix that could parametrised over a
+hand-maintained tuple with nothing tying the two together.
+`test_the_behavioural_suite_covers_every_derived_case_scoped_table` now asserts them equal,
+so a new table is forced into the matrix, and from there into `seeded_case`, because
+`_assert_populated` fails on a table the arrangement never reaches. The derivation also
+moved off `Base.metadata` onto `pg_constraint` and `information_schema`, so the mutation
+above holds even for a table created in raw SQL with no ORM model behind it — which is the
+form the `alembic_version` miss took. The claim is true now, and four tests carry it.
 
-`just lint`, `just typecheck`, 490 backend tests + 1 xfailed, migration 0012 applied.
+`just lint`, `just typecheck`, 506 backend tests + 2 xfailed, 205 frontend tests,
+zero API-client drift, migrations 0012 and 0013 applied.
 
 _Known gaps carried forward:_
 
-- **The mid-request tenant loss is unfixed** and blocks the production half of ADR-0006 R1.
-  `xfail(strict=True)`, so the marker fails the moment the defect is fixed.
+- **The mid-request tenant loss is unfixed**, blocks the production half of ADR-0006 R1,
+  and should block M7. Two `xfail(strict=True)` markers, so they fail the moment it is
+  fixed — and separately, so a partial fix cannot pass.
+- **`test_tenant_wiring.py` keys on `{case_id}` appearing in the route path**, which is a
+  URL convention rather than a property of the handler. M7 is where that breaks: a
+  `GET /api/v1/evidence/{evidence_id}/download` is case-scoped and invisible to the check.
+  Either assert no case-scoped aggregate is addressable outside a `{case_id}` prefix, or
+  invert the check to an allowlist of routes that legitimately need no tenant.
 - **`domain_events`, `audit_entries` and `outbox_events` still have no policy** — now an
   allowlist in `test_rls_coverage.py` rather than prose, so removing a name from the list
   is what closing the gap looks like. Carried from M2.

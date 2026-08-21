@@ -39,6 +39,16 @@ def test_the_test_role_is_not_a_superuser(rls_sessionmaker: Callable[[], Session
     with rls_sessionmaker() as session:
         assert session.execute(text("SELECT current_user")).scalar_one() == RLS_TEST_ROLE
         assert session.execute(text("SHOW is_superuser")).scalar_one() == "off"
+        # BYPASSRLS is a separate attribute and reports `is_superuser = off`. The role is
+        # created `IF NOT EXISTS`, so a pre-existing `app_test_login` carrying BYPASSRLS
+        # would be reused silently and every test below would pass while testing nothing —
+        # the exact failure class this file exists to close.
+        assert (
+            session.execute(
+                text("SELECT rolbypassrls FROM pg_roles WHERE rolname = current_user")
+            ).scalar_one()
+            is False
+        )
 
 
 def test_a_session_that_never_sets_a_tenant_sees_nothing(
@@ -62,7 +72,10 @@ def test_a_session_that_never_sets_a_tenant_cannot_write(
         session.add(ApplicationCase.create(owner_user_id="user_a", title="no tenant"))
         with pytest.raises(ProgrammingError) as raised:
             session.flush()
-        assert "row-level security policy" in str(raised.value)
+        # First line only: SQLAlchemy renders `[parameters: ...]` into `str(exc)`, and a
+        # failure message that carries a row's column values puts them in the CI log.
+        # Synthetic today, but this is the habit, not the fixture, that has to be right.
+        assert "row-level security policy" in str(raised.value).splitlines()[0]
         session.rollback()
 
 
@@ -130,3 +143,37 @@ def test_a_command_keeps_its_tenant_across_a_mid_request_commit(rls_api: Api) ->
     """
     created = rls_api("user_a").post("/api/v1/cases", json={"title": "A's case"})
     assert created.status_code == 201
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason="Recalculation reports its own results as unassessed; same root cause as the "
+    "test above. Remove this marker in the same change that fixes it.",
+)
+def test_a_recalculation_reports_the_conclusions_it_just_wrote(
+    seeded_case: str, rls_api: Api
+) -> None:
+    """The same defect, in the shape that does not raise — and the more dangerous shape.
+
+    `_run_trusted_assessment` commits at `app/assessments/service.py:227`, and the route
+    then builds its response from `list_requirements`, which queries afterwards. On a
+    connection with no bypass that query is tenantless, so it matches nothing and every
+    requirement falls back to its unassessed default. The endpoint returns **200** with
+    `result_count: 9` and every conclusion reading `NOT_YET_ASSESSED`, currency `null` —
+    while the rows it just wrote say `SUPPORTED` / `CURRENT`, as the very next `GET
+    /requirements` confirms.
+
+    So the blast radius is not "write commands 500". It is that the one endpoint whose job
+    is to report what the deterministic rules concluded reports that nothing was concluded,
+    with a success status. That is a silent wrong answer on the assessment path, which is
+    the failure mode this product exists to prevent — and it is invisible on the owner
+    connection, where the same call returns the correct mix.
+
+    Pinned separately from the raising half because a fix that only restores the refreshes
+    would leave this one green-and-wrong.
+    """
+    body = rls_api("user_a").post(f"/api/v1/cases/{seeded_case}/assessments/recalculate").json()
+    conclusions = {row["conclusion"] for row in body["requirements"]}
+    assert conclusions != {"NOT_YET_ASSESSED"}, (
+        f"recalculate reported {body['result_count']} results, all NOT_YET_ASSESSED"
+    )

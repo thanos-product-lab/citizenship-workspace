@@ -21,6 +21,11 @@ def get_engine() -> Engine:
     if _engine is None:
         _engine = create_engine(get_settings().database_url, pool_pre_ping=True)
 
+        # This reset is correct and must stay — a connection returning to the pool with a
+        # previous request's role and tenant still bound is the leak it exists to prevent.
+        # It is also why tenant state does not survive a mid-request commit: `Session.commit()`
+        # releases the connection, so this fires and the next statement runs tenantless. The
+        # fix belongs in `app.shared.tenant`, not here (see `set_tenant`).
         @event.listens_for(_engine, "checkin")
         def _reset_tenant(dbapi_connection: object, _record: object) -> None:
             # Clear the RLS tenant when a connection returns to the pool, so a reused

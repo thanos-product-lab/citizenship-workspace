@@ -16,12 +16,15 @@ A new catalog table would be created with DML again, by the same default privile
 last test here is for.
 """
 
+from collections.abc import Callable
+
 import pytest
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.requirements.models import CATALOG_TABLES
 from app.shared.tenant import APP_ROLE
+from tests.conftest import RLS_TEST_ROLE
 
 pytestmark = pytest.mark.integration
 
@@ -51,6 +54,42 @@ def test_the_request_role_cannot_write_a_catalog_table(db_session: Session, tabl
         "grants DML on every table the owner creates, so a new catalog table needs an "
         "explicit REVOKE — add it to a new migration, not to 0012"
     )
+
+
+def test_the_request_role_has_no_privilege_on_the_migration_head(db_session: Session) -> None:
+    """`alembic_version` was granted full DML by 0004's `ON ALL TABLES` and missed by 0012,
+    because both the migration and the coverage test derived their table list from
+    `Base.metadata` and it has no ORM model. Not a disclosure risk — one version string —
+    but a request that can rewrite the migration head can make the next `upgrade head` skip
+    or re-run migrations. Migrations run as the owner; the request role needs nothing here."""
+    granted = [
+        privilege
+        for privilege in ("SELECT", *WRITE_PRIVILEGES)
+        if _has_privilege(db_session, "alembic_version", privilege)
+    ]
+    assert granted == [], f"{APP_ROLE} holds {granted} on alembic_version (migration 0013)"
+
+
+def test_the_test_role_cannot_write_the_catalog_either(
+    db_session: Session, rls_sessionmaker: Callable[[], Session]
+) -> None:
+    """The test connection must not be more privileged than the runtime one, or a test
+    passes where production would be refused. Asserted on the outcome rather than trusting
+    either mechanism that produces it — the direct revoke in `conftest`, or `app_rls`
+    membership plus migration 0012.
+
+    `rls_sessionmaker` is requested only to provision the role; the privileges are read on
+    the owner session, which can see `pg_roles` regardless."""
+    writable = [
+        f"{privilege} on {table}"
+        for table in sorted(CATALOG_TABLES)
+        for privilege in WRITE_PRIVILEGES
+        if db_session.execute(
+            text("SELECT has_table_privilege(:role, :table, :privilege)"),
+            {"role": RLS_TEST_ROLE, "table": table, "privilege": privilege},
+        ).scalar_one()
+    ]
+    assert writable == [], f"{RLS_TEST_ROLE} can {writable}"
 
 
 def test_the_catalog_list_matches_the_tables_without_row_level_security(
