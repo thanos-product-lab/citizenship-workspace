@@ -23,7 +23,7 @@ from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import select, text
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.assessments import service as assessments_service
@@ -40,7 +40,7 @@ from app.issues.domain import Issue, IssueResolution, IssueStatus, IssueType
 from app.requirements.domain import Currency
 from app.shared.db import Base, get_sessionmaker
 from app.shared.errors import ConcurrencyConflict
-from app.shared.tenant import APP_ROLE, set_tenant
+from app.shared.tenant import set_tenant
 
 pytestmark = pytest.mark.integration
 
@@ -517,32 +517,32 @@ def test_a_broken_recovery_write_does_not_mask_the_original_error(
 
 
 def test_the_recovery_enters_the_rls_tenant_context(
-    api: Api, monkeypatch: pytest.MonkeyPatch, break_persistence: Callable[..., None]
+    api: Api,
+    monkeypatch: pytest.MonkeyPatch,
+    break_persistence: Callable[..., None],
+    rls_sessionmaker: Callable[[], Session],
 ) -> None:
-    """The recovery's `set_tenant` call, pinned — and it needs help to be pinnable.
+    """The recovery's `set_tenant` call, pinned by a connection that can actually refuse.
 
-    Tests connect as `citizenship`, which is a superuser, and a superuser bypasses RLS
-    even under FORCE. So the recovery's write lands whether or not the tenant was set, and
-    deleting the line leaves the whole suite green while every failure record in a deployed
-    environment is silently rejected by policy — silently, because `_record_failed_run`
-    swallows and logs.
+    The suite's ordinary connection is `citizenship`, a superuser, and a superuser
+    bypasses RLS even under FORCE. So the recovery's write lands whether or not the tenant
+    was set: deleting the line used to leave the whole suite green while every failure
+    record in a deployed environment would be silently rejected by policy — silently,
+    because `_record_failed_run` swallows and logs.
 
-    So this test makes the recovery's session look like production: already dropped into
-    the non-superuser `app_rls` role, where the GUC is the only thing standing between the
-    insert and a policy refusal. The pool's checkin hook resets the role, so the borrowed
-    connection is clean afterwards.
+    This test used to compensate by having the fake session `SET ROLE app_rls` itself,
+    which meant the test simulated the very enforcement it was checking; deleting both
+    lines together still passed. It now points the recovery at `app_test_login`, a real
+    non-superuser login role (`tests/conftest.py`), so nothing here simulates anything and
+    the policy is what decides. Deleting `set_tenant` from `_record_failed_run` turns this
+    red on its own.
+
+    The recovery opens and closes its own session, so `rls_sessionmaker` is handed over
+    whole — and because that session never commits before its single insert, it does not
+    meet the mid-request-commit defect in `tests/security/test_rls_login_role.py`.
     """
+    monkeypatch.setattr(assessments_service, "get_sessionmaker", lambda: rls_sessionmaker)
     real_sessionmaker = get_sessionmaker()
-
-    def as_non_superuser() -> Callable[[], Session]:
-        def open_session() -> Session:
-            session = real_sessionmaker()
-            session.execute(text(f"SET ROLE {APP_ROLE}"))
-            return session
-
-        return open_session
-
-    monkeypatch.setattr(assessments_service, "get_sessionmaker", as_non_superuser)
 
     case_id = _assessed_case(api)
     break_persistence()
@@ -605,8 +605,10 @@ def test_the_failed_transaction_is_discarded_before_the_recovery_opens(
 
 
 def test_the_failure_is_dated_when_it_happened_not_when_the_recovery_opened(
-    api: Api, db_session: Session, monkeypatch: pytest.MonkeyPatch,
-    break_persistence: Callable[..., None]
+    api: Api,
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+    break_persistence: Callable[..., None],
 ) -> None:
     """Reading the clock inside the recovery session dates the failure after anything that
     succeeded while it waited for a connection.
