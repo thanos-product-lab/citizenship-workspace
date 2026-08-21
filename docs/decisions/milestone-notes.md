@@ -180,3 +180,168 @@ _Known gaps carried forward:_
   churn into commits.
 
 ---
+
+## M6 — Issue detection and stale-state workflow  **(hard gate)**
+
+*Built before M5, per the roadmap's reordering: stale-state is the thesis, the timeline is
+the showcase and the safer cut.*
+
+_Date gated:_
+_Outcome:_ Pass | Pass with gaps | Fail
+
+### What the milestone delivered
+
+M3B shipped a working but deliberately imprecise stale seam (ADR-0008): any residence input
+change marked *all* residence results stale. It was green, and it was wrong in two
+directions. It over-fired inside residence, and — the reason this milestone exists — it
+**under-fired across groups**: an application-date change left `status.holding_period` and
+the route rules reading CURRENT while the date beneath them had moved. Nothing failed when
+that happened. No test went red, no user saw a warning; the screen showed a confident
+conclusion whose inputs had shifted.
+
+M6 replaced that with invalidation resolved from **declarations**, and turned stale notices,
+data problems and process failures into a managed queue that resolves itself when the cause
+is fixed.
+
+Nine commits. Two migrations: 0010 (`rule_composition_edges`), 0011 (`issues`,
+`issue_resolutions`).
+
+**Backend.** New module `app/issues/` (`domain`, `derivation`, `repository`, `service`,
+`schemas`, `routes`). `invalidation.py` rewritten to resolve the affected set from
+`rule_dependency_definitions`, then close transitively over `rule_composition_edges`.
+`AssessmentRun.fail()` and `RecalculationFailureCode`. New events: `IssuesReconciled`,
+`IssueDismissed`, `AssessmentRunFailed`. `AssessmentRunStatus.FAILED` was defined at M3B and
+never written until now.
+
+**Frontend.** A fourth destination with a count in the navigation, `IssueCard` as a canonical
+design-system component, dismissal, resolution history, and the retry affordance for a
+failed recalculation.
+
+**Decisions.** ADR-0014 (selective invalidation, supersedes ADR-0008), ADR-0015 (issues are a
+reconciled projection, not event-sourced handlers), ADR-0016 (a failed recalculation is
+recorded best-effort, in its own transaction). RULES_SPEC §8 amended to remove
+`preparation.case_complete`'s dependency on open issues — issues derive from results, so the
+reverse edge is a cycle.
+
+### The three ideas worth being able to defend
+
+1. **Invalidation is driven by declarations, and three independent test layers guard the
+   narrowing.** Strict-equality provenance (a result's input links must equal its rule's
+   declared dependencies), a differential test against the old blunt rule where the only
+   permitted omissions are computed from the declaration rows, and a recalculation-diff
+   oracle that trusts no declaration at all — it changes an input, recalculates, and asserts
+   every requirement whose output moved was in the stale set. Only the third catches an
+   evaluator reading an input it neither declares nor links.
+2. **Issues are a projection with durable identity, not a stream of handler-created rows.**
+   One `reconcile` computes the complete desired set and diffs it. Auto-resolution and
+   reopening are properties of that diff rather than of N handlers that each have to
+   remember to clean up. The price is that derivation must be a pure function of durable
+   state — no clock, nothing that can flap.
+3. **A reached negative conclusion is not an issue.** Issues are data problems and process
+   state; requirement outcomes are priority actions. Without that line the queue becomes a
+   second rendering of the requirements list.
+
+### Invariants verified by inspection
+
+- **No assessment row mutated in place** — the only mutators on `AssessmentResult` are
+  `supersede()` and `mark_stale()`, both touching currency and its metadata. Conclusion,
+  summary, breakdown and rule version are never reassigned anywhere in `app/`.
+- **A failed recalculation cannot replace the last historical result** — tested by result
+  *id*, not by value: a run that superseded the results and wrote identical replacements
+  would pass a value comparison while having rewritten history.
+- **A stale result is never returned as current** — every `Currency.CURRENT` site is
+  construction, ranking, or a filter *for* CURRENT.
+- **An issue never changes a conclusion** — `app/issues/` writes only `issues` and
+  `issue_resolutions`, and imports repositories only, never another module's service.
+- **No PII in the failure path** — a canary planted in an exception message is asserted
+  absent from `assessment_runs`, `issues`, `domain_events`, `audit_entries`, `outbox_events`.
+- **No readiness score** — every grep hit in the codebase is a comment or test forbidding one.
+
+### What went wrong, and what it taught
+
+Reviewers found defects on every slice that a green suite was hiding. The pattern from M4
+held and sharpened: **the dangerous defects are the ones where nothing fails.**
+
+- **Two defects that combined into the worst outcome this product has.** Limitations name
+  travel-record *version* ids; the queue matched them against *current* versions, so on a
+  stale result the mapping dropped everything and an overlap that still existed read as
+  resolved. Separately, a live issue's severity and dismissibility were frozen at open time,
+  so an out-of-window uncertain trip kept offering **Dismiss** after the application date
+  moved it inside the qualifying period. Together: dismiss, recalculate, and the queue reads
+  `open_count: 0` while those days are excluded from the confirmed totals. Reachable through
+  the API.
+- **A reviewer deleted the entire transactional coupling of slice 2 and 392 tests still
+  passed.** The fix moved reconciliation inside `invalidate_for_input_change`, which also
+  closed a CSV-import seam that had been added without one.
+- **React Query drops `mutate()` callbacks when the calling component unmounts** — learned
+  three times. It swallowed the recheck announcement, then the dismissal announcement, then
+  (via observer supersession rather than unmount) a concurrent dismissal's error.
+- **A comment I wrote was false, and the defect it claimed to prevent was present.** It said
+  the group's recheck "shares `useRecalculate` with the header rather than owning a second
+  mutation". Calling the same hook does not share state — each call gets its own observer.
+  Two case-wide recalculate controls sat one screenful apart, each tracking only its own busy
+  state.
+- **`started_at` is a Postgres transaction timestamp, not a statement timestamp.** The
+  recovery write opens its own connection, so its transaction could begin *after* one that
+  later inserted the successful retry — and the failure then read as the newer run, leaving
+  the queue reporting a processing failure the user had already cleared.
+- **A rollback expires every ORM instance**, so reading `case.id` after one emits a refresh
+  SELECT and reopens a transaction on the session just discarded. Found by a test written
+  for something else.
+- **CI structurally could not see one line.** Tests connect as a Postgres superuser, which
+  bypasses RLS even under FORCE — so deleting `set_tenant` from the recovery session left the
+  whole suite green while every failure record in a deployed environment would be silently
+  rejected by policy.
+- **A test named `..._raises_a_blocking_issue` asserted `REVIEW_REQUIRED`** after a
+  deliberate downgrade — the kind of name someone later "fixes" by changing the assertion.
+
+### Gate evidence
+
+Local smoke: 13 passed, 2 skipped (the authenticated walkthrough, for want of Clerk test
+credentials). Deployed smoke: **not runnable** — no `SMOKE_BASE_URL` / `SMOKE_API_URL`.
+`just lint`, `just typecheck`, 441 backend tests, 205 frontend tests, 17 property tests, zero
+API-client drift. Demo recordings for all four slices in `docs/demo-assets/m6/`.
+
+### The questions
+
+_Answer from memory, codebase closed. Left blank deliberately — this is the gate._
+
+**Why is stale marking in the same transaction as the input change rather than a background
+job?**
+
+**Recalculation fails. What does the user see, and what is the state of the data?**
+
+**How does the system know which requirements a travel-record change affects — and what
+happens if an evaluator reads an input it did not declare?**
+
+**Why can a result be `SUPPORTED` and `STALE` simultaneously?**
+
+_Known gaps carried forward:_
+
+- **The deployed smoke still has never run**, and no deployed URL is recorded. Carried from
+  M4. The roadmap moved deployment to M1 so every milestone would be demoable; decide whether
+  that slipped.
+- **The canonical-case walkthrough is still `skip`ped**, so the only end-to-end coverage of
+  the M6 journey is manual.
+- **The phase pill contradicts the queue** — "Resolving issues" beside "Nothing needs your
+  attention". Both correct, measuring different things (ADR-0009 vs ADR-0014); side by side
+  it reads as a contradiction.
+- **No backfill for pre-M6 cases.** The queue is a write-time projection, so a case staled
+  before issue derivation existed has stale conclusions and an empty queue. `SettledStatement`
+  degrades honestly, but the underlying gap is real.
+- **Deleting `_abandon` deadlocks the suite rather than failing it.** One test names the
+  defect; the rest of the file still hangs. A global pytest timeout would fix the class and
+  needs `pytest-timeout` — an undecided dependency.
+- **The recovery asks an unhealthy database for one more pooled connection**, blocking the
+  request thread up to the pool timeout, when pool exhaustion is a likely cause of the
+  original failure. A short dedicated checkout timeout is the fix; infrastructure, not
+  correctness.
+- **`MISSING_REQUIRED_FACT` has no reachable producer** — route confirmation requires the one
+  fact whose absence would raise it. Documented rather than shipped as a dead branch.
+  `CONFLICTING_CLAIMS` waits for M8, `MISSING_EVIDENCE` for M7.
+- **`destination_label` becomes untrusted input at M7** when it can come from a document
+  extraction, and it is rendered in issue titles today. Bound the rendering path before then.
+- **The docker dev loop has no `--reload` or bind mount**, so `just up` serves whatever code
+  was current when the image was last built. This has cost real debugging time twice.
+
+---
