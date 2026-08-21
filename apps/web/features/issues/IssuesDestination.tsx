@@ -145,8 +145,15 @@ export function IssuesDestination({ caseId }: { caseId: string }): JSX.Element {
                 // the queue, which adds the processing-failure item — so the count moves,
                 // and a still-armed recheck would announce "recheck finished" over a
                 // recheck that did not.
+                //
+                // Says nothing about whether the figures moved. A timeout or a dropped
+                // response *after* the run committed also lands here, and there the
+                // conclusions did change — claiming otherwise would be the product
+                // asserting certainty in the one case it has just admitted it does not
+                // have any (CLAUDE.md §2.7).
                 setAnnouncement(
-                  "The recheck did not complete. Your conclusions are unchanged.",
+                  "The recheck did not complete. This list has been refreshed with what " +
+                    "the server recorded.",
                 );
                 setRecheckRequested(false);
               }}
@@ -377,10 +384,14 @@ function RecheckAction({
       >
         {busy ? "Rechecking…" : retry ? "Try again" : "Recheck now"}
       </button>
+      {/* Deliberately silent about whether anything changed. A server-side failure
+          leaves the figures alone and the durable item below says so — but a timeout or
+          a dropped response after the run committed lands here too, and there the
+          conclusions moved. One sentence has to be true of both. */}
       {mutation.isError ? (
         <p role="alert" className="cw-case-header__error">
-          That recheck didn’t finish. Your figures are unchanged — this list has been
-          refreshed with whatever the server recorded.
+          That recheck didn’t finish. This list has been refreshed with what the server
+          recorded — anything it did record is shown below.
         </p>
       ) : null}
     </div>

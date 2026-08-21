@@ -111,6 +111,12 @@ def recalculate(
     if case.lifecycle_status is not LifecycleStatus.ACTIVE:
         raise CaseNotActive(case.lifecycle_status.value)
 
+    # Read the id out of the ORM object *before* anything can roll back. A rollback expires
+    # every instance in the session, so touching `case.id` afterwards emits a refresh SELECT
+    # — which autobegins a fresh transaction on the session we just discarded, leaving the
+    # request holding a pooled connection idle-in-transaction for the whole recovery.
+    case_id = case.id
+
     # Lock the case row before reading any input — the three residence write commands take
     # the same lock, so this serialises against them. Without it, under READ COMMITTED: this
     # run reads application-date v1; a concurrent date change writes v2, marks the results
@@ -123,19 +129,35 @@ def recalculate(
     try:
         run, result_count = _run_trusted_assessment(session, case=case, user=user)
     except DomainError:
-        # A rule about the request, already mapped to a 4xx: not-assessable, or a
-        # concurrency conflict where another writer got there first. In both the case is
-        # intact and the caller knows what to do, so no failure is recorded.
+        # A rule about the request, already mapped to a 4xx, so no failure is recorded.
+        # `CaseNotActive` / `CaseNotAssessable`: the case is intact and the caller knows
+        # what to do. `ConcurrencyConflict`: another writer holds the results this run
+        # would have written — the recalculation it performed stands, and a retry is the
+        # documented response to a 409. The exception is a unique violation raised from
+        # the issue reconcile rather than from the result write, which `UnitOfWork`
+        # cannot tell apart and maps here too; that is a genuine processing failure
+        # reported as a conflict. Harmless — the results stay STALE and the 409 says
+        # retry — but it is the one case this clause is wrong about.
         raise
     except Exception as exc:
+        # Stamp the failure *now*, not when the recovery session eventually opens.
+        # `_abandon` releases the case lock on the next line, so a concurrent
+        # recalculation can complete and commit in the gap — and if the recovery then
+        # dated itself later, it would sort after that success and raise a processing
+        # failure on a case whose every result is CURRENT. The gap is not small: the
+        # recovery has to check out a pooled connection, and an exhausted pool is a
+        # leading cause of the failure being recorded in the first place.
+        failed_at = datetime.now(UTC)
         _abandon(session)
-        _record_failed_run(case_id=case.id, user=user, failure_code=_classify(exc))
+        _record_failed_run(
+            case_id=case_id, user=user, failure_code=_classify(exc), at=failed_at
+        )
         raise
 
     return RecalculationOutcome(
         run=run,
         result_count=result_count,
-        requirements=AssessmentRepository.list_requirements_with_active_result(session, case.id),
+        requirements=AssessmentRepository.list_requirements_with_active_result(session, case_id),
     )
 
 
@@ -230,7 +252,11 @@ def _abandon(session: Session) -> None:
 
 
 def _record_failed_run(
-    *, case_id: uuid.UUID, user: CurrentUser, failure_code: RecalculationFailureCode
+    *,
+    case_id: uuid.UUID,
+    user: CurrentUser,
+    failure_code: RecalculationFailureCode,
+    at: datetime,
 ) -> None:
     """Write the durable record of a failed recalculation, in its own session and
     transaction (Domain §41.4).
@@ -264,9 +290,10 @@ def _record_failed_run(
                 mode=AssessmentMode.TRUSTED,
                 initiated_by=user.user_id,
             )
-            run.fail(
-                code=failure_code, at=datetime.now(UTC), trace_id=current_trace_id()
-            )
+            # `at` is the instant the recalculation failed, passed in by the caller.
+            # Reading the clock here instead would date the failure after any run that
+            # succeeded while this one was waiting for a connection.
+            run.fail(code=failure_code, at=at, trace_id=current_trace_id())
             AssessmentRepository.add_run(session, run)
             uow = UnitOfWork(session, actor_id=user.user_id)
             uow.emit(

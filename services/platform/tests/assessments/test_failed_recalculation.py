@@ -23,7 +23,7 @@ from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from app.assessments import service as assessments_service
@@ -38,7 +38,9 @@ from app.assessments.domain import (
 from app.assessments.repository import AssessmentRepository
 from app.issues.domain import Issue, IssueResolution, IssueStatus, IssueType
 from app.requirements.domain import Currency
-from app.shared.db import Base
+from app.shared.db import Base, get_sessionmaker
+from app.shared.errors import ConcurrencyConflict
+from app.shared.tenant import APP_ROLE, set_tenant
 
 pytestmark = pytest.mark.integration
 
@@ -457,6 +459,29 @@ def test_a_run_that_never_finished_is_not_treated_as_the_latest_word(
     assert latest.status == AssessmentRunStatus.COMPLETED.value
 
 
+def test_a_concurrency_conflict_records_no_failure(
+    api: Api, db_session: Session, break_persistence: Callable[..., None]
+) -> None:
+    """Another writer holds the results this run would have written, so the recalculation
+    it performed stands and a retry is the documented response to a 409.
+
+    Pinned separately from the precondition case: deleting the `except DomainError` clause
+    fails only the not-assessable test, which would leave this half of the rule resting on
+    a comment.
+    """
+    case_id = _assessed_case(api)
+    break_persistence(exc=ConcurrencyConflict())
+
+    response = api("user_a").post(f"/api/v1/cases/{case_id}/assessments/recalculate")
+    assert response.status_code == 409
+
+    db_session.rollback()
+    assert [r.status for r in _runs(db_session, case_id)] == [
+        AssessmentRunStatus.COMPLETED.value
+    ]
+    assert _issues(db_session, case_id, IssueType.PROCESSING_FAILURE) == []
+
+
 # --- 3. the recovery never eats the original error -------------------------
 
 
@@ -489,6 +514,147 @@ def test_a_broken_recovery_write_does_not_mask_the_original_error(
     assert snapshot(case_id) == before, "the safe state must hold without the durable record"
 
 
+def test_the_recovery_enters_the_rls_tenant_context(
+    api: Api, monkeypatch: pytest.MonkeyPatch, break_persistence: Callable[..., None]
+) -> None:
+    """The recovery's `set_tenant` call, pinned — and it needs help to be pinnable.
+
+    Tests connect as `citizenship`, which is a superuser, and a superuser bypasses RLS
+    even under FORCE. So the recovery's write lands whether or not the tenant was set, and
+    deleting the line leaves the whole suite green while every failure record in a deployed
+    environment is silently rejected by policy — silently, because `_record_failed_run`
+    swallows and logs.
+
+    So this test makes the recovery's session look like production: already dropped into
+    the non-superuser `app_rls` role, where the GUC is the only thing standing between the
+    insert and a policy refusal. The pool's checkin hook resets the role, so the borrowed
+    connection is clean afterwards.
+    """
+    real_sessionmaker = get_sessionmaker()
+
+    def as_non_superuser() -> Callable[[], Session]:
+        def open_session() -> Session:
+            session = real_sessionmaker()
+            session.execute(text(f"SET ROLE {APP_ROLE}"))
+            return session
+
+        return open_session
+
+    monkeypatch.setattr(assessments_service, "get_sessionmaker", as_non_superuser)
+
+    case_id = _assessed_case(api)
+    break_persistence()
+    with pytest.raises(RuntimeError):
+        api("user_a").post(f"/api/v1/cases/{case_id}/assessments/recalculate")
+
+    with real_sessionmaker() as fresh:
+        set_tenant(fresh, "user_a")
+        assert _runs(fresh, case_id)[-1].status == AssessmentRunStatus.FAILED.value
+        assert len(_issues(fresh, case_id, IssueType.PROCESSING_FAILURE)) == 1
+
+
+def test_the_failed_transaction_is_discarded_before_the_recovery_opens(
+    api: Api, monkeypatch: pytest.MonkeyPatch, break_persistence: Callable[..., None]
+) -> None:
+    """`_abandon` must run *before* `_record_failed_run`, and the coupling is real: the
+    recovery's FK check on `assessment_runs -> cases` needs `FOR KEY SHARE` on the case
+    row, which the un-rolled-back transaction still holds `FOR UPDATE`.
+
+    Removing the rollback therefore does not fail the suite — it **deadlocks** it, so the
+    regression arrives as an unbounded CI job rather than a red assertion. This test names
+    the defect in one line when it is run, and skips the real recovery when the rollback is
+    missing so it cannot hang itself. It does not rescue the rest of the file: every other
+    test here still blocks under that mutation. A global pytest timeout would, and needs a
+    dependency this repo has not agreed to add.
+    """
+    observed: dict[str, object] = {}
+    original = assessments_service._record_failed_run
+    request_session: dict[str, Session | None] = {"session": None}
+
+    real_recalculate = assessments_service._run_trusted_assessment
+
+    def capture_session(session: Session, **kwargs: Any) -> Any:
+        request_session["session"] = session
+        return real_recalculate(session, **kwargs)
+
+    def spy(**kwargs: Any) -> None:
+        captured = request_session["session"]
+        assert isinstance(captured, Session)
+        still_open = captured.in_transaction()
+        observed["in_transaction"] = still_open
+        # Deliberately skip the real recovery when the rollback is missing. Calling it
+        # would block on the case-row lock the failed transaction still holds, and the
+        # whole point of this test is to turn that hang into an assertion.
+        if not still_open:
+            original(**kwargs)
+
+    monkeypatch.setattr(assessments_service, "_run_trusted_assessment", capture_session)
+    monkeypatch.setattr(assessments_service, "_record_failed_run", spy)
+
+    case_id = _assessed_case(api)
+    break_persistence()
+    with pytest.raises(RuntimeError):
+        api("user_a").post(f"/api/v1/cases/{case_id}/assessments/recalculate")
+
+    assert observed["in_transaction"] is False, (
+        "the failed transaction was still open when the recovery ran; it holds FOR UPDATE "
+        "on the case row and the recovery's FK check will block on it forever"
+    )
+
+
+def test_the_failure_is_dated_when_it_happened_not_when_the_recovery_opened(
+    api: Api, db_session: Session, monkeypatch: pytest.MonkeyPatch,
+    break_persistence: Callable[..., None]
+) -> None:
+    """Reading the clock inside the recovery session dates the failure after anything that
+    succeeded while it waited for a connection.
+
+    `_abandon` releases the case lock one line earlier, so a concurrent recalculation can
+    complete and commit in that gap — and a later-dated failure would then sort after it
+    and raise a processing failure on a case whose every result is CURRENT. The delay is
+    simulated here; in production it is a pooled checkout, which can block for the full
+    pool timeout precisely when the pool is what broke.
+    """
+    case_id = _assessed_case(api)
+    break_persistence()
+
+    real_sessionmaker = get_sessionmaker()
+    already_raced = {"done": False}
+
+    def slow_sessionmaker() -> Callable[[], Session]:
+        def open_session() -> Session:
+            # Stand in for a successful concurrent run committing during the checkout.
+            if not already_raced["done"]:
+                with real_sessionmaker() as other:
+                    set_tenant(other, "user_a")
+                    winner = AssessmentRun.start(
+                        case_id=uuid.UUID(case_id),
+                        trigger_type=AssessmentTriggerType.USER_REQUESTED,
+                        mode=AssessmentMode.TRUSTED,
+                        initiated_by="user_a",
+                    )
+                    winner.complete(at=datetime.now(UTC))
+                    other.add(winner)
+                    other.commit()
+                    already_raced["done"] = True
+            return real_sessionmaker()
+
+        return open_session
+
+    monkeypatch.setattr(assessments_service, "get_sessionmaker", slow_sessionmaker)
+
+    with pytest.raises(RuntimeError):
+        api("user_a").post(f"/api/v1/cases/{case_id}/assessments/recalculate")
+
+    db_session.rollback()
+    latest = AssessmentRepository.get_latest_finished_run(db_session, uuid.UUID(case_id))
+    assert latest is not None
+    assert latest.status == AssessmentRunStatus.COMPLETED.value, (
+        "the failure was dated after a run that succeeded while the recovery waited for a "
+        "connection, so the queue reports a processing failure on an up-to-date case"
+    )
+
+
 def test_the_recovery_runs_in_its_own_transaction(
     api: Api, break_persistence: Callable[..., None]
 ) -> None:
@@ -501,9 +667,6 @@ def test_the_recovery_runs_in_its_own_transaction(
         api("user_a").post(f"/api/v1/cases/{case_id}/assessments/recalculate")
 
     # A genuinely separate connection, not the request's rolled-back one.
-    from app.shared.db import get_sessionmaker
-    from app.shared.tenant import set_tenant
-
     with get_sessionmaker()() as fresh:
         set_tenant(fresh, "user_a")
         assert _runs(fresh, case_id)[-1].status == AssessmentRunStatus.FAILED.value

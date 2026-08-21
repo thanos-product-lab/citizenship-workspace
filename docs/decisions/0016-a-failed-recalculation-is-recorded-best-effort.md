@@ -63,6 +63,13 @@ failure — the request was wrong and the case is intact. Recording a FAILED run
 put an item in the queue that no retry could ever clear. `ConcurrencyConflict` is excluded on
 the same grounds: another writer got there first, and the recalculation it performed stands.
 
+One case sits on the wrong side of that line. `UnitOfWork` maps *any* unique violation to
+`ConcurrencyConflict`, so a 23505 on the `issues` partial unique index — raised by the
+reconcile inside the run, not by the result write — is reported as a request conflict when it
+is really a processing failure. The outcome is still safe (results stay `STALE`, the 409 says
+retry) and it is not misleading, so it is recorded here rather than special-cased on a
+distinction `UnitOfWork` cannot currently draw.
+
 ### `PROCESSING_FAILURE` is derived, not created
 
 The recovery path does not create the issue. Derivation asks one question — *did the case's
@@ -92,6 +99,22 @@ This was reproduced, not theorised. `completed_at` is set in Python at the momen
 by both `complete()` and `fail()`, so it orders the way a reader expects. Unfinished
 (`RUNNING`) rows are excluded: a process that died mid-flight is not evidence of failure.
 
+### The failure is stamped when it happened, not when the recovery opened
+
+`_abandon` releases the case-row lock before the recovery starts, so a concurrent
+recalculation can complete and commit in the gap. If the recovery then dated itself with
+its own clock, it would sort *after* that success and raise a processing failure on a case
+whose every result is `CURRENT` — a false alarm, and one that defeats the ordering rule
+above. The instant of failure is therefore captured in the `except` block and passed in.
+
+The gap is not theoretical: the recovery must check out a pooled connection, and the engine
+uses default pooling, so that checkout can block for the full pool timeout — with pool
+exhaustion being a leading cause of the failure being recorded in the first place. Which
+also means **the recovery asks an unhealthy database for one more connection**, and blocks
+the request thread until it gets one or times out. Accepted for now: the alternative is a
+dedicated short-timeout checkout, which is an infrastructure change rather than a
+correctness one. Recorded here so it is a known cost, not a surprise.
+
 ## Alternatives rejected
 
 - **Write the FAILED run on the same transaction.** It rolls back with everything else. This
@@ -115,6 +138,17 @@ by both `complete()` and `fail()`, so it orders the way a reader expects. Unfini
 - **Harder / committed:** the recovery path is deliberately silent about its own failures, so
   a persistently broken recovery is visible only in logs. The `_record_failed_run` seam has
   to stay exception-free as it grows, which is a discipline a test pins rather than a type.
+- **A CI blind spot, closed by one test.** Tests connect as a superuser, and a superuser
+  bypasses RLS even under `FORCE ROW LEVEL SECURITY` — so deleting `set_tenant` from the
+  recovery leaves the entire suite green while every failure record in a deployed
+  environment is silently rejected by policy. `test_the_recovery_enters_the_rls_tenant_context`
+  drops the recovery's session into the non-superuser role first, which is the only reason
+  that line is pinned at all. Any future write on a fresh session inherits the same trap.
+- **Removing `_abandon` deadlocks the suite rather than failing it**, because the recovery's
+  FK check needs `FOR KEY SHARE` on a case row the un-rolled-back transaction holds
+  `FOR UPDATE`. One test asserts the ordering directly so the defect has a name; the rest of
+  the file still hangs. A global pytest timeout would fix that class of regression and is
+  not yet agreed.
 - **Frontend:** `useRecalculate` now refetches on error as well as on success, since a failed
   recalculation leaves server state the client should show. That reverses an earlier
   assertion, which is why the test that made it was rewritten with its reasoning rather than
