@@ -11,16 +11,21 @@ from datetime import datetime
 
 from pydantic import BaseModel
 
-from app.issues.domain import Dismissibility, Issue, IssueResolution, IssueSeverity, IssueStatus
+from app.issues.domain import (
+    Dismissibility,
+    Issue,
+    IssueResolution,
+    IssueSeverity,
+    IssueStatus,
+    IssueType,
+)
 from app.requirements.messages import (
     render_issue_body,
     render_issue_impact,
     render_issue_title,
 )
 
-#: Severity → the group a user acts on, per UI/UX §10 ("group issues by user action"). At
-#: this slice only ACTION_REQUIRED is produced, so one group renders; the rest arrive with
-#: the types that populate them.
+#: Severity → the group a user acts on, per UI/UX §10 ("group issues by user action").
 ACTION_GROUPS: dict[str, str] = {
     IssueSeverity.BLOCKING.value: "RESOLVE_TO_CONTINUE",
     IssueSeverity.ACTION_REQUIRED.value: "CONFIRM_INFORMATION",
@@ -36,6 +41,13 @@ _SEVERITY_ORDER = {
     IssueSeverity.REVIEW_REQUIRED.value: 2,
     IssueSeverity.INFORMATION.value: 3,
 }
+
+#: Precedence *within* a severity. Only one type claims it: a failed recalculation is the
+#: reason the stale items beside it are still stale, and ordering by time alone puts it
+#: below them — it opens last, because it is a consequence of trying to clear them. The
+#: reader would meet the effects before the cause.
+_TYPE_PRECEDENCE = {IssueType.PROCESSING_FAILURE.value: 0}
+_DEFAULT_PRECEDENCE = 1
 
 
 class IssueResolutionView(BaseModel):
@@ -152,6 +164,7 @@ class IssueQueue(BaseModel):
         open_views.sort(
             key=lambda v: (
                 _SEVERITY_ORDER.get(v.severity, 9),
+                _TYPE_PRECEDENCE.get(v.issue_type, _DEFAULT_PRECEDENCE),
                 v.opened_at,
                 v.affected_object_id,
             )

@@ -293,6 +293,7 @@ eventual issue set, and what of it is live:
 | `CONFLICTING_CLAIMS` | trip 11 return date 10 vs 11 May | No | ❌ M8 — needs somewhere to hold the competing value |
 | `MISSING_EVIDENCE` | trip 6 (Greece) unevidenced | Yes (INFORMATION) | ❌ M7 — no evidence model |
 | `MISSING_REQUIRED_FACT` | second referee absent | No | ❌ no reachable producer (below) |
+| `PROCESSING_FAILURE` | a recalculation that did not finish | No | ✅ **live** — not by this fixture; see below |
 
 **What the canonical case produces at M6.** Exactly one standing issue: `NEAR_THRESHOLD`
 on `residence.total_absences`. Editing trip 11 opens four `STALE_ASSESSMENT` issues in the
@@ -315,6 +316,13 @@ edit path. Recorded here rather than shipped as an unreachable branch.
 product today), and `UNSUPPORTED_COMPLEXITY`, which the absence bands raise above 450 days.
 The canonical case is deliberately clean of all three: it demonstrates a well-kept case, and
 loading it with every defect at once would make the stale transition harder to see.
+
+**`PROCESSING_FAILURE` is reachable but deliberately unreachable *by data*.** It is raised
+when the case's most recently finished `AssessmentRun` has `status = FAILED` (ADR-0016) —
+process state, not case state, so no fixture can produce it and no input a user supplies
+can. `tests/assessments/test_failed_recalculation.py` covers it by breaking result
+persistence mid-run. Demonstrating it by hand needs the same: the failure is genuinely
+exceptional, which is the point of making it durable.
 
 ---
 

@@ -26,6 +26,7 @@ from app.requirements.domain import Conclusion, Currency
 
 AFFECTED_REQUIREMENT = "Requirement"
 AFFECTED_TRAVEL_RECORD = "TravelRecord"
+AFFECTED_CASE = "Case"
 
 #: Limitation codes this module reads. Named here so a rename in the evaluator that this
 #: module fails to follow is visible in one place rather than as a quietly empty queue.
@@ -112,9 +113,11 @@ class LimitationTargets:
 
 def derive(
     *,
+    case_id: str,
     requirements: list[RequirementSnapshot],
     travel: list[TravelSnapshot],
     targets: LimitationTargets,
+    recalculation_failed: bool = False,
 ) -> list[DesiredIssue]:
     """The complete desired open-issue set for a case.
 
@@ -122,10 +125,37 @@ def derive(
     not return, so a type omitted here is a type that silently clears itself.
     """
     issues: list[DesiredIssue] = []
+    if recalculation_failed:
+        issues.append(_processing_failure(case_id))
     for requirement in requirements:
         issues.extend(_requirement_issues(requirement))
     issues.extend(_travel_issues(travel, targets))
     return issues
+
+
+def _processing_failure(case_id: str) -> DesiredIssue:
+    """The last recalculation attempt failed (Domain §41.4).
+
+    **Keyed on the case, not on the failed run.** The condition being reported is "the
+    most recent attempt did not complete", which persists across repeated failures — so a
+    second failure reshapes one open issue rather than resolving the first and opening a
+    second. Keying on the run id would make every retry write a `SYSTEM_AUTO_RESOLVED`
+    row for a failure that nothing resolved, which is precisely the false progress a
+    resolution history exists to rule out.
+
+    ACTION_REQUIRED rather than BLOCKING: nothing about the case is wrong, and the stale
+    conclusions underneath are still the honest last word. Never dismissible — setting it
+    aside would leave the user looking at figures the product knows are unrefreshed with
+    nothing saying so.
+    """
+    return DesiredIssue(
+        issue_type=IssueType.PROCESSING_FAILURE,
+        severity=IssueSeverity.ACTION_REQUIRED,
+        dismissibility=Dismissibility.NOT_DISMISSIBLE,
+        title_code="ISSUE_RECALCULATION_FAILED",
+        affected_object_type=AFFECTED_CASE,
+        affected_object_id=case_id,
+    )
 
 
 def _requirement_issues(requirement: RequirementSnapshot) -> list[DesiredIssue]:

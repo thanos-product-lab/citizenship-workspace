@@ -20,6 +20,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 
+import structlog
 from sqlalchemy.orm import Session
 
 from app.applicants.domain import RouteProfileVersion
@@ -30,7 +31,9 @@ from app.assessments.domain import (
     AssessmentResult,
     AssessmentRun,
     AssessmentRunCompleted,
+    AssessmentRunFailed,
     AssessmentTriggerType,
+    RecalculationFailureCode,
 )
 from app.assessments.groups import GroupMember, GroupSummary, summarise_groups
 from app.assessments.priority import CandidateAction, PriorityActions, select_priority_actions
@@ -61,8 +64,23 @@ from app.residence.repository import (
     ProposedApplicationDateRepository,
     TravelRecordRepository,
 )
-from app.shared.errors import CaseNotActive, CaseNotAssessable
+from app.shared.db import get_sessionmaker
+from app.shared.errors import CaseNotActive, CaseNotAssessable, DomainError
+from app.shared.tenant import set_tenant
+from app.shared.trace import current_trace_id
 from app.shared.unit_of_work import UnitOfWork
+
+_log = structlog.get_logger()
+
+
+class RuleConfigurationMissing(RuntimeError):
+    """A catalogued requirement has no definition row or no active rule version.
+
+    A packaging bug, not a user error, so it stays a `RuntimeError` and reaches the client
+    as a 500 — but it is distinguishable from an arbitrary failure, which is what lets the
+    recorded run say `RULE_CONFIGURATION_INVALID` (retrying will fail identically) rather
+    than `UNEXPECTED_ERROR` (retrying may well work).
+    """
 
 
 @dataclass(frozen=True)
@@ -76,7 +94,20 @@ def recalculate(
     session: Session, *, case: ApplicationCase, user: CurrentUser
 ) -> RecalculationOutcome:
     """Run a trusted assessment over the case's current inputs and persist immutable
-    results. Requires an active case with a selected application date."""
+    results. Requires an active case with a selected application date.
+
+    **A failure leaves the case in its safe state and says so** (Domain §41.4). Nothing is
+    promoted to CURRENT, the previous results stay exactly as they were — STALE, with the
+    conclusion they already had — and a FAILED `AssessmentRun` is written in a *separate*
+    transaction so the record survives the rollback that discards everything else. The
+    queue then shows a `PROCESSING_FAILURE` item that outlives the page reload which erases
+    a transient banner.
+
+    The precondition failures above are deliberately outside that handling. A case that is
+    not active, or has no application date, has not suffered a processing failure — the
+    request was wrong, the case is fine, and recording a FAILED run for it would put an
+    item in the queue that no retry can clear.
+    """
     if case.lifecycle_status is not LifecycleStatus.ACTIVE:
         raise CaseNotActive(case.lifecycle_status.value)
 
@@ -89,6 +120,32 @@ def recalculate(
     # invalidation exists to make impossible.
     cases_service.lock_writable_case(session, case.id)
 
+    try:
+        run, result_count = _run_trusted_assessment(session, case=case, user=user)
+    except DomainError:
+        # A rule about the request, already mapped to a 4xx: not-assessable, or a
+        # concurrency conflict where another writer got there first. In both the case is
+        # intact and the caller knows what to do, so no failure is recorded.
+        raise
+    except Exception as exc:
+        _abandon(session)
+        _record_failed_run(case_id=case.id, user=user, failure_code=_classify(exc))
+        raise
+
+    return RecalculationOutcome(
+        run=run,
+        result_count=result_count,
+        requirements=AssessmentRepository.list_requirements_with_active_result(session, case.id),
+    )
+
+
+def _run_trusted_assessment(
+    session: Session, *, case: ApplicationCase, user: CurrentUser
+) -> tuple[AssessmentRun, int]:
+    """Evaluate, persist, and commit. Everything that can fail on the happy path lives
+    here, so the caller's `except` covers exactly the work whose failure is worth
+    recording — and nothing after the commit, where a failure would mean the run
+    succeeded and a FAILED row would be a lie."""
     profile_version = _current_route_profile_version(session, case.id)
     date_version = _current_application_date_version(session, case.id)
 
@@ -146,12 +203,98 @@ def recalculate(
     # causes gone.
     issues_service.reconcile(session, uow, case_id=case.id)
     uow.commit()
+    return run, len(evaluated)
 
-    return RecalculationOutcome(
-        run=run,
-        result_count=len(evaluated),
-        requirements=AssessmentRepository.list_requirements_with_active_result(session, case.id),
-    )
+
+def _classify(exc: BaseException) -> RecalculationFailureCode:
+    """The exception *type* decides the code. The message never does — see
+    `RecalculationFailureCode`."""
+    if isinstance(exc, RuleConfigurationMissing):
+        return RecalculationFailureCode.RULE_CONFIGURATION_INVALID
+    return RecalculationFailureCode.UNEXPECTED_ERROR
+
+
+def _abandon(session: Session) -> None:
+    """Discard the failed transaction before opening the recovery one.
+
+    Two reasons. It releases the `FOR UPDATE` lock this command took on the case row, which
+    the recovery transaction would otherwise be waiting behind — and it discards the
+    partial results, which is what makes "nothing is promoted to CURRENT" true rather than
+    merely intended. Best-effort like everything else on this path: if the connection is
+    the thing that broke, there is nothing to roll back and nothing to gain by saying so.
+    """
+    try:
+        session.rollback()
+    except Exception:  # pragma: no cover - only reachable with a dead connection
+        _log.warning("assessment.rollback_failed", trace_id=current_trace_id())
+
+
+def _record_failed_run(
+    *, case_id: uuid.UUID, user: CurrentUser, failure_code: RecalculationFailureCode
+) -> None:
+    """Write the durable record of a failed recalculation, in its own session and
+    transaction (Domain §41.4).
+
+    **This must never raise.** It runs from inside an `except` block, and an exception
+    thrown out of a handler replaces the original one: the engineer investigating would be
+    shown the recovery's failure and lose the actual cause on the way out. Worse, the most
+    likely reason this write fails is that the *database connection* is what broke the
+    recalculation in the first place — so the one failure mode that guarantees the recovery
+    also fails is the one where the original error matters most.
+
+    So the durable record is an improvement on the safe state, not a precondition for it.
+    The results are already STALE and nothing was promoted; if this write is lost the user
+    sees stale conclusions without the explanation, which is worse than the alternative but
+    still not misleading.
+
+    The recovery's own exception is logged by type and trace id, not by message. A driver
+    error carries the failing statement's bound parameters, and this line is not the place
+    to discover that a destination label reached the log (§11).
+    """
+    try:
+        with get_sessionmaker()() as session:
+            # A fresh session starts outside the RLS context, so the tenant has to be set
+            # again — otherwise the policies see a NULL user id, match no row, and the
+            # insert is rejected. Fail-closed working exactly as designed, on a path where
+            # it would look like an inexplicable recovery failure.
+            set_tenant(session, user.user_id)
+            run = AssessmentRun.start(
+                case_id=case_id,
+                trigger_type=AssessmentTriggerType.USER_REQUESTED,
+                mode=AssessmentMode.TRUSTED,
+                initiated_by=user.user_id,
+            )
+            run.fail(
+                code=failure_code, at=datetime.now(UTC), trace_id=current_trace_id()
+            )
+            AssessmentRepository.add_run(session, run)
+            uow = UnitOfWork(session, actor_id=user.user_id)
+            uow.emit(
+                AssessmentRunFailed(
+                    aggregate_id=run.id,
+                    trigger_type=run.trigger_type,
+                    mode=run.mode,
+                    failure_code=failure_code.value,
+                ),
+                case_id=case_id,
+                action="assessment.failed",
+                target_type="AssessmentRun",
+                target_id=run.id,
+            )
+            # The issue is not created here. Reconciliation derives PROCESSING_FAILURE from
+            # this run being the latest and having failed, so the same diff that opens it
+            # closes it when a later run succeeds — no cleanup to remember on a path added
+            # months from now.
+            issues_service.reconcile(session, uow, case_id=case_id)
+            uow.commit()
+    except Exception as exc:
+        _log.error(
+            "assessment.failure_record_failed",
+            case_id=str(case_id),
+            failure_code=failure_code.value,
+            error_type=type(exc).__name__,
+            trace_id=current_trace_id(),
+        )
 
 
 def list_requirements(
@@ -348,10 +491,14 @@ def _persist_result(
         session, evaluation.requirement_key
     )
     if definition is None:  # a seeded evaluator with no catalog row is a packaging bug
-        raise RuntimeError(f"no requirement definition for {evaluation.requirement_key!r}")
+        raise RuleConfigurationMissing(
+            f"no requirement definition for {evaluation.requirement_key!r}"
+        )
     rule_version = RequirementCatalogRepository.get_active_rule_version(session, definition.id)
     if rule_version is None:
-        raise RuntimeError(f"no active rule version for {evaluation.requirement_key!r}")
+        raise RuleConfigurationMissing(
+            f"no active rule version for {evaluation.requirement_key!r}"
+        )
 
     result_id = uuid.uuid4()
     # Supersede the prior non-superseded result whether it is CURRENT or STALE — a recalc after

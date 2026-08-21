@@ -46,7 +46,16 @@ export function useRecalculate(caseId: string) {
         `Recalculation finished. ${current} ${current === 1 ? "requirement" : "requirements"} assessed.`,
       );
     },
-    onError: () => setAnnouncement("Recalculation did not complete."),
+    onError: async () => {
+      setAnnouncement("Recalculation did not complete.");
+      // Refetch on failure too. A recalculation that fails server-side now leaves a
+      // durable record — a FAILED run and a PROCESSING_FAILURE item in the queue — and
+      // without this the user is told to reload the page to find something the app
+      // already knows. The same call covers the ambiguous case this hook has always had
+      // to allow for: a timeout or a dropped response after the run committed, where the
+      // server state moved and the client never heard.
+      await assessmentTouched(client, caseId);
+    },
   });
 
   return { mutation, announcement };

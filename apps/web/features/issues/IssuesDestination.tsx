@@ -141,7 +141,13 @@ export function IssuesDestination({ caseId }: { caseId: string }): JSX.Element {
               group={group}
               onRecheckRequested={() => setRecheckRequested(true)}
               onRecheckFailed={() => {
-                setAnnouncement("The recheck did not complete. Nothing has changed.");
+                // Clearing the flag matters as much as the sentence. A failure refetches
+                // the queue, which adds the processing-failure item — so the count moves,
+                // and a still-armed recheck would announce "recheck finished" over a
+                // recheck that did not.
+                setAnnouncement(
+                  "The recheck did not complete. Your conclusions are unchanged.",
+                );
                 setRecheckRequested(false);
               }}
               dismissState={dismiss}
@@ -236,7 +242,13 @@ function IssueGroupSection({
   dismissState: { isPending: boolean; isError: boolean; variables?: string | undefined };
 }): JSX.Element {
   const headingId = `issue-group-${group.action_group}`;
-  const recheckable = group.issues.some((issue) => issue.issue_type === "STALE_ASSESSMENT");
+  // A processing failure is cleared by the same case-wide recalculation a stale conclusion
+  // is, so it does not get a control of its own — it changes what this one is called. It
+  // also earns the control on its own: a recalculation can fail on a case with nothing
+  // stale, and without this that group would show the failure and no way to retry it.
+  const failed = group.issues.some((issue) => issue.issue_type === "PROCESSING_FAILURE");
+  const recheckable =
+    failed || group.issues.some((issue) => issue.issue_type === "STALE_ASSESSMENT");
 
   return (
     <section className="cw-issue-group" aria-labelledby={headingId}>
@@ -253,6 +265,7 @@ function IssueGroupSection({
       {recheckable ? (
         <RecheckAction
           caseId={caseId}
+          retry={failed}
           onRequested={onRecheckRequested}
           onFailed={onRecheckFailed}
         />
@@ -331,10 +344,13 @@ function AffectedLink({ caseId, issue }: { caseId: string; issue: Issue }): JSX.
  */
 function RecheckAction({
   caseId,
+  retry,
   onRequested,
   onFailed,
 }: {
   caseId: string;
+  /** The last attempt failed, so this control is a retry rather than a first run. */
+  retry: boolean;
   onRequested: () => void;
   onFailed: () => void;
 }): JSX.Element {
@@ -359,12 +375,12 @@ function RecheckAction({
           mutation.mutate();
         }}
       >
-        {busy ? "Rechecking…" : "Recheck now"}
+        {busy ? "Rechecking…" : retry ? "Try again" : "Recheck now"}
       </button>
       {mutation.isError ? (
         <p role="alert" className="cw-case-header__error">
-          We couldn’t confirm whether that recheck ran. Reload the page to see the current
-          state.
+          That recheck didn’t finish. Your figures are unchanged — this list has been
+          refreshed with whatever the server recorded.
         </p>
       ) : null}
     </div>

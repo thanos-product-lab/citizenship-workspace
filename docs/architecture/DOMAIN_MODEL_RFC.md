@@ -2171,6 +2171,14 @@ If recalculation fails:
 - a processing or recalculation issue is opened;
 - the user sees the last historical conclusion and why it is stale.
 
+The first two are guaranteed; the third is **best-effort**. The failure record is written in
+a separate session and transaction, since the failed one is rolled back by definition — and
+that write is wrapped so it can never raise over the original error, because the failure mode
+that guarantees it also fails (a dead connection) is the one where the original error matters
+most. The safe state does not depend on it. See ADR-0016 for the failure codes, why
+`failure_summary` never holds an exception string, and why `PROCESSING_FAILURE` is derived
+from the latest *finished* run rather than created by the handler.
+
 ### 41.5 Selective Invalidation
 
 The affected set is **resolved from the declarations**, never from a hand-maintained

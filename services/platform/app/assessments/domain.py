@@ -45,6 +45,27 @@ class AssessmentRunStatus(StrEnum):
     FAILED = "FAILED"
 
 
+class RecalculationFailureCode(StrEnum):
+    """Why a run failed, as a **code**. Stored in `AssessmentRun.failure_summary`.
+
+    That column is `Text`, and the obvious thing to put in it is `str(exc)`. Never do
+    that. A SQLAlchemy error carries the statement's bound parameters, so an exception
+    string is the shortest path from a destination label or a date of birth into a
+    database column nothing treats as case data — the leak §11 forbids in logs, through a
+    door nobody was watching.
+
+    Two codes, because they call for different responses and nothing finer is knowable
+    without inspecting the exception: a packaging bug an engineer must fix, and everything
+    else, which a retry may well clear.
+    """
+
+    #: A catalogued requirement has no definition row or no active rule version. The
+    #: deployment is inconsistent; retrying will fail the same way.
+    RULE_CONFIGURATION_INVALID = "RULE_CONFIGURATION_INVALID"
+    #: Anything else — a lost connection, a serialisation failure, an evaluator defect.
+    UNEXPECTED_ERROR = "UNEXPECTED_ERROR"
+
+
 class AssessmentTriggerType(StrEnum):
     CASE_CREATED = "CASE_CREATED"
     ROUTE_CONFIRMED = "ROUTE_CONFIRMED"
@@ -95,6 +116,23 @@ class AssessmentRun(Base):
     def complete(self, *, at: datetime) -> None:
         self.status = AssessmentRunStatus.COMPLETED.value
         self.completed_at = at
+
+    def fail(
+        self, *, code: RecalculationFailureCode, at: datetime, trace_id: str | None = None
+    ) -> None:
+        """The run produced no results (Domain §41.4). The row exists so the failure
+        survives the page reload that erases a transient banner — without it a failed
+        recalculation leaves stale results and nothing at all saying why they were not
+        refreshed.
+
+        `failure_summary` takes the code and only the code; the exception itself is
+        re-raised to the caller and logged, never persisted (see `RecalculationFailureCode`).
+        `trace_id` is what ties this row to that log line.
+        """
+        self.status = AssessmentRunStatus.FAILED.value
+        self.completed_at = at
+        self.failure_summary = code.value
+        self.trace_id = trace_id
 
 
 class AssessmentResult(Base):
@@ -200,6 +238,35 @@ class AssessmentRunCompleted(DomainEvent):
             "trigger_type": self.trigger_type,
             "mode": self.mode,
             "result_count": self.result_count,
+        }
+
+
+@dataclass(frozen=True)
+class AssessmentRunFailed(DomainEvent):
+    """A trusted run was attempted and wrote no results (Domain §38, §41.4).
+
+    Structural only (§38.1): the trigger, the mode, and the failure *code*. Never the
+    exception, which is the one thing here that could carry case data — see
+    `RecalculationFailureCode`.
+
+    Emitted on the recovery transaction, not the failed one: the failed transaction is
+    rolled back by definition, so an event emitted inside it would vanish with everything
+    else and the log would show a recalculation that was never attempted.
+    """
+
+    trigger_type: str
+    mode: str
+    failure_code: str
+
+    aggregate_type: ClassVar[str] = "AssessmentRun"
+    event_type: ClassVar[str] = "AssessmentRunFailed"
+
+    def payload(self) -> dict[str, Any]:
+        return {
+            "assessment_run_id": str(self.aggregate_id),
+            "trigger_type": self.trigger_type,
+            "mode": self.mode,
+            "failure_code": self.failure_code,
         }
 
 

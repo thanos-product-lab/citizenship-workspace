@@ -325,6 +325,117 @@ describe("issues destination accessibility", () => {
     );
   });
 
+  describe("a recalculation that failed", () => {
+    // Domain §41.4. The failure is durable: a FAILED run and a PROCESSING_FAILURE item
+    // that survive the reload which erases the header's transient alert. What the queue
+    // has to get right is that the failure never reads as reassurance.
+    function aFailure(overrides: Record<string, unknown> = {}) {
+      return anIssue({
+        id: "f1",
+        issue_type: "PROCESSING_FAILURE",
+        title: "We could not recheck your conclusions",
+        body:
+          "The last attempt to recheck your conclusions did not finish. Nothing was " +
+          "changed: the figures on your case are still the ones worked out before your " +
+          "last edit.",
+        impact: "Any conclusion awaiting a recheck stays out of date until one succeeds.",
+        affected_object_type: "Case",
+        affected_object_id: CASE,
+        opened_at: "2026-08-20T11:00:00Z",
+        ...overrides,
+      });
+    }
+
+    it("calls the control a retry once an attempt has failed", async () => {
+      queueReturns(
+        aQueue({
+          open_count: 2,
+          groups: [
+            { action_group: "CONFIRM_INFORMATION", issues: [aFailure(), anIssue()] },
+          ],
+        }),
+      );
+      renderWithQuery(<IssuesDestination caseId={CASE} />);
+
+      await screen.findAllByRole("article");
+      expect(screen.getByRole("button", { name: /try again/i })).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /recheck now/i })).toBeNull();
+      // Still one control for the group: the failure changes its name, not its number.
+      expect(screen.getAllByRole("button", { name: /try again/i })).toHaveLength(1);
+    });
+
+    it("offers a retry even when nothing else in the group is stale", async () => {
+      // A recalculation can fail on a case with no stale conclusions at all. Keying the
+      // control on STALE_ASSESSMENT alone would show the failure with no way to act on it.
+      queueReturns(
+        aQueue({
+          open_count: 1,
+          groups: [{ action_group: "CONFIRM_INFORMATION", issues: [aFailure()] }],
+        }),
+      );
+      renderWithQuery(<IssuesDestination caseId={CASE} />);
+
+      await screen.findByRole("article");
+      expect(screen.getByRole("button", { name: /try again/i })).toBeInTheDocument();
+    });
+
+    it("never reads as reassurance", async () => {
+      queueReturns(
+        aQueue({
+          open_count: 1,
+          groups: [{ action_group: "CONFIRM_INFORMATION", issues: [aFailure()] }],
+        }),
+      );
+      renderWithQuery(<IssuesDestination caseId={CASE} />);
+
+      await screen.findByRole("article");
+      // The two claims that must not appear beside a failed recheck.
+      expect(screen.queryByText(/Nothing needs your attention/i)).toBeNull();
+      expect(screen.queryByText(/Every conclusion reached so far is current/i)).toBeNull();
+      // And the one that must: the figures did not move, which is why they are still old.
+      expect(
+        screen.getByText(/still the ones worked out before your last edit/i),
+      ).toBeInTheDocument();
+    });
+
+    it("does not announce a finished recheck when the recheck failed", async () => {
+      // A failure refetches the queue, which *adds* the processing-failure item — so the
+      // open count moves. Deriving the announcement from the count alone would report
+      // "recheck finished" over a recheck that did not.
+      const before = aQueue({
+        open_count: 1,
+        groups: [{ action_group: "CONFIRM_INFORMATION", issues: [anIssue()] }],
+      });
+      const after = aQueue({
+        open_count: 2,
+        groups: [
+          { action_group: "CONFIRM_INFORMATION", issues: [aFailure(), anIssue()] },
+        ],
+      });
+      let attempted = false;
+      get.mockImplementation((path: string) => {
+        if (path === "/api/v1/cases/{case_id}/issues") {
+          return Promise.resolve({ data: attempted ? after : before });
+        }
+        return Promise.resolve({ data: { groups: [], stale: 1 } });
+      });
+      post.mockImplementation(() => {
+        attempted = true;
+        return Promise.resolve({ data: undefined, error: { detail: "boom" } });
+      });
+      renderWithQuery(<IssuesDestination caseId={CASE} />);
+
+      fireEvent.click(await screen.findByRole("button", { name: /recheck now/i }));
+
+      await waitFor(() =>
+        expect(screen.getByText(/did not complete/i)).toBeInTheDocument(),
+      );
+      // The refetch brought the durable record in, and the user is looking at it.
+      expect(await screen.findByRole("button", { name: /try again/i })).toBeInTheDocument();
+      expect(screen.queryByText(/Recheck finished/i)).toBeNull();
+    });
+  });
+
   it("does not claim everything is current when conclusions are stale", async () => {
     // The queue is a write-time projection, so an empty queue is not by itself proof that
     // no conclusion is out of date.

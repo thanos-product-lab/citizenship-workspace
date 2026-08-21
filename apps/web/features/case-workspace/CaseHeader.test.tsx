@@ -193,7 +193,16 @@ describe("CaseHeader", () => {
       await waitFor(() => expect(invalidate).toHaveBeenCalledWith({ queryKey: ["cases", "c1"] }));
     });
 
-    it("does not invalidate when a recalculation fails", async () => {
+    it("refetches when a recalculation fails, because the server recorded the failure", async () => {
+      // This used to assert the opposite, on the reasoning that a failed run changed
+      // nothing so there was nothing to refetch. That stopped being true when a failed
+      // recalculation started leaving a durable record — a FAILED run and a
+      // PROCESSING_FAILURE item in the issue queue. Without the refetch the alert tells
+      // the user to reload the page to find something the app could already show them.
+      //
+      // It also covers the case this hook always had to allow for: a timeout or a dropped
+      // response *after* the run committed, where the server state moved and the client
+      // never heard about it.
       mock();
       const { client: queryClient } = renderHeader();
       const button = await screen.findByRole("button", { name: "Recalculate" });
@@ -203,7 +212,9 @@ describe("CaseHeader", () => {
       fireEvent.click(button);
 
       await screen.findByRole("alert");
-      expect(invalidate).not.toHaveBeenCalled();
+      await waitFor(() =>
+        expect(invalidate).toHaveBeenCalledWith({ queryKey: ["cases", "c1"] }),
+      );
     });
 
     it("reports a failed recalculation visibly, not only to a live region", async () => {

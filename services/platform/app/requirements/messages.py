@@ -451,6 +451,7 @@ ISSUE_TITLE_TEMPLATES: dict[str, _Template] = {
     "ISSUE_UNCERTAIN_DATE_OUTSIDE": lambda p: (
         f"Your trip to {p.get('destination', 'this destination')} has uncertain dates"
     ),
+    "ISSUE_RECALCULATION_FAILED": lambda p: "We could not recheck your conclusions",
 }
 
 ISSUE_BODY_TEMPLATES: dict[str, _Template] = {
@@ -483,6 +484,14 @@ ISSUE_BODY_TEMPLATES: dict[str, _Template] = {
     "ISSUE_UNCERTAIN_DATE_OUTSIDE": lambda p: (
         "These dates are recorded as uncertain. This trip falls outside your qualifying "
         "period, so it does not affect any figure."
+    ),
+    # No "something went wrong", no apology, and above all no suggestion that the figures
+    # on screen are fine. The one thing this sentence must establish is that the numbers
+    # the user is looking at did not move — the failure changed nothing, which is both
+    # reassuring about the data and *not* reassuring about the conclusions.
+    "ISSUE_RECALCULATION_FAILED": lambda p: (
+        "The last attempt to recheck your conclusions did not finish. Nothing was changed: "
+        "the figures on your case are still the ones worked out before your last edit."
     ),
 }
 
@@ -517,6 +526,11 @@ ISSUE_IMPACT_TEMPLATES: dict[str, _Template] = {
     ),
     "ISSUE_UNCERTAIN_DATE_OUTSIDE": lambda p: (
         "No figure changes either way. You can set this aside."
+    ),
+    # Points at the same consequence a stale conclusion has, because that is exactly the
+    # state the case is left in — the failure is why it is still in it.
+    "ISSUE_RECALCULATION_FAILED": lambda p: (
+        "Any conclusion awaiting a recheck stays out of date until one succeeds."
     ),
 }
 

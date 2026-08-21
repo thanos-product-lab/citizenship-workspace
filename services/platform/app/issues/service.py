@@ -26,6 +26,7 @@ from datetime import UTC, datetime
 
 from sqlalchemy.orm import Session
 
+from app.assessments.domain import AssessmentRunStatus
 from app.assessments.repository import AssessmentRepository
 from app.issues.derivation import (
     LIMITATION_OVERLAPPING,
@@ -87,9 +88,11 @@ def reconcile(
     session.flush()
     requirements = _requirement_snapshots(session, case_id)
     desired = derive(
+        case_id=str(case_id),
         requirements=requirements,
         travel=_travel_snapshots(session, case_id),
         targets=_limitation_targets(session, case_id, requirements),
+        recalculation_failed=_recalculation_failed(session, case_id),
     )
     desired_by_key = {issue.deduplication_key: issue for issue in desired}
 
@@ -223,6 +226,19 @@ def _new_issue(case_id: uuid.UUID, desired: DesiredIssue, at: datetime) -> Issue
         message_parameters=desired.message_parameters,
         at=at,
     )
+
+
+def _recalculation_failed(session: Session, case_id: uuid.UUID) -> bool:
+    """Whether the case's most recent assessment run failed (Domain §41.4).
+
+    Derived from the run row rather than signalled by the failure handler, so the whole
+    lifecycle is one diff like every other type: the failure opens the issue because the
+    latest run is FAILED, and the next successful run closes it because the latest run is
+    no longer FAILED. No special-case cleanup, and nothing to forget on a path added later
+    — a recalculation triggered from somewhere new inherits both halves for free.
+    """
+    latest = AssessmentRepository.get_latest_finished_run(session, case_id)
+    return latest is not None and latest.status == AssessmentRunStatus.FAILED.value
 
 
 def _requirement_snapshots(session: Session, case_id: uuid.UUID) -> list[RequirementSnapshot]:

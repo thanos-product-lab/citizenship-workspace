@@ -157,6 +157,30 @@ class AssessmentRepository:
         return session.get(AssessmentRun, run_id)
 
     @staticmethod
+    def get_latest_finished_run(session: Session, case_id: uuid.UUID) -> AssessmentRun | None:
+        """The case's most recently *finished* run — the one whose outcome is the current
+        word on whether recalculation is working.
+
+        Ordered by `completed_at`, deliberately not by `started_at`. `started_at` carries a
+        Postgres `server_default` of `now()`, which is the **transaction** timestamp, not
+        the statement's: a run inserted into a transaction that opened earlier sorts before
+        one inserted later into a transaction that opened later still. A failure recorded
+        on its own fresh connection then reads as *newer* than the retry that fixed it, and
+        the queue keeps showing a processing failure the user has already cleared.
+        `completed_at` is set in Python at the moment the run actually ends, by both
+        `complete()` and `fail()`, so it orders the way a reader expects.
+
+        Unfinished runs are excluded rather than treated as latest: a RUNNING row is a
+        process that died mid-flight, and we cannot honestly say it failed.
+        """
+        return session.scalar(
+            select(AssessmentRun)
+            .where(AssessmentRun.case_id == case_id, AssessmentRun.completed_at.is_not(None))
+            .order_by(AssessmentRun.completed_at.desc(), AssessmentRun.id.desc())
+            .limit(1)
+        )
+
+    @staticmethod
     def get_current_for_requirement(
         session: Session, case_id: uuid.UUID, requirement_id: uuid.UUID
     ) -> AssessmentResult | None:
