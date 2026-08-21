@@ -137,6 +137,11 @@ def _rls_login_role(_schema: None) -> str:
                 f"IN SCHEMA public TO {RLS_TEST_ROLE}"
             )
         )
+        # The catalog is read-only for the request role (migration 0012), so it is
+        # read-only here too. A test role holding privileges the runtime role does not
+        # can only ever let a test pass where production would be refused.
+        for table in CATALOG_TABLES:
+            session.execute(text(f"REVOKE INSERT, UPDATE, DELETE ON {table} FROM {RLS_TEST_ROLE}"))
         # Membership in app_rls, so `set_tenant`'s own `SET ROLE` still works from here.
         session.execute(text(f"GRANT {APP_ROLE} TO {RLS_TEST_ROLE}"))
         session.commit()
