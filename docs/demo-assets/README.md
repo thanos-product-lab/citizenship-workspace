@@ -105,3 +105,47 @@ Note for the walkthrough: the phase pill reads "Resolving issues" while the queu
 phase derives from requirement conclusions (ADR-0009), and this case has a requirement that
 is `NOT_CURRENTLY_SATISFIED`, which is a requirement outcome and deliberately not an issue
 (ADR-0014). Side by side it reads as a contradiction. Logged as a gap.
+
+The group heading in this capture reads "Confirm information", which is what severity alone
+produced. It now reads "Recheck your conclusions" — see slice 4.
+
+### Slice 3 — dismissal
+
+`m6/m6-slice3-dismissal.gif` — the only dismissible thing in the product. An uncertain trip
+*outside* the qualifying period is INFORMATION and can be set aside; the same uncertainty
+inside the period is ACTION_REQUIRED and cannot, because there it is holding a confirmed
+total back. Dismiss moves the item to Settled marked **Dismissed**, distinct from the
+**Resolved** rows above it — the cause has not gone away, the user has judged this episode
+of it. The near-threshold item stays open throughout, which is the contrast the queue exists
+to show: items that clear themselves beside one that does not, for a visible reason.
+
+Dismissal is not optimistic. The card is not hidden until the server agrees, because the
+server refuses to dismiss anything not marked dismissible — and an optimistic hide would
+show the item leaving the queue in exactly the cases where it must not.
+
+### Slice 4 — a failed recalculation, made visible
+
+`m6/m6-slice4-failed-recalculation.gif` — Domain §41.4, captured against a deliberately
+broken API (a temporary switch in `_run_trusted_assessment`, removed before commit; the
+failure is genuinely exceptional and no fixture can produce it, see `SYNTHETIC_DEMO_CASE`
+§10).
+
+Four stale conclusions, one **Recheck now**. The recheck fails: the count goes to **6**, the
+control renames to **Try again**, and a `PROCESSING_FAILURE` card appears **above** the stale
+items it explains — ordering the cause before its effects, which time alone would invert
+since the failure opens last. The copy states that nothing changed without claiming the run
+did or did not happen.
+
+Then the reload, which is the whole point: the header's transient alert is gone and the
+durable item is still there. Before this slice a failure left *nothing at all* — no run row,
+no issue — so a reload erased the only evidence and left stale conclusions with nothing
+explaining why they had not refreshed.
+
+The API is repaired mid-recording. **Try again** clears all five: the failure resolves
+through the ordinary reconciler diff, because the latest finished run is no longer FAILED.
+Settled retains the dismissal from slice 3 alongside them.
+
+Also visible: the group heading now reads "Recheck your conclusions" rather than "Confirm
+information". That string labels an `aria-labelledby` region, so a screen-reader user
+navigating by landmark was being routed away from the one item explaining why their figures
+were stale — an accessibility defect, not only awkward copy.
