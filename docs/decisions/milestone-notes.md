@@ -561,3 +561,18 @@ _Known gaps carried forward:_
   superuser, and `rls.login_role_superuser` still logs at boot.
 - **`just lint` still does not enforce `ruff format`**, and swept unrelated files into the
   working tree again during this slice; reverted by hand for the third time.
+
+### Demo assets — M5
+
+`docs/demo-assets/m5/`, captured on a fresh seed after the shell and copy revisions:
+
+- `m5-date-simulation.gif` — 20 April moves the window and the total and does *not* fix
+  presence; 25 April does. The middle frame is ADR-0002's whole argument.
+- `m5-save-and-reassess.gif` — select then recalculate, the header and phase moving.
+- `m5-timeline-table.png` — the Spain row: eleven days away, ten counted, and why.
+- `m5-timeline-band.png` — the shape, with the anchor-covering trip drawn taller.
+
+Each is described in `docs/demo-assets/README.md` in terms of what it is evidence *of*,
+and the regeneration steps note that the timeline capture needs a case that has **not**
+been moved to 25 April — after the move the Spain row reads 0 days and the picture tells
+a different story than the M3B and M4 oracles it is meant to agree with.

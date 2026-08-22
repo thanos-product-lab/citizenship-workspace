@@ -149,3 +149,88 @@ Also visible: the group heading now reads "Recheck your conclusions" rather than
 information". That string labels an `aria-labelledby` region, so a screen-reader user
 navigating by landmark was being routed away from the one item explaining why their figures
 were stale — an accessibility defect, not only awkward copy.
+
+## M5 (Timeline and application-date simulation)
+
+*Built after M6, per the roadmap's reordering. The same canonical case: 439 days, presence
+failing at 16 April 2022, resolving at 25 April 2027.*
+
+### The date simulation
+
+`m5/m5-date-simulation.gif` — the milestone, and the reason ADR-0002 exists.
+
+Two candidate dates, in order. **20 April 2027** first: the whole five-year window slides
+to 21 Apr 2022 – 20 Apr 2027, the total drops **439 → 434**, and presence is *still* not
+satisfied. That middle frame is the point. A five-day move changed the arithmetic and fixed
+nothing, because clearing an absent anchor means moving past the entire trip covering it —
+which here is ten days. A mockup once taught that one day was enough, and correcting it is
+what ADR-0002 is.
+
+The screen says so rather than leaving it to be inferred: **"Still not satisfied on this
+date"**, then the presence row, then the button offering the date that does work. An earlier
+version listed only what *changed*, so a user who moved the date to fix presence saw a
+shorter absence total and no mention of presence at all — improvement-only reporting, which
+is the false reassurance directive §2.7 exists to prevent. Found by using the screen, not by
+a test.
+
+Then **25 April 2027**: presence flips `Not currently satisfied → Supported`, the total
+settles at **429**, and `Travel record consistency` appears with *identical badges* on both
+sides — its entire output is limitations (RULES_SPEC §7.8), and the trip that covered the
+anchor is now outside the window. The API could not express that change until the rules
+review caught it.
+
+Every conclusion carries the **Preview** badge, and nothing has been written: no run, no
+result, no provenance. A simulated result has no field in which to record any, so persisting
+one is a type error rather than a guard (Domain §42.2).
+
+### Saving it
+
+`m5/m5-save-and-reassess.gif` — two requests, deliberately: `/select` appends a date version
+and marks the dependent results stale, then `/assessments/recalculate` produces the new ones.
+The header moves to 25 April, the phase chip changes, the preview closes and focus returns to
+the date field. Between the two calls the case is genuinely stale, and if the second fails
+that is what the user is left with — which M6's queue already handles honestly.
+
+### The timeline
+
+`m5/m5-timeline-table.png` — the chronological table, built **before** the visual band so
+that "semantically equivalent" (UI/UX §15) is checkable rather than aspirational.
+
+The Spain row is why the table exists: **14 April 2022 to 26 April 2022, 10 days**, with
+"1 day of this trip falls outside your qualifying period, so 10 days count." The trip is
+eleven days long and contributes ten, because the window opens on the 16th — the single most
+common reason a user's own arithmetic disagrees with the product's, said in words on the row
+rather than left as a discrepancy. "Covers the first day tested" marks the one trip that
+decides the presence check.
+
+Three columns, not five. Departure and return are one fact, and a "Record" column reading
+`Confirmed` on all twelve rows buried the one row that would not be — only the exception is
+flagged.
+
+`m5/m5-timeline-band.png` — the shape, above the table it describes. `aria-hidden`
+throughout: every value in it is in the table in words, and a screen reader announcing it
+would be reading a second, worse copy. Bars are clipped at the window edges, trips wholly
+outside are not drawn, and the trip covering the presence anchor is drawn **taller** than
+its neighbours — height rather than an outline, because against the boundary line beside it
+an outline alone was indistinguishable.
+
+No charting library: a linear date→x scale over a fixed five-year domain is nine lines, and
+D3 would be a dependency (CLAUDE.md §10). Labels are real DOM rather than SVG text, so they
+scale with the page instead of the viewBox — SVG text shrinks relative to its surroundings
+at 200% zoom, which is the usual way a chart quietly fails the zoom requirement.
+
+### Regenerating
+
+```bash
+just seed <your-clerk-user-id>          # after your last `just test-be`, which truncates
+just recalc <case-id> <your-user-id>    # -> 439, presence NOT_CURRENTLY_SATISFIED
+
+# the simulation: /cases/<id>/data, set 20/04/2027, Preview this date,
+#   then "Preview 25 April 2027 instead", then Save
+# the timeline: /cases/<id>/timeline — on a *fresh* case, since saving 25 April moves
+#   the window and the Spain row then reads 0 days
+```
+
+The figures must agree with the M3B terminal captures and the M4 screens above: 439, 17,
+and 2027-04-25. The post-move figures — 429 at 25 April, 434 at 20 April — are recorded in
+`SYNTHETIC_DEMO_CASE.md` §8 and asserted in `tests/assessments/test_simulation.py`.
