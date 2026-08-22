@@ -97,7 +97,12 @@ export function ApplicationDateCard({ caseId }: { caseId: string }) {
       setAnnouncement(
         `Saved. ${save.data.assessedCount} requirements reassessed against ${formatDate(value)}.`,
       );
-      flushSync(() => setPreview(null));
+      // No `flushSync` here, and not by preference: React rejects it from inside a
+      // lifecycle method ("React cannot flush when React is already rendering"). It is
+      // also unnecessary — the input being focused lives in the form, not in the preview,
+      // so it is mounted either way. The two `flushSync` calls that remain are in event
+      // handlers and mutation callbacks, where the target *does* mount with the preview.
+      setPreview(null);
       inputRef.current?.focus();
     }
   }, [awaitingSave, save.isPending, save.isSuccess, save.data, current.isFetching, value]);
@@ -297,6 +302,31 @@ function visibleChanges(preview: Simulation): SimulatedRequirement[] {
   });
 }
 
+/**
+ * Requirements the candidate date leaves unsatisfied without changing.
+ *
+ * **A preview that showed only what improved would be false reassurance**, and it is the
+ * exact shape this interaction invites: the user moves the date to fix the presence
+ * anchor, moves it too little, and sees a shorter absence total and no mention of the
+ * thing they were trying to fix. Found by using it — at 20 April 2027 the screen said
+ * "439 days → 434 days" and nothing else, while presence still failed.
+ *
+ * Deliberately general rather than a special case for the presence rule. Anything the
+ * candidate date leaves not-satisfied gets said, whether or not it moved.
+ */
+function unresolvedAtCandidate(
+  preview: Simulation,
+  changes: SimulatedRequirement[],
+): SimulatedRequirement[] {
+  const shown = new Set(changes.map((row) => row.requirement_key));
+  return preview.requirements.filter(
+    (row) =>
+      !shown.has(row.requirement_key) &&
+      row.after.conclusion !== "SUPPORTED" &&
+      row.after.conclusion !== "NOT_YET_ASSESSED",
+  );
+}
+
 function daysOf(parameters: Record<string, unknown>): number | null {
   const days = parameters["days"];
   return typeof days === "number" ? days : null;
@@ -325,6 +355,7 @@ function PreviewPanel({
   saveError: Error | null;
 }) {
   const changes = visibleChanges(preview);
+  const unresolved = unresolvedAtCandidate(preview, changes);
   const resolving = preview.resolving_application_date;
   const alreadyPreviewingResolving = resolving === preview.candidate_application_date;
 
@@ -421,6 +452,29 @@ function PreviewPanel({
             </li>
           ))}
         </ul>
+      )}
+
+      {unresolved.length > 0 && (
+        <div className="cw-preview__unresolved">
+          <p className="cw-preview__title">Still not satisfied on this date</p>
+          <ul className="cw-preview__changes">
+            {unresolved.map((row) => (
+              <li key={row.requirement_key}>
+                <p className="cw-preview__title">{row.title}</p>
+                <p className="cw-preview__badges">
+                  <RequirementStatus
+                    conclusion={row.after.conclusion}
+                    currency={row.after.currency}
+                    size="sm"
+                  />
+                </p>
+                {row.after.summary?.text && (
+                  <p className="cw-preview__summary">{row.after.summary.text}</p>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
 
       {resolving && !alreadyPreviewingResolving && (

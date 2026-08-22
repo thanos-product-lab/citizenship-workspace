@@ -1776,3 +1776,12 @@
   color: var(--cw-text-muted);
   font-size: var(--cw-text-sm);
 }
+
+/* What the candidate date does *not* fix. Separated from the changes above by a rule
+   rather than by colour, and given its own heading, because a preview that showed only
+   improvements would be the false reassurance the product exists to prevent. */
+.cw-preview__unresolved {
+  margin-top: var(--cw-space-5);
+  padding-top: var(--cw-space-4);
+  border-top: 1px solid var(--cw-border-strong);
+}

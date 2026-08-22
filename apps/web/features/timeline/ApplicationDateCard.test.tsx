@@ -252,6 +252,63 @@ describe("ApplicationDateCard", () => {
     expect(screen.queryByText("Adult applicant")).not.toBeInTheDocument();
   });
 
+  it("says what the candidate date does not fix", async () => {
+    // The failure this catches was found by using the screen, not by reading it: at
+    // 20 April the presence check still fails, does not *change*, and so appeared
+    // nowhere — leaving a shorter absence total as the only visible result of a move
+    // made to fix presence. A preview that shows only improvements is false
+    // reassurance (CLAUDE.md §2.7).
+    post.mockResolvedValue({
+      data: aSimulation({
+        candidate_application_date: "2027-04-20",
+        resolving_application_date: "2027-04-25",
+        requirements: [
+          aRequirement({
+            changed: {
+              conclusion: false,
+              summary_code: false,
+              summary_parameters: false,
+              limitations: false,
+              any: false,
+            },
+            after: {
+              currency: "PROVISIONAL",
+              conclusion: "NOT_CURRENTLY_SATISFIED",
+              summary_code: "PRESENCE_NOT_SUPPORTED",
+              summary: {
+                code: "PRESENCE_NOT_SUPPORTED",
+                parameters: {},
+                text: "Your confirmed travel records place you outside the UK on 21 April 2022.",
+              },
+              summary_parameters: {},
+              calculation_breakdown: {},
+              limitations: [],
+              next_actions: [],
+            },
+          }),
+        ],
+      }),
+      error: undefined,
+    });
+    render(<ApplicationDateCard caseId="c1" />);
+    await previewADate("2027-04-20");
+
+    expect(await screen.findByText(/still not satisfied on this date/i)).toBeInTheDocument();
+    expect(screen.getByText("Presence on the first day")).toBeInTheDocument();
+    expect(screen.getByText(/place you outside the UK on 21 April 2022/)).toBeInTheDocument();
+  });
+
+  it("does not repeat a requirement that already appears as a change", async () => {
+    post.mockResolvedValue({ data: aSimulation(), error: undefined });
+    render(<ApplicationDateCard caseId="c1" />);
+    await previewADate();
+
+    await screen.findByText(/preview — not saved/i);
+    // Presence changes here, so it belongs in the changes list and nowhere else.
+    expect(screen.getAllByText("Presence on the first day")).toHaveLength(1);
+    expect(screen.queryByText(/still not satisfied on this date/i)).not.toBeInTheDocument();
+  });
+
   it("offers the resolving date when the rules found one", async () => {
     post.mockResolvedValue({
       data: aSimulation({
