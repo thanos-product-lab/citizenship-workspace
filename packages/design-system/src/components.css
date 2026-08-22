@@ -1785,3 +1785,151 @@
   padding-top: var(--cw-space-4);
   border-top: 1px solid var(--cw-border-strong);
 }
+
+/* --- Residence timeline (M5) ----------------------------------------------- */
+
+/*
+ * The derived boundaries, above the trips. A definition list rather than table rows:
+ * these are calculated period edges, not travel records, and interleaving them would make
+ * a linear reader parse two kinds of thing under one set of column headers.
+ */
+.cw-timeline__boundaries {
+  margin: var(--cw-space-4) 0 0;
+  display: grid;
+  gap: var(--cw-space-3);
+}
+
+.cw-timeline__boundaries > div {
+  display: grid;
+  gap: var(--cw-space-1);
+}
+
+.cw-timeline__boundaries dt {
+  color: var(--cw-text-muted);
+  font-size: var(--cw-text-sm);
+}
+
+.cw-timeline__boundaries dd {
+  margin: 0;
+  font-family: var(--cw-font-mono);
+}
+
+/* Prose beside a monospace figure. Kept in the normal family so the sentence does not
+   read as data. */
+.cw-timeline__note {
+  font-family: var(--cw-font-sans);
+  color: var(--cw-text-muted);
+  font-size: var(--cw-text-sm);
+}
+
+.cw-timeline__totals {
+  margin: var(--cw-space-5) 0 0;
+  padding-top: var(--cw-space-4);
+  border-top: 1px solid var(--cw-border);
+}
+
+/* The figures shown are current; the conclusions drawn from them are not. Marked with a
+   rule and a label rather than a colour, so it survives a greyscale rendering. */
+.cw-timeline__behind {
+  margin: var(--cw-space-4) 0 0;
+  padding-left: var(--cw-space-3);
+  border-left: 3px solid var(--cw-currency-stale);
+  color: var(--cw-text-muted);
+  font-size: var(--cw-text-sm);
+}
+
+.cw-timeline-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--cw-text-sm);
+}
+
+.cw-timeline-table caption {
+  text-align: left;
+  color: var(--cw-text-muted);
+  font-size: var(--cw-text-sm);
+  padding-bottom: var(--cw-space-3);
+}
+
+.cw-timeline-table th,
+.cw-timeline-table td {
+  text-align: left;
+  vertical-align: top;
+  padding: var(--cw-space-3) var(--cw-space-3) var(--cw-space-3) 0;
+  border-bottom: 1px solid var(--cw-border);
+}
+
+.cw-timeline-table thead th {
+  color: var(--cw-text-muted);
+  font-weight: var(--cw-weight-medium);
+}
+
+.cw-timeline-table tfoot th,
+.cw-timeline-table tfoot td {
+  border-bottom: none;
+  font-weight: var(--cw-weight-medium);
+}
+
+.cw-timeline-table__destination {
+  font-weight: var(--cw-weight-medium);
+}
+
+.cw-timeline-table__days .cw-figure {
+  font-family: var(--cw-font-mono);
+}
+
+/* Notes under a figure or a badge: the explanation of *why* a number is what it is.
+   Never the only place a fact lives — each one restates in prose something the row's
+   own values already imply. */
+.cw-timeline-table__note,
+.cw-timeline-table__anchor,
+.cw-timeline-table__confirmed {
+  display: block;
+  margin-top: var(--cw-space-1);
+  color: var(--cw-text-muted);
+  font-size: var(--cw-text-xs);
+}
+
+/* The one row-level flag: this trip covers the single day presence is tested on. Bordered
+   rather than tinted, so it reads as marked and not as an error. */
+.cw-timeline-table__anchor {
+  color: var(--cw-text);
+  padding-left: var(--cw-space-2);
+  border-left: 2px solid var(--cw-status-near-threshold);
+}
+
+/* Out-of-window trips are recessed, never hidden: they are the user's record and deleting
+   or eliding them would be destroying it. The row still reads normally without colour —
+   its Notes cell says so in words. */
+.cw-timeline-table__row--outside td {
+  color: var(--cw-text-muted);
+}
+
+/* Below 34rem the table stacks. That strips implicit table semantics, which is why every
+   element carries an explicit role — see the component. */
+@media (max-width: 34rem) {
+  .cw-timeline-table,
+  .cw-timeline-table thead,
+  .cw-timeline-table tbody,
+  .cw-timeline-table tfoot,
+  .cw-timeline-table tr,
+  .cw-timeline-table th,
+  .cw-timeline-table td {
+    display: block;
+  }
+
+  .cw-timeline-table thead {
+    display: none;
+  }
+
+  .cw-timeline-table tr {
+    padding: var(--cw-space-3) 0;
+    border-bottom: 1px solid var(--cw-border);
+  }
+
+  .cw-timeline-table th,
+  .cw-timeline-table td {
+    border-bottom: none;
+    padding: var(--cw-space-1) 0;
+  }
+}
