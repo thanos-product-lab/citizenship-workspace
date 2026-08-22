@@ -21,7 +21,7 @@ import pytest
 from fastapi.testclient import TestClient
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.assessments.domain import AssessmentResult, AssessmentRun
@@ -32,6 +32,8 @@ from app.issues.domain import Issue, IssueResolution
 from app.requirements.models import DependencyInputKind
 from app.requirements.rules_core import absence_union, physical_presence_date
 from app.seed.demo_case import DEMO_TRIPS, seed_demo_case
+from app.shared.db import Base
+from tests.conftest import _REFERENCE_TABLES
 
 pytestmark = pytest.mark.integration
 
@@ -60,11 +62,22 @@ def _by_key(body: dict[str, Any]) -> dict[str, dict[str, Any]]:
 
 
 def _case_snapshot(session: Session) -> dict[str, Any]:
-    """Everything a simulation must not touch: the immutable assessment graph and the
-    queue derived from it. Currency and `marked_stale_at` are in here explicitly — those
-    are what a stray `invalidate_for_input_change` would move."""
+    """Everything a simulation must not touch.
+
+    Two layers. Row counts over *every* table, derived from the metadata so the check
+    cannot fall behind a table added later — that is what would catch a read path that
+    writes only an audit row or an outbox event, which the detailed rows below and the
+    `session.new` check would both miss (a unit-of-work commit clears `session.new`).
+    Then the fields a stray `invalidate_for_input_change` would actually move: currency,
+    `marked_stale_at`, `superseded_by_result_id`."""
     session.expire_all()  # read committed state, not the identity map
+    counts = {
+        table.name: session.execute(select(func.count()).select_from(table)).scalar_one()
+        for table in Base.metadata.sorted_tables
+        if table.name not in _REFERENCE_TABLES
+    }
     return {
+        "row_counts": counts,
         "runs": sorted(
             (str(r.id), r.status, r.mode, r.trigger_type)
             for r in session.scalars(select(AssessmentRun))
@@ -94,16 +107,21 @@ def _case_snapshot(session: Session) -> dict[str, Any]:
 def test_simulating_many_dates_changes_nothing_about_the_case(
     api: Api, db_session: Session
 ) -> None:
-    """Fifty simulations, fifty different dates, byte-identical case state.
+    """Forty-six distinct candidates spanning more than a year either side, byte-identical
+    case state.
 
-    Once would prove the happy path. The repetition is aimed at the failure this test
-    exists to catch — a write that only lands on some branch, such as the presence rule's
-    forward search finding a resolving date on one candidate and not another."""
+    Once would prove the happy path. The spread is aimed at the failure this test exists to
+    catch — a write that lands on only some branch, such as the presence rule's forward
+    search finding a resolving date on one candidate and not another, or the leap-day clamp.
+    An earlier version generated fifty candidates that were thirty distinct dates all inside
+    one April, and crossed no month, year or leap boundary at all."""
     case_id = _assessed_case(api, db_session)
     before = _case_snapshot(db_session)
 
-    for offset in range(50):
-        candidate = date(2027, 4, 1).replace(day=1 + offset % 30)
+    candidates = [date(2027, 4, 15) + timedelta(days=step) for step in range(-380, 380, 17)]
+    candidates.append(date(2028, 2, 29))  # the clamp branch (RULES_SPEC §4.1)
+    assert len(set(candidates)) == len(candidates)
+    for candidate in candidates:
         assert _simulate(api, case_id, candidate.isoformat()).status_code == 200
 
     assert _case_snapshot(db_session) == before
@@ -117,18 +135,32 @@ def test_simulating_never_marks_a_result_stale_or_reconciles_the_queue(
     `invalidate_for_input_change` ends with an unconditional `issues_service.reconcile`, so
     reaching either one reaches both — and reconcile flushes the session, which would turn
     any accidental pending write into a real one."""
-    from app.assessments import invalidation
-    from app.issues import service as issues_service
-
     case_id = _assessed_case(api, db_session)
 
     def explode(*_args: object, **_kwargs: object) -> None:
         raise AssertionError("a simulation reached a write path")
 
-    monkeypatch.setattr(invalidation, "invalidate_for_input_change", explode)
-    monkeypatch.setattr(issues_service, "reconcile", explode)
+    # Patched at the *binding*, not on the defining module. `app/residence/service.py` does
+    # `from app.assessments.invalidation import invalidate_for_input_change`, so the name it
+    # calls is its own — setting the attribute on `app.assessments.invalidation` is never
+    # consulted and the seam would look guarded while being wide open.
+    monkeypatch.setattr("app.residence.service.invalidate_for_input_change", explode)
+    monkeypatch.setattr("app.assessments.service.issues_service.reconcile", explode)
 
     assert _simulate(api, case_id, RESOLVING_DATE).status_code == 200
+
+    # The patches are live: the same write path a simulation must avoid does explode.
+    with pytest.raises(AssertionError, match="write path"):
+        api("user_a").post(
+            f"/api/v1/cases/{case_id}/travel-records",
+            json={
+                "destination_label": "Trip",
+                "departure_date": "2023-06-01",
+                "return_date": "2023-07-02",
+                "date_confidence": "EXACT",
+                "review_state": "CONFIRMED",
+            },
+        )
 
 
 def test_a_simulation_leaves_no_pending_work_on_the_session(api: Api, db_session: Session) -> None:
@@ -157,16 +189,22 @@ def test_simulating_the_current_date_reproduces_the_persisted_results(
     case_id = _assessed_case(api, db_session)
     body = _simulate(api, case_id, CURRENT_DATE).json()
 
-    persisted = {
-        row["requirement_key"]: row
-        for row in api("user_a").get(f"/api/v1/cases/{case_id}/requirements").json()
-    }
     for key, row in _by_key(body).items():
         after = row["after"]
-        assert after["conclusion"] == persisted[key]["conclusion"], key
-        assert after["summary_code"] == persisted[key]["summary_code"], key
-        assert after["summary"]["text"] == persisted[key]["summary"]["text"], key
-        assert row["conclusion_changed"] is False, key
+        detail = api("user_a").get(f"/api/v1/cases/{case_id}/requirements/{key}").json()
+        assert after["conclusion"] == detail["conclusion"], key
+        assert after["summary_code"] == detail["summary_code"], key
+        assert after["summary"]["text"] == detail["summary"]["text"], key
+        # The two fields the rendered text does not cover, and the ones the UI's
+        # breakdown component reads. Without these the "field for field" claim is three
+        # fields wide and `window_start`, `threshold` and `trip_count` could all drift
+        # unseen.
+        assert after["summary_parameters"] == detail["summary_parameters"], key
+        assert after["calculation_breakdown"] == detail["calculation_breakdown"], key
+        assert [item["code"] for item in after["limitations"]] == [
+            item["code"] for item in detail["limitations"]
+        ], key
+        assert row["changed"]["any"] is False, key
 
 
 def test_a_simulation_covers_every_requirement_an_application_date_change_invalidates(
@@ -226,7 +264,7 @@ def test_moving_to_the_resolving_date_flips_presence_and_shifts_the_window(
     assert presence["before"]["currency"] == "CURRENT"
     assert presence["after"]["conclusion"] == "SUPPORTED"
     assert presence["after"]["currency"] == "PROVISIONAL"
-    assert presence["conclusion_changed"] is True
+    assert presence["changed"]["conclusion"] is True
 
     # 439 - 10: trip 1's absent set (15-25 Apr 2022) is now wholly before the window,
     # and the final-year trips stay inside it, so nothing enters to replace those days.
@@ -237,7 +275,9 @@ def test_moving_to_the_resolving_date_flips_presence_and_shifts_the_window(
     # conclusion did not, and the response must not imply otherwise.
     assert total["before"]["conclusion"] == "NEAR_THRESHOLD"
     assert total["after"]["conclusion"] == "NEAR_THRESHOLD"
-    assert total["conclusion_changed"] is False
+    assert total["changed"]["conclusion"] is False
+    assert total["changed"]["summary_parameters"] is True  # the figure moved even so
+    assert total["changed"]["any"] is True
 
     final_year = rows["residence.final_year_absences"]
     assert final_year["before"]["summary_parameters"]["days"] == 17
@@ -273,6 +313,108 @@ def test_the_simulation_surfaces_the_resolving_date_the_rule_found(
     )
     # Once the date resolves, there is nothing left to resolve to.
     assert _simulate(api, case_id, RESOLVING_DATE).json()["resolving_application_date"] is None
+
+
+def test_the_response_can_express_a_change_that_is_not_a_change_of_conclusion(
+    api: Api, db_session: Session
+) -> None:
+    """`residence.travel_consistency` is a data-quality rule with no eligibility conclusion
+    of its own (RULES_SPEC §7.8) — its entire output is limitations. Moving past the trip
+    that covered the presence anchor swaps `NEAR_STANDARD_THRESHOLD` for
+    `TRAVEL_OUTSIDE_WINDOW` while conclusion and summary code both stay put.
+
+    So this is the one requirement in the fixture that proves the response can say
+    something moved without the conclusion moving. Before `limitations` was carried, the
+    API reported "nothing changed" for the rule whose whole job is surfacing exactly this.
+    """
+    case_id = _assessed_case(api, db_session)
+    row = _by_key(_simulate(api, case_id, RESOLVING_DATE).json())["residence.travel_consistency"]
+
+    assert row["before"]["conclusion"] == row["after"]["conclusion"] == "SUPPORTED"
+    assert row["before"]["summary_code"] == row["after"]["summary_code"]
+    assert row["changed"]["conclusion"] is False
+
+    before_codes = {item["code"] for item in row["before"]["limitations"]}
+    after_codes = {item["code"] for item in row["after"]["limitations"]}
+    # Trip 1 covered the anchor at 15 Apr; at 25 Apr it is wholly outside the window.
+    assert "NEAR_STANDARD_THRESHOLD" in before_codes
+    assert "NEAR_STANDARD_THRESHOLD" not in after_codes
+    assert "TRAVEL_OUTSIDE_WINDOW" in after_codes
+
+    assert row["changed"]["limitations"] is True
+    assert row["changed"]["any"] is True
+
+
+def test_a_leap_day_candidate_states_the_assumption_it_rests_on(
+    api: Api, db_session: Session
+) -> None:
+    """RULES_SPEC §4.1 commits to clamping 29 Feb to 28 Feb and requires the assumption to
+    be visible rather than hidden, because it moves the presence anchor by a day and the
+    anchor is where this case turns.
+
+    Nothing implemented that limitation until the simulator made 29 February reachable by
+    typing — a saved date is chosen once and deliberately; a preview field invites trying
+    dates. The §4.1 table gives 2028-02-29 → 2023-02-28 → qualifying start 2023-03-01."""
+    case_id = _assessed_case(api, db_session)
+    body = _simulate(api, case_id, "2028-02-29").json()
+
+    assert body["windows_after"]["qualifying_period_start"] == "2023-03-01"
+
+    row = _by_key(body)["residence.qualifying_period"]
+    limitation = next(
+        item
+        for item in row["after"]["limitations"]
+        if item["code"] == "LEAP_DAY_BOUNDARY_ASSUMPTION"
+    )
+    assert limitation["severity"] == "INFORMATION"
+    assert "29 February" in (limitation["text"] or "")
+    # A date one day later carries no such assumption.
+    assert not [
+        item
+        for item in _by_key(_simulate(api, case_id, "2028-03-01").json())[
+            "residence.qualifying_period"
+        ]["after"]["limitations"]
+        if item["code"] == "LEAP_DAY_BOUNDARY_ASSUMPTION"
+    ]
+
+
+def test_the_before_windows_come_from_the_persisted_result_not_the_current_date(
+    api: Api, db_session: Session
+) -> None:
+    """The whole before side has to be one snapshot.
+
+    `/select` marks results STALE without recalculating, so between a date change and the
+    recalculation the persisted figures were computed against the *previous* window.
+    Deriving `windows_before` from the case's current date would then draw a window beside
+    a total that window never produced."""
+    case_id = _assessed_case(api, db_session)
+    revision = api("user_a").get(f"/api/v1/cases/{case_id}/application-dates").json()["revision"]
+    moved = api("user_a").post(
+        f"/api/v1/cases/{case_id}/application-dates/select",
+        json={"application_date": "2027-06-01", "expected_revision": revision},
+    )
+    assert moved.status_code == 200
+
+    body = _simulate(api, case_id, RESOLVING_DATE).json()
+    assert body["current_application_date"] == "2027-06-01"  # the case has moved on
+    # ...but the stored figures still describe the window they were computed in.
+    assert body["windows_before"]["qualifying_period_start"] == "2022-04-16"
+    rows = _by_key(body)
+    assert rows["residence.total_absences"]["before"]["summary_parameters"]["window_start"] == (
+        "2022-04-16"
+    )
+    assert rows["residence.total_absences"]["before"]["stale"]["reason_code"] == (
+        "APPLICATION_DATE_CHANGED"
+    )
+
+
+def test_a_never_assessed_case_reports_no_before_windows(api: Api, db_session: Session) -> None:
+    """No result, no stored window — and none invented from the current date."""
+    case_id = str(seed_demo_case(db_session, user_id="user_a"))
+    body = _simulate(api, case_id, RESOLVING_DATE).json()
+
+    assert body["windows_before"] is None
+    assert body["windows_after"]["qualifying_period_start"] == "2022-04-26"
 
 
 # --- Boundaries --------------------------------------------------------------
@@ -357,6 +499,12 @@ def test_simulated_presence_agrees_with_the_rule_definition(
     Driven through the service rather than HTTP so the example count is affordable. The
     range spans more than a year either side of the demo's date, so it crosses the trips
     that sit at both ends of the window as well as the anchor-covering trip 1.
+
+    Honest about its oracle: `absence_union` and `physical_presence_date` are the same
+    `rules_core` primitives the evaluator calls, so this cannot catch an error *inside*
+    them — `tests/rules/test_rules_core.py` covers those against the guidance's own worked
+    example. What it does check independently is everything between: the trust gate, the
+    evaluator's branching, the trip flattening, and the simulation's own wiring.
     """
     case = db_session.get(ApplicationCase, seed_demo_case(db_session, user_id="user_a"))
     assert case is not None
@@ -372,3 +520,67 @@ def test_simulated_presence_agrees_with_the_rule_definition(
     trusted_absent = absence_union((trip.departure_date, trip.return_date) for trip in DEMO_TRIPS)
     expected_supported = physical_presence_date(candidate) not in trusted_absent
     assert (conclusion == "SUPPORTED") is expected_supported, candidate
+
+
+def test_a_case_still_onboarding_cannot_be_simulated(api: Api) -> None:
+    """A DRAFT case has no confirmed route profile, so there is nothing to evaluate. The
+    lifecycle gate runs before any input is read, so the caller gets the same 409 the other
+    commands give rather than a `CASE_NOT_ASSESSABLE` about a missing date it was never
+    asked for."""
+    case_id = str(api("user_a").post("/api/v1/cases", json={"title": "draft"}).json()["id"])
+
+    response = _simulate(api, case_id, RESOLVING_DATE)
+    assert response.status_code == 409
+    assert response.json()["code"] == "CASE_NOT_ACTIVE"
+
+
+@pytest.mark.property
+@settings(
+    max_examples=12,
+    deadline=None,
+    suppress_health_check=[HealthCheck.function_scoped_fixture],
+)
+@given(offset=st.integers(min_value=-60, max_value=120))
+def test_a_preview_equals_the_save_it_previews(api: Api, db_session: Session, offset: int) -> None:
+    """**The anti-fork property.** Preview a date, then actually select it and recalculate,
+    and the persisted figures must equal the previewed ones — for an arbitrary date.
+
+    Both paths call `evaluate_case`, so this holds structurally, and
+    `test_simulating_the_current_date_reproduces_the_persisted_results` pins it at one
+    point. But that point is `D = current_date`, where the two agree nearly by definition.
+    This is the version that would catch a fork introduced anywhere the override changes
+    behaviour — which is the whole surface a date simulator adds.
+
+    Deliberately expensive and deliberately few examples: each one runs a full
+    recalculation. Twelve is enough to cross the anchor-covering trip, the resolving date,
+    and both ends of the window.
+    """
+    case_id = str(seed_demo_case(db_session, user_id="user_a"))
+    assert api("user_a").post(f"/api/v1/cases/{case_id}/assessments/recalculate").status_code == 200
+    candidate = (date(2027, 4, 15) + timedelta(days=offset)).isoformat()
+
+    previewed = {
+        key: (row["after"]["conclusion"], row["after"]["summary_parameters"])
+        for key, row in _by_key(_simulate(api, case_id, candidate).json()).items()
+    }
+
+    revision = api("user_a").get(f"/api/v1/cases/{case_id}/application-dates").json()["revision"]
+    assert (
+        api("user_a")
+        .post(
+            f"/api/v1/cases/{case_id}/application-dates/select",
+            json={"application_date": candidate, "expected_revision": revision},
+        )
+        .status_code
+        == 200
+    )
+    assert api("user_a").post(f"/api/v1/cases/{case_id}/assessments/recalculate").status_code == 200
+
+    saved = {
+        row["requirement_key"]: row
+        for row in api("user_a").get(f"/api/v1/cases/{case_id}/requirements").json()
+    }
+    for key, (conclusion, parameters) in previewed.items():
+        assert saved[key]["conclusion"] == conclusion, f"{key} at {candidate}"
+        detail = api("user_a").get(f"/api/v1/cases/{case_id}/requirements/{key}").json()
+        assert detail["summary_parameters"] == parameters, f"{key} at {candidate}"

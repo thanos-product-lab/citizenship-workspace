@@ -373,6 +373,9 @@ recomputed by hand:
 - total absences (439) and post-conflict total (440)
 - final-year absences (17)
 - presence anchor membership and the resolving application date (25 Apr 2027)
+- **the post-move totals: 429 at 25 Apr 2027, and 430 at the 24 Apr counter-example**
+  (§8) — these are asserted in `tests/assessments/test_simulation.py` and derive from
+  trip 1's dates exactly as the resolving date does
 - per-trip counted days (§4 table)
 - which band each total falls in
 

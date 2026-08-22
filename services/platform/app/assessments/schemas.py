@@ -64,6 +64,21 @@ class StaleInformation(BaseModel):
     reason: str | None
     marked_stale_at: datetime | None
 
+    @classmethod
+    def of(
+        cls, currency: str | None, reason_code: str | None, marked_stale_at: "datetime | None"
+    ) -> "StaleInformation | None":
+        """Only for a STALE currency. A CURRENT result carries no stale block at all, so a
+        client cannot render a stale notice over a conclusion that is still good — and that
+        rule lives here rather than at each call site."""
+        if currency != Currency.STALE.value:
+            return None
+        return cls(
+            reason_code=reason_code,
+            reason=render_stale_reason(reason_code),
+            marked_stale_at=marked_stale_at,
+        )
+
 
 class RequirementSummary(BaseModel):
     requirement_key: str
@@ -107,13 +122,9 @@ class RequirementSummary(BaseModel):
 def _stale_information(result: AssessmentResult | None) -> StaleInformation | None:
     """Only populated for a STALE result. A CURRENT result carries no stale block at all,
     so a client cannot render a stale notice over a conclusion that is still good."""
-    if result is None or result.currency != Currency.STALE.value:
+    if result is None:
         return None
-    return StaleInformation(
-        reason_code=result.stale_reason_code,
-        reason=render_stale_reason(result.stale_reason_code),
-        marked_stale_at=result.marked_stale_at,
-    )
+    return StaleInformation.of(result.currency, result.stale_reason_code, result.marked_stale_at)
 
 
 class RequirementLink(BaseModel):

@@ -667,6 +667,18 @@ def _current_route_profile_version(session: Session, case_id: uuid.UUID) -> Rout
     return version
 
 
+def current_application_date(session: Session, case_id: uuid.UUID) -> date:
+    """The case's selected application date. Raises `CaseNotAssessable` if none is set.
+
+    Exists so a caller that needs only the date does not have to evaluate the whole case to
+    get it — which the simulation did, discarding nine results to read one field and leaving
+    a `TrustedEvaluation` in scope beside the overridden one. `EvaluatedResult` is a subtype
+    of `UnlinkedResult`, so swapping which of the two the response was built from would have
+    type-checked clean and rendered a trusted evaluation as a preview.
+    """
+    return _current_application_date_version(session, case_id).application_date
+
+
 def _current_application_date_version(
     session: Session, case_id: uuid.UUID
 ) -> ProposedApplicationDateVersion:

@@ -463,6 +463,34 @@ def _evaluate_qualifying_period(inputs: ResidenceAssessmentInputs) -> EvaluatedR
         summary_code="QUALIFYING_PERIOD_DERIVED",
         calculation_breakdown=breakdown,
         input_links=(_app_date_link(inputs),),
+        limitations=_leap_day_limitation(inputs.application_date, q.start),
+    )
+
+
+def _leap_day_limitation(application_date: date, window_start: date) -> tuple[Limitation, ...]:
+    """RULES_SPEC §4.1: an application date of 29 February carries a visible assumption.
+
+    Guidance says nothing about the leap day. The spec commits to `relativedelta` clamping
+    — 29 Feb minus five years lands on 28 Feb, so the qualifying period starts 1 March —
+    and requires the assumption to be *stated* rather than silently applied, because it
+    moves the presence anchor by a day and the presence anchor is where this case turns.
+    `INFORMATION` severity: it is an assumption, not a problem.
+
+    Written when the date simulator landed, which is what made it reachable. A saved
+    application date is chosen once and deliberately; a preview field invites trying dates,
+    and 29 February is one keystroke from 28 February.
+    """
+    if (application_date.month, application_date.day) != (2, 29):
+        return ()
+    return (
+        Limitation(
+            code="LEAP_DAY_BOUNDARY_ASSUMPTION",
+            severity=LimitationSeverity.INFORMATION,
+            message_parameters={
+                "application_date": application_date.isoformat(),
+                "qualifying_period_start": window_start.isoformat(),
+            },
+        ),
     )
 
 

@@ -34,15 +34,19 @@ case's own current date and requiring every field to match the persisted results
 """
 
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 
 from sqlalchemy.orm import Session
 
 from app.assessments.domain import AssessmentResult
 from app.assessments.repository import AssessmentRepository
-from app.assessments.service import evaluate_case
+from app.assessments.service import current_application_date, evaluate_case
 from app.cases.domain import ApplicationCase, LifecycleStatus
-from app.requirements.evaluation import UnlinkedResult
+from app.requirements.evaluation import (
+    KEY_PHYSICAL_PRESENCE,
+    KEY_QUALIFYING_PERIOD,
+    UnlinkedResult,
+)
 from app.requirements.models import RequirementDefinition
 from app.requirements.rules_core import (
     Window,
@@ -60,9 +64,7 @@ RESOLVING_DATE_PARAMETER = "resolving_application_date"
 
 @dataclass(frozen=True)
 class SimulatedWindows:
-    """The three date boundaries a candidate date moves, derived from `rules_core` rather
-    than read back out of a rule's breakdown — one owner for the arithmetic either way, but
-    this does not depend on which rule happened to publish which key."""
+    """The three date boundaries an application date fixes."""
 
     qualifying_period: Window
     final_year: Window
@@ -76,6 +78,10 @@ class SimulatedRequirement:
     before_currency: str | None
     before_summary_code: str | None
     before_summary_parameters: dict[str, object]
+    #: The stored dict form, as persisted. Rendered by `LimitationView.of` at the boundary.
+    before_limitations: list[dict[str, object]]
+    before_stale_reason_code: str | None
+    before_marked_stale_at: datetime | None
     after: UnlinkedResult
 
 
@@ -83,13 +89,22 @@ class SimulatedRequirement:
 class SimulationView:
     current_application_date: date
     candidate_application_date: date
-    windows_before: SimulatedWindows
+    #: `None` until the case has been assessed once. The before side is read from the
+    #: persisted result, so before there is a result there are no before windows — see
+    #: `_persisted_windows`.
+    windows_before: SimulatedWindows | None
     windows_after: SimulatedWindows
     resolving_application_date: date | None
     requirements: list[SimulatedRequirement]
 
 
-def _windows(application_date: date) -> SimulatedWindows:
+def _derived_windows(application_date: date) -> SimulatedWindows:
+    """The boundaries a date fixes, from `rules_core`. Used for the *after* side only.
+
+    Safe there because the candidate date has no persisted result to disagree with, and
+    because `_evaluate_qualifying_period` derives its breakdown from these same three
+    functions on the same date — the two are incapable of differing, including on the
+    29 February clamp (RULES_SPEC §4.1)."""
     return SimulatedWindows(
         qualifying_period=qualifying_window(application_date),
         final_year=final_year_window(application_date),
@@ -97,19 +112,58 @@ def _windows(application_date: date) -> SimulatedWindows:
     )
 
 
+def _persisted_windows(result: AssessmentResult | None) -> SimulatedWindows | None:
+    """The before-side boundaries, read out of the stored qualifying-period result.
+
+    Deriving these from the case's *current* application date would be wrong, and reachably
+    so: `/select` marks results STALE without recalculating, so between a date change and
+    the recalculation the persisted figures were computed against the previous window. A
+    derived "before" window beside a stored "before" total would then draw a window that
+    never produced that total. The whole before side has to come from one snapshot, and the
+    snapshot is the result.
+    """
+    if result is None:
+        return None
+    breakdown = result.calculation_breakdown or {}
+
+    def read(key: str) -> date | None:
+        raw = breakdown.get(key)
+        return date.fromisoformat(raw) if isinstance(raw, str) else None
+
+    start, end = read("qualifying_period_start"), read("qualifying_period_end")
+    final_start, final_end = read("final_year_start"), read("final_year_end")
+    anchor = read("physical_presence_date")
+    if not (start and end and final_start and final_end and anchor):
+        return None  # an older result shape: report no windows rather than invent them
+    return SimulatedWindows(
+        qualifying_period=Window(start=start, end=end),
+        final_year=Window(start=final_start, end=final_end),
+        presence_anchor=anchor,
+    )
+
+
 def _resolving_date(results: list[UnlinkedResult]) -> date | None:
     """The nearest later application date the presence rule found clear, if it looked.
 
-    Read off whichever result publishes it rather than recomputed here: the forward search
-    is the rule's, and duplicating its horizon or its trust gate in this module is exactly
-    the fork the single-evaluator design exists to prevent.
+    Read off the presence result rather than recomputed here: the forward search is the
+    rule's, and duplicating its horizon or its trust gate in this module is exactly the fork
+    the single-evaluator design exists to prevent.
+
+    Keyed on the requirement, not on the parameter name. Scanning every result for whichever
+    one happens to carry `resolving_application_date` works only while exactly one rule
+    publishes it — and `status.holding_period` already publishes
+    `earliest_application_date`, the same idea under a different name, from a result that
+    `evaluate_case` orders *first*. Unify those names one day and a first-match scan would
+    silently start reporting the holding-period date under a field documented as the
+    presence one.
     """
     for result in results:
+        if result.requirement_key != KEY_PHYSICAL_PRESENCE:
+            continue
         raw = result.summary_parameters.get(RESOLVING_DATE_PARAMETER)
-        if isinstance(raw, str):
-            return date.fromisoformat(raw)
-        if isinstance(raw, date):
-            return raw
+        # The rule writes `date.isoformat()`; anything else is a packaging bug, and
+        # inventing a fallback would hide it.
+        return date.fromisoformat(raw) if isinstance(raw, str) else None
     return None
 
 
@@ -135,7 +189,12 @@ def simulate_application_date(
     if case.lifecycle_status is not LifecycleStatus.ACTIVE:
         raise CaseNotActive(case.lifecycle_status.value)
 
-    trusted = evaluate_case(session, case=case)
+    # Only the date is wanted from the current state — the "before" side is read from the
+    # persisted results, not recomputed. Evaluating the case a second time to obtain it
+    # would also put a `TrustedEvaluation` in scope beside this one, and since
+    # `EvaluatedResult` is a subtype of `UnlinkedResult`, building the response from the
+    # wrong one would type-check clean.
+    current_date = current_application_date(session, case.id)
     overridden = evaluate_case(session, case=case, application_date_override=candidate_date)
 
     after_by_key = {result.requirement_key: result for result in overridden.results}
@@ -154,10 +213,10 @@ def simulate_application_date(
     requirements.sort(key=lambda row: row.definition.display_order)
 
     return SimulationView(
-        current_application_date=trusted.application_date,
+        current_application_date=current_date,
         candidate_application_date=candidate_date,
-        windows_before=_windows(trusted.application_date),
-        windows_after=_windows(candidate_date),
+        windows_before=_persisted_windows(persisted[KEY_QUALIFYING_PERIOD][1]),
+        windows_after=_derived_windows(candidate_date),
         resolving_application_date=_resolving_date(overridden.results),
         requirements=requirements,
     )
@@ -176,6 +235,9 @@ def _compare(
             before_currency=None,
             before_summary_code=None,
             before_summary_parameters={},
+            before_limitations=[],
+            before_stale_reason_code=None,
+            before_marked_stale_at=None,
             after=after,
         )
     return SimulatedRequirement(
@@ -184,6 +246,9 @@ def _compare(
         before_currency=result.currency,
         before_summary_code=result.summary_code,
         before_summary_parameters=dict(result.summary_parameters or {}),
+        before_limitations=[dict(raw) for raw in (result.limitations or [])],
+        before_stale_reason_code=result.stale_reason_code,
+        before_marked_stale_at=result.marked_stale_at,
         after=after,
     )
 

@@ -361,6 +361,13 @@ LIMITATION_TEMPLATES: dict[str, _Template] = {
         "This trip falls entirely outside your qualifying period, so it does not "
         "affect any total. It is kept for your records."
     ),
+    "LEAP_DAY_BOUNDARY_ASSUMPTION": lambda p: (
+        "Your application date is 29 February. Guidance does not say how the five-year "
+        "period is counted back from a leap day, so we count back to 28 February and "
+        "start your qualifying period on "
+        f"{format_date(p.get('qualifying_period_start'))}. "
+        "This moves the day your presence is tested by one day."
+    ),
 }
 
 
@@ -478,8 +485,7 @@ ISSUE_BODY_TEMPLATES: dict[str, _Template] = {
         "days outside the UK ambiguous."
     ),
     "ISSUE_UNCERTAIN_TRAVEL_DATE": lambda p: (
-        "These dates are recorded as uncertain, so they are not counted in the confirmed "
-        "totals."
+        "These dates are recorded as uncertain, so they are not counted in the confirmed totals."
     ),
     "ISSUE_UNCERTAIN_DATE_OUTSIDE": lambda p: (
         "These dates are recorded as uncertain. This trip falls outside your qualifying "
@@ -521,8 +527,7 @@ ISSUE_IMPACT_TEMPLATES: dict[str, _Template] = {
         "While the records overlap, the total days outside the UK cannot be relied on."
     ),
     "ISSUE_UNCERTAIN_TRAVEL_DATE": lambda p: (
-        "Your confirmed totals exclude these days, so they read lower than your full "
-        "history."
+        "Your confirmed totals exclude these days, so they read lower than your full history."
     ),
     "ISSUE_UNCERTAIN_DATE_OUTSIDE": lambda p: (
         "No figure changes either way. You can set this aside."

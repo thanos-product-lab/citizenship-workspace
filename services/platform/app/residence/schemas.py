@@ -12,7 +12,12 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from app.assessments.schemas import RenderedMessage
+from app.assessments.schemas import (
+    LimitationView,
+    NextActionView,
+    RenderedMessage,
+    StaleInformation,
+)
 from app.assessments.simulation import (
     SimulatedRequirement,
     SimulatedWindows,
@@ -30,9 +35,19 @@ from app.residence.domain import (
     TravelReviewState,
 )
 
+#: A sane calendar range for an application date, shared by the save and the preview.
+#: Not a domain rule — the rules spec has nothing to say about how far ahead someone may
+#: plan — but `qualifying_window` subtracts five years, so a date before year six raises
+#: `ValueError: year -4 is out of range` from the stdlib and surfaces as a 500. A simulator
+#: is a free-text date field whose whole purpose is trying values, which makes that
+#: reachable by typing. Bounded here so the answer is a 422 naming the field, and bounded
+#: identically on both endpoints so a date the preview accepts is a date the save accepts.
+MIN_APPLICATION_DATE = date(1900, 1, 1)
+MAX_APPLICATION_DATE = date(2100, 12, 31)
+
 
 class SelectApplicationDateInput(BaseModel):
-    application_date: date
+    application_date: date = Field(ge=MIN_APPLICATION_DATE, le=MAX_APPLICATION_DATE)
     # Optimistic-concurrency token: the root revision the client last saw. Omitted on
     # the first selection (no root exists yet); required to change an existing date.
     expected_revision: int | None = None
@@ -224,7 +239,7 @@ class SimulateApplicationDateInput(BaseModel):
     so there is no version to be stale against — the concurrency check belongs on the save
     that follows, where `/select` already has one."""
 
-    candidate_application_date: date
+    candidate_application_date: date = Field(ge=MIN_APPLICATION_DATE, le=MAX_APPLICATION_DATE)
 
 
 class SimulatedWindowsResponse(BaseModel):
@@ -258,6 +273,11 @@ class SimulatedBefore(BaseModel):
     summary_code: str | None
     summary: RenderedMessage | None
     summary_parameters: dict[str, object]
+    limitations: list[LimitationView]
+    #: Why the current conclusion is no longer current, when it is not. The client renders
+    #: the same `StaleAssessmentNotice` it renders everywhere else rather than being handed
+    #: a bare "STALE" string it cannot explain.
+    stale: StaleInformation | None
 
 
 class SimulatedAfter(BaseModel):
@@ -273,8 +293,40 @@ class SimulatedAfter(BaseModel):
     conclusion: str
     summary_code: str | None
     summary: RenderedMessage | None
+    #: Careful: `provisional_days` in here means "counting unconfirmed travel records"
+    #: (RULES_SPEC §6.2) and has nothing to do with `currency: "PROVISIONAL"`, which means
+    #: "not saved". Two unrelated senses of one word, in one object. User-facing copy should
+    #: say "preview" for the first and "unconfirmed records" for the second, and never
+    #: "provisional" for either.
     summary_parameters: dict[str, object]
     calculation_breakdown: dict[str, object]
+    limitations: list[LimitationView]
+    #: Carried for symmetry with `limitations`, and because dropping them was asymmetric:
+    #: the presence rule's resolving date is lifted to the top of the response while
+    #: `status.holding_period`'s blocking `SELECT_APPLICATION_DATE` action would have been
+    #: silently discarded. A candidate date that satisfies presence but breaks the holding
+    #: period must be able to say so.
+    next_actions: list[NextActionView]
+
+
+class SimulatedChange(BaseModel):
+    """What actually moved, dimension by dimension.
+
+    A single `conclusion_changed` flag is not enough, and `residence.travel_consistency` is
+    why: it is a data-quality rule whose entire output is limitations (RULES_SPEC §7.8), so
+    moving past the trip that covered the presence anchor swaps
+    `NEAR_STANDARD_THRESHOLD` for `TRAVEL_OUTSIDE_WINDOW` while the conclusion and the
+    summary code both stay put. A conclusion-only flag reports that as "nothing changed"
+    — for the requirement whose job is surfacing exactly this.
+
+    `summary_parameters` catches the other silent case: 439 → 429 days is a real change the
+    user must see, and both figures sit in the same NEAR_THRESHOLD band."""
+
+    conclusion: bool
+    summary_code: bool
+    summary_parameters: bool
+    limitations: bool
+    any: bool
 
 
 class SimulatedRequirementResponse(BaseModel):
@@ -282,18 +334,41 @@ class SimulatedRequirementResponse(BaseModel):
     title: str
     group_key: str
     display_order: int
-    conclusion_changed: bool
+    changed: SimulatedChange
     before: SimulatedBefore
     after: SimulatedAfter
 
     @classmethod
     def from_domain(cls, row: SimulatedRequirement) -> "SimulatedRequirementResponse":
+        before_limitations = [LimitationView.of(raw) for raw in row.before_limitations]
+        after_limitations = [
+            LimitationView.of(limitation.as_dict()) for limitation in row.after.limitations
+        ]
+        changed = SimulatedChange(
+            conclusion=row.before_conclusion != row.after.conclusion,
+            summary_code=row.before_summary_code != row.after.summary_code,
+            summary_parameters=row.before_summary_parameters != row.after.summary_parameters,
+            limitations=sorted(item.code for item in before_limitations)
+            != sorted(item.code for item in after_limitations),
+            any=False,  # replaced below; a field cannot read its siblings during construction
+        )
         return cls(
             requirement_key=row.definition.requirement_key,
             title=row.definition.title,
             group_key=row.definition.group_key,
             display_order=row.definition.display_order,
-            conclusion_changed=row.before_conclusion != row.after.conclusion,
+            changed=changed.model_copy(
+                update={
+                    "any": any(
+                        (
+                            changed.conclusion,
+                            changed.summary_code,
+                            changed.summary_parameters,
+                            changed.limitations,
+                        )
+                    )
+                }
+            ),
             before=SimulatedBefore(
                 conclusion=row.before_conclusion,
                 currency=row.before_currency,
@@ -302,6 +377,10 @@ class SimulatedRequirementResponse(BaseModel):
                     row.before_summary_code, row.before_summary_parameters, render_summary
                 ),
                 summary_parameters=row.before_summary_parameters,
+                limitations=before_limitations,
+                stale=StaleInformation.of(
+                    row.before_currency, row.before_stale_reason_code, row.before_marked_stale_at
+                ),
             ),
             after=SimulatedAfter(
                 conclusion=row.after.conclusion,
@@ -311,6 +390,10 @@ class SimulatedRequirementResponse(BaseModel):
                 ),
                 summary_parameters=row.after.summary_parameters,
                 calculation_breakdown=row.after.calculation_breakdown,
+                limitations=after_limitations,
+                next_actions=[
+                    NextActionView.of(action.as_dict()) for action in row.after.next_actions
+                ],
             ),
         )
 
@@ -327,8 +410,10 @@ class ApplicationDateSimulationResponse(BaseModel):
     saved: Literal[False] = False
     mode: Literal["PROVISIONAL"] = "PROVISIONAL"
     current_application_date: date
-    candidate_application_date: date
-    windows_before: SimulatedWindowsResponse
+    candidate_application_date: date = Field(ge=MIN_APPLICATION_DATE, le=MAX_APPLICATION_DATE)
+    #: `None` until the case has been assessed once — the before side is read from the
+    #: persisted result, and before there is a result there are no before windows.
+    windows_before: SimulatedWindowsResponse | None
     windows_after: SimulatedWindowsResponse
     #: The nearest later date the presence rule found clear of confirmed absence, if it
     #: looked. Lifted out of the rule's parameters because it is the value that turns
@@ -341,7 +426,11 @@ class ApplicationDateSimulationResponse(BaseModel):
         return cls(
             current_application_date=view.current_application_date,
             candidate_application_date=view.candidate_application_date,
-            windows_before=SimulatedWindowsResponse.from_domain(view.windows_before),
+            windows_before=(
+                SimulatedWindowsResponse.from_domain(view.windows_before)
+                if view.windows_before is not None
+                else None
+            ),
             windows_after=SimulatedWindowsResponse.from_domain(view.windows_after),
             resolving_application_date=view.resolving_application_date,
             requirements=[

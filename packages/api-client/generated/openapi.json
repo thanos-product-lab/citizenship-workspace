@@ -49,7 +49,14 @@
             "$ref": "#/components/schemas/SimulatedWindowsResponse"
           },
           "windows_before": {
-            "$ref": "#/components/schemas/SimulatedWindowsResponse"
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SimulatedWindowsResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -1932,6 +1939,20 @@
             "title": "Currency",
             "type": "string"
           },
+          "limitations": {
+            "items": {
+              "$ref": "#/components/schemas/LimitationView"
+            },
+            "title": "Limitations",
+            "type": "array"
+          },
+          "next_actions": {
+            "items": {
+              "$ref": "#/components/schemas/NextActionView"
+            },
+            "title": "Next Actions",
+            "type": "array"
+          },
           "summary": {
             "anyOf": [
               {
@@ -1964,7 +1985,9 @@
           "summary_code",
           "summary",
           "summary_parameters",
-          "calculation_breakdown"
+          "calculation_breakdown",
+          "limitations",
+          "next_actions"
         ],
         "title": "SimulatedAfter",
         "type": "object"
@@ -1986,6 +2009,23 @@
               }
             ],
             "title": "Currency"
+          },
+          "limitations": {
+            "items": {
+              "$ref": "#/components/schemas/LimitationView"
+            },
+            "title": "Limitations",
+            "type": "array"
+          },
+          "stale": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StaleInformation"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "summary": {
             "anyOf": [
@@ -2019,9 +2059,45 @@
           "currency",
           "summary_code",
           "summary",
-          "summary_parameters"
+          "summary_parameters",
+          "limitations",
+          "stale"
         ],
         "title": "SimulatedBefore",
+        "type": "object"
+      },
+      "SimulatedChange": {
+        "description": "What actually moved, dimension by dimension.\n\nA single `conclusion_changed` flag is not enough, and `residence.travel_consistency` is\nwhy: it is a data-quality rule whose entire output is limitations (RULES_SPEC \u00a77.8), so\nmoving past the trip that covered the presence anchor swaps\n`NEAR_STANDARD_THRESHOLD` for `TRAVEL_OUTSIDE_WINDOW` while the conclusion and the\nsummary code both stay put. A conclusion-only flag reports that as \"nothing changed\"\n\u2014 for the requirement whose job is surfacing exactly this.\n\n`summary_parameters` catches the other silent case: 439 \u2192 429 days is a real change the\nuser must see, and both figures sit in the same NEAR_THRESHOLD band.",
+        "properties": {
+          "any": {
+            "title": "Any",
+            "type": "boolean"
+          },
+          "conclusion": {
+            "title": "Conclusion",
+            "type": "boolean"
+          },
+          "limitations": {
+            "title": "Limitations",
+            "type": "boolean"
+          },
+          "summary_code": {
+            "title": "Summary Code",
+            "type": "boolean"
+          },
+          "summary_parameters": {
+            "title": "Summary Parameters",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "conclusion",
+          "summary_code",
+          "summary_parameters",
+          "limitations",
+          "any"
+        ],
+        "title": "SimulatedChange",
         "type": "object"
       },
       "SimulatedRequirementResponse": {
@@ -2032,9 +2108,8 @@
           "before": {
             "$ref": "#/components/schemas/SimulatedBefore"
           },
-          "conclusion_changed": {
-            "title": "Conclusion Changed",
-            "type": "boolean"
+          "changed": {
+            "$ref": "#/components/schemas/SimulatedChange"
           },
           "display_order": {
             "title": "Display Order",
@@ -2058,7 +2133,7 @@
           "title",
           "group_key",
           "display_order",
-          "conclusion_changed",
+          "changed",
           "before",
           "after"
         ],

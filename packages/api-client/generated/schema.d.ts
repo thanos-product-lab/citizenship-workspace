@@ -405,7 +405,7 @@ export interface components {
              */
             saved: false;
             windows_after: components["schemas"]["SimulatedWindowsResponse"];
-            windows_before: components["schemas"]["SimulatedWindowsResponse"];
+            windows_before: components["schemas"]["SimulatedWindowsResponse"] | null;
         };
         /**
          * CaseOverview
@@ -1153,6 +1153,10 @@ export interface components {
              * @constant
              */
             currency: "PROVISIONAL";
+            /** Limitations */
+            limitations: components["schemas"]["LimitationView"][];
+            /** Next Actions */
+            next_actions: components["schemas"]["NextActionView"][];
             summary: components["schemas"]["RenderedMessage"] | null;
             /** Summary Code */
             summary_code: string | null;
@@ -1175,6 +1179,9 @@ export interface components {
             conclusion: string;
             /** Currency */
             currency: string | null;
+            /** Limitations */
+            limitations: components["schemas"]["LimitationView"][];
+            stale: components["schemas"]["StaleInformation"] | null;
             summary: components["schemas"]["RenderedMessage"] | null;
             /** Summary Code */
             summary_code: string | null;
@@ -1183,12 +1190,37 @@ export interface components {
                 [key: string]: unknown;
             };
         };
+        /**
+         * SimulatedChange
+         * @description What actually moved, dimension by dimension.
+         *
+         *     A single `conclusion_changed` flag is not enough, and `residence.travel_consistency` is
+         *     why: it is a data-quality rule whose entire output is limitations (RULES_SPEC §7.8), so
+         *     moving past the trip that covered the presence anchor swaps
+         *     `NEAR_STANDARD_THRESHOLD` for `TRAVEL_OUTSIDE_WINDOW` while the conclusion and the
+         *     summary code both stay put. A conclusion-only flag reports that as "nothing changed"
+         *     — for the requirement whose job is surfacing exactly this.
+         *
+         *     `summary_parameters` catches the other silent case: 439 → 429 days is a real change the
+         *     user must see, and both figures sit in the same NEAR_THRESHOLD band.
+         */
+        SimulatedChange: {
+            /** Any */
+            any: boolean;
+            /** Conclusion */
+            conclusion: boolean;
+            /** Limitations */
+            limitations: boolean;
+            /** Summary Code */
+            summary_code: boolean;
+            /** Summary Parameters */
+            summary_parameters: boolean;
+        };
         /** SimulatedRequirementResponse */
         SimulatedRequirementResponse: {
             after: components["schemas"]["SimulatedAfter"];
             before: components["schemas"]["SimulatedBefore"];
-            /** Conclusion Changed */
-            conclusion_changed: boolean;
+            changed: components["schemas"]["SimulatedChange"];
             /** Display Order */
             display_order: number;
             /** Group Key */
