@@ -79,13 +79,24 @@ export function ApplicationDateCard({ caseId }: { caseId: string }) {
   // callback keyed on a changed count would say nothing at all.
   useEffect(() => {
     if (!preview) return;
-    const changed = visibleChanges(preview).length;
-    setAnnouncement(
-      changed === 0
-        ? `Preview ready for ${formatDate(preview.candidate_application_date)}. No conclusion changes.`
-        : `Preview ready for ${formatDate(preview.candidate_application_date)}. ` +
-          `${changed} ${changed === 1 ? "requirement changes" : "requirements change"}. Not saved yet.`,
+    const changes = visibleChanges(preview);
+    const unresolved = unresolvedAtCandidate(preview, changes);
+    const parts = [`Preview ready for ${formatDate(preview.candidate_application_date)}.`];
+    parts.push(
+      changes.length === 0
+        ? "No conclusion changes."
+        : `${changes.length} ${changes.length === 1 ? "requirement changes" : "requirements change"}.`,
     );
+    // Said, not just shown. Counting only the changes made this announce "No conclusion
+    // changes" on the exact preview the panel headed "Still not satisfied on this date" —
+    // the false reassurance the visible fix removed, left intact for a screen reader.
+    if (unresolved.length > 0) {
+      parts.push(
+        `${unresolved.length} ${unresolved.length === 1 ? "requirement is" : "requirements are"} still not satisfied on this date.`,
+      );
+    }
+    parts.push("Not saved yet.");
+    setAnnouncement(parts.join(" "));
   }, [preview]);
 
   // Same discipline for the save, and it must span the refetch: until the invalidated
@@ -113,6 +124,12 @@ export function ApplicationDateCard({ caseId }: { caseId: string }) {
 
   function handlePreview(event: React.FormEvent) {
     event.preventDefault();
+    // `aria-disabled` is used rather than `disabled`, because a focused button that
+    // becomes `disabled` is blurred by the browser and focus is silently lost mid-flow.
+    // The cost of that choice is that the control still fires, so every handler it guards
+    // has to check `busy` itself — otherwise the button is announced as unavailable and
+    // works anyway, which is the worse of the two failures.
+    if (busy) return;
     if (!value) {
       setInvalid(true);
       inputRef.current?.focus();
@@ -133,6 +150,7 @@ export function ApplicationDateCard({ caseId }: { caseId: string }) {
   }
 
   function handleUseResolvingDate(date: string) {
+    if (busy) return;
     setValue(date);
     setInvalid(false);
     simulate.mutate(date, {
@@ -144,6 +162,7 @@ export function ApplicationDateCard({ caseId }: { caseId: string }) {
   }
 
   function handleCancel() {
+    if (busy) return;
     flushSync(() => {
       setPreview(null);
       setValue(currentDate);
@@ -154,7 +173,7 @@ export function ApplicationDateCard({ caseId }: { caseId: string }) {
   }
 
   function handleSave() {
-    if (!preview) return;
+    if (busy || !preview) return;
     setAwaitingSave(true);
     save.mutate({
       applicationDate: preview.candidate_application_date,
@@ -483,11 +502,17 @@ function PreviewPanel({
             type="button"
             onClick={() => onUseResolvingDate(resolving)}
             aria-disabled={busy}
+            // The reason lives in a sibling span, which a user moving control to control
+            // never reaches — they would hear a date with no account of why it is offered.
+            aria-describedby="app-date-resolving-reason"
             style={secondaryButtonStyle}
           >
             Preview {formatDate(resolving)} instead
           </button>{" "}
-          <span style={{ color: "var(--cw-text-muted)", fontSize: "var(--cw-text-sm)" }}>
+          <span
+            id="app-date-resolving-reason"
+            style={{ color: "var(--cw-text-muted)", fontSize: "var(--cw-text-sm)" }}
+          >
             the nearest later date whose first day is clear of confirmed absence
           </span>
         </p>

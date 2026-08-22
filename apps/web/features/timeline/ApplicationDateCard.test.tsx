@@ -425,6 +425,92 @@ describe("ApplicationDateCard", () => {
     expect(await screen.findByText(/preview — not saved/i)).toBeInTheDocument();
   });
 
+  it("does not act on a control it has announced as unavailable", async () => {
+    // `aria-disabled` rather than `disabled`, because a focused button that becomes
+    // `disabled` is blurred by the browser and focus is lost mid-flow. The cost is that
+    // the control still fires, so the handler must check `busy` — otherwise assistive
+    // technology says "unavailable" and a second mutation goes out anyway.
+    let resolvePreview: ((value: unknown) => void) | undefined;
+    post.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolvePreview = resolve;
+        }),
+    );
+    render(<ApplicationDateCard caseId="c1" />);
+    const trigger = await screen.findByRole("button", { name: /preview this date/i });
+
+    fireEvent.click(trigger);
+    await waitFor(() => expect(trigger).toHaveAttribute("aria-disabled", "true"));
+    fireEvent.click(trigger);
+    fireEvent.click(trigger);
+
+    expect(post).toHaveBeenCalledTimes(1);
+    resolvePreview?.({ data: aSimulation(), error: undefined });
+    await screen.findByText(/preview — not saved/i);
+  });
+
+  it("announces what the date does not fix, not only what it changes", async () => {
+    // The panel says "Still not satisfied on this date"; the announcement said "No
+    // conclusion changes". Fixing the screen and leaving the spoken version reassuring
+    // would have moved the defect rather than removed it.
+    post.mockResolvedValue({
+      data: aSimulation({
+        candidate_application_date: "2027-04-20",
+        requirements: [
+          aRequirement({
+            changed: {
+              conclusion: false,
+              summary_code: false,
+              summary_parameters: false,
+              limitations: false,
+              any: false,
+            },
+            after: {
+              currency: "PROVISIONAL",
+              conclusion: "NOT_CURRENTLY_SATISFIED",
+              summary_code: "PRESENCE_NOT_SUPPORTED",
+              summary: null,
+              summary_parameters: {},
+              calculation_breakdown: {},
+              limitations: [],
+              next_actions: [],
+            },
+          }),
+        ],
+      }),
+      error: undefined,
+    });
+    const { container } = render(<ApplicationDateCard caseId="c1" />);
+    await previewADate("2027-04-20");
+    await screen.findByText(/still not satisfied on this date/i);
+
+    const live = container.querySelector('[aria-live="polite"]');
+    expect(live).toHaveTextContent(/no conclusion changes/i);
+    expect(live).toHaveTextContent(/1 requirement is still not satisfied on this date/i);
+  });
+
+  it("tells a keyboard user why the alternative date is being offered", async () => {
+    post.mockResolvedValue({
+      data: aSimulation({
+        candidate_application_date: "2027-04-20",
+        resolving_application_date: "2027-04-25",
+      }),
+      error: undefined,
+    });
+    const { container } = render(<ApplicationDateCard caseId="c1" />);
+    await previewADate("2027-04-20");
+
+    const offer = await screen.findByRole("button", { name: /preview 25 April 2027 instead/i });
+    const describedBy = offer.getAttribute("aria-describedby");
+    expect(describedBy).toBeTruthy();
+    // Moving control to control never reaches a sibling span, so the reason has to be
+    // bound to the button rather than sitting beside it.
+    expect(container.querySelector(`#${describedBy}`)).toHaveTextContent(
+      /nearest later date whose first day is clear of confirmed absence/i,
+    );
+  });
+
   it("shows an error with retry when the date cannot be loaded", async () => {
     get.mockResolvedValue({ data: undefined, error: {} });
     render(<ApplicationDateCard caseId="c1" />);
