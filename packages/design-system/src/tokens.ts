@@ -131,7 +131,15 @@ export const currencyTokens: Record<CurrencyState, CurrencyToken> = {
   current: { colorVar: null, glyph: "dot", label: "Current" },
   stale: { colorVar: "--cw-currency-stale", glyph: "clock", label: "Stale" },
   superseded: { colorVar: "--cw-currency-superseded", glyph: "history", label: "Superseded" },
-  provisional: { colorVar: "--cw-currency-provisional", glyph: "preview", label: "Provisional" },
+  // Labelled "Preview", not "Provisional". The domain uses "provisional" for two unrelated
+  // things: the currency of an unsaved simulation (Domain §42.2) and, in RULES_SPEC §6.2,
+  // a total computed *including unconfirmed travel records*. Both now appear in one
+  // simulation response — `after.currency: "PROVISIONAL"` beside
+  // `summary_parameters.provisional_days` — so user-facing copy uses "preview" for the
+  // first and "unconfirmed records" for the second, and the word "provisional" for
+  // neither. The enum value, the CSS custom property and the glyph are unchanged; only
+  // what a human reads.
+  provisional: { colorVar: "--cw-currency-provisional", glyph: "preview", label: "Preview" },
 };
 
 // --- Provenance (how a value came to be; UI/UX §3.4, §18.5) ---
