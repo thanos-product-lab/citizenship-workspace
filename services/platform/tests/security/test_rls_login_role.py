@@ -25,10 +25,10 @@ from sqlalchemy.exc import ProgrammingError
 from sqlalchemy.orm import Session
 
 from app.cases.domain import ApplicationCase
-from app.shared.tenant import set_tenant
+from app.shared.tenant import APP_ROLE, clear_tenant, set_tenant
 from tests.conftest import RLS_TEST_ROLE, Api
 
-from .conftest import CASE_SCOPED_TABLES, count_rows
+from .conftest import CASE_SCOPED_TABLES, SUPPORTED_ANSWERS, count_rows
 
 pytestmark = pytest.mark.integration
 
@@ -108,72 +108,89 @@ def test_a_read_only_request_works_end_to_end_on_the_non_superuser_connection(
     assert rls_api("user_b").get("/api/v1/cases").json() == []
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="A command that commits mid-request loses its tenant; see the docstring. "
-    "Remove this marker in the same change that fixes it.",
-)
 def test_a_command_keeps_its_tenant_across_a_mid_request_commit(rls_api: Api) -> None:
-    """**A defect in application code, found by this harness rather than assumed away.**
+    """The regression test for the defect this harness was built to find.
 
-    `set_tenant` binds the role and the tenant at *session* scope — `SET ROLE` and
-    `set_config(..., is_local=False)` — deliberately, because the unit of work commits in
-    the middle of a request and `SET LOCAL` would not survive that (ADR-0006, deviating
-    from ADR-0005). But SQLAlchemy releases the connection back to the pool when a
-    session's transaction ends, and `app.core.db` resets role and tenant on checkin. So
-    the next statement checks out a connection with neither:
+    `set_tenant` used to bind role and tenant to the *connection* and call that
+    session-scoped. It is not: `Session.commit()` releases the connection back to the pool,
+    where the checkin hook resets both, so the next statement ran with neither.
+    `create_case` commits and then `session.refresh(case)`es for the server-defaulted
+    timestamps, so on a connection with no superuser bypass the first command in the
+    product raised `InvalidRequestError`.
 
-        set_tenant(session, "user_a")   -> (app_rls, 'user_a')
-        session.commit()                -> connection returns to the pool, reset fires
-        session.execute(...)            -> (app_test_login, '')   tenant gone
-
-    `create_case` does exactly this: `uow.commit()`, then `session.refresh(case)` to load
-    the server-defaulted timestamps. The refresh finds no row and raises
-    `InvalidRequestError`, so the very first command in the product fails.
-
-    On the owner connection this is invisible — a superuser bypasses RLS, so the
-    tenantless read succeeds and nobody notices. It is the same shape as the M6 bug and
-    it is why this file exists. It also means the non-superuser runtime role of ADR-0006
-    R1 Option A cannot be adopted until it is fixed: every write command would 500.
-
-    The fix is to re-establish the tenant per transaction rather than per session —
-    remember the user id on `Session.info` and re-apply it from an `after_begin`
-    listener — which is application code, touches every request, and belongs in its own
-    reviewed change rather than in a test slice.
+    The tenant now lives on `Session.info` and an `after_begin` listener re-applies it per
+    transaction (`app/shared/tenant.py`). Reverting that listener turns this red — and only
+    on this connection, because on the owner the tenantless read bypasses RLS and succeeds.
     """
     created = rls_api("user_a").post("/api/v1/cases", json={"title": "A's case"})
     assert created.status_code == 201
+    case_id = created.json()["id"]
+
+    # Two more commands, each of which commits and then reads the row back.
+    profile = rls_api("user_a").put(
+        f"/api/v1/cases/{case_id}/route-profile", json=SUPPORTED_ANSWERS
+    )
+    assert profile.status_code == 200
+    confirmed = rls_api("user_a").post(f"/api/v1/cases/{case_id}/route-profile/confirm", json={})
+    assert confirmed.status_code == 200
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="Recalculation reports its own results as unassessed; same root cause as the "
-    "test above. Remove this marker in the same change that fixes it.",
-)
 def test_a_recalculation_reports_the_conclusions_it_just_wrote(
     seeded_case: str, rls_api: Api
 ) -> None:
-    """The same defect, in the shape that does not raise — and the more dangerous shape.
+    """The same defect in the shape that did not raise — and the more dangerous shape.
 
-    `_run_trusted_assessment` commits at `app/assessments/service.py:227`, and the route
-    then builds its response from `list_requirements`, which queries afterwards. On a
-    connection with no bypass that query is tenantless, so it matches nothing and every
-    requirement falls back to its unassessed default. The endpoint returns **200** with
-    `result_count: 9` and every conclusion reading `NOT_YET_ASSESSED`, currency `null` —
-    while the rows it just wrote say `SUPPORTED` / `CURRENT`, as the very next `GET
-    /requirements` confirms.
+    `_run_trusted_assessment` commits, and the route then builds its response from
+    `list_requirements`, which queries afterwards. Tenantless, that query matched nothing
+    and every requirement fell back to its unassessed default, so the endpoint answered
+    **200** with `result_count: 9` and every conclusion reading `NOT_YET_ASSESSED` while
+    the rows it had just written said `SUPPORTED` / `CURRENT`.
 
-    So the blast radius is not "write commands 500". It is that the one endpoint whose job
-    is to report what the deterministic rules concluded reports that nothing was concluded,
-    with a success status. That is a silent wrong answer on the assessment path, which is
-    the failure mode this product exists to prevent — and it is invisible on the owner
-    connection, where the same call returns the correct mix.
-
-    Pinned separately from the raising half because a fix that only restores the refreshes
-    would leave this one green-and-wrong.
+    A silent wrong answer on the assessment path, on the one endpoint whose job is to
+    report what the deterministic rules concluded — the failure mode the product exists to
+    prevent. Asserted separately from the raising half above, because a fix that only
+    restored the refreshes would leave this one green and wrong.
     """
     body = rls_api("user_a").post(f"/api/v1/cases/{seeded_case}/assessments/recalculate").json()
+
+    assert body["result_count"] > 0
     conclusions = {row["conclusion"] for row in body["requirements"]}
     assert conclusions != {"NOT_YET_ASSESSED"}, (
         f"recalculate reported {body['result_count']} results, all NOT_YET_ASSESSED"
     )
+    # The response must agree with a fresh read of the same rows.
+    follow_up = rls_api("user_a").get(f"/api/v1/cases/{seeded_case}/requirements").json()
+    assert {row["requirement_key"]: row["conclusion"] for row in body["requirements"]} == {
+        row["requirement_key"]: row["conclusion"] for row in follow_up
+    }
+
+
+def test_the_tenant_survives_a_commit_and_a_rollback(
+    rls_sessionmaker: Callable[[], Session],
+) -> None:
+    """The mechanism itself, without HTTP in the way.
+
+    Two ways the connection's own settings used to be lost, one root cause. The commit path
+    is the defect above. The rollback path is ADR-0006 R5, recorded there as a separate
+    latent risk — a pre-first-commit `ROLLBACK` reverted the non-LOCAL role and GUC, and it
+    stayed latent only because no handler happened to re-query afterwards. Re-applying per
+    transaction closes both, which is why they are asserted together.
+    """
+    with rls_sessionmaker() as session:
+        set_tenant(session, "user_a")
+
+        def context() -> tuple[str, str]:
+            role, tenant = session.execute(
+                text("SELECT current_user, current_setting('app.user_id', true)")
+            ).one()
+            return str(role), str(tenant)
+
+        assert context() == (APP_ROLE, "user_a")
+        session.commit()
+        assert context() == (APP_ROLE, "user_a"), "lost across a commit"
+        session.rollback()
+        assert context() == (APP_ROLE, "user_a"), "lost across a rollback (ADR-0006 R5)"
+
+        clear_tenant(session)
+        current_user, tenant = context()
+        assert current_user == RLS_TEST_ROLE and not tenant, "clear_tenant left the context set"

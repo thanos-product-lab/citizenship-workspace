@@ -418,14 +418,12 @@ line would have silently stopped it testing anything.
   in the product fails", which reads as a startup-shaped bug you would notice in seconds.
   This is not that.
 
-  Two `xfail(strict=True)` tests in `tests/security/test_rls_login_role.py` carry it — the
-  raising half and the silent half separately, because a fix that only restored the
-  refreshes would leave the second one green and wrong. **This blocks M7, not just "wants
-  its own change".** M7 is the first surface where a forgotten tenant is a document leak
-  rather than a row leak, and the control that catches a forgotten tenant is ADR-0006 R1
-  Option A — which this defect makes un-adoptable. The fix is to re-establish the tenant
-  per transaction: record the user id on `Session.info` and re-apply role and GUC from an
-  `after_begin` listener.
+  Carried as two `xfail(strict=True)` tests — the raising half and the silent half
+  separately, because a fix that only restored the refreshes would leave the second one
+  green and wrong — and then **fixed in slice 1b** (see below) rather than deferred, because
+  it blocked M7 rather than merely wanting its own change: M7 is the first surface where a
+  forgotten tenant is a document leak rather than a row leak, and the control that catches a
+  forgotten tenant is ADR-0006 R1 Option A, which this defect made un-adoptable.
 
 - **ADR-0006 R5 is the same defect through a different door, and should be merged into it.**
   R5 records that a pre-first-commit `ROLLBACK` reverts the non-LOCAL role and GUC —
@@ -512,11 +510,45 @@ form the `alembic_version` miss took. The claim is true now, and four tests carr
 `just lint`, `just typecheck`, 506 backend tests + 2 xfailed, 205 frontend tests,
 zero API-client drift, migrations 0012 and 0013 applied.
 
+### Slice 1b — making the tenant survive its own transaction
+
+The defect slice 1 found, fixed. **ADR-0017.**
+
+The tenant now lives on `Session.info`, and an `after_begin` listener re-applies role and
+GUC whenever the session opens a transaction — which includes the autobegin after every
+commit and every rollback. Both settings became `is_local=True` in a single round trip,
+because local is the right scope once something re-arms them per transaction: they unwind on
+their own and no connection can carry a tenant anywhere. `clear_tenant` exists for the one
+caller that must act as the owner on a session that has been in a tenant context.
+
+Registered on the `Session` class rather than one sessionmaker, so it covers the request
+session, the recalculation-failure recovery's own session, the CLI scripts and the seed —
+anything that calls `set_tenant`, by construction rather than by remembering.
+
+Both `xfail` markers flipped to `XPASS` and, being strict, turned red — which is what they
+were for. They are now three ordinary regression tests: the raising half, the silent half,
+and the mechanism itself including the rollback case that ADR-0006 filed separately as R5.
+
+**R5 was the same bug.** ADR-0006 recorded it as a narrow latent risk — a pre-first-commit
+rollback reverting the role and GUC, harmless because no handler re-queries afterwards — and
+even named the fix ("establish the tenant on a connection checkout/begin event so it survives
+rollbacks"). What it did not see is that the same root cause breaks on **commit** too, which
+is not latent at all. Two entries, one defect.
+
+**What the comment cost.** The docstring on `set_tenant` asserted that `is_local=False`
+"keeps both set across the request's transaction boundaries (the unit of work commits
+mid-request)". Non-LOCAL does survive a `COMMIT` — but not the pool checkin the commit
+triggers, and the checkin listener was added by the same ADR. A sentence that is half right
+about the mechanism is worse than no comment: it answers the question a reader would
+otherwise ask.
+
+Verified by mutation (neutering the listener turns all three tests red, only on the
+non-superuser connection) and in the browser against the canonical case: create a case,
+run an assessment, and read 439 days / near threshold, presence not satisfied at 16 April
+2022, resolving date 25 April 2027.
+
 _Known gaps carried forward:_
 
-- **The mid-request tenant loss is unfixed**, blocks the production half of ADR-0006 R1,
-  and should block M7. Two `xfail(strict=True)` markers, so they fail the moment it is
-  fixed — and separately, so a partial fix cannot pass.
 - **`test_tenant_wiring.py` keys on `{case_id}` appearing in the route path**, which is a
   URL convention rather than a property of the handler. M7 is where that breaks: a
   `GET /api/v1/evidence/{evidence_id}/download` is case-scoped and invisible to the check.

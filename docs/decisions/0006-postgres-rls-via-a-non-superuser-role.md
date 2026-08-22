@@ -109,6 +109,16 @@ tracked residual risks, none a live vulnerability:
     `citizenship`. Closing it requires a **dedicated non-superuser LOGIN role** that
     the app and tests connect as (migrations still run as the owner) — a two-connection
     change (config, docker-compose, CI, deploy). Pending owner decision; tracked here.
+  - **Update (2026-08-22, M5 slice 1):** the *test* half is closed. `tests/conftest.py`
+    provisions a session-scoped non-superuser LOGIN role (`app_test_login`) and a second
+    engine, and `tests/security/` exercises the tenant-forgetting cases on it. Provisioning
+    is guarded to local databases and torn down after the run; nothing in
+    `docker-compose.yml`, `ci.yml`, `railway.json` or `app/core/config.py` moved, so the
+    *production* half of Option A remains an open decision.
+  - **Update (2026-08-22, M5 slice 1b):** that harness immediately found that Option A was
+    **un-adoptable** as the code then stood — every write command failed on a non-superuser
+    role because the tenant did not survive the unit of work's own commit. Fixed by
+    **ADR-0017**; Option A is now merely a decision rather than a blocked one.
 - **R2 — `SET ROLE` needs role membership.** The migration grants `app_rls` to
   `CURRENT_USER` (the migrating role). If prod migrates as one role and serves as
   another, the runtime role is not a member and every case request 500s (fail-closed,
@@ -131,6 +141,13 @@ tracked residual risks, none a live vulnerability:
   locally. Fix when the tenant mechanism is revisited: establish the tenant on a
   connection checkout/begin event (driven by a context var) so it survives rollbacks,
   or re-assert `set_tenant` after any rollback.
+  - **Closed (2026-08-22) by ADR-0017**, along the first of those two lines: the tenant is
+    recorded on `Session.info` and re-applied by an `after_begin` listener, so it survives
+    a rollback. R5 turned out to be the same root cause as a much larger defect it did not
+    anticipate — tenant state bound to the connection is lost on **commit** too, because
+    `Session.commit()` releases the connection and the checkin listener resets it. R5 read
+    as a narrow latent risk; the commit path was breaking every write command on any
+    non-superuser role, silently. They should be read as one entry, not two.
 
 ## Invariants touched
 

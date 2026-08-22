@@ -21,7 +21,7 @@ from app.core.config import get_settings
 from app.main import app
 from app.requirements.models import CATALOG_TABLES
 from app.shared.db import Base, get_db, get_sessionmaker
-from app.shared.tenant import APP_ROLE, set_tenant
+from app.shared.tenant import APP_ROLE, clear_tenant, set_tenant
 
 # Global reference data seeded by migrations, not per-test state: excluded from the per-test
 # TRUNCATE so the catalog persists across the session (like the schema itself).
@@ -53,8 +53,11 @@ def db_session(_schema: None) -> Iterator[Session]:
         yield session
     finally:
         session.rollback()
-        # TRUNCATE needs owner privilege; drop out of the app_rls role set by set_tenant.
-        session.execute(text("RESET ROLE"))
+        # TRUNCATE needs owner privilege, so leave the tenant context entirely. `RESET ROLE`
+        # alone is no longer enough: the tenant lives on `session.info` and the `after_begin`
+        # listener would re-apply it on the next transaction, putting the truncates back
+        # under app_rls.
+        clear_tenant(session)
         for table in reversed(Base.metadata.sorted_tables):
             # The requirement catalog is global reference data seeded once by migration
             # 0007, not per-test state — truncating it would wipe the seed after the first
