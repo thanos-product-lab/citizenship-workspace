@@ -80,6 +80,12 @@
   --cw-bg: var(--cw-neutral-50);
   --cw-surface: #ffffff;
   --cw-surface-sunken: var(--cw-neutral-100);
+  /* The persistent case shell, one step away from the canvas.
+     Not `--cw-surface-sunken`: in dark mode that resolves to the same value as `--cw-bg`,
+     so a shell tinted with it is invisible in exactly the theme where the separation is
+     hardest to see. The step is *darker* than the canvas in light and *lighter* in dark,
+     which is why this is its own role token rather than a reuse. */
+  --cw-shell-tint: var(--cw-neutral-100);
   --cw-border: var(--cw-neutral-200);
   --cw-border-strong: var(--cw-neutral-300);
   --cw-text: var(--cw-neutral-900);
@@ -159,6 +165,8 @@
     --cw-bg: var(--cw-neutral-950);
     --cw-surface: var(--cw-neutral-900);
     --cw-surface-sunken: var(--cw-neutral-950);
+    /* Lighter than the canvas here, where light mode's tint is darker. */
+    --cw-shell-tint: var(--cw-neutral-900);
     --cw-border: var(--cw-neutral-800);
     --cw-border-strong: var(--cw-neutral-700);
     --cw-text: var(--cw-neutral-100);
@@ -192,6 +200,7 @@
   --cw-bg: var(--cw-neutral-950);
   --cw-surface: var(--cw-neutral-900);
   --cw-surface-sunken: var(--cw-neutral-950);
+  --cw-shell-tint: var(--cw-neutral-900);
   --cw-border: var(--cw-neutral-800);
   --cw-border-strong: var(--cw-neutral-700);
   --cw-text: var(--cw-neutral-100);

@@ -156,7 +156,7 @@ describe("CaseHeader", () => {
     it("offers recalculation once the case has been assessed", async () => {
       mock();
       renderHeader();
-      expect(await screen.findByRole("button", { name: "Recalculate" })).toBeInTheDocument();
+      expect(await screen.findByRole("button", { name: "Update assessment" })).toBeInTheDocument();
     });
 
     it("does not offer recalculation before the first assessment", async () => {
@@ -165,7 +165,7 @@ describe("CaseHeader", () => {
       mock({ conclusion_counts: [] });
       renderHeader();
       await screen.findByText("Standard five-year route");
-      expect(screen.queryByRole("button", { name: "Recalculate" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Update assessment" })).not.toBeInTheDocument();
     });
 
     it("invalidates every case-scoped query when a recalculation lands", async () => {
@@ -176,7 +176,7 @@ describe("CaseHeader", () => {
       // other destinations entirely.
       mock();
       const { client: queryClient } = renderHeader();
-      const button = await screen.findByRole("button", { name: "Recalculate" });
+      const button = await screen.findByRole("button", { name: "Update assessment" });
 
       const invalidate = vi.spyOn(queryClient, "invalidateQueries");
       post.mockResolvedValue({
@@ -205,7 +205,7 @@ describe("CaseHeader", () => {
       // never heard about it.
       mock();
       const { client: queryClient } = renderHeader();
-      const button = await screen.findByRole("button", { name: "Recalculate" });
+      const button = await screen.findByRole("button", { name: "Update assessment" });
 
       const invalidate = vi.spyOn(queryClient, "invalidateQueries");
       post.mockResolvedValue({ error: { detail: "boom" } });
@@ -222,7 +222,7 @@ describe("CaseHeader", () => {
       // alone would leave a sighted user watching the button settle and nothing change.
       mock();
       renderHeader();
-      const button = await screen.findByRole("button", { name: "Recalculate" });
+      const button = await screen.findByRole("button", { name: "Update assessment" });
 
       post.mockResolvedValue({ error: { detail: "boom" } });
       fireEvent.click(button);
@@ -290,3 +290,36 @@ describe("CaseHeader", () => {
     });
   });
 });
+
+describe("the workspace shell", () => {
+  it("separates persistent case context from page content", async () => {
+    // The identity band, the navigation and the page column are three bands, not one
+    // container. The width used to live on the element the tint would be applied to,
+    // which meant a tinted header stopped at the column and read as a card floating in
+    // the page — the opposite of persistent context.
+    const { container } = render(<CaseHeader caseData={aCase()} headingRef={{ current: null }} />);
+    await screen.findByRole("heading", { level: 1 });
+
+    const identity = container.querySelector(".cw-case-shell__identity");
+    const nav = container.querySelector(".cw-case-shell__nav");
+    expect(identity).toBeInTheDocument();
+    expect(nav).toBeInTheDocument();
+    // The tabs are outside the tinted band, so they read as a way of moving between
+    // views of the case rather than as part of its identity.
+    expect(identity!.contains(nav)).toBe(false);
+    // Each band constrains its own contents to the shared column.
+    expect(identity!.querySelector(".cw-shell__inner")).toBeInTheDocument();
+    expect(nav!.querySelector(".cw-shell__inner")).toBeInTheDocument();
+  });
+
+  it("keeps the case-level action with the case identity", async () => {
+    const { container } = render(<CaseHeader caseData={aCase()} headingRef={{ current: null }} />);
+    const button = await screen.findByRole("button", { name: "Update assessment" });
+    // Beside the title, not below the metadata: a case-level action belongs to the case's
+    // identity, and putting it under the description list would drop a button into the
+    // middle of label/value pairs.
+    expect(container.querySelector(".cw-case-header__identity")!.contains(button)).toBe(true);
+    expect(container.querySelector(".cw-case-header__facts")!.contains(button)).toBe(false);
+  });
+});
+

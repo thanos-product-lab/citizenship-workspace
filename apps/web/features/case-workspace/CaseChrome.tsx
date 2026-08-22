@@ -15,6 +15,23 @@ import { DeleteCaseControl } from "./DeleteCaseControl";
 type Case = components["schemas"]["CaseResponse"];
 
 /**
+ * The page content, in the readable column every band of the shell shares.
+ *
+ * Owns the `<main>` landmark, so it wraps the destination's content and *not* the case
+ * header — a persistent header is context, and "skip to main content" should skip it.
+ * Every lifecycle branch below renders through here, so a not-found and a full workspace
+ * sit on the same column and the landmark exists on every path rather than only the happy
+ * one.
+ */
+function ContentShell({ children }: { children: ReactNode }): JSX.Element {
+  return (
+    <main className="cw-shell__main">
+      <div className="cw-shell__inner">{children}</div>
+    </main>
+  );
+}
+
+/**
  * Everything every case destination shares: the case fetch, the lifecycle branch, and the
  * persistent header and navigation.
  *
@@ -79,37 +96,41 @@ export function CaseChrome({
 
   if (status === "pending") {
     return (
-      <p role="status" style={{ color: "var(--cw-text-muted)" }}>
-        Loading this case…
-      </p>
+      <ContentShell>
+        <p role="status" style={{ color: "var(--cw-text-muted)" }}>
+          Loading this case…
+        </p>
+      </ContentShell>
     );
   }
 
   if (notFound) {
     return (
-      <div>
+      <ContentShell>
         <h1 style={{ fontSize: "var(--cw-text-2xl)" }}>Case not found</h1>
         <p style={{ color: "var(--cw-text-muted)" }}>
           This case doesn’t exist, or it isn’t yours. <a href="/">Back to your cases</a>.
         </p>
-      </div>
+      </ContentShell>
     );
   }
 
   if (status === "error" || !caseData) {
     return (
-      <div role="alert">
-        <p style={{ color: "var(--cw-status-not-satisfied)" }}>We couldn’t load this case.</p>
-        <button type="button" onClick={() => void refetch()} className="cw-button">
-          Try again
-        </button>
-      </div>
+      <ContentShell>
+        <div role="alert">
+          <p style={{ color: "var(--cw-status-not-satisfied)" }}>We couldn’t load this case.</p>
+          <button type="button" onClick={() => void refetch()} className="cw-button">
+            Try again
+          </button>
+        </div>
+      </ContentShell>
     );
   }
 
   if (caseData.lifecycle_status === "DELETION_PENDING") {
     return (
-      <section>
+      <ContentShell>
         <a className="cw-case-header__back" href="/">
           <span aria-hidden="true">←</span> Your cases
         </a>
@@ -119,13 +140,13 @@ export function CaseChrome({
         <p role="status" style={{ marginTop: "var(--cw-space-4)", color: "var(--cw-text-muted)" }}>
           This case is scheduled for deletion. It can no longer be edited.
         </p>
-      </section>
+      </ContentShell>
     );
   }
 
   if (caseData.lifecycle_status !== "ACTIVE") {
     return (
-      <div>
+      <ContentShell>
         <a className="cw-case-header__back" href="/">
           <span aria-hidden="true">←</span> Your cases
         </a>
@@ -139,14 +160,14 @@ export function CaseChrome({
           caseId={caseId}
           onDeleted={(updated: Case) => client.setQueryData(caseKeys.case(caseId), updated)}
         />
-      </div>
+      </ContentShell>
     );
   }
 
   return (
     <>
       <CaseHeader caseData={caseData} headingRef={headingRef} />
-      {children}
+      <ContentShell>{children}</ContentShell>
     </>
   );
 }

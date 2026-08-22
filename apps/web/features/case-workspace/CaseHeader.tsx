@@ -38,9 +38,9 @@ const PHASE_LABEL: Record<string, string> = {
  *    while omitting that the conclusions drawn from them are stale is presenting
  *    superseded state as current, which is what directives §2.4 and §2.7 exist to stop.
  *
- * 3. **Recalculate.** A case-level command: it creates a new `AssessmentRun` and new
- *    results for every requirement, not only the ones on screen. Left inside the
- *    requirements list it would read as recalculating that destination alone.
+ * 3. **Update assessment.** A case-level command: it creates a new `AssessmentRun` and
+ *    new results for every requirement, not only the ones on screen. Left inside the
+ *    requirements list it would read as updating that destination alone.
  */
 export function CaseHeader({
   caseData,
@@ -52,48 +52,77 @@ export function CaseHeader({
   const { data: overview } = useCaseOverview(caseData.id);
 
   return (
-    <header className="cw-case-header">
-      <a className="cw-case-header__back" href="/">
-        <span aria-hidden="true">←</span> Your cases
-      </a>
+    /*
+      Three bands, one landmark.
 
-      <div className="cw-case-header__identity">
-        <h1 className="cw-case-header__title" ref={headingRef} tabIndex={-1}>
-          {caseData.title}
-        </h1>
-        <span className="cw-phase-chip">
-          <span className="cw-visually-hidden">Case phase: </span>
-          {PHASE_LABEL[caseData.current_phase] ?? caseData.current_phase}
-        </span>
-        <RecalculateButton caseId={caseData.id} />
+      The identity band carries a tint one step off the canvas; the navigation sits on the
+      canvas under a rule; the currency notices sit below both. Each band spans the
+      viewport while its contents stay in the same readable column, which is what makes
+      the case context read as a persistent shell rather than as a card floating in the
+      page. A tint that stopped at the column would be the card.
+
+      The tint is the only thing separating context from content, so it is deliberately
+      slight — and it is a *neutral* step, not the accent. Accent here would make the
+      case's own identity compete with every selected control inside it.
+    */
+    <header className="cw-case-shell">
+      <div className="cw-case-shell__identity">
+        <div className="cw-shell__inner">
+          <a className="cw-case-header__back" href="/">
+            <span aria-hidden="true">←</span> Your cases
+          </a>
+
+          <div className="cw-case-header__identity">
+            <h1 className="cw-case-header__title" ref={headingRef} tabIndex={-1}>
+              {caseData.title}
+            </h1>
+            <span className="cw-phase-chip">
+              <span className="cw-visually-hidden">Case phase: </span>
+              {PHASE_LABEL[caseData.current_phase] ?? caseData.current_phase}
+            </span>
+            {/* Kept beside the title rather than below the metadata: a case-level action
+                belongs to the case's identity, and dropping it under the description list
+                would put a button in the middle of label/value pairs. */}
+            <RecalculateButton caseId={caseData.id} />
+          </div>
+
+          {/* Label/value pairs as a description list, so the labels are programmatically
+              associated with their values rather than merely adjacent to them. */}
+          <dl className="cw-case-header__facts">
+            {overview?.application_date ? (
+              <div>
+                <dt>Proposed application date</dt>
+                <dd className="cw-figure">{formatDate(overview.application_date)}</dd>
+              </div>
+            ) : null}
+            <div>
+              <dt>Route</dt>
+              <dd>Standard five-year route</dd>
+            </div>
+            {overview?.last_assessed_at ? (
+              <div>
+                <dt>Last assessed</dt>
+                <dd className="cw-figure">{formatDate(overview.last_assessed_at)}</dd>
+              </div>
+            ) : null}
+          </dl>
+        </div>
       </div>
 
-      {/* Label/value pairs as a description list, so the labels are programmatically
-          associated with their values rather than merely adjacent to them. */}
-      <dl className="cw-case-header__facts">
-        {overview?.application_date ? (
-          <div>
-            <dt>Proposed application date</dt>
-            <dd className="cw-figure">{formatDate(overview.application_date)}</dd>
-          </div>
-        ) : null}
-        <div>
-          <dt>Route</dt>
-          <dd>Standard five-year route</dd>
+      {/* On the canvas, not the tint, and separated by a rule rather than by a shape.
+          Tabs that sat inside the tinted band would read as part of the case's identity
+          rather than as a way of moving between views of it. */}
+      <div className="cw-case-shell__nav">
+        <div className="cw-shell__inner">
+          <CaseNavigation caseId={caseData.id} />
         </div>
-        {overview?.last_assessed_at ? (
-          <div>
-            <dt>Last assessed</dt>
-            <dd className="cw-figure">{formatDate(overview.last_assessed_at)}</dd>
-          </div>
-        ) : null}
-      </dl>
-
-      <CaseNavigation caseId={caseData.id} />
+      </div>
 
       {/* Currency sits below the navigation, so it reads as qualifying every destination
           rather than belonging to the header's own metadata. */}
-      <CaseCurrency caseId={caseData.id} />
+      <div className="cw-shell__inner">
+        <CaseCurrency caseId={caseData.id} />
+      </div>
     </header>
   );
 }
@@ -135,9 +164,16 @@ function CaseCurrency({ caseId }: { caseId: string }): JSX.Element | null {
 }
 
 /**
- * Recalculate the whole case. Hidden until the case has been assessed once — before that
- * the affordance is "Run assessment" in the requirements list's empty state, so that the
- * first run is offered where its absence is being explained.
+ * Reassess the whole case. Hidden until the case has been assessed once — before that the
+ * affordance is "Run assessment" in the requirements list's empty state, so that the first
+ * run is offered where its absence is being explained.
+ *
+ * Labelled "Update assessment", not "Recalculate". "Recalculate" names the mechanism; the
+ * user's question is "my conclusions are out of date, make them current", and this says
+ * that. The concern that "update" implies editing in place — assessment history being
+ * immutable — belongs to the history list on a requirement detail, which shows the prior
+ * run superseded rather than overwritten. A button label is not where that argument is
+ * won.
  */
 function RecalculateButton({ caseId }: { caseId: string }): JSX.Element | null {
   const { data: overview, isFetching, status } = useCaseOverview(caseId);
@@ -167,7 +203,7 @@ function RecalculateButton({ caseId }: { caseId: string }): JSX.Element | null {
         // by the browser, silently dropping focus mid-operation.
         aria-disabled={busy}
       >
-        {busy ? "Recalculating…" : "Recalculate"}
+        {busy ? "Updating…" : "Update assessment"}
       </button>
       {/* Mounted unconditionally: a live region whose container and text arrive in the
           same commit is frequently missed by NVDA and JAWS. */}

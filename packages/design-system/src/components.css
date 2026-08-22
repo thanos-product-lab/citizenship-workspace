@@ -294,11 +294,9 @@
  * One column, one measure, across every destination. Wide content (the travel table, a
  * calculation row) scrolls inside its own container rather than widening the page.
  */
-.cw-workspace {
-  max-width: 52rem;
-  margin: 0 auto;
-  padding: var(--cw-space-8);
-}
+/* The width and padding moved to `.cw-shell__inner` so the shell's bands can span the
+   viewport while their contents stay in one column — see the workspace shell section at
+   the end of this file. */
 
 .cw-case-header {
   margin-bottom: var(--cw-space-6);
@@ -2099,4 +2097,73 @@
 .cw-timeline-table__dates {
   font-family: var(--cw-font-mono);
   white-space: nowrap;
+}
+
+/* --- Workspace shell (M5) -------------------------------------------------- */
+
+/*
+ * The case workspace is a stack of full-width bands whose contents share one readable
+ * column. The width used to live on the `<main>` element, which meant a tint or a rule
+ * applied to the header stopped at the column and read as a card floating in the page —
+ * the opposite of persistent context.
+ */
+.cw-workspace {
+  min-height: 100%;
+}
+
+/* The column. Every band puts its contents inside one of these, so the header metadata,
+   the tabs and the page content all align on the same left edge. */
+.cw-shell__inner {
+  max-width: 52rem;
+  margin: 0 auto;
+  padding-inline: var(--cw-space-8);
+}
+
+/*
+ * The case identity: one neutral step off the canvas, and nothing else. No shadow, no
+ * border, no rounding — this is a region of the page rather than an object on it, and
+ * every one of those would make it an object.
+ *
+ * `--cw-shell-tint`, not `--cw-surface-sunken`. The latter resolves to the same value as
+ * `--cw-bg` in dark mode, so a shell tinted with it is invisible in exactly the theme
+ * where the separation is hardest to see. The step is darker than the canvas in light and
+ * lighter in dark, which is why it is its own role token.
+ */
+.cw-case-shell__identity {
+  background: var(--cw-shell-tint);
+  padding-block: var(--cw-space-6);
+}
+
+/* The tabs stay on the canvas and are separated by a rule, not by a shape. A filled or
+   rounded tab strip would read as a control panel; a rule reads as a boundary between
+   the case and the view of it. */
+.cw-case-shell__nav {
+  border-bottom: 1px solid var(--cw-border);
+}
+
+.cw-case-shell__nav .cw-case-nav {
+  margin-top: 0;
+}
+
+.cw-shell__main {
+  padding-block: var(--cw-space-8);
+}
+
+/*
+ * Narrow viewports — and equivalently 200% zoom — get a smaller gutter and a tighter
+ * band. Nothing is given a fixed height and no metadata is compressed: the identity block
+ * already wraps, so it simply becomes taller, which is the correct answer on a phone.
+ */
+@media (max-width: 34rem) {
+  .cw-shell__inner {
+    padding-inline: var(--cw-space-4);
+  }
+
+  .cw-case-shell__identity {
+    padding-block: var(--cw-space-5);
+  }
+
+  .cw-shell__main {
+    padding-block: var(--cw-space-6);
+  }
 }
