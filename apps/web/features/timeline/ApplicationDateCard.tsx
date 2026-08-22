@@ -377,6 +377,13 @@ function PreviewPanel({
   const unresolved = unresolvedAtCandidate(preview, changes);
   const resolving = preview.resolving_application_date;
   const alreadyPreviewingResolving = resolving === preview.candidate_application_date;
+  // Previewing the date already selected is a legitimate question — "where do I stand?" —
+  // but it is not a *comparison*, and rendering it as one produces "if you apply on
+  // 15 April 2027 instead of 15 April 2027" over two identical windows. Worse, offering
+  // to save it would append a date version and mark every conclusion STALE to record a
+  // change that did not happen.
+  const isCurrentDate =
+    preview.candidate_application_date === preview.current_application_date;
 
   return (
     <section
@@ -395,7 +402,7 @@ function PreviewPanel({
         tabIndex={-1}
         style={{ margin: 0, fontSize: "var(--cw-text-md)" }}
       >
-        Preview — not saved
+        {isCurrentDate ? "Your current date" : "Preview — not saved"}
       </h4>
       <p
         style={{
@@ -404,32 +411,59 @@ function PreviewPanel({
           fontSize: "var(--cw-text-sm)",
         }}
       >
-        What the rules conclude if you apply on{" "}
-        <strong>{formatDate(preview.candidate_application_date)}</strong> instead of{" "}
-        {formatDate(preview.current_application_date)}. Nothing has been changed yet.
+        {isCurrentDate ? (
+          <>
+            What the rules conclude on your current date,{" "}
+            <strong>{formatDate(preview.candidate_application_date)}</strong>. Nothing has
+            been changed.
+          </>
+        ) : (
+          <>
+            What the rules conclude if you apply on{" "}
+            <strong>{formatDate(preview.candidate_application_date)}</strong> instead of{" "}
+            {formatDate(preview.current_application_date)}. Nothing has been changed yet.
+          </>
+        )}
       </p>
 
-      {preview.windows_before && (
+      {isCurrentDate ? (
+        <p className="cw-preview__summary">
+          Five-year qualifying period{" "}
+          <span className="cw-figure">
+            {formatDate(preview.windows_after.qualifying_period_start)} to{" "}
+            {formatDate(preview.windows_after.qualifying_period_end)}
+          </span>
+          , first day{" "}
+          <span className="cw-figure">
+            {formatDate(preview.windows_after.presence_anchor)}
+          </span>
+          .
+        </p>
+      ) : null}
+      {!isCurrentDate && preview.windows_before && (
         <BeforeAfterValue
           label="Five-year qualifying period"
           before={`${formatDate(preview.windows_before.qualifying_period_start)} to ${formatDate(preview.windows_before.qualifying_period_end)}`}
           after={`${formatDate(preview.windows_after.qualifying_period_start)} to ${formatDate(preview.windows_after.qualifying_period_end)}`}
         />
       )}
-      <BeforeAfterValue
-        label="First day of the qualifying period"
-        before={
-          preview.windows_before
-            ? formatDate(preview.windows_before.presence_anchor)
-            : "not assessed"
-        }
-        after={formatDate(preview.windows_after.presence_anchor)}
-      />
+      {!isCurrentDate && (
+        <BeforeAfterValue
+          label="First day of the qualifying period"
+          before={
+            preview.windows_before
+              ? formatDate(preview.windows_before.presence_anchor)
+              : "not assessed"
+          }
+          after={formatDate(preview.windows_after.presence_anchor)}
+        />
+      )}
 
       {changes.length === 0 ? (
         <p style={{ marginTop: "var(--cw-space-4)" }}>
-          No conclusion changes. The window moves, but every requirement reaches the same
-          conclusion it does today.
+          {isCurrentDate
+            ? "This is the date your case is already assessed against."
+            : "No conclusion changes. The window moves, but every requirement reaches the same conclusion it does today."}
         </p>
       ) : (
         <ul className="cw-preview__changes">
@@ -527,15 +561,19 @@ function PreviewPanel({
           flexWrap: "wrap",
         }}
       >
-        <button type="button" onClick={onSave} aria-disabled={busy} style={buttonStyle}>
-          {busy ? "Saving…" : `Save ${formatDate(preview.candidate_application_date)}`}
-        </button>
+        {!isCurrentDate && (
+          <button type="button" onClick={onSave} aria-disabled={busy} style={buttonStyle}>
+            {busy ? "Saving…" : `Save ${formatDate(preview.candidate_application_date)}`}
+          </button>
+        )}
         <button type="button" onClick={onCancel} aria-disabled={busy} style={secondaryButtonStyle}>
-          Cancel
+          {isCurrentDate ? "Close" : "Cancel"}
         </button>
-        <span style={{ color: "var(--cw-text-muted)", fontSize: "var(--cw-text-sm)" }}>
-          Saving reassesses your case against this date.
-        </span>
+        {!isCurrentDate && (
+          <span style={{ color: "var(--cw-text-muted)", fontSize: "var(--cw-text-sm)" }}>
+            Saving reassesses your case against this date.
+          </span>
+        )}
       </div>
 
       {saveError && (

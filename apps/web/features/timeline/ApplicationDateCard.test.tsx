@@ -309,6 +309,32 @@ describe("ApplicationDateCard", () => {
     expect(screen.queryByText(/still not satisfied on this date/i)).not.toBeInTheDocument();
   });
 
+  it("does not offer to save the date the case already holds", async () => {
+    // Previewing your current date is a fair question — "where do I stand?" — but it is
+    // not a comparison. Rendered as one it read "if you apply on 15 April 2027 instead of
+    // 15 April 2027" over two identical windows, and offered a Save that would append a
+    // date version and mark every conclusion STALE to record a change that never happened.
+    post.mockResolvedValue({
+      data: aSimulation({
+        candidate_application_date: "2027-04-15",
+        current_application_date: "2027-04-15",
+        requirements: [],
+      }),
+      error: undefined,
+    });
+    render(<ApplicationDateCard caseId="c1" />);
+    fireEvent.click(await screen.findByRole("button", { name: /preview this date/i }));
+
+    expect(
+      await screen.findByRole("heading", { name: /your current date/i }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^save/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^close$/i })).toBeInTheDocument();
+    expect(screen.queryByText(/instead of/i)).not.toBeInTheDocument();
+    // No before/after pair either: both sides would be the same value.
+    expect(screen.queryByText("changed to")).not.toBeInTheDocument();
+  });
+
   it("offers the resolving date when the rules found one", async () => {
     post.mockResolvedValue({
       data: aSimulation({
