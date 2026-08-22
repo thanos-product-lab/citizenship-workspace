@@ -179,9 +179,7 @@ export function TimelineBand({ timeline }: { timeline: Timeline }) {
       </div>
 
       <figcaption className="cw-band__caption">
-        Your qualifying period, earliest on the left. Each bar is a trip; the shaded region
-        is the final twelve months. The marked left edge is the first day of the period —
-        the one day presence is tested on. Every figure is in the table below.
+        Earliest on the left; each bar is a trip. Every figure here is in the table below.
       </figcaption>
     </figure>
   );

@@ -60,15 +60,21 @@ describe("ResidenceTimeline", () => {
   });
 
   it("states the period being measured, including the day presence is tested on", async () => {
-    render(<ResidenceTimeline caseId="c1" />);
+    const { container } = render(<ResidenceTimeline caseId="c1" />);
 
     expect(await screen.findByText("16 April 2022 to 15 April 2027")).toBeInTheDocument();
+    // Scoped to the boundaries list: "First day tested" appears twice on the page, here
+    // and as the band's own label for the same edge. That duplication is deliberate — one
+    // term for one concept — so the query names which of the two it means.
+    const boundaries = within(container.querySelector(".cw-timeline__boundaries")!);
     // The anchor is one date out of eighteen hundred and it decides the presence check,
     // so it is named rather than left for the reader to derive from the window.
-    const anchor = screen.getByText("First day of that period").closest("div");
+    //
+    // The *term* carries "this is the day presence is decided on"; the value carries the
+    // fact. A sentence restating the label is a sentence doing the label's job.
+    const anchor = boundaries.getByText("First day tested").closest("div");
     expect(anchor).toHaveTextContent("16 April 2022");
-    expect(anchor).toHaveTextContent(/one day presence is tested on/i);
-    expect(anchor).toHaveTextContent(/place you outside the UK on this day/i);
+    expect(anchor).toHaveTextContent(/you were outside the UK on this day/i);
   });
 
   it("is a real table with its columns and rows named", async () => {
@@ -122,7 +128,7 @@ describe("ResidenceTimeline", () => {
     render(<ResidenceTimeline caseId="c1" />);
 
     const row = (await screen.findByText("Spain")).closest("tr")!;
-    expect(row).toHaveTextContent(/covers the first day of your qualifying period/i);
+    expect(row).toHaveTextContent(/covers the first day tested/i);
   });
 
   it("keeps an out-of-window trip and says in words why it counts for nothing", async () => {

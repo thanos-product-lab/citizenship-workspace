@@ -119,13 +119,13 @@ function TimelineTable({ timeline, caseId }: { timeline: Timeline; caseId: strin
             </dd>
           </div>
           <div>
-            <dt>First day of that period</dt>
+            <dt>First day tested</dt>
             <dd>
               {formatDate(timeline.presence_anchor)}
               <span className="cw-timeline__note">
                 {timeline.presence_anchor_is_absent
-                  ? " — your confirmed records place you outside the UK on this day, and it is the one day presence is tested on."
-                  : " — the one day presence is tested on, and your confirmed records place you in the UK."}
+                  ? " — you were outside the UK on this day."
+                  : " — you were in the UK on this day."}
               </span>
             </dd>
           </div>
@@ -167,9 +167,8 @@ function TimelineTable({ timeline, caseId }: { timeline: Timeline; caseId: strin
 
         {timeline.assessment_is_stale && (
           <p className="cw-timeline__behind" role="status">
-            These figures are from your records as they stand now. Your residence
-            conclusions were reached before your latest change, so they may not match —
-            recheck them on the Requirements page.
+            These figures are current. Your residence conclusions were reached before your
+            latest change — recheck them on Requirements.
           </p>
         )}
       </section>
@@ -197,11 +196,10 @@ function TimelineTable({ timeline, caseId }: { timeline: Timeline; caseId: strin
               semantics — the roles are what keep a row a row at 200% zoom.
             */}
             <table className="cw-timeline-table" role="table">
-              <caption>
-                Your trips, earliest first, measured against{" "}
-                {formatDate(timeline.qualifying_period_start)} to{" "}
-                {formatDate(timeline.qualifying_period_end)}
-              </caption>
+              {/* The window is stated in full above; repeating it here was the third
+                  time on one screen. The caption's job is ordering and what the days are
+                  measured against, which "counted" carries. */}
+              <caption>Your trips, earliest first</caption>
               {/*
                 Three columns, not five. Departure and return are one fact — when the trip
                 was — and a separate "Record" column held the word "Confirmed" twelve times
@@ -261,9 +259,7 @@ function TripRow({ trip }: { trip: TimelineTrip }) {
       <td role="cell" className="cw-timeline-table__destination">
         {trip.destination_label}
         {trip.covers_presence_anchor && (
-          <span className="cw-timeline-table__anchor">
-            Covers the first day of your qualifying period
-          </span>
+          <span className="cw-timeline-table__anchor">Covers the first day tested</span>
         )}
         {/* Only the exception is flagged. Confirmed-and-exact is the ordinary state and
             labelling every row with it buries the one row that is not. */}
