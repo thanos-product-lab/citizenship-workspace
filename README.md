@@ -24,8 +24,9 @@ packages/
 docs/                    product · architecture · design · decisions  ← source of truth
 ```
 
-`packages/api-client` is generated in a later M1 slice and is intentionally
-absent until then.
+`packages/api-client` is generated from the API's OpenAPI schema by
+`just api-client`. CI fails if it drifts from the schema, so it is regenerated as part
+of any change to a request or response.
 
 ## Prerequisites
 
@@ -98,17 +99,30 @@ portfolio prototype built to demonstrate how an AI-native product can keep model
 output from silently becoming truth. It runs on synthetic data only, gives no legal
 advice, predicts no outcomes, and submits nothing.
 
-**Built so far — M0 to M4.** Versioned case inputs with immutable history; a
-deterministic rules engine covering the Section 6(1) five-year route; assessments
-that are never edited in place, each carrying a conclusion, a separate currency, the
-exact input versions and rule version behind it, and structured limitations; and a
-workspace that renders all of it — an overview, the requirement list, and an
-explanation stack that traces any conclusion back to the facts that produced it.
+**Built so far — M0 to M6.** (M6 precedes M5 by design: stale-state is the thesis,
+the timeline is the showcase and the safer cut.)
 
-**Next — M6** (issue detection and selective stale invalidation), then M5 (timeline
-and application-date simulation), M7 (evidence), M8 (human-in-the-loop document AI).
-Build order and cut lines are in
-[`docs/IMPLEMENTATION_ROADMAP.md`](docs/IMPLEMENTATION_ROADMAP.md).
+Versioned case inputs with immutable history; a deterministic rules engine covering
+the Section 6(1) five-year route; assessments that are never edited in place, each
+carrying a conclusion, a separate currency, the exact input versions and rule version
+behind it, and structured limitations.
+
+On top of that: **selective invalidation** — changing an input marks stale exactly the
+conclusions that declared a dependency on it, resolved from the rule catalogue rather
+than a hand-maintained list — and a **durable issue queue** that opens when a cause
+appears and closes when it is fixed, including when a recalculation itself fails.
+
+Most recently, **application-date simulation**: preview a candidate date and see what
+the rules would conclude at it, against your real records, with nothing written. That
+preview writes no run, no result and no provenance — a simulated result has no field
+in which to record any, so persisting one is a type error rather than a guard someone
+can delete. And a **residence timeline** — a chronological table of every trip with the
+days each contributes to the qualifying window, and a visual band above it that adds a
+shape and no facts.
+
+**Next — M7** (private evidence storage and asynchronous processing), then M8
+(human-in-the-loop document AI, the first live model calls). Build order and cut lines
+are in [`docs/IMPLEMENTATION_ROADMAP.md`](docs/IMPLEMENTATION_ROADMAP.md).
 
 ### Worth reading first
 
