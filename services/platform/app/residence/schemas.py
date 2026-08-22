@@ -34,6 +34,7 @@ from app.residence.domain import (
     TravelRecordVersion,
     TravelReviewState,
 )
+from app.residence.timeline import TimelineProjection
 
 #: A sane calendar range for an application date, shared by the save and the preview.
 #: Not a domain rule — the rules spec has nothing to say about how far ahead someone may
@@ -435,5 +436,80 @@ class ApplicationDateSimulationResponse(BaseModel):
             resolving_application_date=view.resolving_application_date,
             requirements=[
                 SimulatedRequirementResponse.from_domain(row) for row in view.requirements
+            ],
+        )
+
+
+# --- Residence timeline (Domain §44.3) ---------------------------------------
+
+
+class TimelineTripResponse(BaseModel):
+    """One trip, with the two day counts kept apart.
+
+    `absent_days` is how long the trip was; `counted_days` is how much of it falls inside
+    the qualifying window. They differ for any trip straddling a boundary — the canonical
+    case's first trip is abroad 11 days and contributes 10 — and publishing only the second
+    would leave the user unable to see why their arithmetic disagrees with ours."""
+
+    travel_record_id: uuid.UUID
+    destination_label: str
+    departure_date: date
+    return_date: date
+    date_confidence: str
+    review_state: str
+    is_trusted: bool
+    absent_days: int
+    counted_days: int
+    is_outside_window: bool
+    covers_presence_anchor: bool
+    overlaps_with: list[uuid.UUID]
+
+
+class TimelineTotalsResponse(BaseModel):
+    qualifying_period_days: int
+    final_year_days: int
+    #: Counting unconfirmed records too (RULES_SPEC §6.2) — a different sense of
+    #: "provisional" from the simulation's, and named to avoid borrowing that word.
+    qualifying_period_days_including_unconfirmed: int
+    final_year_days_including_unconfirmed: int
+    trip_count: int
+    unconfirmed_trip_count: int
+
+
+class TimelineResponse(BaseModel):
+    """The residence picture as the records currently stand.
+
+    No conclusion and no currency anywhere in it: those belong to `AssessmentResult`
+    (ADR-0007), and a second surface publishing its own would be a second answer to the
+    same question. `assessment_is_stale` is the one link between the two — it says the
+    conclusions on the Requirements destination were reached before these records, so a
+    figure here that disagrees with one there is explained rather than mysterious."""
+
+    application_date: date
+    qualifying_period_start: date
+    qualifying_period_end: date
+    final_year_start: date
+    final_year_end: date
+    presence_anchor: date
+    presence_anchor_is_absent: bool
+    assessment_is_stale: bool
+    totals: TimelineTotalsResponse
+    trips: list[TimelineTripResponse]
+
+    @classmethod
+    def from_domain(cls, view: TimelineProjection) -> "TimelineResponse":
+        return cls(
+            application_date=view.application_date,
+            qualifying_period_start=view.qualifying_period.start,
+            qualifying_period_end=view.qualifying_period.end,
+            final_year_start=view.final_year.start,
+            final_year_end=view.final_year.end,
+            presence_anchor=view.presence_anchor,
+            presence_anchor_is_absent=view.presence_anchor_is_absent,
+            assessment_is_stale=view.assessment_is_stale,
+            totals=TimelineTotalsResponse(**vars(view.totals)),
+            trips=[
+                TimelineTripResponse(**{**vars(trip), "overlaps_with": list(trip.overlaps_with)})
+                for trip in view.trips
             ],
         )

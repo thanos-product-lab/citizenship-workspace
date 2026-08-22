@@ -2235,6 +2235,187 @@
         "title": "StatusType",
         "type": "string"
       },
+      "TimelineResponse": {
+        "description": "The residence picture as the records currently stand.\n\nNo conclusion and no currency anywhere in it: those belong to `AssessmentResult`\n(ADR-0007), and a second surface publishing its own would be a second answer to the\nsame question. `assessment_is_stale` is the one link between the two \u2014 it says the\nconclusions on the Requirements destination were reached before these records, so a\nfigure here that disagrees with one there is explained rather than mysterious.",
+        "properties": {
+          "application_date": {
+            "format": "date",
+            "title": "Application Date",
+            "type": "string"
+          },
+          "assessment_is_stale": {
+            "title": "Assessment Is Stale",
+            "type": "boolean"
+          },
+          "final_year_end": {
+            "format": "date",
+            "title": "Final Year End",
+            "type": "string"
+          },
+          "final_year_start": {
+            "format": "date",
+            "title": "Final Year Start",
+            "type": "string"
+          },
+          "presence_anchor": {
+            "format": "date",
+            "title": "Presence Anchor",
+            "type": "string"
+          },
+          "presence_anchor_is_absent": {
+            "title": "Presence Anchor Is Absent",
+            "type": "boolean"
+          },
+          "qualifying_period_end": {
+            "format": "date",
+            "title": "Qualifying Period End",
+            "type": "string"
+          },
+          "qualifying_period_start": {
+            "format": "date",
+            "title": "Qualifying Period Start",
+            "type": "string"
+          },
+          "totals": {
+            "$ref": "#/components/schemas/TimelineTotalsResponse"
+          },
+          "trips": {
+            "items": {
+              "$ref": "#/components/schemas/TimelineTripResponse"
+            },
+            "title": "Trips",
+            "type": "array"
+          }
+        },
+        "required": [
+          "application_date",
+          "qualifying_period_start",
+          "qualifying_period_end",
+          "final_year_start",
+          "final_year_end",
+          "presence_anchor",
+          "presence_anchor_is_absent",
+          "assessment_is_stale",
+          "totals",
+          "trips"
+        ],
+        "title": "TimelineResponse",
+        "type": "object"
+      },
+      "TimelineTotalsResponse": {
+        "properties": {
+          "final_year_days": {
+            "title": "Final Year Days",
+            "type": "integer"
+          },
+          "final_year_days_including_unconfirmed": {
+            "title": "Final Year Days Including Unconfirmed",
+            "type": "integer"
+          },
+          "qualifying_period_days": {
+            "title": "Qualifying Period Days",
+            "type": "integer"
+          },
+          "qualifying_period_days_including_unconfirmed": {
+            "title": "Qualifying Period Days Including Unconfirmed",
+            "type": "integer"
+          },
+          "trip_count": {
+            "title": "Trip Count",
+            "type": "integer"
+          },
+          "unconfirmed_trip_count": {
+            "title": "Unconfirmed Trip Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "qualifying_period_days",
+          "final_year_days",
+          "qualifying_period_days_including_unconfirmed",
+          "final_year_days_including_unconfirmed",
+          "trip_count",
+          "unconfirmed_trip_count"
+        ],
+        "title": "TimelineTotalsResponse",
+        "type": "object"
+      },
+      "TimelineTripResponse": {
+        "description": "One trip, with the two day counts kept apart.\n\n`absent_days` is how long the trip was; `counted_days` is how much of it falls inside\nthe qualifying window. They differ for any trip straddling a boundary \u2014 the canonical\ncase's first trip is abroad 11 days and contributes 10 \u2014 and publishing only the second\nwould leave the user unable to see why their arithmetic disagrees with ours.",
+        "properties": {
+          "absent_days": {
+            "title": "Absent Days",
+            "type": "integer"
+          },
+          "counted_days": {
+            "title": "Counted Days",
+            "type": "integer"
+          },
+          "covers_presence_anchor": {
+            "title": "Covers Presence Anchor",
+            "type": "boolean"
+          },
+          "date_confidence": {
+            "title": "Date Confidence",
+            "type": "string"
+          },
+          "departure_date": {
+            "format": "date",
+            "title": "Departure Date",
+            "type": "string"
+          },
+          "destination_label": {
+            "title": "Destination Label",
+            "type": "string"
+          },
+          "is_outside_window": {
+            "title": "Is Outside Window",
+            "type": "boolean"
+          },
+          "is_trusted": {
+            "title": "Is Trusted",
+            "type": "boolean"
+          },
+          "overlaps_with": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Overlaps With",
+            "type": "array"
+          },
+          "return_date": {
+            "format": "date",
+            "title": "Return Date",
+            "type": "string"
+          },
+          "review_state": {
+            "title": "Review State",
+            "type": "string"
+          },
+          "travel_record_id": {
+            "format": "uuid",
+            "title": "Travel Record Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "travel_record_id",
+          "destination_label",
+          "departure_date",
+          "return_date",
+          "date_confidence",
+          "review_state",
+          "is_trusted",
+          "absent_days",
+          "counted_days",
+          "is_outside_window",
+          "covers_presence_anchor",
+          "overlaps_with"
+        ],
+        "title": "TimelineTripResponse",
+        "type": "object"
+      },
       "TravelRecordEditInput": {
         "properties": {
           "date_confidence": {
@@ -3351,6 +3532,63 @@
         "summary": "Confirm Route Profile",
         "tags": [
           "route-profile"
+        ]
+      }
+    },
+    "/api/v1/cases/{case_id}/timeline": {
+      "get": {
+        "description": "The residence timeline: window boundaries, per-trip counted days, and totals.\n\n`null` when no application date has been selected. Not a 409, unlike `/simulate`:\nthere is no window and so no counted figure, but the trips themselves are real and the\nview can still list them \u2014 refusing the whole request would take that decision away\nfrom the client.",
+        "operationId": "get_timeline_api_v1_cases__case_id__timeline_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Case Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/TimelineResponse"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "title": "Response Get Timeline Api V1 Cases  Case Id  Timeline Get"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Timeline",
+        "tags": [
+          "timeline"
         ]
       }
     },

@@ -242,6 +242,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/cases/{case_id}/timeline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Timeline
+         * @description The residence timeline: window boundaries, per-trip counted days, and totals.
+         *
+         *     `null` when no application date has been selected. Not a 409, unlike `/simulate`:
+         *     there is no window and so no counted figure, but the trips themselves are real and the
+         *     view can still list them — refusing the whole request would take that decision away
+         *     from the client.
+         */
+        get: operations["get_timeline_api_v1_cases__case_id__timeline_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/cases/{case_id}/travel-records": {
         parameters: {
             query?: never;
@@ -1276,6 +1301,114 @@ export interface components {
          * @enum {string}
          */
         StatusType: "ILR" | "ILE" | "EU_SETTLED_STATUS" | "OTHER" | "UNKNOWN";
+        /**
+         * TimelineResponse
+         * @description The residence picture as the records currently stand.
+         *
+         *     No conclusion and no currency anywhere in it: those belong to `AssessmentResult`
+         *     (ADR-0007), and a second surface publishing its own would be a second answer to the
+         *     same question. `assessment_is_stale` is the one link between the two — it says the
+         *     conclusions on the Requirements destination were reached before these records, so a
+         *     figure here that disagrees with one there is explained rather than mysterious.
+         */
+        TimelineResponse: {
+            /**
+             * Application Date
+             * Format: date
+             */
+            application_date: string;
+            /** Assessment Is Stale */
+            assessment_is_stale: boolean;
+            /**
+             * Final Year End
+             * Format: date
+             */
+            final_year_end: string;
+            /**
+             * Final Year Start
+             * Format: date
+             */
+            final_year_start: string;
+            /**
+             * Presence Anchor
+             * Format: date
+             */
+            presence_anchor: string;
+            /** Presence Anchor Is Absent */
+            presence_anchor_is_absent: boolean;
+            /**
+             * Qualifying Period End
+             * Format: date
+             */
+            qualifying_period_end: string;
+            /**
+             * Qualifying Period Start
+             * Format: date
+             */
+            qualifying_period_start: string;
+            totals: components["schemas"]["TimelineTotalsResponse"];
+            /** Trips */
+            trips: components["schemas"]["TimelineTripResponse"][];
+        };
+        /** TimelineTotalsResponse */
+        TimelineTotalsResponse: {
+            /** Final Year Days */
+            final_year_days: number;
+            /** Final Year Days Including Unconfirmed */
+            final_year_days_including_unconfirmed: number;
+            /** Qualifying Period Days */
+            qualifying_period_days: number;
+            /** Qualifying Period Days Including Unconfirmed */
+            qualifying_period_days_including_unconfirmed: number;
+            /** Trip Count */
+            trip_count: number;
+            /** Unconfirmed Trip Count */
+            unconfirmed_trip_count: number;
+        };
+        /**
+         * TimelineTripResponse
+         * @description One trip, with the two day counts kept apart.
+         *
+         *     `absent_days` is how long the trip was; `counted_days` is how much of it falls inside
+         *     the qualifying window. They differ for any trip straddling a boundary — the canonical
+         *     case's first trip is abroad 11 days and contributes 10 — and publishing only the second
+         *     would leave the user unable to see why their arithmetic disagrees with ours.
+         */
+        TimelineTripResponse: {
+            /** Absent Days */
+            absent_days: number;
+            /** Counted Days */
+            counted_days: number;
+            /** Covers Presence Anchor */
+            covers_presence_anchor: boolean;
+            /** Date Confidence */
+            date_confidence: string;
+            /**
+             * Departure Date
+             * Format: date
+             */
+            departure_date: string;
+            /** Destination Label */
+            destination_label: string;
+            /** Is Outside Window */
+            is_outside_window: boolean;
+            /** Is Trusted */
+            is_trusted: boolean;
+            /** Overlaps With */
+            overlaps_with: string[];
+            /**
+             * Return Date
+             * Format: date
+             */
+            return_date: string;
+            /** Review State */
+            review_state: string;
+            /**
+             * Travel Record Id
+             * Format: uuid
+             */
+            travel_record_id: string;
+        };
         /** TravelRecordEditInput */
         TravelRecordEditInput: {
             /** @default EXACT */
@@ -1899,6 +2032,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RouteSupportResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_timeline_api_v1_cases__case_id__timeline_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TimelineResponse"] | null;
                 };
             };
             /** @description Validation Error */

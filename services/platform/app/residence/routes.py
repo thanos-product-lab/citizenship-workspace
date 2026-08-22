@@ -26,7 +26,7 @@ from app.auth.dependencies import get_current_user
 from app.auth.schemas import CurrentUser
 from app.cases.dependencies import require_case_access
 from app.cases.domain import ApplicationCase
-from app.residence import service
+from app.residence import service, timeline
 from app.residence.domain import TravelRecordFields
 from app.residence.schemas import (
     ApplicationDateSimulationResponse,
@@ -36,6 +36,7 @@ from app.residence.schemas import (
     ProposedApplicationDateResponse,
     SelectApplicationDateInput,
     SimulateApplicationDateInput,
+    TimelineResponse,
     TravelRecordEditInput,
     TravelRecordInput,
     TravelRecordResponse,
@@ -47,6 +48,24 @@ router = APIRouter(prefix="/api/v1/cases/{case_id}/application-dates", tags=["ap
 travel_records_router = APIRouter(
     prefix="/api/v1/cases/{case_id}/travel-records", tags=["travel-records"]
 )
+
+timeline_router = APIRouter(prefix="/api/v1/cases/{case_id}/timeline", tags=["timeline"])
+
+
+@timeline_router.get("", response_model=TimelineResponse | None)
+def get_timeline(
+    case: Annotated[ApplicationCase, Depends(require_case_access)],
+    session: Annotated[Session, Depends(get_tenant_session)],
+) -> TimelineResponse | None:
+    """The residence timeline: window boundaries, per-trip counted days, and totals.
+
+    `null` when no application date has been selected. Not a 409, unlike `/simulate`:
+    there is no window and so no counted figure, but the trips themselves are real and the
+    view can still list them — refusing the whole request would take that decision away
+    from the client.
+    """
+    view = timeline.get_timeline(session, case=case)
+    return TimelineResponse.from_domain(view) if view is not None else None
 
 
 def _fields(body: TravelRecordInput) -> TravelRecordFields:
