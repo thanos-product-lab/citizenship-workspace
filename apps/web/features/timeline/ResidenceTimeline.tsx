@@ -202,22 +202,23 @@ function TimelineTable({ timeline, caseId }: { timeline: Timeline; caseId: strin
                 {formatDate(timeline.qualifying_period_start)} to{" "}
                 {formatDate(timeline.qualifying_period_end)}
               </caption>
+              {/*
+                Three columns, not five. Departure and return are one fact — when the trip
+                was — and a separate "Record" column held the word "Confirmed" twelve times
+                over, which is twelve repetitions of the unremarkable and one of the thing
+                that matters. Flagging only the exception is the convention the travel
+                table already set.
+              */}
               <thead role="rowgroup">
                 <tr role="row">
                   <th role="columnheader" scope="col">
                     Destination
                   </th>
                   <th role="columnheader" scope="col">
-                    Left the UK
-                  </th>
-                  <th role="columnheader" scope="col">
-                    Returned
+                    Trip dates
                   </th>
                   <th role="columnheader" scope="col">
                     Days counted
-                  </th>
-                  <th role="columnheader" scope="col">
-                    Record
                   </th>
                 </tr>
               </thead>
@@ -228,7 +229,7 @@ function TimelineTable({ timeline, caseId }: { timeline: Timeline; caseId: strin
               </tbody>
               <tfoot role="rowgroup">
                 <tr role="row">
-                  <th role="rowheader" scope="row" colSpan={3}>
+                  <th role="rowheader" scope="row" colSpan={2}>
                     Total counted inside the qualifying period
                   </th>
                   <td role="cell" className="cw-timeline-table__days">
@@ -243,7 +244,6 @@ function TimelineTable({ timeline, caseId }: { timeline: Timeline; caseId: strin
                       counted once.
                     </span>
                   </td>
-                  <td role="cell" />
                 </tr>
               </tfoot>
             </table>
@@ -265,9 +265,33 @@ function TripRow({ trip }: { trip: TimelineTrip }) {
             Covers the first day of your qualifying period
           </span>
         )}
+        {/* Only the exception is flagged. Confirmed-and-exact is the ordinary state and
+            labelling every row with it buries the one row that is not. */}
+        {!trip.is_trusted && (
+          <span className="cw-timeline-table__flag">
+            <StatusBadge
+              colorVar="--cw-status-not-assessed"
+              surfaceVar="--cw-status-not-assessed-surface"
+              glyph="?"
+              label="Not confirmed"
+            />
+            <span className="cw-timeline-table__note">
+              Left out of your confirmed totals until you confirm its dates.
+            </span>
+          </span>
+        )}
+        {trip.overlaps_with.length > 0 && (
+          <span className="cw-timeline-table__note">
+            Shares days with another trip. The overlap is counted once, but one of the two
+            records is likely wrong.
+          </span>
+        )}
       </td>
-      <td role="cell">{formatDate(trip.departure_date)}</td>
-      <td role="cell">{formatDate(trip.return_date)}</td>
+      <td role="cell" className="cw-timeline-table__dates">
+        {formatDate(trip.departure_date)}
+        {" to "}
+        {formatDate(trip.return_date)}
+      </td>
       <td role="cell" className="cw-timeline-table__days">
         <span className="cw-figure">{days(trip.counted_days)}</span>
         {/* Departure and return days are UK days and never count, which is the single
@@ -278,24 +302,6 @@ function TripRow({ trip }: { trip: TimelineTrip }) {
           days you left and returned are UK days and never count.
         </span>
         {note && <span className="cw-timeline-table__note">{note}</span>}
-      </td>
-      <td role="cell">
-        {trip.is_trusted ? (
-          <span className="cw-timeline-table__confirmed">Confirmed</span>
-        ) : (
-          <StatusBadge
-            colorVar="--cw-status-not-assessed"
-            surfaceVar="--cw-status-not-assessed-surface"
-            glyph="?"
-            label="Not confirmed"
-          />
-        )}
-        {trip.overlaps_with.length > 0 && (
-          <span className="cw-timeline-table__note">
-            Shares days with another trip. The overlap is counted once, but one of the two
-            records is likely wrong.
-          </span>
-        )}
       </td>
     </tr>
   );

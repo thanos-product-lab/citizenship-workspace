@@ -1887,8 +1887,7 @@
    Never the only place a fact lives — each one restates in prose something the row's
    own values already imply. */
 .cw-timeline-table__note,
-.cw-timeline-table__anchor,
-.cw-timeline-table__confirmed {
+.cw-timeline-table__anchor {
   display: block;
   margin-top: var(--cw-space-1);
   color: var(--cw-text-muted);
@@ -2042,4 +2041,62 @@
   .cw-band {
     display: none;
   }
+}
+
+/* The band's named marks, sitting above the drawing. Positioned as a percentage of the
+   viewBox width so they track the axis at any size, and rendered as page text so they
+   scale with the user's font size rather than with the SVG. */
+.cw-band__marks {
+  position: relative;
+  height: 1.1rem;
+}
+
+/* The region label sits above the drawing, the two endpoints below it. Kept on separate
+   rows because the shaded region begins about four-fifths across and its label collides
+   with a right-anchored one at any realistic width. */
+.cw-band__marks--region {
+  margin-bottom: var(--cw-space-1);
+}
+
+.cw-band__marks--ends {
+  margin-top: var(--cw-space-1);
+}
+
+.cw-band__mark {
+  position: absolute;
+  color: var(--cw-text-muted);
+  font-size: var(--cw-text-xs);
+  white-space: nowrap;
+  padding-left: var(--cw-space-1);
+  border-left: 1px solid var(--cw-border-strong);
+}
+
+/* The two ends anchor inwards so neither hangs off the drawing. */
+.cw-band__mark--end {
+  transform: translateX(-100%);
+  padding-left: 0;
+  padding-right: var(--cw-space-1);
+  border-left: none;
+  border-right: 1px solid var(--cw-border-strong);
+}
+
+.cw-band__mark--start {
+  border-left-color: var(--cw-text);
+}
+
+/* Above the drawing, so its rule points down at the region it names. */
+.cw-band__mark--region {
+  border-left-color: var(--cw-border-strong);
+}
+
+/* One fact per row when stacked, with the destination carrying the flags. */
+.cw-timeline-table__flag {
+  display: block;
+  margin-top: var(--cw-space-2);
+  font-weight: var(--cw-weight-regular);
+}
+
+.cw-timeline-table__dates {
+  font-family: var(--cw-font-mono);
+  white-space: nowrap;
 }

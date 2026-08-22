@@ -78,13 +78,9 @@ describe("ResidenceTimeline", () => {
     const headers = within(table)
       .getAllByRole("columnheader")
       .map((cell) => cell.textContent);
-    expect(headers).toEqual([
-      "Destination",
-      "Left the UK",
-      "Returned",
-      "Days counted",
-      "Record",
-    ]);
+    // Three columns. Departure and return are one fact, and a "Record" column reading
+    // "Confirmed" on every row buried the one row that was not.
+    expect(headers).toEqual(["Destination", "Trip dates", "Days counted"]);
     expect(within(table).getAllByRole("rowgroup")).toHaveLength(3);
   });
 
@@ -104,10 +100,10 @@ describe("ResidenceTimeline", () => {
 
     expect(table).toHaveAttribute("role", "table");
     expect(container.querySelectorAll('[role="rowgroup"]')).toHaveLength(3);
-    expect(container.querySelectorAll('[role="columnheader"]')).toHaveLength(5);
+    expect(container.querySelectorAll('[role="columnheader"]')).toHaveLength(3);
     expect(container.querySelectorAll('[role="rowheader"]')).toHaveLength(1);
     expect(container.querySelectorAll('[role="row"]').length).toBeGreaterThanOrEqual(3);
-    expect(container.querySelectorAll('[role="cell"]').length).toBeGreaterThanOrEqual(5);
+    expect(container.querySelectorAll('[role="cell"]').length).toBeGreaterThanOrEqual(3);
   });
 
   it("explains why a trip's counted days differ from its length", async () => {
@@ -154,6 +150,26 @@ describe("ResidenceTimeline", () => {
     expect(row).toHaveTextContent(/kept for your records/i);
   });
 
+  it("labels only the unconfirmed record, never the ordinary state", async () => {
+    // Twelve rows reading "Confirmed" is twelve repetitions of the unremarkable, and it
+    // buries the one row that is not. The travel table set this convention first.
+    render(<ResidenceTimeline caseId="c1" />);
+    await screen.findByRole("table");
+    expect(screen.queryByText("Confirmed")).not.toBeInTheDocument();
+    // And the flag is not the new noise: every record here is confirmed, so no row
+    // carries the exception badge either. Asserting only the absence of "Confirmed" left
+    // "flag every row as unconfirmed" green, which is the same defect wearing a different
+    // word.
+    expect(screen.queryByText("Not confirmed")).not.toBeInTheDocument();
+    expect(screen.queryByText(/left out of your confirmed totals/i)).not.toBeInTheDocument();
+  });
+
+  it("gives a trip's dates as one fact rather than two columns", async () => {
+    render(<ResidenceTimeline caseId="c1" />);
+    const row = (await screen.findByText("Spain")).closest("tr")!;
+    expect(within(row).getByText("14 April 2022 to 26 April 2022")).toBeInTheDocument();
+  });
+
   it("distinguishes an unconfirmed record without relying on colour", async () => {
     get.mockResolvedValue({
       data: aTimeline({
@@ -167,6 +183,7 @@ describe("ResidenceTimeline", () => {
 
     const row = (await screen.findByText("Spain")).closest("tr")!;
     expect(within(row).getByText("Not confirmed")).toBeInTheDocument();
+    expect(row).toHaveTextContent(/left out of your confirmed totals/i);
     // And the totals say what leaving it out costs, rather than silently excluding it.
     expect(screen.getByText(/left out of those totals/i)).toBeInTheDocument();
     expect(screen.getByText(/counting them would give 469 days/i)).toBeInTheDocument();

@@ -20,8 +20,12 @@ export function TimelineDestination({ caseId }: { caseId: string }) {
 
   return (
     <section aria-labelledby="timeline-heading">
+      {/* "Residence timeline" here, "Timeline" in the navigation. The nav has a fixed
+          width and unambiguous context; the page heading is what a screen-reader user
+          hears on arrival and what a browser tab and a bookmark carry, so it says which
+          timeline. */}
       <h2 id="timeline-heading" ref={headingRef} tabIndex={-1} className="cw-case-data__heading">
-        Timeline
+        Residence timeline
       </h2>
       <p className="cw-case-data__note">
         Every period you spent outside the UK, and how each one counts against the five-year

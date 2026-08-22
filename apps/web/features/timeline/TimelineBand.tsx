@@ -72,6 +72,22 @@ export function TimelineBand({ timeline }: { timeline: Timeline }) {
 
   return (
     <figure className="cw-band">
+      {/*
+        Above the drawing, alone. On one row with the two endpoint labels this ran into
+        "Application date" — the shaded region starts around four-fifths across, and a
+        label there and one anchored to the right edge overlap at any realistic width.
+        Two rows cannot collide; narrowing the text until it happens to fit only moves
+        the breakage to a viewport nobody tested.
+      */}
+      <div className="cw-band__marks cw-band__marks--region">
+        <span
+          className="cw-band__mark cw-band__mark--region"
+          style={{ left: `${(finalYearX / VIEW_WIDTH) * 100}%` }}
+        >
+          Final 12 months
+        </span>
+      </div>
+
       <svg
         className="cw-band__svg"
         viewBox={`0 0 ${VIEW_WIDTH} ${VIEW_HEIGHT}`}
@@ -130,6 +146,24 @@ export function TimelineBand({ timeline }: { timeline: Timeline }) {
           }
         />
       </svg>
+
+      {/*
+        The three things the drawing marks, named. Without these the shape has to be
+        decoded from the caption — the shaded region in particular is unreadable as
+        "the final twelve months" unless something says so next to it.
+
+        Real DOM positioned over the drawing, not SVG text, for the same reason as the
+        year labels: text inside the viewBox scales with the drawing rather than with the
+        page, so at 200% zoom it shrinks relative to everything around it.
+      */}
+      <div className="cw-band__marks cw-band__marks--ends">
+        <span className="cw-band__mark cw-band__mark--start" style={{ left: 0 }}>
+          First day tested
+        </span>
+        <span className="cw-band__mark cw-band__mark--end" style={{ left: "100%" }}>
+          Application date
+        </span>
+      </div>
 
       {/* Real DOM, outside the drawing: these scale with the page rather than the viewBox. */}
       <div className="cw-band__axis">

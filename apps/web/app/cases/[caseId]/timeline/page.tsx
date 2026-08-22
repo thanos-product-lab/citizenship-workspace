@@ -4,7 +4,7 @@ import type { JSX } from "react";
 import { TimelineDestination } from "@/features/timeline/TimelineDestination";
 
 export const metadata: Metadata = {
-  title: "Timeline — Citizenship Workspace",
+  title: "Residence timeline — Citizenship Workspace",
 };
 
 export default async function TimelinePage({

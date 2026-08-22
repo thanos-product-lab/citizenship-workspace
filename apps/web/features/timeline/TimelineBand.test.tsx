@@ -165,6 +165,16 @@ describe("TimelineBand", () => {
     expect(bars(container)[0]).toHaveClass("cw-band__trip--unconfirmed");
   });
 
+  it("names the three things the drawing marks", () => {
+    // Without these the shape has to be decoded from the caption, and the shaded region
+    // in particular is unreadable as "the final twelve months" unless something says so
+    // beside it.
+    render(<TimelineBand timeline={aTimeline()} />);
+    expect(screen.getByText("First day tested")).toBeInTheDocument();
+    expect(screen.getByText("Final 12 months")).toBeInTheDocument();
+    expect(screen.getByText("Application date")).toBeInTheDocument();
+  });
+
   it("labels each year on the axis", () => {
     render(<TimelineBand timeline={aTimeline()} />);
     for (const year of ["2023", "2024", "2025", "2026", "2027"]) {
