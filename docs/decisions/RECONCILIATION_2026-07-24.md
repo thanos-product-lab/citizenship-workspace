@@ -84,6 +84,13 @@ Add a caption:
 
 See ADR-0002.
 
+> **Superseded 2026-08-22, and left in place as the record of what was proposed.**
+> The replacement block above is itself wrong by one day: the return day is a UK day
+> (`DETERMINISTIC_RULES_SPEC.md` §5.1), so a trip returning 20 Apr 2022 resolves at
+> **19 April 2027**, not the 20th. Do not re-apply this block; `UI_UX.md` §8.3 and
+> ADR-0002 now carry the corrected version. The error survived a reconciliation whose
+> entire purpose was catching it, which is worth knowing about this document.
+
 ---
 
 ## Item 3 — Stale "please fix" instruction

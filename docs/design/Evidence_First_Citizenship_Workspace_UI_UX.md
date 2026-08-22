@@ -615,8 +615,8 @@ Move proposed application date
 Qualifying start: 16 Apr 2022 · you were abroad (Spain, 14–20 Apr 2022)
 Start-date presence: Not supported
 
-20 April 2027
-Qualifying start: 21 Apr 2022 · after your Spain trip
+19 April 2027
+Qualifying start: 20 Apr 2022 · the day you flew home, a UK day
 Start-date presence: Supported
 
 Total absences recalculate as the whole 5-year window moves.
@@ -627,6 +627,16 @@ Preview before saving.
 > the trip that covers it — often several days, not one. Exact totals come from
 > the server; never compute them in the mockup or the client. (See ADR-0002 and
 > `DETERMINISTIC_RULES_SPEC.md` §9.)
+>
+> **Corrected 2026-08-22.** This block previously read *20 April 2027 · qualifying
+> start 21 Apr 2022 · after your Spain trip*, which is wrong by one day in the
+> direction ADR-0002 exists to prevent. The departure and return days are UK days
+> (`DETERMINISTIC_RULES_SPEC.md` §5.1), so a trip returning 20 Apr 2022 has an
+> absent set of 15–19 Apr and the **return day itself** is the first clear anchor —
+> application date 19 April 2027, not the 20th. `DETERMINISTIC_RULES_SPEC.md` §9
+> was corrected to the same value on 2026-08-12; this block was missed. Note the
+> canonical demo case uses a *longer* trip 1 (14–26 Apr 2022) and therefore resolves
+> at 25 April 2027 — the two examples are not interchangeable.
 
 Use:
 

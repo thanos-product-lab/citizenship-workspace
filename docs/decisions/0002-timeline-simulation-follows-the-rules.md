@@ -30,7 +30,19 @@ interaction the demo hinges on.
 Mockups that show calculated values must be internally consistent with the rules
 spec, and must use the spec's own worked example (§9) where one exists. The
 corrected mockup uses the Spain trip (14–20 April 2022) covering the anchor date,
-resolving at 20 April 2027 — a multi-day move, as the rules require.
+resolving at 19 April 2027 — a multi-day move, as the rules require.
+
+> **Corrected 2026-08-22.** This paragraph originally said *20 April 2027*, and so
+> did the mockup it describes. Both were wrong by one day, and wrong in this ADR's
+> own error class: the return day is a UK day (`DETERMINISTIC_RULES_SPEC.md` §5.1),
+> so a trip returning 20 Apr 2022 leaves 20 Apr clear and the first supported
+> application date is 19 April 2027. `DETERMINISTIC_RULES_SPEC.md` §9 was corrected
+> on 2026-08-12; this ADR and `UI_UX.md` §8.3 were not, and stayed wrong for ten
+> days. The code was right throughout —
+> `tests/rules/test_rules_core.py::test_resolving_date_spec_9_corrected` has pinned
+> 2027-04-19 since the spec was fixed. Which is the lesson: a document that
+> disagrees with a passing test is the document that is wrong, and nothing in the
+> process was looking.
 
 All calculated values in any mockup are illustrative of *behaviour*, never a
 source of truth. The server computes; the client and the mockups render.
