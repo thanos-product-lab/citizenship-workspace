@@ -243,9 +243,33 @@ application dates whose anchor falls 16–25 Apr 2022, i.e. application dates
 
 After moving to 25 Apr 2027, the whole qualifying window shifts forward by 10
 days; absence totals must be recalculated (some early Spain days drop out, no new
-late days enter, since the final-year trips remain inside). Recompute at seed
-time and record the post-move total alongside this fixture before relying on it
-in a test.
+late days enter, since the final-year trips remain inside).
+
+**Post-move figures `[derived 2026-08-22, M5 slice 2]`.** Recorded here so a test can
+cite the fixture rather than the code that produces it:
+
+```
+application date    2027-04-15           2027-04-25
+qualifying window   16 Apr 22-15 Apr 27   26 Apr 22-25 Apr 27
+final year          16 Apr 26-15 Apr 27   26 Apr 26-25 Apr 27
+presence anchor     2022-04-16            2022-04-26
+presence            NOT_CURRENTLY_SAT.    SUPPORTED
+total absences      439  NEAR_THRESHOLD   429  NEAR_THRESHOLD  (21 below the 450 limit)
+final-year          17   SUPPORTED        17   SUPPORTED       (unchanged)
+```
+
+Working for 429: trip 1's absent set is 15-25 Apr 2022, and the new window starts
+26 Apr 2022, so the trip falls entirely outside it and its 10 counted days leave. No
+later days enter, because trips 11 and 12 were already inside the final year.
+439 - 10 = **429**. It stays in the 421-450 band, so the *figure* moves and the
+*conclusion* does not — a distinction the simulator has to render honestly.
+
+**The 24 April counter-example `[demo-critical]`.** Moving to 24 Apr 2027 shifts the
+window to 25 Apr 2022 - 24 Apr 2027 and drops the total to **430**, but the anchor
+25 Apr 2022 is still the last day of trip 1's absent set, so presence is *still*
+`NOT_CURRENTLY_SATISFIED` and the rule still offers 2027-04-25. Nine days of movement,
+a changed total, and no fix — which is ADR-0002's point in one screen, and worth
+showing in the demo before the date that works.
 
 ---
 
