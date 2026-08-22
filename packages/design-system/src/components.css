@@ -456,7 +456,12 @@
   .cw-button,
   .cw-requirement-row,
   .cw-preview,
-  .cw-preview__changes > li {
+  .cw-preview__changes > li,
+  /* The band draws no motion today. Listed so that adding one — a bar growing in, an
+     anchor pulsing — is covered by default rather than by someone remembering. */
+  .cw-band,
+  .cw-band__svg *,
+  .cw-timeline-table tr {
     transition: none;
     animation: none;
   }
@@ -1931,5 +1936,110 @@
   .cw-timeline-table td {
     border-bottom: none;
     padding: var(--cw-space-1) 0;
+  }
+}
+
+/* --- Timeline band (M5) ---------------------------------------------------- */
+
+/*
+ * Decoration over the chronological table. Everything it draws is in that table in words,
+ * so it carries no colour-only meaning by construction: remove every rule below and the
+ * screen loses a shape, not a fact.
+ */
+.cw-band {
+  margin: var(--cw-space-4) 0 var(--cw-space-5);
+  position: relative;
+}
+
+/*
+ * `preserveAspectRatio: none` stretches the drawing to whatever width it is given, which
+ * is what makes the axis proportional at any size without measuring anything in JS. The
+ * height is fixed so bars do not distort with it.
+ */
+.cw-band__svg {
+  width: 100%;
+  height: 96px;
+  display: block;
+  overflow: visible;
+}
+
+.cw-band__baseline {
+  stroke: var(--cw-border-strong);
+  stroke-width: 1;
+}
+
+.cw-band__tick {
+  stroke: var(--cw-border);
+  stroke-width: 1;
+}
+
+.cw-band__final-year {
+  fill: var(--cw-surface-sunken);
+}
+
+.cw-band__trip {
+  fill: var(--cw-accent);
+  opacity: 0.75;
+}
+
+/* Unconfirmed records are hatched rather than recoloured. A different hue would be a
+   second meaning carried by colour alone; a different texture survives greyscale, and the
+   table says "Not confirmed" in words either way. */
+.cw-band__trip--unconfirmed {
+  fill: var(--cw-text-subtle);
+  opacity: 0.45;
+}
+
+/* The trip covering the day presence is tested on. Outlined, not filled differently —
+   the outline reads as "this one is marked" without claiming a severity the band has no
+   business asserting. */
+.cw-band__trip--anchor {
+  stroke: var(--cw-status-near-threshold);
+  stroke-width: 2;
+  opacity: 1;
+}
+
+.cw-band__anchor {
+  stroke: var(--cw-text);
+  stroke-width: 2;
+}
+
+.cw-band__anchor--absent {
+  stroke: var(--cw-status-not-satisfied);
+}
+
+/* Axis labels as real DOM rather than SVG text, so they scale with the page's font size
+   instead of the viewBox. SVG text shrinks relative to its surroundings at 200% zoom,
+   which is the usual way a chart quietly fails the zoom requirement. */
+.cw-band__axis {
+  position: relative;
+  height: 1.25rem;
+  margin-top: calc(var(--cw-space-1) * -1);
+}
+
+.cw-band__axis-label {
+  position: absolute;
+  transform: translateX(-50%);
+  color: var(--cw-text-muted);
+  font-size: var(--cw-text-xs);
+  font-family: var(--cw-font-mono);
+  white-space: nowrap;
+}
+
+.cw-band__caption {
+  margin: var(--cw-space-2) 0 0;
+  color: var(--cw-text-muted);
+  font-size: var(--cw-text-sm);
+}
+
+/*
+ * Below 34rem the band is hidden entirely. Squeezing 1,826 days into a phone width makes
+ * every bar a smudge and the axis unreadable — a shape that cannot be read is worse than
+ * no shape, and the table below is complete on its own. This is the one place the visual
+ * is dropped, and nothing is lost with it.
+ */
+@media (max-width: 34rem) {
+  .cw-band {
+    display: none;
   }
 }

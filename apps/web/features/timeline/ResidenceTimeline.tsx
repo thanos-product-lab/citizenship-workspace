@@ -2,6 +2,7 @@
 
 import { formatDate } from "@/features/requirements/dates";
 
+import { TimelineBand } from "./TimelineBand";
 import { StatusBadge, cardStyle, errorTextStyle, buttonStyle } from "./ui";
 import { type Timeline, type TimelineTrip, useTimeline } from "./useTimeline";
 
@@ -177,6 +178,11 @@ function TimelineTable({ timeline, caseId }: { timeline: Timeline; caseId: strin
         <h3 id="timeline-trips-heading" style={{ margin: 0, fontSize: "var(--cw-text-lg)" }}>
           Every trip, in order
         </h3>
+
+        {/* The shape, above the table it describes. Never instead of it, and never behind
+            a toggle: a control that can hide the accessible version is a control that
+            eventually does. */}
+        {timeline.trips.length > 0 && <TimelineBand timeline={timeline} />}
 
         {timeline.trips.length === 0 ? (
           <p style={{ marginTop: "var(--cw-space-3)", color: "var(--cw-text-muted)" }}>
