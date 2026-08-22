@@ -454,8 +454,11 @@
  */
 @media (prefers-reduced-motion: reduce) {
   .cw-button,
-  .cw-requirement-row {
+  .cw-requirement-row,
+  .cw-preview,
+  .cw-preview__changes > li {
     transition: none;
+    animation: none;
   }
 }
 
@@ -1710,4 +1713,66 @@
   font-size: var(--cw-text-sm);
   color: var(--cw-text-muted);
   max-width: 62ch;
+}
+
+/* --- Application-date preview (M5) ----------------------------------------- */
+
+/*
+ * The unsaved comparison. Everything about it says "not yet real": a dashed rather than
+ * solid boundary, a recessed surface, and every conclusion inside carrying its own
+ * `Preview` currency badge. None of that is load-bearing on its own — the heading reads
+ * "Preview — not saved" and the badges carry text, so removing all colour and all border
+ * treatment leaves the state fully legible.
+ */
+.cw-preview {
+  background: var(--cw-surface-sunken);
+}
+
+.cw-preview__changes {
+  list-style: none;
+  margin: var(--cw-space-4) 0 0;
+  padding: 0;
+  display: grid;
+  gap: var(--cw-space-4);
+}
+
+.cw-preview__changes > li {
+  padding-top: var(--cw-space-4);
+  border-top: 1px solid var(--cw-border);
+}
+
+.cw-preview__changes > li:first-child {
+  padding-top: 0;
+  border-top: none;
+}
+
+.cw-preview__title {
+  margin: 0;
+  font-weight: var(--cw-weight-medium);
+}
+
+/* The two status badges and the arrow between them. `flex-wrap` matters at 200% zoom:
+   the pair is four glyph+label chips wide and must stack rather than clip. */
+.cw-preview__badges {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--cw-space-2);
+  margin: var(--cw-space-2) 0 0;
+}
+
+.cw-preview__summary {
+  margin: var(--cw-space-2) 0 0;
+  color: var(--cw-text-muted);
+  font-size: var(--cw-text-sm);
+}
+
+/* A limitation the candidate date would introduce. Indented by a rule rather than by
+   colour, so it reads as subordinate without relying on hue. */
+.cw-preview__limitation {
+  margin: var(--cw-space-2) 0 0;
+  padding-left: var(--cw-space-3);
+  border-left: 2px solid var(--cw-border-strong);
+  color: var(--cw-text-muted);
+  font-size: var(--cw-text-sm);
 }
