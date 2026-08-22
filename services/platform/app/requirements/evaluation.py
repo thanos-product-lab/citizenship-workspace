@@ -148,15 +148,54 @@ class InputLinkSpec:
 
 
 @dataclass(frozen=True)
-class EvaluatedResult:
+class UnlinkedResult:
+    """A conclusion with no provenance attached, and no field in which to attach any.
+
+    This is what an evaluation run at a *candidate* application date produces. The rules
+    read the same route profile and travel versions as a trusted run, but the date they
+    measured against belongs to no versioned input — so there is nothing honest to link,
+    and strict provenance (Domain §3.6: every conclusion references the exact input
+    versions it read) cannot be satisfied.
+
+    Having no `input_links` field is the point. `_persist_result` takes `EvaluatedResult`,
+    so handing it one of these is a type error rather than an assertion someone can delete
+    — the same reason the simulation's API response has no field that can hold `CURRENT`
+    (Domain §42.2), applied on the inside.
+    """
+
     requirement_key: str
     conclusion: str
     summary_code: str | None
     summary_parameters: dict[str, object] = field(default_factory=dict)
     calculation_breakdown: dict[str, object] = field(default_factory=dict)
-    input_links: tuple[InputLinkSpec, ...] = ()
     limitations: tuple[Limitation, ...] = ()
     next_actions: tuple[NextAction, ...] = ()
+
+
+@dataclass(frozen=True)
+class EvaluatedResult(UnlinkedResult):
+    """A conclusion plus the exact input versions it read. Only this can be persisted."""
+
+    input_links: tuple[InputLinkSpec, ...] = ()
+
+
+def without_provenance(result: EvaluatedResult) -> UnlinkedResult:
+    """Drop the input links from a result evaluated at an overridden date.
+
+    A real conversion, not a cast: an `EvaluatedResult` narrowed to its base type still
+    carries the links, and those links would name the case's *current* application-date
+    version beside a conclusion drawn from a different date. That is precisely the claim
+    provenance exists to prevent, so the object itself must not carry it.
+    """
+    return UnlinkedResult(
+        requirement_key=result.requirement_key,
+        conclusion=result.conclusion,
+        summary_code=result.summary_code,
+        summary_parameters=result.summary_parameters,
+        calculation_breakdown=result.calculation_breakdown,
+        limitations=result.limitations,
+        next_actions=result.next_actions,
+    )
 
 
 @dataclass(frozen=True)
@@ -572,9 +611,7 @@ def _evaluate_travel_consistency(inputs: ResidenceAssessmentInputs) -> Evaluated
             )
         )
 
-    uncertain = [
-        t for t in trips if t.date_confidence in UNCERTAIN_CONFIDENCES and _in_window(t)
-    ]
+    uncertain = [t for t in trips if t.date_confidence in UNCERTAIN_CONFIDENCES and _in_window(t)]
     if uncertain:
         limitations.append(
             Limitation(

@@ -19,6 +19,7 @@ import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
+from typing import overload
 
 import structlog
 from sqlalchemy.orm import Session
@@ -51,9 +52,11 @@ from app.requirements.evaluation import (
     ResidenceAssessmentInputs,
     RouteAssessmentInputs,
     TripInput,
+    UnlinkedResult,
     evaluate_residence_requirements,
     evaluate_route_requirements,
     evaluate_status_holding_period,
+    without_provenance,
 )
 from app.requirements.models import RequirementDefinition, RuleVersion
 from app.residence.domain import (
@@ -149,15 +152,110 @@ def recalculate(
         # leading cause of the failure being recorded in the first place.
         failed_at = datetime.now(UTC)
         _abandon(session)
-        _record_failed_run(
-            case_id=case_id, user=user, failure_code=_classify(exc), at=failed_at
-        )
+        _record_failed_run(case_id=case_id, user=user, failure_code=_classify(exc), at=failed_at)
         raise
 
     return RecalculationOutcome(
         run=run,
         result_count=result_count,
         requirements=AssessmentRepository.list_requirements_with_active_result(session, case_id),
+    )
+
+
+@dataclass(frozen=True)
+class TrustedEvaluation:
+    """Evaluated at the case's own current application date. Carries provenance, so these
+    results — and only these — can be persisted."""
+
+    application_date: date
+    results: list[EvaluatedResult]
+
+
+@dataclass(frozen=True)
+class OverriddenEvaluation:
+    """Evaluated at a candidate application date the case does not hold. No versioned
+    input carries that date, so the results have no provenance and no field for any."""
+
+    application_date: date
+    results: list[UnlinkedResult]
+
+
+Evaluation = TrustedEvaluation | OverriddenEvaluation
+
+
+@overload
+def evaluate_case(session: Session, *, case: ApplicationCase) -> TrustedEvaluation: ...
+
+
+@overload
+def evaluate_case(
+    session: Session, *, case: ApplicationCase, application_date_override: None
+) -> TrustedEvaluation: ...
+
+
+@overload
+def evaluate_case(
+    session: Session, *, case: ApplicationCase, application_date_override: date
+) -> OverriddenEvaluation: ...
+
+
+def evaluate_case(
+    session: Session, *, case: ApplicationCase, application_date_override: date | None = None
+) -> Evaluation:
+    """Read the case's current inputs and run every in-scope evaluator over them.
+
+    **Read-only.** Only SELECTs: the confirmed route profile version, the selected
+    application date version, and every active travel record. Nothing is added to the
+    session, nothing is flushed, no unit of work is constructed. That is what lets the
+    simulation path call it (Domain §10.3: previewing a date must not change the case).
+
+    `application_date_override` substitutes the date the rules measure against — the whole
+    of what a date simulation changes. Everything else is read from the case exactly as a
+    trusted run reads it, which is the point: both paths call this one function, so the
+    arithmetic cannot fork. `tests/assessments/test_simulation.py` pins that by simulating
+    the case's own current date and requiring the results to match the persisted ones
+    field for field.
+
+    The return type is a closed union rather than a flag, and the overloads above narrow it
+    per call site: omit the override and you get `TrustedEvaluation`, pass one and you get
+    `OverriddenEvaluation`, whose results have no `input_links` field at all. So
+    `_persist_result` cannot be handed a simulated result — a type error at `just typecheck`,
+    with no `isinstance` guard for anyone to delete. See `without_provenance`.
+    """
+    profile_version = _current_route_profile_version(session, case.id)
+    date_version = _current_application_date_version(session, case.id)
+    application_date = application_date_override or date_version.application_date
+
+    route_inputs = RouteAssessmentInputs(
+        date_of_birth=profile_version.date_of_birth,
+        status_type=profile_version.status_type,
+        status_granted_on=profile_version.status_granted_on,
+        married_to_british_citizen=profile_version.married_to_british_citizen,
+        may_already_be_british=profile_version.may_already_be_british,
+        application_date=application_date,
+        route_profile_version_id=profile_version.id,
+        application_date_version_id=date_version.id,
+    )
+    residence_inputs = ResidenceAssessmentInputs(
+        application_date=application_date,
+        application_date_version_id=date_version.id,
+        trips=_gather_trips(session, case.id),
+    )
+    evaluated = [
+        *evaluate_route_requirements(route_inputs),
+        evaluate_status_holding_period(route_inputs),
+        *evaluate_residence_requirements(residence_inputs),
+    ]
+
+    if application_date_override is None:
+        return TrustedEvaluation(application_date=application_date, results=evaluated)
+    # The version ids above are real — the profile and travel versions genuinely were read.
+    # The application-date version was not: its date is not the date these conclusions were
+    # drawn at. Rather than link a subset and leave the rule's declared dependencies
+    # half-satisfied, the whole link set goes.
+    return OverriddenEvaluation(
+        application_date=application_date,
+        results=[without_provenance(result) for result in evaluated],
     )
 
 
@@ -168,29 +266,7 @@ def _run_trusted_assessment(
     here, so the caller's `except` covers exactly the work whose failure is worth
     recording — and nothing after the commit, where a failure would mean the run
     succeeded and a FAILED row would be a lie."""
-    profile_version = _current_route_profile_version(session, case.id)
-    date_version = _current_application_date_version(session, case.id)
-
-    route_inputs = RouteAssessmentInputs(
-        date_of_birth=profile_version.date_of_birth,
-        status_type=profile_version.status_type,
-        status_granted_on=profile_version.status_granted_on,
-        married_to_british_citizen=profile_version.married_to_british_citizen,
-        may_already_be_british=profile_version.may_already_be_british,
-        application_date=date_version.application_date,
-        route_profile_version_id=profile_version.id,
-        application_date_version_id=date_version.id,
-    )
-    residence_inputs = ResidenceAssessmentInputs(
-        application_date=date_version.application_date,
-        application_date_version_id=date_version.id,
-        trips=_gather_trips(session, case.id),
-    )
-    evaluated = [
-        *evaluate_route_requirements(route_inputs),
-        evaluate_status_holding_period(route_inputs),
-        *evaluate_residence_requirements(residence_inputs),
-    ]
+    evaluated = evaluate_case(session, case=case).results
 
     run = AssessmentRun.start(
         case_id=case.id,
@@ -523,9 +599,7 @@ def _persist_result(
         )
     rule_version = RequirementCatalogRepository.get_active_rule_version(session, definition.id)
     if rule_version is None:
-        raise RuleConfigurationMissing(
-            f"no active rule version for {evaluation.requirement_key!r}"
-        )
+        raise RuleConfigurationMissing(f"no active rule version for {evaluation.requirement_key!r}")
 
     result_id = uuid.uuid4()
     # Supersede the prior non-superseded result whether it is CURRENT or STALE — a recalc after
