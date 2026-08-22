@@ -77,6 +77,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/cases/{case_id}/application-dates/simulate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Simulate Application Date
+         * @description Preview a candidate application date. Changes nothing.
+         *
+         *     No `CurrentUser` dependency, deliberately: nothing here is attributed to an actor
+         *     because nothing here is recorded. The caller is already authenticated and their
+         *     ownership already checked by `require_case_access`; a simulation additionally has no
+         *     `created_by` to fill in, and taking the user would invite one.
+         *
+         *     409 when the case has no selected application date — there is no "before" side to
+         *     compare against, and half a comparison is worse than a clear refusal.
+         */
+        post: operations["simulate_application_date_api_v1_cases__case_id__application_dates_simulate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/cases/{case_id}/assessments/recalculate": {
         parameters: {
             query?: never;
@@ -339,6 +367,46 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * ApplicationDateSimulationResponse
+         * @description A preview, and shaped so it cannot be read as anything else.
+         *
+         *     `saved: false` and `mode: "PROVISIONAL"` are literals, `candidate_application_date` sits
+         *     beside `current_application_date` so the two are never confused, and the per-requirement
+         *     type is deliberately *not* `RequirementSummary` — after `just api-client` the generated
+         *     TypeScript types differ, so a simulated value cannot be passed where a real result is
+         *     expected without a compile error.
+         */
+        ApplicationDateSimulationResponse: {
+            /**
+             * Candidate Application Date
+             * Format: date
+             */
+            candidate_application_date: string;
+            /**
+             * Current Application Date
+             * Format: date
+             */
+            current_application_date: string;
+            /**
+             * Mode
+             * @default PROVISIONAL
+             * @constant
+             */
+            mode: "PROVISIONAL";
+            /** Requirements */
+            requirements: components["schemas"]["SimulatedRequirementResponse"][];
+            /** Resolving Application Date */
+            resolving_application_date: string | null;
+            /**
+             * Saved
+             * @default false
+             * @constant
+             */
+            saved: false;
+            windows_after: components["schemas"]["SimulatedWindowsResponse"];
+            windows_before: components["schemas"]["SimulatedWindowsResponse"];
+        };
         /**
          * CaseOverview
          * @description The case overview read model (Domain §44.1).
@@ -1050,6 +1118,115 @@ export interface components {
             expected_revision?: number | null;
         };
         /**
+         * SimulateApplicationDateInput
+         * @description The one thing a simulation takes. No `expected_revision`: nothing is being written,
+         *     so there is no version to be stale against — the concurrency check belongs on the save
+         *     that follows, where `/select` already has one.
+         */
+        SimulateApplicationDateInput: {
+            /**
+             * Candidate Application Date
+             * Format: date
+             */
+            candidate_application_date: string;
+        };
+        /**
+         * SimulatedAfter
+         * @description What the rules conclude at the candidate date — and nothing that could be mistaken
+         *     for a stored result.
+         *
+         *     `currency` is a `Literal["PROVISIONAL"]`, so there is no code path by which this object
+         *     can report itself as current (Domain §42.2). There is no run id, no result id, and no
+         *     input links, because none of those exist: the simulation persists nothing, and the
+         *     conclusion was drawn at a date no versioned input carries.
+         */
+        SimulatedAfter: {
+            /** Calculation Breakdown */
+            calculation_breakdown: {
+                [key: string]: unknown;
+            };
+            /** Conclusion */
+            conclusion: string;
+            /**
+             * Currency
+             * @default PROVISIONAL
+             * @constant
+             */
+            currency: "PROVISIONAL";
+            summary: components["schemas"]["RenderedMessage"] | null;
+            /** Summary Code */
+            summary_code: string | null;
+            /** Summary Parameters */
+            summary_parameters: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * SimulatedBefore
+         * @description What the case says today, currency included.
+         *
+         *     A stale conclusion is reported as stale rather than quietly recomputed. The comparison
+         *     is against what the case actually concluded, not against what it would conclude if it
+         *     were rerun — those are different questions, and conflating them would let a simulation
+         *     silently launder a stale result into a fresh-looking baseline.
+         */
+        SimulatedBefore: {
+            /** Conclusion */
+            conclusion: string;
+            /** Currency */
+            currency: string | null;
+            summary: components["schemas"]["RenderedMessage"] | null;
+            /** Summary Code */
+            summary_code: string | null;
+            /** Summary Parameters */
+            summary_parameters: {
+                [key: string]: unknown;
+            };
+        };
+        /** SimulatedRequirementResponse */
+        SimulatedRequirementResponse: {
+            after: components["schemas"]["SimulatedAfter"];
+            before: components["schemas"]["SimulatedBefore"];
+            /** Conclusion Changed */
+            conclusion_changed: boolean;
+            /** Display Order */
+            display_order: number;
+            /** Group Key */
+            group_key: string;
+            /** Requirement Key */
+            requirement_key: string;
+            /** Title */
+            title: string;
+        };
+        /** SimulatedWindowsResponse */
+        SimulatedWindowsResponse: {
+            /**
+             * Final Year End
+             * Format: date
+             */
+            final_year_end: string;
+            /**
+             * Final Year Start
+             * Format: date
+             */
+            final_year_start: string;
+            /**
+             * Presence Anchor
+             * Format: date
+             */
+            presence_anchor: string;
+            /**
+             * Qualifying Period End
+             * Format: date
+             */
+            qualifying_period_end: string;
+            /**
+             * Qualifying Period Start
+             * Format: date
+             */
+            qualifying_period_start: string;
+        };
+        /**
          * StaleInformation
          * @description Why a result is no longer current, and since when. Present only while
          *     `currency == STALE` — it explains that currency, and never modifies the conclusion.
@@ -1366,6 +1543,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProposedApplicationDateResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    simulate_application_date_api_v1_cases__case_id__application_dates_simulate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SimulateApplicationDateInput"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApplicationDateSimulationResponse"];
                 };
             };
             /** @description Validation Error */

@@ -8,9 +8,17 @@ M3B rules concern, deliberately not enforced at this input boundary.
 
 import uuid
 from datetime import date, datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from app.assessments.schemas import RenderedMessage
+from app.assessments.simulation import (
+    SimulatedRequirement,
+    SimulatedWindows,
+    SimulationView,
+)
+from app.requirements.messages import render_summary
 from app.residence.csv_import import CONTENT_MAX_LENGTH, ParsedImport, RowDiagnostic
 from app.residence.domain import (
     DESTINATION_LABEL_MAX_LENGTH,
@@ -206,3 +214,137 @@ class ImportValidationResponse(BaseModel):
 class ImportCommitResponse(BaseModel):
     imported_count: int
     records: list[TravelRecordResponse]
+
+
+# --- Application-date simulation (Domain §42.2, §48.3) -----------------------
+
+
+class SimulateApplicationDateInput(BaseModel):
+    """The one thing a simulation takes. No `expected_revision`: nothing is being written,
+    so there is no version to be stale against — the concurrency check belongs on the save
+    that follows, where `/select` already has one."""
+
+    candidate_application_date: date
+
+
+class SimulatedWindowsResponse(BaseModel):
+    qualifying_period_start: date
+    qualifying_period_end: date
+    final_year_start: date
+    final_year_end: date
+    presence_anchor: date
+
+    @classmethod
+    def from_domain(cls, windows: SimulatedWindows) -> "SimulatedWindowsResponse":
+        return cls(
+            qualifying_period_start=windows.qualifying_period.start,
+            qualifying_period_end=windows.qualifying_period.end,
+            final_year_start=windows.final_year.start,
+            final_year_end=windows.final_year.end,
+            presence_anchor=windows.presence_anchor,
+        )
+
+
+class SimulatedBefore(BaseModel):
+    """What the case says today, currency included.
+
+    A stale conclusion is reported as stale rather than quietly recomputed. The comparison
+    is against what the case actually concluded, not against what it would conclude if it
+    were rerun — those are different questions, and conflating them would let a simulation
+    silently launder a stale result into a fresh-looking baseline."""
+
+    conclusion: str
+    currency: str | None
+    summary_code: str | None
+    summary: RenderedMessage | None
+    summary_parameters: dict[str, object]
+
+
+class SimulatedAfter(BaseModel):
+    """What the rules conclude at the candidate date — and nothing that could be mistaken
+    for a stored result.
+
+    `currency` is a `Literal["PROVISIONAL"]`, so there is no code path by which this object
+    can report itself as current (Domain §42.2). There is no run id, no result id, and no
+    input links, because none of those exist: the simulation persists nothing, and the
+    conclusion was drawn at a date no versioned input carries."""
+
+    currency: Literal["PROVISIONAL"] = "PROVISIONAL"
+    conclusion: str
+    summary_code: str | None
+    summary: RenderedMessage | None
+    summary_parameters: dict[str, object]
+    calculation_breakdown: dict[str, object]
+
+
+class SimulatedRequirementResponse(BaseModel):
+    requirement_key: str
+    title: str
+    group_key: str
+    display_order: int
+    conclusion_changed: bool
+    before: SimulatedBefore
+    after: SimulatedAfter
+
+    @classmethod
+    def from_domain(cls, row: SimulatedRequirement) -> "SimulatedRequirementResponse":
+        return cls(
+            requirement_key=row.definition.requirement_key,
+            title=row.definition.title,
+            group_key=row.definition.group_key,
+            display_order=row.definition.display_order,
+            conclusion_changed=row.before_conclusion != row.after.conclusion,
+            before=SimulatedBefore(
+                conclusion=row.before_conclusion,
+                currency=row.before_currency,
+                summary_code=row.before_summary_code,
+                summary=RenderedMessage.build(
+                    row.before_summary_code, row.before_summary_parameters, render_summary
+                ),
+                summary_parameters=row.before_summary_parameters,
+            ),
+            after=SimulatedAfter(
+                conclusion=row.after.conclusion,
+                summary_code=row.after.summary_code,
+                summary=RenderedMessage.build(
+                    row.after.summary_code, row.after.summary_parameters, render_summary
+                ),
+                summary_parameters=row.after.summary_parameters,
+                calculation_breakdown=row.after.calculation_breakdown,
+            ),
+        )
+
+
+class ApplicationDateSimulationResponse(BaseModel):
+    """A preview, and shaped so it cannot be read as anything else.
+
+    `saved: false` and `mode: "PROVISIONAL"` are literals, `candidate_application_date` sits
+    beside `current_application_date` so the two are never confused, and the per-requirement
+    type is deliberately *not* `RequirementSummary` — after `just api-client` the generated
+    TypeScript types differ, so a simulated value cannot be passed where a real result is
+    expected without a compile error."""
+
+    saved: Literal[False] = False
+    mode: Literal["PROVISIONAL"] = "PROVISIONAL"
+    current_application_date: date
+    candidate_application_date: date
+    windows_before: SimulatedWindowsResponse
+    windows_after: SimulatedWindowsResponse
+    #: The nearest later date the presence rule found clear of confirmed absence, if it
+    #: looked. Lifted out of the rule's parameters because it is the value that turns
+    #: "not currently satisfied" into an action (RULES_SPEC §7.5).
+    resolving_application_date: date | None
+    requirements: list[SimulatedRequirementResponse]
+
+    @classmethod
+    def from_domain(cls, view: SimulationView) -> "ApplicationDateSimulationResponse":
+        return cls(
+            current_application_date=view.current_application_date,
+            candidate_application_date=view.candidate_application_date,
+            windows_before=SimulatedWindowsResponse.from_domain(view.windows_before),
+            windows_after=SimulatedWindowsResponse.from_domain(view.windows_after),
+            resolving_application_date=view.resolving_application_date,
+            requirements=[
+                SimulatedRequirementResponse.from_domain(row) for row in view.requirements
+            ],
+        )

@@ -2,9 +2,17 @@
 
     GET  /api/v1/cases/{case_id}/application-dates          → current date, or null
     POST /api/v1/cases/{case_id}/application-dates/select   → select or change it
+    POST /api/v1/cases/{case_id}/application-dates/simulate → preview another date
 
-Both mount under `require_case_access`, so the ownership boundary is enforced the same
+All mount under `require_case_access`, so the ownership boundary is enforced the same
 way as every case-scoped read/command. The ACTIVE-case gate lives in the service.
+
+`/simulate` writes nothing (Domain §10.3, §48.3). Its handler lives here because the URL
+space for a proposed application date belongs here, while the logic lives in
+`app.assessments.simulation` because evaluating requirements is that module's work — a
+route composing two modules' services, not a module reaching into another's internals.
+It is the second write-nothing POST in this file; `/travel-records/import/validate` is the
+first, and both are POSTs only because they carry a body.
 """
 
 import uuid
@@ -13,6 +21,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
+from app.assessments import simulation
 from app.auth.dependencies import get_current_user
 from app.auth.schemas import CurrentUser
 from app.cases.dependencies import require_case_access
@@ -20,11 +29,13 @@ from app.cases.domain import ApplicationCase
 from app.residence import service
 from app.residence.domain import TravelRecordFields
 from app.residence.schemas import (
+    ApplicationDateSimulationResponse,
     CsvImportInput,
     ImportCommitResponse,
     ImportValidationResponse,
     ProposedApplicationDateResponse,
     SelectApplicationDateInput,
+    SimulateApplicationDateInput,
     TravelRecordEditInput,
     TravelRecordInput,
     TravelRecordResponse,
@@ -59,6 +70,28 @@ def get_application_date(
     if outcome is None:
         return None
     return ProposedApplicationDateResponse.from_domain(outcome.root, outcome.version)
+
+
+@router.post("/simulate", response_model=ApplicationDateSimulationResponse)
+def simulate_application_date(
+    body: SimulateApplicationDateInput,
+    case: Annotated[ApplicationCase, Depends(require_case_access)],
+    session: Annotated[Session, Depends(get_tenant_session)],
+) -> ApplicationDateSimulationResponse:
+    """Preview a candidate application date. Changes nothing.
+
+    No `CurrentUser` dependency, deliberately: nothing here is attributed to an actor
+    because nothing here is recorded. The caller is already authenticated and their
+    ownership already checked by `require_case_access`; a simulation additionally has no
+    `created_by` to fill in, and taking the user would invite one.
+
+    409 when the case has no selected application date — there is no "before" side to
+    compare against, and half a comparison is worse than a clear refusal.
+    """
+    view = simulation.simulate_application_date(
+        session, case=case, candidate_date=body.candidate_application_date
+    )
+    return ApplicationDateSimulationResponse.from_domain(view)
 
 
 @router.post("/select", response_model=ProposedApplicationDateResponse)

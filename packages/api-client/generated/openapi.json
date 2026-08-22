@@ -1,6 +1,68 @@
 {
   "components": {
     "schemas": {
+      "ApplicationDateSimulationResponse": {
+        "description": "A preview, and shaped so it cannot be read as anything else.\n\n`saved: false` and `mode: \"PROVISIONAL\"` are literals, `candidate_application_date` sits\nbeside `current_application_date` so the two are never confused, and the per-requirement\ntype is deliberately *not* `RequirementSummary` \u2014 after `just api-client` the generated\nTypeScript types differ, so a simulated value cannot be passed where a real result is\nexpected without a compile error.",
+        "properties": {
+          "candidate_application_date": {
+            "format": "date",
+            "title": "Candidate Application Date",
+            "type": "string"
+          },
+          "current_application_date": {
+            "format": "date",
+            "title": "Current Application Date",
+            "type": "string"
+          },
+          "mode": {
+            "const": "PROVISIONAL",
+            "default": "PROVISIONAL",
+            "title": "Mode",
+            "type": "string"
+          },
+          "requirements": {
+            "items": {
+              "$ref": "#/components/schemas/SimulatedRequirementResponse"
+            },
+            "title": "Requirements",
+            "type": "array"
+          },
+          "resolving_application_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolving Application Date"
+          },
+          "saved": {
+            "const": false,
+            "default": false,
+            "title": "Saved",
+            "type": "boolean"
+          },
+          "windows_after": {
+            "$ref": "#/components/schemas/SimulatedWindowsResponse"
+          },
+          "windows_before": {
+            "$ref": "#/components/schemas/SimulatedWindowsResponse"
+          }
+        },
+        "required": [
+          "current_application_date",
+          "candidate_application_date",
+          "windows_before",
+          "windows_after",
+          "resolving_application_date",
+          "requirements"
+        ],
+        "title": "ApplicationDateSimulationResponse",
+        "type": "object"
+      },
       "CaseOverview": {
         "description": "The case overview read model (Domain \u00a744.1).\n\n`open_issue_count` is present from M6: with issue derivation running, a zero genuinely\nmeans the system looked and found nothing. **`evidence_coverage` is still absent** \u2014\nthere is no evidence subsystem until M7, and a zero there would claim a check nobody\nran, which is a stronger statement than the product can make.",
         "properties": {
@@ -1837,6 +1899,210 @@
         "title": "SelectApplicationDateInput",
         "type": "object"
       },
+      "SimulateApplicationDateInput": {
+        "description": "The one thing a simulation takes. No `expected_revision`: nothing is being written,\nso there is no version to be stale against \u2014 the concurrency check belongs on the save\nthat follows, where `/select` already has one.",
+        "properties": {
+          "candidate_application_date": {
+            "format": "date",
+            "title": "Candidate Application Date",
+            "type": "string"
+          }
+        },
+        "required": [
+          "candidate_application_date"
+        ],
+        "title": "SimulateApplicationDateInput",
+        "type": "object"
+      },
+      "SimulatedAfter": {
+        "description": "What the rules conclude at the candidate date \u2014 and nothing that could be mistaken\nfor a stored result.\n\n`currency` is a `Literal[\"PROVISIONAL\"]`, so there is no code path by which this object\ncan report itself as current (Domain \u00a742.2). There is no run id, no result id, and no\ninput links, because none of those exist: the simulation persists nothing, and the\nconclusion was drawn at a date no versioned input carries.",
+        "properties": {
+          "calculation_breakdown": {
+            "additionalProperties": true,
+            "title": "Calculation Breakdown",
+            "type": "object"
+          },
+          "conclusion": {
+            "title": "Conclusion",
+            "type": "string"
+          },
+          "currency": {
+            "const": "PROVISIONAL",
+            "default": "PROVISIONAL",
+            "title": "Currency",
+            "type": "string"
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RenderedMessage"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "summary_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary Code"
+          },
+          "summary_parameters": {
+            "additionalProperties": true,
+            "title": "Summary Parameters",
+            "type": "object"
+          }
+        },
+        "required": [
+          "conclusion",
+          "summary_code",
+          "summary",
+          "summary_parameters",
+          "calculation_breakdown"
+        ],
+        "title": "SimulatedAfter",
+        "type": "object"
+      },
+      "SimulatedBefore": {
+        "description": "What the case says today, currency included.\n\nA stale conclusion is reported as stale rather than quietly recomputed. The comparison\nis against what the case actually concluded, not against what it would conclude if it\nwere rerun \u2014 those are different questions, and conflating them would let a simulation\nsilently launder a stale result into a fresh-looking baseline.",
+        "properties": {
+          "conclusion": {
+            "title": "Conclusion",
+            "type": "string"
+          },
+          "currency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RenderedMessage"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "summary_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary Code"
+          },
+          "summary_parameters": {
+            "additionalProperties": true,
+            "title": "Summary Parameters",
+            "type": "object"
+          }
+        },
+        "required": [
+          "conclusion",
+          "currency",
+          "summary_code",
+          "summary",
+          "summary_parameters"
+        ],
+        "title": "SimulatedBefore",
+        "type": "object"
+      },
+      "SimulatedRequirementResponse": {
+        "properties": {
+          "after": {
+            "$ref": "#/components/schemas/SimulatedAfter"
+          },
+          "before": {
+            "$ref": "#/components/schemas/SimulatedBefore"
+          },
+          "conclusion_changed": {
+            "title": "Conclusion Changed",
+            "type": "boolean"
+          },
+          "display_order": {
+            "title": "Display Order",
+            "type": "integer"
+          },
+          "group_key": {
+            "title": "Group Key",
+            "type": "string"
+          },
+          "requirement_key": {
+            "title": "Requirement Key",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "requirement_key",
+          "title",
+          "group_key",
+          "display_order",
+          "conclusion_changed",
+          "before",
+          "after"
+        ],
+        "title": "SimulatedRequirementResponse",
+        "type": "object"
+      },
+      "SimulatedWindowsResponse": {
+        "properties": {
+          "final_year_end": {
+            "format": "date",
+            "title": "Final Year End",
+            "type": "string"
+          },
+          "final_year_start": {
+            "format": "date",
+            "title": "Final Year Start",
+            "type": "string"
+          },
+          "presence_anchor": {
+            "format": "date",
+            "title": "Presence Anchor",
+            "type": "string"
+          },
+          "qualifying_period_end": {
+            "format": "date",
+            "title": "Qualifying Period End",
+            "type": "string"
+          },
+          "qualifying_period_start": {
+            "format": "date",
+            "title": "Qualifying Period Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "qualifying_period_start",
+          "qualifying_period_end",
+          "final_year_start",
+          "final_year_end",
+          "presence_anchor"
+        ],
+        "title": "SimulatedWindowsResponse",
+        "type": "object"
+      },
       "StaleInformation": {
         "description": "Why a result is no longer current, and since when. Present only while\n`currency == STALE` \u2014 it explains that currency, and never modifies the conclusion.",
         "properties": {
@@ -2468,6 +2734,65 @@
           }
         ],
         "summary": "Select Application Date",
+        "tags": [
+          "application-dates"
+        ]
+      }
+    },
+    "/api/v1/cases/{case_id}/application-dates/simulate": {
+      "post": {
+        "description": "Preview a candidate application date. Changes nothing.\n\nNo `CurrentUser` dependency, deliberately: nothing here is attributed to an actor\nbecause nothing here is recorded. The caller is already authenticated and their\nownership already checked by `require_case_access`; a simulation additionally has no\n`created_by` to fill in, and taking the user would invite one.\n\n409 when the case has no selected application date \u2014 there is no \"before\" side to\ncompare against, and half a comparison is worse than a clear refusal.",
+        "operationId": "simulate_application_date_api_v1_cases__case_id__application_dates_simulate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Case Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SimulateApplicationDateInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationDateSimulationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Simulate Application Date",
         "tags": [
           "application-dates"
         ]
