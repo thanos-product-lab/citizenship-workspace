@@ -50,6 +50,10 @@ class UploadGrantResponse(BaseModel):
     """
 
     upload_url: str
+    # The signed policy fields that must accompany the file in the multipart POST. They
+    # carry the key, the content type and the size ceiling, and the signature covers all
+    # of them — so a client can send this form or nothing, but cannot amend it.
+    upload_fields: dict[str, str]
     upload_token: str
     expires_in_seconds: int
     # Echoed so the client sends exactly the type that was signed; a mismatch is
@@ -60,6 +64,7 @@ class UploadGrantResponse(BaseModel):
     def from_domain(cls, grant: UploadGrant) -> "UploadGrantResponse":
         return cls(
             upload_url=grant.upload_url,
+            upload_fields=grant.upload_fields,
             upload_token=grant.upload_token,
             expires_in_seconds=grant.expires_in_seconds,
             media_type=grant.media_type,

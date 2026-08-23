@@ -57,6 +57,18 @@ gates that separately, and the balance changes when the content is a real person
 immigration status rather than a synthetic fixture. Until then this is a decision, not an
 open question.
 
+## Uploads are presigned POST, not PUT
+
+Downloads are presigned GETs, as above. **Uploads are presigned POSTs**, and the reason is
+not symmetry — it is that only POST carries a signed policy.
+
+A presigned PUT signs the key and the content type and nothing else, so the size limit can
+only be checked *after* the bytes are in the bucket. Verified against MinIO during review:
+a URL presigned from a ten-byte declaration accepted a 40 MB body with a 200, and the
+object stayed, with no database row naming it — an authenticated user could write unbounded
+unreferenced data into private storage. `content-length-range` in a POST policy moves that
+bound to the store, where the body is refused outright.
+
 ## Invariants touched
 
 - Domain §51.1 step 2 is met by expiry, not by revocation. Recorded rather than glossed.

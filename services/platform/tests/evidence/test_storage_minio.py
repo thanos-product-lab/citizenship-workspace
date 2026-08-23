@@ -15,26 +15,34 @@ import uuid
 import httpx
 import pytest
 
-from app.core.storage import S3Storage, build_key
+from app.core.storage import PresignedUpload, S3Storage, build_key
 
 pytestmark = pytest.mark.minio
 
 _BODY = b"%PDF-1.7 hello"
+_MAX_BYTES = 1024
 
 
 def _key() -> str:
-    return build_key(case_id=uuid.uuid4(), evidence_item_id=uuid.uuid4())
+    return build_key(case_id=uuid.uuid4())
 
 
-def _put(url: str, body: bytes, media_type: str) -> int:
-    return httpx.put(url, content=body, headers={"Content-Type": media_type}).status_code
+def _post(signed: PresignedUpload, body: bytes, media_type: str) -> int:
+    """Send a multipart POST exactly as a browser would: signed fields, then the file."""
+    return httpx.post(
+        signed.url,
+        data=signed.fields,
+        files={"file": ("document", body, media_type)},
+    ).status_code
 
 
-def _upload(storage: S3Storage) -> str:
+def _upload(storage: S3Storage, *, key: str | None = None) -> str:
     """Put one object there through the presigned path a real client would use."""
-    key = _key()
-    url = storage.presigned_put_url(key, media_type="application/pdf", ttl_seconds=60)
-    assert _put(url, _BODY, "application/pdf") == 200
+    key = key or _key()
+    signed = storage.presigned_upload(
+        key, media_type="application/pdf", ttl_seconds=60, max_bytes=_MAX_BYTES
+    )
+    assert _post(signed, _BODY, "application/pdf") in {200, 204}
     return key
 
 
@@ -76,13 +84,54 @@ def test_an_old_signed_url_cannot_reach_a_deleted_object(minio_storage: S3Storag
 def test_an_upload_cannot_declare_a_different_content_type_than_the_one_signed(
     minio_storage: S3Storage,
 ) -> None:
-    """ContentType is part of the signature, so the media type the server authorised is
-    the media type that can be uploaded. This is the first half of "unsupported file
-    types are rejected before processing" — the magic-byte check in the worker is the
-    second, because a client controls the bytes even when it cannot control the label."""
+    """The content type is inside the signed policy, so the media type the server
+    authorised is the only one that can be uploaded. This is the first half of
+    "unsupported file types are rejected before processing" — the magic-byte check in
+    the worker is the second, because a client controls the bytes even when it cannot
+    control the label."""
     key = _key()
-    url = minio_storage.presigned_put_url(key, media_type="application/pdf", ttl_seconds=60)
-    assert _put(url, b"MZ\x90\x00", "application/x-msdownload") == 403
+    signed = minio_storage.presigned_upload(
+        key, media_type="application/pdf", ttl_seconds=60, max_bytes=_MAX_BYTES
+    )
+    # The policy constrains the `Content-Type` *form field*, so that is what has to be
+    # tampered with. The first version of this test varied the multipart part header
+    # instead and got a 204 — the upload succeeded, because the signed field still said
+    # application/pdf. The condition was doing its job; the test was aiming past it.
+    tampered = PresignedUpload(
+        url=signed.url,
+        fields={**signed.fields, "Content-Type": "application/x-msdownload"},
+    )
+    assert _post(tampered, b"MZ\x90\x00", "application/x-msdownload") == 403
+    assert minio_storage.head(key) is None
+
+
+def test_an_oversized_body_is_refused_by_the_store_and_nothing_is_written(
+    minio_storage: S3Storage,
+) -> None:
+    """The size ceiling is a control, not a check that runs afterwards.
+
+    A presigned PUT signs only the key and the type, so a client that declared ten bytes
+    could upload forty megabytes and the object would already be sitting in a private
+    bucket before anything looked at it. A presigned POST carries `content-length-range`
+    in the signed policy, so the store refuses the body itself — and the assertion that
+    matters is the second one: nothing was written.
+    """
+    key = _key()
+    signed = minio_storage.presigned_upload(
+        key, media_type="application/pdf", ttl_seconds=60, max_bytes=_MAX_BYTES
+    )
+    assert _post(signed, b"%PDF-1.7" + b"x" * (_MAX_BYTES * 4), "application/pdf") == 400
+    assert minio_storage.head(key) is None
+
+
+def test_an_empty_body_is_refused(minio_storage: S3Storage) -> None:
+    """A zero-byte file is not a document, and the policy's lower bound says so."""
+    key = _key()
+    signed = minio_storage.presigned_upload(
+        key, media_type="application/pdf", ttl_seconds=60, max_bytes=_MAX_BYTES
+    )
+    assert _post(signed, b"", "application/pdf") == 400
+    assert minio_storage.head(key) is None
 
 
 def test_the_download_disposition_reaches_the_response(minio_storage: S3Storage) -> None:

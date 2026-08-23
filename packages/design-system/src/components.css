@@ -616,8 +616,13 @@
   margin-bottom: var(--cw-space-2);
 }
 
-/* Quiet, label-like headers — lighter than a bold black row, so the data reads first. */
-.cw-trips th {
+/* Quiet, label-like column headers — lighter than a bold black row, so the data reads
+   first. Scoped to `thead`: this styling is for a short, fixed label like "Destination",
+   and applying it to a `<th scope="row">` made the row's own content — a document name,
+   the most important thing in the row — 12px subtle *and* `nowrap`, so at 320px it
+   overflowed to 428px and clipped mid-word. `overflow-wrap` cannot rescue a cell that
+   `white-space: nowrap` has told not to wrap. */
+.cw-trips thead th {
   text-align: left;
   padding: var(--cw-space-2) var(--cw-space-3);
   border-bottom: 1px solid var(--cw-border-strong);
@@ -626,6 +631,16 @@
   letter-spacing: 0.02em;
   color: var(--cw-text-subtle);
   white-space: nowrap;
+}
+
+/* A row header names the record. It reads at body size, in body colour, and wraps —
+   the hierarchy the column-header rule inverts. */
+.cw-trips tbody th {
+  text-align: left;
+  padding: var(--cw-space-3);
+  font-weight: var(--cw-weight-semibold);
+  color: var(--cw-text);
+  overflow-wrap: anywhere;
 }
 
 .cw-trips td {
@@ -2179,17 +2194,20 @@
 
 .cw-evidence-state__meaning {
   color: var(--cw-text-muted);
-  font-size: 0.8125rem;
+  font-size: var(--cw-text-sm);
   line-height: 1.4;
 }
 
 .cw-evidence-state--sm .cw-evidence-state__meaning {
-  font-size: 0.75rem;
+  font-size: var(--cw-text-xs);
 }
 
-/* An unrecognised state gets the neutral treatment and its raw value, so it can never
-   pass for a state this build understands. */
+/* An unrecognised state gets the same neutral chip an unrecognised conclusion gets — a
+   surface and a border, not just muted text — so it is visibly a value the product does
+   not understand rather than a quieter version of one it does. */
 .cw-status-badge[data-evidence-state="unknown"] {
   color: var(--cw-text-muted);
+  background: var(--cw-surface-sunken);
+  border: 1px solid var(--cw-border);
   font-variant-numeric: tabular-nums;
 }

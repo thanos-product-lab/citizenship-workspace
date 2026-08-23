@@ -50,10 +50,6 @@ TENANT_FREE_ROUTES: frozenset[str] = frozenset(
         # The caller's own identity, straight from the verified token. Touches no
         # case-scoped table.
         "GET /api/v1/me",
-        # Listing and creating cases is scoped by `owner_user_id` in the query itself;
-        # there is no case to establish a tenant for until one exists.
-        "GET /api/v1/cases",
-        "POST /api/v1/cases",
         # FastAPI's own docs endpoints are Starlette routes, not `APIRoute`s, so they
         # are never in scope here — `test_the_allowlist_names_only_routes_that_exist`
         # refused them when they were listed, which is the guard doing its job.
@@ -157,6 +153,33 @@ def test_the_allowlist_names_only_routes_that_exist() -> None:
     live = {_label(route) for route in _api_routes()}
     stale = sorted(TENANT_FREE_ROUTES - live)
     assert stale == [], f"TENANT_FREE_ROUTES names routes that no longer exist: {stale}"
+
+
+def test_the_allowlist_names_only_routes_that_need_it() -> None:
+    """An unnecessary exemption is worse than a stale one.
+
+    A route that already enters the tenant context gains nothing from being listed, and
+    loses the check: if it is later rewired to `get_db`, the allowlist absolves it in
+    silence. The first draft of this file listed `GET` and `POST /api/v1/cases` on the
+    reasoning that "there is no case to establish a tenant for until one exists" — which
+    is not what the code does; both depend on `get_tenant_session` directly. Those are
+    the two routes that read and write the ownership table itself, so the exemption was
+    covering exactly the wrong thing.
+
+    Existence and necessity are different questions, and the test above only asks the
+    first, which is why this one is separate rather than folded into it.
+    """
+    unnecessary = sorted(
+        _label(route)
+        for route in _api_routes()
+        if _label(route) in TENANT_FREE_ROUTES
+        and get_tenant_session in _dependency_calls(route.dependant)
+    )
+    assert unnecessary == [], (
+        f"routes exempted from the tenant check that already pass it: {unnecessary}. "
+        "Remove them from TENANT_FREE_ROUTES — an exemption they do not need is an "
+        "exemption that hides a future regression."
+    )
 
 
 def test_no_case_scoped_aggregate_is_addressable_outside_a_case_prefix() -> None:

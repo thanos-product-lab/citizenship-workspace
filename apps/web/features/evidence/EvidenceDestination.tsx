@@ -1,6 +1,6 @@
 "use client";
 
-import { type JSX, useRef, useState } from "react";
+import { type JSX, useEffect, useRef, useState } from "react";
 
 import { EvidenceState } from "@cw/design-system";
 
@@ -35,6 +35,32 @@ export function EvidenceDestination({ caseId }: { caseId: string }): JSX.Element
   const { data, status, refetch, isFetching } = useEvidence(caseId);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const [announcement, setAnnouncement] = useState("");
+  // State, not a ref: setting a ref does not re-render, so an effect keyed on it would
+  // never run and focus would stay on the control that just unmounted. Copied from
+  // IssuesDestination, where the same trap was found.
+  const [returnFocus, setReturnFocus] = useState(false);
+
+  // The retry button disappears on success, taking keyboard focus to <body> with it, so
+  // focus is parked on the heading once the refetch settles.
+  useEffect(() => {
+    if (returnFocus && status !== "pending" && !isFetching) {
+      setReturnFocus(false);
+      headingRef.current?.focus();
+    }
+  }, [returnFocus, status, isFetching]);
+
+  // Announce the library's shape once it settles. `role="status"` mounted with its text
+  // already in it does not announce reliably, so both the loaded and the empty case are
+  // routed through the live region that is always mounted below.
+  const itemCount = data?.items.length;
+  useEffect(() => {
+    if (status !== "success" || itemCount === undefined) return;
+    setAnnouncement(
+      itemCount === 0
+        ? "No documents yet."
+        : `${itemCount} document${itemCount === 1 ? "" : "s"}.`,
+    );
+  }, [status, itemCount]);
 
   return (
     <section aria-labelledby="evidence-heading">
@@ -64,8 +90,21 @@ export function EvidenceDestination({ caseId }: { caseId: string }): JSX.Element
             the case holds.
           </p>
           <div>
-            <button type="button" style={secondaryButtonStyle} onClick={() => void refetch()}>
-              Try again
+            {/* `aria-disabled` with a guard, never `disabled`: disabling the focused
+                control drops the keyboard user to <body> mid-retry. Repeated presses
+                would otherwise fire concurrent refetches with no feedback. */}
+            <button
+              type="button"
+              style={secondaryButtonStyle}
+              aria-disabled={isFetching}
+              onClick={() => {
+                if (isFetching) return;
+                setReturnFocus(true);
+                setAnnouncement("Retrying.");
+                void refetch();
+              }}
+            >
+              {isFetching ? "Retrying…" : "Try again"}
             </button>
           </div>
         </div>
@@ -77,7 +116,15 @@ export function EvidenceDestination({ caseId }: { caseId: string }): JSX.Element
             caseId={caseId}
             supportedMediaTypes={data.supported_media_types ?? []}
             maxBytes={data.max_upload_bytes}
-            onUploaded={(name) => setAnnouncement(`${name} uploaded.`)}
+            onStarted={(name) => setAnnouncement(`Uploading ${name}…`)}
+            onUploaded={(name) =>
+              // Says where it went and what state it is in, not just that it happened —
+              // and the trailing space differs from the "Uploading…" message above, so
+              // two uploads of the same document still re-announce.
+              setAnnouncement(
+                `${name} uploaded. It is listed as Uploaded, and nothing has read it yet.`,
+              )
+            }
           />
 
           {data.items.length === 0 ? (
@@ -129,7 +176,10 @@ function EvidenceTable({ items, busy }: { items: EvidenceItem[]; busy: boolean }
               </th>
               <td>{CATEGORY_LABELS[item.category] ?? item.category}</td>
               <td>
-                <EvidenceState status={item.processing_status} size="sm" withMeaning />
+                {/* No `withMeaning` here: the caption says it once. Repeating it per
+                    row means a screen-reader user hears the same sentence twenty times
+                    down a twenty-document library. */}
+                <EvidenceState status={item.processing_status} size="sm" />
               </td>
               <td>{formatBytes(item.size_bytes)}</td>
               <td>{formatDate(item.uploaded_at)}</td>

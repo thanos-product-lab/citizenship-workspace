@@ -46,6 +46,9 @@ _log = structlog.get_logger()
 # login role does.
 _FALLBACK_SECRET = secrets.token_bytes(32)
 
+#: A configured key shorter than this is weaker than the fallback it replaces.
+_MIN_SECRET_LENGTH = 32
+
 
 @dataclass(frozen=True)
 class UploadGrant:
@@ -55,20 +58,48 @@ class UploadGrant:
     expires_at: int
 
 
+def _now() -> int:
+    """The current time, as one named seam. Exists so a test can move the clock without
+    reaching into this module's imports or sleeping through a real TTL."""
+    return int(time.time())
+
+
 def _secret() -> bytes:
     configured = get_settings().upload_token_secret
     return configured.encode() if configured else _FALLBACK_SECRET
 
 
+#: Where a per-process fallback key is a reasonable convenience rather than a defect.
+_FALLBACK_ENVIRONMENTS = frozenset({"local", "docker", "test"})
+
+
 def check_upload_secret() -> None:
-    if not get_settings().upload_token_secret:
-        _log.warning(
-            "storage.upload_secret_unset",
-            detail=(
-                "UPLOAD_TOKEN_SECRET is unset; upload tokens are signed with a "
-                "per-process key and will not verify across API replicas"
-            ),
+    """Refuse to boot without a signing key anywhere it matters.
+
+    A per-process key is fine for one local API. Deployed across replicas it is not:
+    a token signed by one instance is rejected by another, and the symptom is
+    intermittent 422s that look exactly like tampering. That is a bad thing to discover
+    from a support conversation, so it fails at boot instead of warning into a log.
+    """
+    settings = get_settings()
+    if settings.upload_token_secret:
+        if len(settings.upload_token_secret) < _MIN_SECRET_LENGTH:
+            raise RuntimeError(
+                f"UPLOAD_TOKEN_SECRET must be at least {_MIN_SECRET_LENGTH} characters"
+            )
+        return
+    if settings.environment not in _FALLBACK_ENVIRONMENTS:
+        raise RuntimeError(
+            "UPLOAD_TOKEN_SECRET must be set outside local development: upload tokens "
+            "signed with a per-process key do not verify across API replicas"
         )
+    _log.warning(
+        "storage.upload_secret_unset",
+        detail=(
+            "UPLOAD_TOKEN_SECRET is unset; upload tokens are signed with a "
+            "per-process key and will not verify across API replicas"
+        ),
+    )
 
 
 def _b64(raw: bytes) -> str:
@@ -86,7 +117,7 @@ def issue(*, case_id: uuid.UUID, storage_key: str, media_type: str, ttl_seconds:
                 "case_id": str(case_id),
                 "storage_key": storage_key,
                 "media_type": media_type,
-                "exp": int(time.time()) + ttl_seconds,
+                "exp": _now() + ttl_seconds,
             },
             separators=(",", ":"),
             sort_keys=True,
@@ -123,7 +154,7 @@ def verify(token: str, *, case_id: uuid.UUID) -> UploadGrant:
     except (ValueError, KeyError, TypeError) as exc:
         raise InvalidUploadGrant("malformed upload token") from exc
 
-    if grant.expires_at < int(time.time()):
+    if grant.expires_at < _now():
         raise InvalidUploadGrant("the upload token has expired")
     if grant.case_id != case_id:
         # A token minted for one case, presented against another. Ownership is already

@@ -507,8 +507,10 @@ export interface components {
          *
          *     `open_issue_count` is present from M6: with issue derivation running, a zero genuinely
          *     means the system looked and found nothing. **`evidence_coverage` is still absent** —
-         *     there is no evidence subsystem until M7, and a zero there would claim a check nobody
-         *     ran, which is a stronger statement than the product can make.
+         *     documents can be uploaded from M7 slice 1, but nothing links one to a requirement or
+         *     a trip until slice 4, so coverage is not a thing the system can measure yet. A zero
+         *     would claim a check nobody ran, which is a stronger statement than the product can
+         *     make.
          */
         CaseOverview: {
             /** Application Date */
@@ -1727,6 +1729,10 @@ export interface components {
             expires_in_seconds: number;
             /** Media Type */
             media_type: string;
+            /** Upload Fields */
+            upload_fields: {
+                [key: string]: string;
+            };
             /** Upload Token */
             upload_token: string;
             /** Upload Url */

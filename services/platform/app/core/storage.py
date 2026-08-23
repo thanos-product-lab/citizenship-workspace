@@ -32,17 +32,30 @@ from typing import Protocol
 from urllib.parse import quote
 
 import boto3
-import structlog
 from botocore.config import Config
 from botocore.exceptions import ClientError
 
 from app.core.config import Settings, get_settings
 
-_log = structlog.get_logger()
-
 
 class StorageError(RuntimeError):
     """The store could not be reached or refused an operation."""
+
+
+@dataclass(frozen=True)
+class PresignedUpload:
+    """A presigned POST: the URL to send to, and the fields that must accompany the file.
+
+    A presigned **POST** rather than a presigned PUT, because only POST can carry a
+    policy — and the policy is what puts the size ceiling on the *store* rather than on
+    a promise. `declared_size_bytes` is a client's claim; a PUT signed from it accepts a
+    40 MB body just as happily as a 10 byte one, and the oversize is then already
+    written to a private bucket with no row naming it. With `content-length-range` in
+    the policy the store refuses the body itself.
+    """
+
+    url: str
+    fields: dict[str, str]
 
 
 @dataclass(frozen=True)
@@ -53,20 +66,27 @@ class StoredObject:
     etag: str
 
 
-def build_key(*, case_id: uuid.UUID, evidence_item_id: uuid.UUID) -> str:
+def build_key(*, case_id: uuid.UUID) -> str:
     """A server-generated, non-semantic storage key.
 
-    The random suffix is what makes the key unguessable; the case and item ids make an
-    object traceable when someone is staring at a bucket listing during an incident.
-    Neither is a credential — `Domain §52`, and every read path re-checks ownership.
+    The random component is what makes the key unguessable; the case id makes an object
+    traceable to a case when someone is staring at a bucket listing during an incident.
+    Neither is a credential — Domain §52, and every read path re-checks ownership.
+
+    There is deliberately no evidence-item id in the path. The key is minted *before*
+    any row exists (ADR-0019), so an item id here could only be a throwaway that never
+    becomes the item's real id — a segment that looks traceable and is not, which is
+    worse than one that does not pretend.
     """
-    return f"cases/{case_id}/evidence/{evidence_item_id}/{secrets.token_urlsafe(16)}"
+    return f"cases/{case_id}/evidence/{secrets.token_urlsafe(24)}"
 
 
 class StorageAdapter(Protocol):
     def ensure_bucket(self) -> None: ...
 
-    def presigned_put_url(self, key: str, *, media_type: str, ttl_seconds: int) -> str: ...
+    def presigned_upload(
+        self, key: str, *, media_type: str, ttl_seconds: int, max_bytes: int
+    ) -> PresignedUpload: ...
 
     def presigned_get_url(
         self, key: str, *, ttl_seconds: int, download_filename: str | None = None
@@ -150,15 +170,30 @@ class S3Storage:
             except ClientError as exc:  # pragma: no cover - depends on live storage
                 raise StorageError("could not create the evidence bucket") from exc
 
-    def presigned_put_url(self, key: str, *, media_type: str, ttl_seconds: int) -> str:
-        # ContentType is part of the signature, so a client cannot upload a different
-        # declared type than the one the server authorised.
-        return str(
-            self._client.generate_presigned_url(
-                "put_object",
-                Params={"Bucket": self._bucket, "Key": key, "ContentType": media_type},
-                ExpiresIn=ttl_seconds,
-            )
+    def presigned_upload(
+        self, key: str, *, media_type: str, ttl_seconds: int, max_bytes: int
+    ) -> PresignedUpload:
+        """Authorise one upload: this key, this media type, at most this many bytes.
+
+        All three are inside the signed policy, so none of them is a request the client
+        can restate. An oversized or mistyped body is refused by the store with a 400
+        and nothing is written — which is what makes "the size limit" a control rather
+        than a check that runs after the damage.
+        """
+        signed = self._client.generate_presigned_post(
+            Bucket=self._bucket,
+            Key=key,
+            Fields={"Content-Type": media_type},
+            Conditions=[
+                {"Content-Type": media_type},
+                ["content-length-range", 1, max_bytes],
+                # A zero-byte file is not a document; the ceiling is the real bound.
+            ],
+            ExpiresIn=ttl_seconds,
+        )
+        return PresignedUpload(
+            url=str(signed["url"]),
+            fields={str(k): str(v) for k, v in signed["fields"].items()},
         )
 
     def presigned_get_url(
@@ -205,8 +240,18 @@ class InMemoryStorage:
     def ensure_bucket(self) -> None:
         return None
 
-    def presigned_put_url(self, key: str, *, media_type: str, ttl_seconds: int) -> str:
-        return f"memory://put/{key}?content-type={media_type}&expires={ttl_seconds}"
+    def presigned_upload(
+        self, key: str, *, media_type: str, ttl_seconds: int, max_bytes: int
+    ) -> PresignedUpload:
+        return PresignedUpload(
+            url=f"memory://put/{key}",
+            fields={
+                "key": key,
+                "Content-Type": media_type,
+                "x-cw-expires": str(ttl_seconds),
+                "x-cw-max-bytes": str(max_bytes),
+            },
+        )
 
     def presigned_get_url(
         self, key: str, *, ttl_seconds: int, download_filename: str | None = None

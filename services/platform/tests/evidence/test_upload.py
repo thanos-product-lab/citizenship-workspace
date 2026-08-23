@@ -1,9 +1,9 @@
 """The upload path, through the real HTTP commands.
 
-Two calls with a direct-to-storage PUT between them, and only the second writes:
+Two calls with a direct-to-storage upload between them, and only the second writes:
 
-    POST .../evidence/uploads   -> a presigned PUT URL and a signed token
-    (the browser PUTs the bytes; here the fake store is written directly)
+    POST .../evidence/uploads   -> a presigned POST form and a signed token
+    (the browser posts the bytes; here the fake store is written directly)
     POST .../evidence           -> the document is recorded
 
 Covers what each call refuses, that an abandoned upload leaves nothing behind, and the
@@ -12,6 +12,7 @@ behaviour. Storage *security* properties are in `test_storage_minio.py`, and not
 here may claim them.
 """
 
+import time
 import uuid
 from collections.abc import Callable
 from typing import Any
@@ -20,6 +21,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.core.storage import InMemoryStorage, get_storage
+from app.evidence import upload_token
 from tests.security.conftest import SUPPORTED_ANSWERS
 
 pytestmark = pytest.mark.integration
@@ -27,6 +29,9 @@ pytestmark = pytest.mark.integration
 Api = Callable[[str], TestClient]
 
 _PDF = b"%PDF-1.7 a synthetic, fictional document"
+
+#: Comfortably past the presign TTL, whatever it is configured to.
+_EXPIRY_OVERSHOOT = 3600
 
 
 def _active_case(api: Api, user: str) -> str:
@@ -50,14 +55,17 @@ def _store() -> InMemoryStorage:
     return store
 
 
-def _key_from(upload_url: str) -> str:
-    """The fake's presigned URL is `memory://put/<key>?…`; recover the key from it.
+def _key_from(grant: dict[str, Any]) -> str:
+    """The storage key the grant authorises.
 
-    Deliberately parsed rather than returned in the response: the client never learns
-    the storage key as a field, only as an opaque token, and the test holds itself to
-    the same shape.
+    A presigned POST names its key in the signed fields, so the client does see it —
+    Domain §52 makes that harmless, since a key is not a permission. What stays true is
+    narrower and is asserted separately: no *response body* describing a document names
+    where its object lives.
     """
-    return upload_url.removeprefix("memory://put/").split("?", 1)[0]
+    fields = grant["upload_fields"]
+    assert isinstance(fields, dict)
+    return str(fields["key"])
 
 
 def _start(api: Api, user: str, case_id: str, **overrides: Any) -> dict[str, Any]:
@@ -80,7 +88,7 @@ def _record(api: Api, user: str, case_id: str, token: str, **overrides: Any) -> 
 def _upload(api: Api, user: str, case_id: str) -> Any:
     """The whole happy path: grant, PUT the bytes, record."""
     grant = _start(api, user, case_id)
-    _store().put(_key_from(str(grant["upload_url"])), _PDF)
+    _store().put(_key_from(grant), _PDF)
     return _record(api, user, case_id, str(grant["upload_token"]))
 
 
@@ -94,6 +102,8 @@ def test_starting_an_upload_returns_a_url_and_a_token(api: Api) -> None:
     assert grant["upload_token"]
     assert grant["media_type"] == "application/pdf"
     assert grant["expires_in_seconds"] > 0
+    # The signed policy fields, which carry the ceiling the store will enforce.
+    assert "key" in grant["upload_fields"]
 
 
 def test_starting_an_upload_writes_nothing(api: Api) -> None:
@@ -161,10 +171,57 @@ def test_the_size_recorded_is_the_stores_count_not_the_clients_claim(api: Api) -
     has to be the one the store reports."""
     case_id = _active_case(api, "user_a")
     grant = _start(api, "user_a", case_id, declared_size_bytes=1)
-    _store().put(_key_from(str(grant["upload_url"])), _PDF)
+    _store().put(_key_from(grant), _PDF)
 
     body = _record(api, "user_a", case_id, str(grant["upload_token"])).json()
     assert body["size_bytes"] == len(_PDF) != 1
+
+
+def test_recording_the_same_upload_twice_returns_the_same_document(api: Api) -> None:
+    """Recording is idempotent on the storage key.
+
+    This is the retry-prone call: the bytes are already in the store, so a client that
+    loses the response sends it again. Without idempotency the retry violates
+    `uq_evidence_files_storage_key`, and the resulting IntegrityError renders SQLAlchemy's
+    bound parameters — the storage key, the original filename and the checksum — into a
+    500 and from there into the logs. Threat model §6.4 forbids exactly that, and it is
+    reachable without malice.
+    """
+    case_id = _active_case(api, "user_a")
+    grant = _start(api, "user_a", case_id)
+    _store().put(_key_from(grant), _PDF)
+    token = str(grant["upload_token"])
+
+    first = _record(api, "user_a", case_id, token)
+    second = _record(api, "user_a", case_id, token)
+
+    assert first.status_code == 201
+    assert second.status_code < 400, second.text
+    assert second.json()["id"] == first.json()["id"]
+    # One document, not two, and no second file version.
+    assert len(api("user_a").get(_url(case_id)).json()["items"]) == 1
+
+
+def test_a_retried_recording_never_puts_the_key_or_the_filename_in_an_error(
+    api: Api,
+) -> None:
+    """The specific leak the idempotency exists to close. A 500 here would carry the
+    storage key, `booking.pdf` and the checksum in its body and its traceback."""
+    case_id = _active_case(api, "user_a")
+    grant = _start(api, "user_a", case_id)
+    _store().put(_key_from(grant), _PDF)
+    token = str(grant["upload_token"])
+
+    _record(api, "user_a", case_id, token)
+    retried = _record(api, "user_a", case_id, token)
+
+    # The filename is legitimately in the response — it is the document's own metadata,
+    # returned to the document's owner, exactly as the first call returned it. What must
+    # never appear is the storage key, and what must never happen is the 500 whose
+    # traceback carries the key, the filename and the checksum together into the logs.
+    assert retried.status_code != 500
+    assert _key_from(grant) not in retried.text
+    assert "storage_key" not in retried.text
 
 
 # --- the token ---------------------------------------------------------------------
@@ -175,7 +232,7 @@ def test_an_altered_token_is_refused(api: Api) -> None:
     §12). Editing any part of it must invalidate the signature."""
     case_id = _active_case(api, "user_a")
     grant = _start(api, "user_a", case_id)
-    _store().put(_key_from(str(grant["upload_url"])), _PDF)
+    _store().put(_key_from(grant), _PDF)
 
     body, signature = str(grant["upload_token"]).split(".", 1)
     tampered = f"{body[:-2]}XY.{signature}"
@@ -192,7 +249,7 @@ def test_a_token_minted_for_one_case_cannot_be_used_on_another(api: Api) -> None
     first = _active_case(api, "user_a")
     second = _active_case(api, "user_a")
     grant = _start(api, "user_a", first)
-    _store().put(_key_from(str(grant["upload_url"])), _PDF)
+    _store().put(_key_from(grant), _PDF)
 
     response = _record(api, "user_a", second, str(grant["upload_token"]))
     assert response.status_code == 422
@@ -249,13 +306,22 @@ def test_a_content_url_is_issued_only_after_the_ownership_check(api: Api) -> Non
     assert body["expires_in_seconds"] > 0
 
 
-def test_the_response_never_carries_the_storage_key(api: Api) -> None:
-    """A key is not a permission (Domain §52), but it is also not the client's business:
-    nothing it can see should name where the object lives."""
+def test_no_document_response_names_where_its_object_lives(api: Api) -> None:
+    """A key is not a permission (Domain §52) and the upload grant necessarily contains
+    one — a presigned POST names its key in the signed fields. What must not happen is a
+    document's own representation carrying it: nothing in the library, the detail or the
+    content response should say where the bytes are."""
     case_id = _active_case(api, "user_a")
-    recorded = _upload(api, "user_a", case_id).json()
-    assert "storage_key" not in recorded
-    assert "cases/" not in str(recorded)
+    item_id = _upload(api, "user_a", case_id).json()["id"]
+
+    # The content response is excluded on purpose: a presigned GET *is* the object's
+    # address, so it names the key by construction. That is Domain §52's point rather
+    # than a violation of it — the URL is short-lived and issued only after the
+    # ownership check, and possessing it still confers nothing on any other object.
+    for path in ("", f"/{item_id}"):
+        body = str(api("user_a").get(f"{_url(case_id)}{path}").json())
+        assert "storage_key" not in body
+        assert "cases/" not in body
 
 
 # --- case lifecycle ----------------------------------------------------------------
@@ -272,3 +338,23 @@ def test_evidence_cannot_be_added_to_a_case_that_is_not_active(api: Api) -> None
     )
     assert response.status_code == 409
     assert response.json()["code"] == "CASE_NOT_ACTIVE"
+
+
+# --- the token's expiry ------------------------------------------------------------
+
+
+def test_an_expired_token_is_refused(api: Api, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The token cannot outlive the URL it accompanies. ADR-0019 names expiry as one of
+    the three things the signature binds, and the other two are covered above."""
+    case_id = _active_case(api, "user_a")
+    grant = _start(api, "user_a", case_id)
+    _store().put(_key_from(grant), _PDF)
+
+    # Move the clock past the TTL rather than sleeping through it.
+    real_now = int(time.time())
+    monkeypatch.setattr(upload_token, "_now", lambda: real_now + _EXPIRY_OVERSHOOT)
+
+    response = _record(api, "user_a", case_id, str(grant["upload_token"]))
+    assert response.status_code == 422
+    assert response.json()["code"] == "INVALID_UPLOAD_GRANT"
+    assert api("user_a").get(_url(case_id)).json()["items"] == []

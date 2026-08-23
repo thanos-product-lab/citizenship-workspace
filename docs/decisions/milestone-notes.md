@@ -634,9 +634,60 @@ was the one the M5 notes predicted:
 The M5 note's own suggested fix (invert to an allowlist) was necessary and not sufficient.
 Both holes sat *behind* it.
 
+### What the reviewers found, and what it cost
+
+Seven violations across two reviews, and **five of them were things a green suite was
+hiding** — the M4/M5/M6 pattern again, sharper.
+
+- **A retried upload logged the storage key, the filename and the checksum.** The
+  `session.flush()` for the file row sits outside `UnitOfWork`, so the storage-key unique
+  violation escaped as a raw `IntegrityError` → 500, and SQLAlchemy renders bound
+  parameters into the message. Reachable by any client that loses the response to step 3
+  and retries — no malice needed. Recording is now idempotent on the storage key, and
+  `hide_parameters=True` on the engine closes the wider class.
+- **The presigned PUT had no size ceiling.** `declared_size_bytes` is a client's claim and
+  the real check ran *after* the bytes were in the bucket — verified against MinIO: a URL
+  presigned for a 10-byte declaration accepted 40 MB with a 200, and the object stayed,
+  with no row naming it. Now a presigned **POST** with `content-length-range` in the signed
+  policy, so the store refuses the body. The ceiling moved from a promise to a control.
+- **The route allowlist exempted the two routes that read and write `cases`.** Both already
+  depend on `get_tenant_session`; the stated reason did not describe the code. An
+  unnecessary exemption is worse than a stale one, because it absolves a future rewiring in
+  silence — and `test_the_allowlist_names_only_routes_that_exist` asks about existence, not
+  necessity. Twin guard added.
+- **The `Uploaded` badge was invisible in dark mode: 1.99:1.** The dark blocks re-declare
+  status and currency tokens but never provenance, and `EvidenceState` picked a provenance
+  token. Measured in Chromium at 14px. The glyph is `currentColor`, so the non-colour
+  signal failed too — the State column read as an empty cell, which on that screen means
+  "no state". `ai_proposed` had the same defect at 2.67:1, pre-existing since M4.
+- **The submit button dropped keyboard focus to `<body>` and announced nothing** for the
+  length of an upload, and the retry button did the same. `headingRef` and `tabIndex={-1}`
+  were both present in `EvidenceDestination` and `.focus()` was never called — the Issues
+  pattern copied structurally and left unwired.
+- **The first `<th scope="row">` in a `.cw-trips` table** inherited a rule written for
+  column headers: 12px, subtle, `white-space: nowrap`. At 320px the document name rendered
+  in a 428px box and clipped mid-word, and the row's most important content was the
+  smallest type in it.
+
+**Two of the fixes' own tests were wrong**, which is the part worth remembering:
+
+- the storage-key guard test asserted `"cases/" not in body` against the *content*
+  response — but a presigned GET **is** the object's address, so it names the key by
+  construction. The assertion was over-strict on the one response where it could not hold;
+  narrowed to the library and detail projections, where it does.
+- the content-type test tampered with the multipart part header instead of the signed
+  `Content-Type` **field**, got a 204, and would have read as "the policy does not work".
+  The policy was fine; the test was aiming past it.
+
+And one accessibility test **does not defend what it describes**: jsdom does not reproduce
+the browser's blur-on-disable, so swapping `aria-disabled` back to `disabled` leaves the
+focus assertion green. The attribute assertion is what actually catches it. Both are kept,
+and the file says which is which — a test that looks like a guard and is not is the exact
+thing this suite exists to stop.
+
 ### Gate evidence — slice 1
 
-Seven mutations, each restored after:
+Ten mutations, each restored after:
 
 | # | Mutation | Result |
 |---|---|---|
@@ -647,11 +698,20 @@ Seven mutations, each restored after:
 | 6a | MinIO unreachable with `CW_EXPECT_MINIO=1` | 5 errors, not skips — the storage security assertions cannot silently vanish |
 | 6b | the `minio`-marked file excluded from the run | 1 red — `test_storage_integration_tests_actually_ran` |
 | 7 | `original_filename` interpolated into `Content-Disposition` | 6 red, incl. all three CRLF-injection cases |
+| 8 | exempt a route from the tenant check that already passes it | 1 red, naming the route |
+| 9 | drop `content-length-range` from the signed policy | 2 red — oversized and empty bodies both accepted |
+| 10 | remove the idempotent lookup from `record_upload` | 2 red — a retried recording 500s |
 
-`just lint`, `just typecheck`, 581 backend tests, zero API-client drift, migration 0014
-applied. Five MinIO-backed security assertions ran green against a live bucket: unsigned
-GET refused, URL expiry, deleted object 404, content-type bound into the signature, and a
-single-line disposition from a CRLF filename.
+`just lint`, `just typecheck`, **589 backend tests with MinIO live and zero skips**, 265
+frontend tests, zero API-client drift, migration 0014 applied. Seven MinIO-backed security
+assertions ran green against a live bucket: unsigned GET refused, URL expiry, deleted
+object 404, signed content-type enforced, **oversized body refused with nothing written**,
+**empty body refused**, and a single-line disposition from a CRLF filename.
+
+Verified in Chrome against real MinIO, not only in tests: unsigned GET at the object's own
+address → 403, signed → 200, TTL 60s, no `storage_key` in any document response, another
+case's evidence id → 404 byte-identical to an unknown id, and zero rows in `domain_events`,
+`audit_entries` or `outbox_events` containing a filename, a key or `.pdf`.
 
 _Known gaps carried forward:_
 
@@ -665,7 +725,18 @@ _Known gaps carried forward:_
   it. No sweeper yet; it is storage-side rather than case-scoped, which is the right way
   round.
 - **`UPLOAD_TOKEN_SECRET` is unset everywhere.** Per-process signing key: correct for one
-  API instance, silently wrong for several. Warns at boot, same shape as
-  `rls.login_role_superuser`.
+  API instance, silently wrong for several — the symptom is intermittent 422s that look
+  like tampering. Now **refuses to boot** outside `local`/`docker`/`test`, and rejects a
+  configured secret under 32 characters.
+- **An orphaned object has no sweeper.** An upload whose bytes land but whose recording
+  call never arrives leaves an object with no row pointing at it. Storage-side rather than
+  case-scoped, which is the right way round, but slice 5 builds deletion on the assumption
+  that `evidence_files` enumerates every object — so a bucket lifecycle expiry rule should
+  land before it.
+- **Sentry's default fetch breadcrumbs would capture the presigned URL** including its
+  signature, which threat model §6.4 forbids. No Sentry SDK in the repo yet; the denylist
+  requirement is recorded against `useUploadEvidence.ts` while the reasoning is fresh.
+- **A `DELETION_PENDING` case still serves evidence reads and content URLs.** Writes are
+  blocked, which is what matters now; the read guard belongs with slice 5.
 - **`domain_events`, `audit_entries` and `outbox_events` still have no RLS policy** —
   carried from M2, and now more pressing: slice 2 builds the reader that consumes them.

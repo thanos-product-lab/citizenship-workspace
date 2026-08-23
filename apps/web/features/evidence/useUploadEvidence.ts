@@ -14,8 +14,8 @@ export interface UploadInput {
 /**
  * Upload a document: three steps, and the middle one does not go through our API at all.
  *
- *   1. POST .../evidence/uploads  → a presigned PUT URL and a signed token
- *   2. PUT the bytes straight to private object storage
+ *   1. POST .../evidence/uploads  → a presigned POST form and a signed token
+ *   2. POST the bytes straight to private object storage
  *   3. POST .../evidence          → the server confirms the object and records it
  *
  * **Not optimistic.** Nothing exists server-side until step 3 succeeds, so showing the
@@ -28,8 +28,12 @@ export interface UploadInput {
  * carry our `Authorization` header. The presigned signature is the only credential it
  * needs, and sending a Clerk token to a third-party host would be a credential leak.
  *
- * `Content-Type` must match exactly what was signed, or the store refuses the PUT —
- * which is the mechanism behind "unsupported file types are rejected before processing".
+ * It is a **multipart POST, not a PUT**, because only POST carries a signed policy — and
+ * the policy is what holds the size ceiling and the content type. The fields are sent
+ * verbatim and the file goes last, which is what S3 requires. A body that breaks either
+ * condition is refused by the store with nothing written, so "unsupported file types are
+ * rejected before processing" and the size limit are both enforced where the bytes
+ * actually arrive rather than by a check that runs afterwards.
  */
 export function useUploadEvidence(caseId: string) {
   const api = useApiClient();
@@ -44,11 +48,16 @@ export function useUploadEvidence(caseId: string) {
       });
       if (!grant) throw new Error("could not start the upload");
 
-      const stored = await fetch(grant.upload_url, {
-        method: "PUT",
-        body: file,
-        headers: { "Content-Type": grant.media_type },
-      });
+      const form = new FormData();
+      for (const [name, value] of Object.entries(grant.upload_fields ?? {})) {
+        form.append(name, value);
+      }
+      // The file must be the last field: S3 ignores anything after it.
+      form.append("file", file);
+
+      // No `Content-Type` header — the browser sets the multipart boundary itself, and
+      // overriding it produces a body the store cannot parse.
+      const stored = await fetch(grant.upload_url, { method: "POST", body: form });
       if (!stored.ok) throw new Error("the file could not be uploaded");
 
       const { data: recorded } = await api.POST("/api/v1/cases/{case_id}/evidence", {

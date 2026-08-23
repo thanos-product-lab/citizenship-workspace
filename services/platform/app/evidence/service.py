@@ -71,6 +71,7 @@ class UploadGrant:
     """What the client needs to perform the upload, and nothing more."""
 
     upload_url: str
+    upload_fields: dict[str, str]
     upload_token: str
     media_type: str
     expires_in_seconds: int
@@ -108,9 +109,19 @@ def start_upload(
         raise EvidenceTooLarge(declared_size_bytes, settings.max_upload_bytes)
 
     ttl = settings.storage_presign_ttl_seconds
-    key = build_key(case_id=case.id, evidence_item_id=uuid.uuid4())
+    key = build_key(case_id=case.id)
+    signed = storage.presigned_upload(
+        key,
+        media_type=media_type,
+        ttl_seconds=ttl,
+        # The ceiling goes into the signed policy, so the store refuses an oversized
+        # body outright. `declared_size_bytes` above only buys the user an early "no";
+        # this is what makes the limit a control.
+        max_bytes=settings.max_upload_bytes,
+    )
     return UploadGrant(
-        upload_url=storage.presigned_put_url(key, media_type=media_type, ttl_seconds=ttl),
+        upload_url=signed.url,
+        upload_fields=signed.fields,
         upload_token=upload_token.issue(
             case_id=case.id, storage_key=key, media_type=media_type, ttl_seconds=ttl
         ),
@@ -141,6 +152,19 @@ def record_upload(
     _require_active_case(case)
 
     grant = upload_token.verify(token, case_id=case.id)
+
+    # Recording is idempotent on the storage key, and that is a correctness property
+    # rather than a nicety. This is the retry-prone call in the sequence: the bytes are
+    # already in the store, so a client that loses this response will send it again.
+    # Without this the second attempt violates `uq_evidence_files_storage_key`, and the
+    # resulting IntegrityError carries SQLAlchemy's bound parameters — the storage key,
+    # the original filename and the checksum — into a 500 and out into the logs, which
+    # is exactly what threat model §6.4 forbids.
+    existing = EvidenceRepository.get_by_storage_key(
+        session, case_id=case.id, storage_key=grant.storage_key
+    )
+    if existing is not None:
+        return existing
 
     stored = storage.head(grant.storage_key)
     if stored is None:

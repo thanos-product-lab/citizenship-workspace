@@ -79,6 +79,29 @@ class EvidenceRepository:
         return session.execute(stmt).scalar_one_or_none()
 
     @staticmethod
+    def get_by_storage_key(
+        session: Session, *, case_id: uuid.UUID, storage_key: str
+    ) -> tuple[EvidenceItem, EvidenceFile] | None:
+        """The document already recorded against this key, if any.
+
+        Makes recording an upload idempotent: the bytes are in the store before this
+        call runs, so a retried request must find what the first one wrote rather than
+        collide with it. Case-scoped like every other read - the key is not the
+        authority, the case is (Domain §52).
+        """
+        stmt = (
+            select(EvidenceItem, EvidenceFile)
+            .join(EvidenceFile, EvidenceFile.evidence_item_id == EvidenceItem.id)
+            .where(
+                EvidenceItem.case_id == case_id,
+                EvidenceFile.storage_key == storage_key,
+                EvidenceFile.deleted_at.is_(None),
+            )
+        )
+        row = session.execute(stmt).first()
+        return (row[0], row[1]) if row is not None else None
+
+    @staticmethod
     def next_version_number(session: Session, *, evidence_item_id: uuid.UUID) -> int:
         stmt = select(EvidenceFile.version_number).where(
             EvidenceFile.evidence_item_id == evidence_item_id

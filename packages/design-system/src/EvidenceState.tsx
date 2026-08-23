@@ -65,8 +65,15 @@ export function EvidenceState({
         data-evidence-state={state ?? "unknown"}
         style={token ? { color: `var(${token.colorVar})` } : undefined}
       >
-        {token ? <StatusGlyph name={token.glyph} size={size === "sm" ? 14 : 16} /> : null}
+        <StatusGlyph
+          name={token ? token.glyph : "dash"}
+          size={size === "sm" ? 14 : 16}
+        />
         <span>{token ? token.label : status}</span>
+        {/* An unrecognised value is rendered verbatim so it cannot pass for a state this
+            build understands — but verbatim alone leaves a screen-reader user hearing
+            "ANALYSING" with nothing to say the product does not know what that is. */}
+        {token ? null : <span className="cw-visually-hidden"> — state not recognised</span>}
       </span>
       {withMeaning && token ? (
         <span className="cw-evidence-state__meaning">{token.meaning}</span>

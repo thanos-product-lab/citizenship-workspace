@@ -42,20 +42,22 @@ def test_delete_is_idempotent(store: InMemoryStorage) -> None:
     assert store.head("k") is None
 
 
-def test_presigning_names_the_key_and_a_ttl(store: InMemoryStorage) -> None:
-    url = store.presigned_put_url("k", media_type="application/pdf", ttl_seconds=60)
-    assert "k" in url
-    assert "60" in url
+def test_presigning_returns_the_key_and_the_policy_fields(store: InMemoryStorage) -> None:
+    signed = store.presigned_upload(
+        "k", media_type="application/pdf", ttl_seconds=60, max_bytes=1024
+    )
+    assert signed.fields["key"] == "k"
+    assert signed.fields["Content-Type"] == "application/pdf"
 
 
 # --- storage keys ------------------------------------------------------------------
 
 
-def test_two_keys_for_the_same_item_never_collide() -> None:
+def test_two_keys_for_the_same_case_never_collide() -> None:
     """The random component is what makes a key unguessable. Without it, knowing a case
-    id and an item id would be enough to name the object."""
-    case_id, item_id = uuid.uuid4(), uuid.uuid4()
-    keys = {build_key(case_id=case_id, evidence_item_id=item_id) for _ in range(100)}
+    id would be enough to name the object."""
+    case_id = uuid.uuid4()
+    keys = {build_key(case_id=case_id) for _ in range(100)}
     assert len(keys) == 100
 
 

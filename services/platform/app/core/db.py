@@ -19,7 +19,18 @@ _engine: Engine | None = None
 def get_engine() -> Engine:
     global _engine
     if _engine is None:
-        _engine = create_engine(get_settings().database_url, pool_pre_ping=True)
+        _engine = create_engine(
+            get_settings().database_url,
+            pool_pre_ping=True,
+            # Keep bound parameters out of exception messages. A driver error renders
+            # the failing statement's parameters into `str(exc)`, and from M7 those
+            # parameters include storage keys, original filenames and checksums — Tier-3
+            # metadata that threat model §6.4 keeps out of logs. The specific case that
+            # found this was a retried upload hitting the storage-key unique constraint;
+            # that path is now idempotent, but the class of leak is wider than one
+            # statement, so the engine refuses to render parameters at all.
+            hide_parameters=True,
+        )
 
         # This reset is correct and must stay — a connection returning to the pool with a
         # previous request's role and tenant still bound is the leak it exists to prevent.

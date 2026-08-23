@@ -29,11 +29,13 @@ export function UploadDocument({
   supportedMediaTypes,
   maxBytes,
   onUploaded,
+  onStarted,
 }: {
   caseId: string;
   supportedMediaTypes: string[];
   maxBytes: number;
   onUploaded: (displayName: string) => void;
+  onStarted: (displayName: string) => void;
 }): JSX.Element {
   const upload = useUploadEvidence(caseId);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -52,23 +54,29 @@ export function UploadDocument({
   function onFile(event: FormEvent<HTMLInputElement>): void {
     const chosen = event.currentTarget.files?.[0] ?? null;
     setFileError(undefined);
+    // Clear a previous failure: an alert about the last attempt sitting above a fresh
+    // one reads as a verdict on the file just chosen.
+    upload.reset();
     if (!chosen) {
       setFile(null);
       return;
     }
+    // A rejected file is cleared from the control too, so it never names a file that
+    // the form has already decided not to send.
+    const reject = (message: string): void => {
+      setFileError(message);
+      setFile(null);
+      if (fileRef.current) fileRef.current.value = "";
+    };
     if (!supportedMediaTypes.includes(chosen.type)) {
-      setFileError(
+      return reject(
         `${chosen.type || "That file type"} is not one this product can read. It accepts PDFs and photos.`,
       );
-      setFile(null);
-      return;
     }
     if (chosen.size > maxBytes) {
-      setFileError(
+      return reject(
         `That file is ${formatBytes(chosen.size)} and the limit is ${formatBytes(maxBytes)}.`,
       );
-      setFile(null);
-      return;
     }
     setFile(chosen);
     // Seed the label from the filename so the common case needs no typing. The user can
@@ -78,14 +86,22 @@ export function UploadDocument({
 
   function onSubmit(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault();
-    if (!file) return;
+    if (!file || busy) return;
     const name = displayName.trim() || file.name;
+    // Announced at the start as well as at the end. A 20 MB upload is a long silence
+    // otherwise, and the control that would have carried the news is the one the user
+    // just left.
+    onStarted(name);
     upload.mutate(
       { file, category, displayName: name },
       {
         onSuccess: () => {
           onUploaded(name);
           reset();
+          // Focus would otherwise land on <body>: the submit button is unreachable
+          // again the moment `file` clears. The file input is where "add another"
+          // starts, so that is where the user is put.
+          fileRef.current?.focus();
         },
       },
     );
@@ -94,8 +110,14 @@ export function UploadDocument({
   const busy = upload.isPending;
 
   return (
-    <form style={{ ...cardStyle, display: "grid", gap: "var(--cw-space-4)" }} onSubmit={onSubmit}>
-      <h3 style={{ margin: 0, fontSize: "var(--cw-text-base)" }}>Add a document</h3>
+    <form
+      aria-labelledby="upload-heading"
+      style={{ ...cardStyle, display: "grid", gap: "var(--cw-space-4)" }}
+      onSubmit={onSubmit}
+    >
+      <h3 id="upload-heading" style={{ margin: 0, fontSize: "var(--cw-text-base)" }}>
+        Add a document
+      </h3>
 
       <Field
         id="upload-file"
@@ -110,17 +132,21 @@ export function UploadDocument({
           className="cw-file-input"
           accept={supportedMediaTypes.join(",")}
           onChange={onFile}
-          disabled={busy}
+          aria-disabled={busy}
         />
       </Field>
 
-      <Field id="upload-category" label="What is it?">
+      <Field
+        id="upload-category"
+        label="Document type"
+        hint="What kind of document this is."
+      >
         <select
           id="upload-category"
           style={inputStyle}
           value={category}
           onChange={(event) => setCategory(event.currentTarget.value)}
-          disabled={busy}
+          aria-disabled={busy}
         >
           {UPLOADABLE_CATEGORIES.map((value) => (
             <option key={value} value={value}>
@@ -130,7 +156,11 @@ export function UploadDocument({
         </select>
       </Field>
 
-      <Field id="upload-name" label="Name it" hint="How it will appear in your library.">
+      <Field
+        id="upload-name"
+        label="Display name"
+        hint="How it will appear in your library."
+      >
         <input
           id="upload-name"
           type="text"
@@ -138,7 +168,7 @@ export function UploadDocument({
           value={displayName}
           maxLength={255}
           onChange={(event) => setDisplayName(event.currentTarget.value)}
-          disabled={busy}
+          aria-disabled={busy}
         />
       </Field>
 
@@ -150,7 +180,11 @@ export function UploadDocument({
       ) : null}
 
       <div>
-        <button type="submit" style={buttonStyle} disabled={!file || busy}>
+        {/* `aria-disabled`, never `disabled`: a disabled control loses focus to <body>
+            the instant it is disabled, so pressing Enter on it drops the keyboard user
+            out of the form for the whole length of the upload and says nothing. Guarded
+            in `onSubmit` instead. Same pattern as the recheck button on Issues. */}
+        <button type="submit" style={buttonStyle} aria-disabled={!file || busy}>
           {busy ? "Uploading…" : "Upload document"}
         </button>
       </div>

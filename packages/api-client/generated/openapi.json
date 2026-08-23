@@ -71,7 +71,7 @@
         "type": "object"
       },
       "CaseOverview": {
-        "description": "The case overview read model (Domain \u00a744.1).\n\n`open_issue_count` is present from M6: with issue derivation running, a zero genuinely\nmeans the system looked and found nothing. **`evidence_coverage` is still absent** \u2014\nthere is no evidence subsystem until M7, and a zero there would claim a check nobody\nran, which is a stronger statement than the product can make.",
+        "description": "The case overview read model (Domain \u00a744.1).\n\n`open_issue_count` is present from M6: with issue derivation running, a zero genuinely\nmeans the system looked and found nothing. **`evidence_coverage` is still absent** \u2014\ndocuments can be uploaded from M7 slice 1, but nothing links one to a requirement or\na trip until slice 4, so coverage is not a thing the system can measure yet. A zero\nwould claim a check nobody ran, which is a stronger statement than the product can\nmake.",
         "properties": {
           "application_date": {
             "anyOf": [
@@ -2890,6 +2890,13 @@
             "title": "Media Type",
             "type": "string"
           },
+          "upload_fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Upload Fields",
+            "type": "object"
+          },
           "upload_token": {
             "title": "Upload Token",
             "type": "string"
@@ -2901,6 +2908,7 @@
         },
         "required": [
           "upload_url",
+          "upload_fields",
           "upload_token",
           "expires_in_seconds",
           "media_type"

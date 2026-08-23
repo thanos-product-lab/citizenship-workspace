@@ -55,8 +55,16 @@ in the path. A token is not a capability.
   over case-scoped rows would be a background job touching user data.
 - **A new secret.** `UPLOAD_TOKEN_SECRET`. Unset means a per-process key, which is fine
   for one API instance and silently wrong for several — a token signed by one replica
-  would be rejected by another. `check_upload_secret()` warns at boot, deliberately the
-  same shape as the existing `rls.login_role_superuser` warning.
+  would be rejected by another, and the symptom is intermittent 422s indistinguishable
+  from tampering. `check_upload_secret()` therefore **refuses to boot** outside
+  `local`/`docker`/`test` rather than warning into a log, and rejects a configured secret
+  shorter than 32 characters.
+- **Recording is idempotent on the storage key**, and that is a security property rather
+  than a convenience. This is the retry-prone call — the bytes are already stored — and
+  without idempotency a retry violates the storage-key unique constraint, whose
+  `IntegrityError` renders SQLAlchemy's bound parameters (key, filename, checksum) into a
+  500 and from there into the logs. Found in review; `hide_parameters=True` on the engine
+  closes the wider class.
 
 ## Alternatives rejected
 

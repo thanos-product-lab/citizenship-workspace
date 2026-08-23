@@ -162,6 +162,14 @@
     --cw-currency-superseded: var(--cw-neutral-400);
     --cw-currency-provisional: var(--cw-primary-300);
 
+    /* Provenance needs re-declaring for the same reason, and did not get it. These are
+       fixed ramp steps, so on the dark surface `evidence_supported` rendered at 1.99:1
+       and `ai_proposed` at 2.67:1 — the glyph is currentColor, so the non-colour signal
+       failed too, and the Evidence library's State column read as an empty cell, which
+       on that screen means "no state". Measured in Chromium against the real markup. */
+    --cw-provenance-ai-proposed: var(--cw-primary-400);
+    --cw-provenance-evidence-supported: var(--cw-primary-300);
+
     --cw-bg: var(--cw-neutral-950);
     --cw-surface: var(--cw-neutral-900);
     --cw-surface-sunken: var(--cw-neutral-950);
@@ -196,6 +204,11 @@
      uses currentColor, so it also fails the 3:1 non-text threshold. */
   --cw-currency-superseded: var(--cw-neutral-400);
   --cw-currency-provisional: var(--cw-primary-300);
+
+  /* Provenance needs re-declaring for the same reason — see the note in the
+     prefers-color-scheme block above. */
+  --cw-provenance-ai-proposed: var(--cw-primary-400);
+  --cw-provenance-evidence-supported: var(--cw-primary-300);
 
   --cw-bg: var(--cw-neutral-950);
   --cw-surface: var(--cw-neutral-900);
