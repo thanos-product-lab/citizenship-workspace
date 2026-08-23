@@ -3,7 +3,7 @@
 import { formatDate } from "@/features/requirements/dates";
 
 import { TimelineBand } from "./TimelineBand";
-import { StatusBadge, cardStyle, errorTextStyle, buttonStyle } from "./ui";
+import { StatusBadge, cardStyle, errorTextStyle, buttonStyle } from "@/components/ui";
 import { type Timeline, type TimelineTrip, useTimeline } from "./useTimeline";
 
 /**

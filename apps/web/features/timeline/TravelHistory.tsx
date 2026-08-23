@@ -21,7 +21,7 @@ import {
   cardStyle,
   errorTextStyle,
   secondaryButtonStyle,
-} from "./ui";
+} from "@/components/ui";
 
 type Travel = components["schemas"]["TravelRecordResponse"];
 type LoadState = "loading" | "error" | "ready";

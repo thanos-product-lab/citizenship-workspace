@@ -5,7 +5,7 @@ import { useRef, useState } from "react";
 
 import { useApiClient } from "@/lib/api";
 
-import { buttonStyle, errorTextStyle, secondaryButtonStyle } from "./ui";
+import { buttonStyle, errorTextStyle, secondaryButtonStyle } from "@/components/ui";
 
 type Validation = components["schemas"]["ImportValidationResponse"];
 type State = "idle" | "checking" | "checked" | "malformed" | "importing" | "error";

@@ -181,3 +181,46 @@ export const provenanceTokens: Record<ProvenanceKind, ProvenanceToken> = {
   stale: { colorVar: "--cw-provenance-stale", glyph: "clock", label: "Stale" },
   unavailable: { colorVar: "--cw-provenance-unavailable", glyph: "slash", label: "Unavailable" },
 };
+
+// --- Evidence processing state (DOMAIN_MODEL_RFC §14.4) ---
+
+/**
+ * The processing states this build can actually render, and only those.
+ *
+ * §14.4 defines nine. This map holds the ones a document can *reach* in the milestone
+ * that ships it, and grows as producers land:
+ *
+ * - `uploaded` — M7 slice 1 (here).
+ * - `validating`, `unsupported` — M7 slice 2, when validation moves into the worker.
+ * - `extracting_text`, `analysing`, `completed`, `partially_completed`, `failed` —
+ *   M7 slice 3, with deterministic extraction.
+ * - `awaiting_confirmation` — **M8, and deliberately absent**. It has no producer until
+ *   extracted claims exist. A token for it would let the UI name it as a stage a
+ *   document might enter, which is a promise the product cannot keep; a state the
+ *   product names but cannot reach is worse than one it does not mention.
+ *   `EvidenceState` renders any state it has no token for verbatim, so when M8 makes it
+ *   reachable the wire value shows up honestly rather than silently as something benign.
+ */
+export const evidenceProcessingStates = ["uploaded"] as const;
+
+export type EvidenceProcessingState = (typeof evidenceProcessingStates)[number];
+
+export interface EvidenceProcessingToken {
+  readonly colorVar: string;
+  readonly glyph: GlyphName;
+  readonly label: string;
+  /** What the state means, for the caption a badge alone cannot carry. */
+  readonly meaning: string;
+}
+
+export const evidenceProcessingTokens: Record<
+  EvidenceProcessingState,
+  EvidenceProcessingToken
+> = {
+  uploaded: {
+    colorVar: "--cw-provenance-evidence-supported",
+    glyph: "paperclip",
+    label: "Uploaded",
+    meaning: "Stored, and not yet read by anything.",
+  },
+};

@@ -12,14 +12,16 @@
  * and the order of the nav is the order of the argument: here is what you told us, here
  * is what follows from it, here is what needs attention, here is where you change it.
  *
- * **Evidence is deliberately absent.** It is a destination in the IA brief, but there is
- * no `evidence` module in `services/platform/app/` and the roadmap places Evidence
- * Foundation at M7 — after M6 (issues) and M5 (timeline). A primary destination that
- * leads to an empty room is a promise the product cannot keep, and CLAUDE.md §10 makes
- * the default answer to scope expansion *no*. Until then the evidence-first claim is
- * carried where it is actually true: the "Evidence used" layer on a requirement detail,
- * which states plainly that no documents are linked and every figure rests on dates the
- * user typed.
+ * Evidence joined at M7, after Requirements and before Issues: a document is something
+ * the user provides in support of a conclusion, so it reads alongside the conclusions
+ * rather than after the queue of problems with them. It was deliberately absent until
+ * then — a primary destination leading to an empty room is a promise the product cannot
+ * keep — and the room is now furnished: documents can be uploaded, listed and opened.
+ *
+ * What it still does not claim is coverage. Nothing links a document to a requirement or
+ * a trip until slice 4, so the "Evidence used" layer on a requirement detail continues to
+ * say plainly that no documents are linked and every figure rests on dates the user typed.
+ * That layer changes when it becomes untrue, not when this destination appears.
  */
 export interface CaseDestination {
   /** Appended to `/cases/{caseId}`. The empty string is the case root. */
@@ -31,6 +33,7 @@ export const CASE_DESTINATIONS: readonly CaseDestination[] = [
   { segment: "", label: "Overview" },
   { segment: "timeline", label: "Timeline" },
   { segment: "requirements", label: "Requirements" },
+  { segment: "evidence", label: "Evidence" },
   { segment: "issues", label: "Issues" },
   { segment: "data", label: "Case data" },
 ] as const;

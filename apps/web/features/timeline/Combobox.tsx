@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 
-import { inputStyle } from "./ui";
+import { inputStyle } from "@/components/ui";
 
 /**
  * An editable combobox (WAI-ARIA "combobox with list autocomplete"): a text input that

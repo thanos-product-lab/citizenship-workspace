@@ -30,6 +30,7 @@ export const caseKeys = {
   overview: (caseId: string) => [...caseKeys.detail(caseId), "overview"] as const,
   requirements: (caseId: string) => [...caseKeys.detail(caseId), "requirements"] as const,
   issues: (caseId: string) => [...caseKeys.detail(caseId), "issues"] as const,
+  evidence: (caseId: string) => [...caseKeys.detail(caseId), "evidence"] as const,
   requirement: (caseId: string, key: string) =>
     [...caseKeys.detail(caseId), "requirements", key] as const,
   applicationDate: (caseId: string) => [...caseKeys.detail(caseId), "application-date"] as const,

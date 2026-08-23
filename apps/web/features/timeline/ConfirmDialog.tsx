@@ -3,7 +3,7 @@
 import { useRef } from "react";
 
 import { Dialog } from "./Dialog";
-import { dangerButtonStyle, secondaryButtonStyle } from "./ui";
+import { dangerButtonStyle, secondaryButtonStyle } from "@/components/ui";
 
 /**
  * A confirmation modal for a discrete destructive action, built on the shared `Dialog`

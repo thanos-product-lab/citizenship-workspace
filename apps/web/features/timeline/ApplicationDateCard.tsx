@@ -24,7 +24,7 @@ import {
   inputStyle,
   linkButtonStyle,
   secondaryButtonStyle,
-} from "./ui";
+} from "@/components/ui";
 
 // Typo-guard bounds (see dates.ts). The proposed date is often future, so the window
 // leans forward; both ends are generous enough never to reject a real planned date.

@@ -6,7 +6,7 @@ import { useState } from "react";
 import { Combobox } from "./Combobox";
 import { COUNTRY_NAMES } from "./countries";
 import { yearsFromTodayISO } from "./dates";
-import { Field, buttonStyle, errorTextStyle, inputStyle, secondaryButtonStyle } from "./ui";
+import { Field, buttonStyle, errorTextStyle, inputStyle, secondaryButtonStyle } from "@/components/ui";
 
 type DateConfidence = components["schemas"]["DateConfidence"];
 type ReviewState = components["schemas"]["TravelReviewState"];

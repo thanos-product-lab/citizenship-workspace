@@ -4,10 +4,15 @@ import { cloneElement, isValidElement } from "react";
 import type { ReactElement, ReactNode } from "react";
 
 /**
- * Shared field/style primitives for the residence-input surfaces, matching the
- * conventions established in RouteOnboarding: token-driven inline styles, and a
- * `Field` that owns the label↔control and hint/error↔control associations so every
- * error is bound to its field and announced (accessibility gate).
+ * Shared field and style primitives: token-driven inline styles, and a `Field` that owns
+ * the label↔control and hint/error↔control associations so every error is bound to its
+ * field and announced (accessibility gate).
+ *
+ * Lived in `features/timeline/` until M7, when the evidence upload form needed the same
+ * `Field`. Reaching into another feature for it would have been the cross-feature import
+ * CLAUDE.md §4 forbids, and copying it would have meant two `Field`s that could drift on
+ * exactly the associations the accessibility gate turns on. So it moved here, which is
+ * the location `apps/web/components/` is named for in CLAUDE.md §4.
  */
 
 export const inputStyle: React.CSSProperties = {

@@ -12,6 +12,10 @@ export default tseslint.config(
       "**/coverage/**",
       // Generated from the FastAPI OpenAPI schema — never hand-linted or edited.
       "packages/api-client/generated/**",
+      // The Python virtualenv. Not ours to lint, and not obviously JavaScript at all
+      // until M7 added boto3: botocore pulls in urllib3, which ships an Emscripten
+      // worker `.js` that eslint picked up and failed on `self` being undefined.
+      "services/platform/.venv/**",
     ],
   },
   js.configs.recommended,
