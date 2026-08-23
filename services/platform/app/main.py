@@ -15,7 +15,7 @@ from app.assessments.routes import (
     requirements_router,
 )
 from app.cases.routes import router as cases_router
-from app.core.config import get_settings
+from app.core.config import Settings, get_settings
 from app.core.db import connection_is_superuser
 from app.core.logging import configure_logging
 from app.core.middleware import TraceIdMiddleware
@@ -31,8 +31,29 @@ from app.shared.errors import register_exception_handlers
 _log = structlog.get_logger()
 
 
+def _log_configuration(settings: Settings) -> None:
+    """Report which environment-supplied settings arrived, by name and never by value.
+
+    Presence is not a secret and absence is the thing that takes a deployment down, so
+    this is the line that answers "is it actually set?" without anyone having to guess
+    from a stack trace. Added after a deploy crash-looped on a missing
+    `UPLOAD_TOKEN_SECRET` twice, where the log could not distinguish an unset variable
+    from one set on the wrong service.
+    """
+    _log.info(
+        "app.configuration",
+        environment=settings.environment,
+        upload_token_secret=bool(settings.upload_token_secret),
+        storage_backend=settings.storage_backend,
+        storage_endpoint_configured=bool(settings.storage_endpoint_url),
+        storage_credentials=bool(settings.storage_access_key and settings.storage_secret_key),
+        clerk_issuer_configured=bool(settings.clerk_issuer),
+    )
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    _log_configuration(get_settings())
     # RLS is enforced per request via `SET ROLE app_rls`, which applies even when the
     # DB login role is a superuser. But a superuser login role means a query that
     # *forgot* to SET ROLE would bypass RLS, so the fail-closed backstop is not fully
@@ -44,10 +65,10 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
             "rls.login_role_superuser",
             detail="DB login role is a superuser; RLS backstop relies on per-request SET ROLE only",
         )
+    check_upload_secret()
     # Create the evidence bucket in the environments that own their own storage.
     # Deployment provisions its bucket out of band: an application that can create
     # buckets is an application whose credentials can create a *public* one.
-    check_upload_secret()
     if get_settings().environment in {"local", "docker"}:
         try:
             get_storage().ensure_bucket()

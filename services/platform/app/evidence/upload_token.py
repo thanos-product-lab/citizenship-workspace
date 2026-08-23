@@ -89,9 +89,18 @@ def check_upload_secret() -> None:
             )
         return
     if settings.environment not in _FALLBACK_ENVIRONMENTS:
+        # Name what was actually observed. A bare "must be set" cannot distinguish
+        # "never set it" from "set it on the wrong service", "set it as a shared
+        # variable the service does not reference", or "set it and did not redeploy" —
+        # and those are the four ways this goes wrong on a platform. Presence is not a
+        # secret; the value is never logged or raised.
         raise RuntimeError(
             "UPLOAD_TOKEN_SECRET must be set outside local development: upload tokens "
-            "signed with a per-process key do not verify across API replicas"
+            "signed with a per-process key do not verify across API replicas. "
+            f"Observed ENVIRONMENT={settings.environment!r}; UPLOAD_TOKEN_SECRET was "
+            "absent or empty in this process's environment. Set it on the API service "
+            "itself (a project-level shared variable must still be referenced by the "
+            "service) and redeploy."
         )
     _log.warning(
         "storage.upload_secret_unset",

@@ -358,3 +358,76 @@ def test_an_expired_token_is_refused(api: Api, monkeypatch: pytest.MonkeyPatch) 
     assert response.status_code == 422
     assert response.json()["code"] == "INVALID_UPLOAD_GRANT"
     assert api("user_a").get(_url(case_id)).json()["items"] == []
+
+
+# --- boot configuration -------------------------------------------------------------
+
+
+@pytest.mark.parametrize("environment", ["production", "staging", "railway"])
+def test_a_deployed_environment_refuses_to_boot_without_a_signing_secret(
+    environment: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The guard that took a deployment down, pinned so it stays deliberate.
+
+    A per-process key is fine for one instance and silently wrong for two: a token signed
+    by one replica is rejected by the other, and the symptom is intermittent 422s that
+    look exactly like tampering.
+    """
+    from app.core.config import Settings
+    from app.evidence.upload_token import check_upload_secret
+
+    monkeypatch.setattr(
+        "app.evidence.upload_token.get_settings",
+        lambda: Settings(environment=environment, upload_token_secret=""),
+    )
+    with pytest.raises(RuntimeError) as raised:
+        check_upload_secret()
+
+    # The message has to distinguish the four ways this goes wrong on a platform, so it
+    # names what it observed rather than only what it wanted.
+    assert environment in str(raised.value)
+    assert "UPLOAD_TOKEN_SECRET" in str(raised.value)
+
+
+@pytest.mark.parametrize("environment", ["local", "docker", "test"])
+def test_local_development_still_boots_without_one(
+    environment: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.core.config import Settings
+    from app.evidence.upload_token import check_upload_secret
+
+    monkeypatch.setattr(
+        "app.evidence.upload_token.get_settings",
+        lambda: Settings(environment=environment, upload_token_secret=""),
+    )
+    check_upload_secret()
+
+
+def test_a_secret_too_short_to_be_worth_configuring_is_refused(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Shorter than the 32-byte fallback it replaces is a downgrade wearing a config."""
+    from app.core.config import Settings
+    from app.evidence.upload_token import check_upload_secret
+
+    monkeypatch.setattr(
+        "app.evidence.upload_token.get_settings",
+        lambda: Settings(environment="production", upload_token_secret="short"),
+    )
+    with pytest.raises(RuntimeError, match="at least 32"):
+        check_upload_secret()
+
+
+def test_the_configuration_line_reports_presence_and_never_a_value(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Presence is not a secret; the value is. This line exists so "is it actually set?"
+    is answerable from the logs rather than from a stack trace."""
+    from app.core.config import Settings
+    from app.main import _log_configuration
+
+    secret = "s" * 40
+    _log_configuration(Settings(environment="production", upload_token_secret=secret))
+
+    rendered = "".join(record.getMessage() for record in caplog.records)
+    assert secret not in rendered
