@@ -713,7 +713,9 @@ address → 403, signed → 200, TTL 60s, no `storage_key` in any document respo
 case's evidence id → 404 byte-identical to an unknown id, and zero rows in `domain_events`,
 `audit_entries` or `outbox_events` containing a filename, a key or `.pdf`.
 
-### The CI-only failure
+### Two CI-only failures
+
+Both are recorded because neither was reproducible locally, and that is the point.
 
 `ApplicationDateCard`'s "announces what the date does not fix" test failed on CI and
 passed locally, five runs out of five, before and after. It is a real race and not an
@@ -727,6 +729,22 @@ Worth recording because the diff that surfaced it changed one line in that file,
 import path, and nothing about its timing. A slower machine was the whole difference. The
 lesson is the file's own: an assertion that reads state set by an effect has to wait for
 it, and passing locally is not evidence that it does.
+
+**Second: `bitnami/minio:latest` does not exist.** The new backend CI job could not pull
+its MinIO image at all. Bitnami moved their catalogue to `bitnamilegacy/` during 2025 and
+`bitnami/minio` now has **zero tags** — the image was chosen because it is the widely
+copied GitHub Actions recipe for MinIO, and never checked against the registry.
+
+The underlying reason that recipe exists is real: the official `minio/minio` image needs
+`server /data` as a command, and a `services:` block cannot supply one. So MinIO is now an
+explicit `docker run` step with a readiness loop we control, on the official image at a
+**pinned** `RELEASE.*` tag. `docker-compose.yml` moved to the same pin: `latest` on both
+sides looks like agreement and is not, since each resolves whenever it last pulled — a
+storage behaviour could differ between a green local run and a red CI one with nothing in
+the diff to explain it.
+
+Verified by running a container with the exact workflow command and pointing the storage
+suite at it — 39 passed — rather than by pushing and waiting.
 
 _Known gaps carried forward:_
 
