@@ -19,6 +19,7 @@ from app.core.config import get_settings
 from app.core.db import connection_is_superuser
 from app.core.logging import configure_logging
 from app.core.middleware import TraceIdMiddleware
+from app.core.storage import StorageError, get_storage
 from app.health.routes import router as health_router
 from app.issues.routes import router as issues_router
 from app.residence.routes import router as application_dates_router
@@ -41,6 +42,14 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
             "rls.login_role_superuser",
             detail="DB login role is a superuser; RLS backstop relies on per-request SET ROLE only",
         )
+    # Create the evidence bucket in the environments that own their own storage.
+    # Deployment provisions its bucket out of band: an application that can create
+    # buckets is an application whose credentials can create a *public* one.
+    if get_settings().environment in {"local", "docker"}:
+        try:
+            get_storage().ensure_bucket()
+        except StorageError as exc:
+            _log.warning("storage.bucket_unavailable", error=str(exc)[:300])
     yield
 
 

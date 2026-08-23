@@ -6,8 +6,18 @@ migrations — tests exercise the same DDL that ships, not a `create_all` shortc
 that could silently drift from the migrations.
 """
 
+import os
 import secrets
 from collections.abc import Callable, Iterator
+
+# Storage defaults to the in-process fake for the suite at large, so tests that are
+# not about storage need no MinIO. This must run before the first `get_settings()`,
+# which is why it sits above the app imports rather than in a fixture.
+#
+# The fake asserts behaviour only. Storage *security* properties — private bucket,
+# URL expiry, deleted object gone — live in `tests/evidence/test_storage_minio.py`,
+# which builds its own `S3Storage` against a real MinIO and never reads this.
+os.environ.setdefault("STORAGE_BACKEND", "memory")
 
 import pytest
 from fastapi.testclient import TestClient
@@ -18,6 +28,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.auth.dependencies import get_current_user
 from app.auth.schemas import CurrentUser
 from app.core.config import get_settings
+from app.core.storage import get_storage, reset_storage
 from app.main import app
 from app.requirements.models import CATALOG_TABLES
 from app.shared.db import Base, get_db, get_sessionmaker
@@ -248,3 +259,15 @@ def rls_api(db_session: Session, rls_sessionmaker: Callable[[], Session]) -> Ite
         app.dependency_overrides.clear()
         for session in sessions:
             session.close()
+
+
+@pytest.fixture(autouse=True)
+def _clean_storage() -> Iterator[None]:
+    """Empty the in-process store between tests, so one test's object cannot satisfy
+    another's existence check — the storage analogue of the per-test TRUNCATE."""
+    reset_storage()
+    yield
+    store = get_storage()
+    objects = getattr(store, "objects", None)
+    if objects is not None:
+        objects.clear()

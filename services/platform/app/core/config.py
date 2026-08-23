@@ -1,6 +1,7 @@
 """Application settings, loaded from the environment (12-factor)."""
 
 from functools import lru_cache
+from typing import Literal
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -30,6 +31,28 @@ class Settings(BaseSettings):
 
     # Comma-separated browser origins allowed to call the API (CORS).
     cors_allow_origins: str = "http://localhost:3000"
+
+    # Private object storage for evidence files. S3-compatible: MinIO locally,
+    # any S3 in deployment. `memory` selects the in-process fake, which exists so
+    # the seed and the non-storage test suites do not require a running MinIO —
+    # it asserts behaviour only and must never be used to claim a security
+    # property (SECURITY_AND_PRIVACY_THREAT_MODEL §12).
+    storage_backend: Literal["s3", "memory"] = "s3"
+    storage_endpoint_url: str = "http://localhost:9000"
+    storage_bucket: str = "citizenship-evidence"
+    storage_access_key: str = ""
+    storage_secret_key: str = ""
+    storage_region: str = "us-east-1"
+
+    # Short, per threat model §12. Long enough for a browser to follow a redirect,
+    # too short to be worth passing on. Presigned URLs cannot be revoked, so this
+    # is the whole of the bound on an issued URL's life (ADR-0018).
+    storage_presign_ttl_seconds: int = 60
+
+    # Hard ceiling on an uploaded file. Enforced twice: declared size at presign
+    # (cheap, pre-upload) and actual size at completion (authoritative — a client
+    # controls what it declares, not what the store reports).
+    max_upload_bytes: int = 20 * 1024 * 1024
 
     @field_validator("database_url")
     @classmethod

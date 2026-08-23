@@ -53,12 +53,18 @@ services:
       ENVIRONMENT: docker
       DATABASE_URL: postgresql+psycopg://citizenship:citizenship@postgres:5432/citizenship
       REDIS_URL: redis://redis:6379/0
+      STORAGE_ENDPOINT_URL: http://minio:9000
+      STORAGE_BUCKET: citizenship-evidence
+      STORAGE_ACCESS_KEY: minioadmin
+      STORAGE_SECRET_KEY: minioadmin
     ports:
       - "8000:8000"
     depends_on:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      minio:
         condition: service_healthy
 
   worker:
@@ -70,10 +76,16 @@ services:
       ENVIRONMENT: docker
       DATABASE_URL: postgresql+psycopg://citizenship:citizenship@postgres:5432/citizenship
       REDIS_URL: redis://redis:6379/0
+      STORAGE_ENDPOINT_URL: http://minio:9000
+      STORAGE_BUCKET: citizenship-evidence
+      STORAGE_ACCESS_KEY: minioadmin
+      STORAGE_SECRET_KEY: minioadmin
     depends_on:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      minio:
         condition: service_healthy
 
 volumes:

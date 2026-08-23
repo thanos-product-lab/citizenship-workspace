@@ -15,6 +15,11 @@ dependencies = [
     "redis>=5.2.0",
     "structlog>=24.4.0",
     "pyjwt[crypto]>=2.10.0",
+    # Private object storage (MinIO locally, S3-compatible in deployment).
+    "boto3>=1.35.0",
+    # Native PDF text and page metadata. Deterministic extraction only — no model
+    # call anywhere in M7 (CLAUDE.md §3, Technical Architecture RFC §18).
+    "pymupdf>=1.24.0",
     "certifi>=2024.8.30",
 ]
 
@@ -25,6 +30,8 @@ dev = [
     "pytest>=8.3.4",
     "hypothesis>=6.123.0",
     "httpx>=0.28.0",
+    # mypy runs strict over app/ and worker/; boto3 ships no inline types.
+    "boto3-stubs[s3]>=1.35.0",
 ]
 
 [tool.uv]
@@ -66,4 +73,5 @@ pythonpath = ["."]
 markers = [
     "property: Hypothesis property-based tests for the deterministic rules.",
     "integration: needs external infra (Postgres, Redis); provided by `just up` or CI services.",
+  "minio: needs a live MinIO. The only tests permitted to assert a storage *security* property (private bucket, URL expiry, deleted object gone) — the in-process fake cannot. Guarded by test_storage_integration_tests_actually_ran, so a skip is a failure where CW_EXPECT_MINIO is set.",
 ]
