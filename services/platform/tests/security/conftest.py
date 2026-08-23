@@ -12,6 +12,7 @@ writes. Each step exists to reach a specific table:
                                     assessment_input_links
     add a second travel record   -> issues            (STALE_ASSESSMENT opens)
     recalculate again            -> issue_resolutions (the same issues resolve)
+    upload a document            -> evidence_items, evidence_files
 
 A table with no row proves nothing about its policy, so `assert_populated` is called
 before the isolation assertions rather than trusting the arrangement.
@@ -42,6 +43,8 @@ CASE_SCOPED_TABLES: tuple[str, ...] = (
     "assessment_input_links",
     "issues",
     "issue_resolutions",
+    "evidence_items",
+    "evidence_files",
 )
 
 SUPPORTED_ANSWERS = {
@@ -71,7 +74,43 @@ def seeded_case(api: Api) -> str:
     # which is the only path that writes an issue_resolutions row.
     _add_trip(api, user, case_id, "2024-02-01", "2024-02-20")
     api(user).post(f"/api/v1/cases/{case_id}/assessments/recalculate")
+    _upload_document(api, user, case_id)
     return case_id
+
+
+def _upload_document(api: Api, user: str, case_id: str) -> None:
+    """Put one document in the case, through the real two-call upload path.
+
+    The bytes go into the in-process store rather than MinIO — this suite is about row
+    visibility, not about storage. Nothing here asserts a storage security property;
+    those live in `tests/evidence/test_storage_minio.py`.
+    """
+    from app.core.storage import InMemoryStorage, get_storage
+
+    grant = (
+        api(user)
+        .post(
+            f"/api/v1/cases/{case_id}/evidence/uploads",
+            json={"media_type": "application/pdf", "declared_size_bytes": 32},
+        )
+        .json()
+    )
+
+    store = get_storage()
+    assert isinstance(store, InMemoryStorage)
+    store.put(
+        str(grant["upload_url"]).removeprefix("memory://put/").split("?", 1)[0], b"%PDF-1.7 x"
+    )
+
+    api(user).post(
+        f"/api/v1/cases/{case_id}/evidence",
+        json={
+            "upload_token": grant["upload_token"],
+            "category": "TRAVEL_SUPPORT",
+            "display_name": "A document",
+            "original_filename": "doc.pdf",
+        },
+    )
 
 
 def _add_trip(api: Api, user: str, case_id: str, departure: str, return_: str) -> None:

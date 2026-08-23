@@ -20,6 +20,8 @@ from app.core.db import connection_is_superuser
 from app.core.logging import configure_logging
 from app.core.middleware import TraceIdMiddleware
 from app.core.storage import StorageError, get_storage
+from app.evidence.routes import router as evidence_router
+from app.evidence.upload_token import check_upload_secret
 from app.health.routes import router as health_router
 from app.issues.routes import router as issues_router
 from app.residence.routes import router as application_dates_router
@@ -45,6 +47,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     # Create the evidence bucket in the environments that own their own storage.
     # Deployment provisions its bucket out of band: an application that can create
     # buckets is an application whose credentials can create a *public* one.
+    check_upload_secret()
     if get_settings().environment in {"local", "docker"}:
         try:
             get_storage().ensure_bucket()
@@ -77,6 +80,7 @@ def create_app() -> FastAPI:
     app.include_router(overview_router)
     app.include_router(requirements_router)
     app.include_router(assessments_router)
+    app.include_router(evidence_router)
     app.include_router(issues_router)
 
     structlog.get_logger().info("app.startup", environment=settings.environment)

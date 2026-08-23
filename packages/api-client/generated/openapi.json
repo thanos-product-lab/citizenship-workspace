@@ -352,6 +352,169 @@
         "title": "DateConfidence",
         "type": "string"
       },
+      "EvidenceCategory": {
+        "description": "Domain \u00a714.2, verbatim.\n\n\u00a714.2: `OTHER` and `UNKNOWN` \"can be stored but cannot create trusted domain facts\nwithout a supported review path\". Nothing creates a fact from evidence until M8, so\nthat constraint has no enforcement point yet \u2014 it arrives with `FactEvidenceLink`.",
+        "enum": [
+          "IMMIGRATION_STATUS",
+          "ENGLISH_LANGUAGE",
+          "LIFE_IN_THE_UK",
+          "TRAVEL_SUPPORT",
+          "OTHER",
+          "UNKNOWN"
+        ],
+        "title": "EvidenceCategory",
+        "type": "string"
+      },
+      "EvidenceContentResponse": {
+        "description": "A short-lived URL for the file itself.\n\nReturned as JSON rather than as a 302 so the client controls navigation, and so the\nURL never lands in a browser's address bar or `Referer` where a signed URL would\noutlive the click (threat model \u00a76.4 forbids logging signed URLs; a redirect puts one\nin the history).",
+        "properties": {
+          "expires_in_seconds": {
+            "title": "Expires In Seconds",
+            "type": "integer"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url",
+          "expires_in_seconds"
+        ],
+        "title": "EvidenceContentResponse",
+        "type": "object"
+      },
+      "EvidenceLibraryResponse": {
+        "description": "The case's evidence, and the vocabulary the client needs to offer an upload.\n\n`supported_media_types` is served rather than hard-coded in the frontend so the\naccept-list and the server's allowlist cannot drift into disagreeing about what is\nuploadable \u2014 the client would otherwise offer a type the server refuses.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/EvidenceResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "max_upload_bytes": {
+            "title": "Max Upload Bytes",
+            "type": "integer"
+          },
+          "supported_media_types": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Supported Media Types",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items",
+          "max_upload_bytes"
+        ],
+        "title": "EvidenceLibraryResponse",
+        "type": "object"
+      },
+      "EvidenceLifecycleStatus": {
+        "description": "Domain \u00a714.3, verbatim.",
+        "enum": [
+          "ACTIVE",
+          "DELETION_PENDING",
+          "DELETED"
+        ],
+        "title": "EvidenceLifecycleStatus",
+        "type": "string"
+      },
+      "EvidenceProcessingStatus": {
+        "description": "Domain \u00a714.4, verbatim \u2014 and the *only* vocabulary the API may project.\n\nThese are domain states. Raw Celery states (`PENDING`, `STARTED`, `RETRY`, \u2026) are\nnever shown to a user (Technical Architecture RFC \u00a718, MVP \u00a78.9), and\n`tests/evidence/test_processing_states.py` asserts none of them can reach a\nresponse.\n\nReachability in M7: `UPLOADED` here in slice 1; `VALIDATING` in slice 2;\n`EXTRACTING_TEXT`, `ANALYSING`, `COMPLETED`, `PARTIALLY_COMPLETED`, `FAILED`,\n`UNSUPPORTED` in slice 3. `AWAITING_CONFIRMATION` has no producer until claims\nexist in M8, and ships unreachable rather than faked \u2014 the UI must not offer it as\na stage a document might enter.",
+        "enum": [
+          "UPLOADED",
+          "VALIDATING",
+          "EXTRACTING_TEXT",
+          "ANALYSING",
+          "AWAITING_CONFIRMATION",
+          "COMPLETED",
+          "PARTIALLY_COMPLETED",
+          "FAILED",
+          "UNSUPPORTED"
+        ],
+        "title": "EvidenceProcessingStatus",
+        "type": "string"
+      },
+      "EvidenceResponse": {
+        "properties": {
+          "case_id": {
+            "format": "uuid",
+            "title": "Case Id",
+            "type": "string"
+          },
+          "category": {
+            "$ref": "#/components/schemas/EvidenceCategory"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "lifecycle_status": {
+            "$ref": "#/components/schemas/EvidenceLifecycleStatus"
+          },
+          "media_type": {
+            "title": "Media Type",
+            "type": "string"
+          },
+          "original_filename": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original Filename"
+          },
+          "processing_status": {
+            "$ref": "#/components/schemas/EvidenceProcessingStatus"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          },
+          "size_bytes": {
+            "title": "Size Bytes",
+            "type": "integer"
+          },
+          "uploaded_at": {
+            "format": "date-time",
+            "title": "Uploaded At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "case_id",
+          "category",
+          "display_name",
+          "lifecycle_status",
+          "processing_status",
+          "media_type",
+          "size_bytes",
+          "original_filename",
+          "uploaded_at",
+          "created_at",
+          "revision"
+        ],
+        "title": "EvidenceResponse",
+        "type": "object"
+      },
       "GroupSummaryView": {
         "description": "One requirement group, compressed without losing what its members said.\n\n`conclusion_counts` is a tally by named state \u2014 never a fraction and never ordered as\nprogress (CLAUDE.md \u00a72.6). `not_yet_assessed` sits outside it so a group containing\nrequirements nothing has decided can never read as complete. `currency` inherits the\nweakest member's (ADR-0010): one stale member makes the group stale.",
         "properties": {
@@ -1092,6 +1255,43 @@
           "requirements"
         ],
         "title": "RecalculateResponse",
+        "type": "object"
+      },
+      "RecordUploadRequest": {
+        "description": "The document's user-facing metadata, plus the token from the grant.",
+        "properties": {
+          "category": {
+            "$ref": "#/components/schemas/EvidenceCategory"
+          },
+          "display_name": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Display Name",
+            "type": "string"
+          },
+          "original_filename": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original Filename"
+          },
+          "upload_token": {
+            "title": "Upload Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "upload_token",
+          "category",
+          "display_name"
+        ],
+        "title": "RecordUploadRequest",
         "type": "object"
       },
       "RenderedMessage": {
@@ -2224,6 +2424,27 @@
         "title": "StaleInformation",
         "type": "object"
       },
+      "StartUploadRequest": {
+        "description": "What the client declares before uploading. Both fields are untrusted.\n\n`declared_size_bytes` buys the user an early refusal on an obviously oversized file\nrather than a failure after the upload; the store's own count is checked again when\nthe document is recorded, and that is the number that counts.",
+        "properties": {
+          "declared_size_bytes": {
+            "minimum": 0.0,
+            "title": "Declared Size Bytes",
+            "type": "integer"
+          },
+          "media_type": {
+            "maxLength": 120,
+            "title": "Media Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "media_type",
+          "declared_size_bytes"
+        ],
+        "title": "StartUploadRequest",
+        "type": "object"
+      },
       "StatusType": {
         "enum": [
           "ILR",
@@ -2657,6 +2878,35 @@
         ],
         "title": "TravelReviewState",
         "type": "string"
+      },
+      "UploadGrantResponse": {
+        "description": "The presigned PUT, and the signed token that carries the storage key back.\n\nThe token is opaque to the client and is not a capability: presenting it proves the\nserver minted the key, never that the caller may use it. Ownership is re-checked on\nthe recording call like every other route.",
+        "properties": {
+          "expires_in_seconds": {
+            "title": "Expires In Seconds",
+            "type": "integer"
+          },
+          "media_type": {
+            "title": "Media Type",
+            "type": "string"
+          },
+          "upload_token": {
+            "title": "Upload Token",
+            "type": "string"
+          },
+          "upload_url": {
+            "title": "Upload Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "upload_url",
+          "upload_token",
+          "expires_in_seconds",
+          "media_type"
+        ],
+        "title": "UploadGrantResponse",
+        "type": "object"
       },
       "ValidationError": {
         "properties": {
@@ -3099,6 +3349,284 @@
         "summary": "Recalculate",
         "tags": [
           "assessments"
+        ]
+      }
+    },
+    "/api/v1/cases/{case_id}/evidence": {
+      "get": {
+        "operationId": "list_evidence_api_v1_cases__case_id__evidence_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Case Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvidenceLibraryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Evidence",
+        "tags": [
+          "evidence"
+        ]
+      },
+      "post": {
+        "operationId": "record_upload_api_v1_cases__case_id__evidence_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Case Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecordUploadRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvidenceResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Record Upload",
+        "tags": [
+          "evidence"
+        ]
+      }
+    },
+    "/api/v1/cases/{case_id}/evidence/uploads": {
+      "post": {
+        "operationId": "start_upload_api_v1_cases__case_id__evidence_uploads_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Case Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartUploadRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UploadGrantResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Start Upload",
+        "tags": [
+          "evidence"
+        ]
+      }
+    },
+    "/api/v1/cases/{case_id}/evidence/{evidence_item_id}": {
+      "get": {
+        "operationId": "get_evidence_api_v1_cases__case_id__evidence__evidence_item_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "evidence_item_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Evidence Item Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Case Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvidenceResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Evidence",
+        "tags": [
+          "evidence"
+        ]
+      }
+    },
+    "/api/v1/cases/{case_id}/evidence/{evidence_item_id}/content": {
+      "get": {
+        "operationId": "get_content_url_api_v1_cases__case_id__evidence__evidence_item_id__content_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "evidence_item_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Evidence Item Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Case Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvidenceContentResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Content Url",
+        "tags": [
+          "evidence"
         ]
       }
     },

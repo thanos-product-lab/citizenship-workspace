@@ -98,7 +98,7 @@ def content_disposition(filename: str | None) -> str:
     """
     raw = (filename or "").strip()[:_MAX_FILENAME]
     # Truncate at the first control character rather than filtering them out. Filtering
-    # keeps the injected *payload* while dropping only the delimiter — "a.pdf\r\nSet-Cookie:
+    # keeps the injected *payload* while dropping only the delimiter - "a.pdf\r\nSet-Cookie:
     # x" becomes "a.pdfSet-Cookie x", which cannot split the header but does put an
     # attacker's text in front of the user as their own filename. Anything after a control
     # character is hostile or broken; keeping the prefix is the honest reading.

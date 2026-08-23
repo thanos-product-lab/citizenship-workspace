@@ -84,6 +84,62 @@ class CsvImportInvalid(DomainError):
         super().__init__("the CSV has rows that must be corrected before import")
 
 
+class EvidenceNotFound(DomainError):
+    """An evidence item referenced by id is not reachable in this case. Raised (-> 404)
+    for an unknown id, one belonging to another of the caller's own cases, one whose
+    upload never completed, and one that has been deleted — all indistinguishable, for
+    the same reason `TravelRecordNotFound` is: an id must not confirm existence.
+
+    RLS hides other tenants; it does not hide the caller's other cases, so the
+    case-ownership of a nested object is checked explicitly (Domain §3.1, §52)."""
+
+
+class UnsupportedEvidenceType(DomainError):
+    """An upload declared a media type outside the supported set. Refused at presign,
+    before a byte is written — MVP §8.9, "unsupported file types are rejected before
+    processing". The declared type is also bound into the presigned URL's signature, so
+    it is the only type the store will accept for that URL."""
+
+    code = "UNSUPPORTED_EVIDENCE_TYPE"
+
+    def __init__(self, media_type: str, supported: tuple[str, ...]) -> None:
+        self.media_type = media_type
+        self.supported = supported
+        super().__init__(f"{media_type} is not a supported document type")
+
+
+class EvidenceTooLarge(DomainError):
+    """An upload exceeded the size ceiling. Checked twice: against the declared size at
+    presign, and against the store's own count at completion — a client controls what it
+    declares, not what it uploads."""
+
+    code = "EVIDENCE_TOO_LARGE"
+
+    def __init__(self, size_bytes: int, limit_bytes: int) -> None:
+        self.size_bytes = size_bytes
+        self.limit_bytes = limit_bytes
+        super().__init__(f"the file is larger than the {limit_bytes} byte limit")
+
+
+class InvalidUploadGrant(DomainError):
+    """The signed upload token is missing, altered, expired, or for another case.
+
+    A 422 rather than a 403: by the time this is raised the caller has already passed
+    `require_case_access`, so it is not an authorisation failure — the token carries
+    integrity, not authority. It means the grant cannot be used, and the fix is to start
+    the upload again."""
+
+    code = "INVALID_UPLOAD_GRANT"
+
+
+class EvidenceUploadIncomplete(DomainError):
+    """Completion was called for a reservation whose object is not in the store. The
+    presigned URL was issued but never used, or the upload failed. Nothing is recorded:
+    an item whose bytes are absent is not evidence."""
+
+    code = "EVIDENCE_UPLOAD_INCOMPLETE"
+
+
 class StateWithoutEventError(RuntimeError):
     """A unit of work tried to commit business state without emitting a domain event.
 
@@ -133,6 +189,50 @@ def register_exception_handlers(app: FastAPI) -> None:
         # 404: unknown id, or an id from another case — indistinguishable on purpose.
         return JSONResponse(
             status_code=status.HTTP_404_NOT_FOUND, content={"detail": "Travel record not found"}
+        )
+
+    @app.exception_handler(EvidenceNotFound)
+    async def _evidence_not_found(_request: Request, _exc: EvidenceNotFound) -> JSONResponse:
+        # 404: unknown id, another case's id, an incomplete upload, or a deleted item —
+        # indistinguishable on purpose.
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND, content={"detail": "Evidence not found"}
+        )
+
+    @app.exception_handler(UnsupportedEvidenceType)
+    async def _unsupported_type(_request: Request, exc: UnsupportedEvidenceType) -> JSONResponse:
+        # 422: well-formed request for a document this product cannot read.
+        return JSONResponse(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            content={"detail": str(exc), "code": exc.code, "supported": list(exc.supported)},
+        )
+
+    @app.exception_handler(EvidenceTooLarge)
+    async def _evidence_too_large(_request: Request, exc: EvidenceTooLarge) -> JSONResponse:
+        return JSONResponse(
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+            content={"detail": str(exc), "code": exc.code, "limit_bytes": exc.limit_bytes},
+        )
+
+    @app.exception_handler(InvalidUploadGrant)
+    async def _invalid_upload_grant(_request: Request, exc: InvalidUploadGrant) -> JSONResponse:
+        return JSONResponse(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            content={
+                "detail": "The upload could not be recorded; try uploading again.",
+                "code": exc.code,
+            },
+        )
+
+    @app.exception_handler(EvidenceUploadIncomplete)
+    async def _upload_incomplete(_request: Request, exc: EvidenceUploadIncomplete) -> JSONResponse:
+        # 409: the reservation is real, the bytes are not there yet.
+        return JSONResponse(
+            status_code=status.HTTP_409_CONFLICT,
+            content={
+                "detail": "The upload did not complete; try uploading again.",
+                "code": exc.code,
+            },
         )
 
     @app.exception_handler(CsvImportMalformed)

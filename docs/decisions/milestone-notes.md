@@ -576,3 +576,96 @@ Each is described in `docs/demo-assets/README.md` in terms of what it is evidenc
 and the regeneration steps note that the timeline capture needs a case that has **not**
 been moved to 25 April — after the move the Spain row reads 0 days and the picture tells
 a different story than the M3B and M4 oracles it is meant to agree with.
+
+---
+
+## M7 — Evidence foundation
+
+*In progress; this section grows per slice.*
+
+_Date gated:_
+_Outcome:_ Pass | Pass with gaps | Fail
+
+### Slice 1 — private evidence storage
+
+A document can be uploaded to a private bucket, listed, and opened through a 60-second
+signed URL. No worker, no extraction, no AI.
+
+**Two designs changed under review, both because a test or a guard refused the first
+attempt.**
+
+- **The reservation row became a signed token (ADR-0019).** The first shape wrote an
+  `EvidenceItem` and an `EvidenceFile` at presign time so the storage key could be looked
+  up on completion. It committed case-scoped rows with no domain event, which meant
+  calling `session.commit()` directly — the only raw commit in `app/`, bypassing the one
+  guard that makes "state written without an outbox row" structurally impossible. Rather
+  than widen a hole in `UnitOfWork` in the milestone that finally builds the outbox
+  *reader*, the key now travels through the client inside an HMAC token that binds it to
+  the case, the media type and an expiry. Nothing is persisted until the bytes exist, so
+  every column on both tables is NOT NULL and an abandoned upload leaves no row at all.
+- **A flush ordering bug the RLS policy caught before any test did.** SQLAlchemy orders a
+  flush from `relationship()` dependencies, not from raw FK columns, so `evidence_files`
+  inserted before `evidence_items` and its policy — which predicates through its parent —
+  correctly refused a row whose parent did not yet exist. The fix is the existing
+  `session.flush()` convention from `residence.add_travel_record`. Worth recording because
+  the policy behaved as a *correctness* check here, not only as a tenant boundary.
+
+### What the harness caught, and what it missed
+
+`test_rls_coverage` fired on the migration exactly as designed — its docstring has named
+`evidence_items` as the test case since M5, and mutation 6 of that gate created this table
+shape to prove it. That worked first time.
+
+**The route check did not.** Both of its M7 weaknesses were found by mutation, and neither
+was the one the M5 notes predicted:
+
+1. **A handler can take a tenantless session and still pass.** The check looked for
+   `get_tenant_session` anywhere in the dependency tree, and `require_case_access` puts
+   one there for free. Switching the evidence content route to `Depends(get_db)` passed
+   every assertion in the file, while leaving the handler's own queries outside RLS — on
+   a superuser login role, that session sees every tenant. Now
+   `test_no_handler_takes_a_session_that_skipped_the_tenant` checks the route's *direct*
+   dependencies, where a handler's own `Depends(get_db)` appears.
+2. **The prefix constraint's table→URL derivation was too naive to catch its own motivating
+   case.** `evidence_items` yielded only `evidence-item`, so a real
+   `GET /api/v1/evidence/{id}/content` — the exact URL the M5 notes named — slipped
+   straight through. Candidates now include the first token of the table name.
+
+The M5 note's own suggested fix (invert to an allowlist) was necessary and not sufficient.
+Both holes sat *behind* it.
+
+### Gate evidence — slice 1
+
+Seven mutations, each restored after:
+
+| # | Mutation | Result |
+|---|---|---|
+| 1 | `DROP POLICY evidence_items_tenant` | 46 errors + 1 failure; fails closed — the arrangement can no longer write |
+| 2 | content route takes `Depends(get_db)` | **green at first** → harness strengthened → now 1 red |
+| 3 | content route moved to `/api/v1/evidence/{id}/content` | **green at first** → derivation fixed → now 1 red, naming the exact route |
+| 5 | storage-key generator returns a fixed suffix | 1 red — *"two keys for the same item never collide"* |
+| 6a | MinIO unreachable with `CW_EXPECT_MINIO=1` | 5 errors, not skips — the storage security assertions cannot silently vanish |
+| 6b | the `minio`-marked file excluded from the run | 1 red — `test_storage_integration_tests_actually_ran` |
+| 7 | `original_filename` interpolated into `Content-Disposition` | 6 red, incl. all three CRLF-injection cases |
+
+`just lint`, `just typecheck`, 581 backend tests, zero API-client drift, migration 0014
+applied. Five MinIO-backed security assertions ran green against a live bucket: unsigned
+GET refused, URL expiry, deleted object 404, content-type bound into the signature, and a
+single-line disposition from a CRLF filename.
+
+_Known gaps carried forward:_
+
+- **`AWAITING_CONFIRMATION` ships unreachable.** No producer until claims exist in M8. The
+  UI must not offer it as a stage a document might enter.
+- **Magic-byte validation is not in slice 1.** The declared media type is bound into the
+  presigned PUT's signature, so a client cannot upload under a *different* label — but it
+  can upload bytes that contradict the label it chose. Verification needs the content, so
+  it belongs to the worker's `VALIDATING` state in slice 2.
+- **An abandoned upload leaves an orphaned object** in the store with no row pointing at
+  it. No sweeper yet; it is storage-side rather than case-scoped, which is the right way
+  round.
+- **`UPLOAD_TOKEN_SECRET` is unset everywhere.** Per-process signing key: correct for one
+  API instance, silently wrong for several. Warns at boot, same shape as
+  `rls.login_role_superuser`.
+- **`domain_events`, `audit_entries` and `outbox_events` still have no RLS policy** —
+  carried from M2, and now more pressing: slice 2 builds the reader that consumes them.

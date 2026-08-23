@@ -1,0 +1,249 @@
+"""Evidence commands. Domain logic lives here, not in the route handlers.
+
+Slice 1 is the upload path, and it is two commands rather than one because of where the
+storage key has to come from.
+
+    POST .../evidence/uploads        reserve  -> item + file row + presigned PUT URL
+    (client PUTs the bytes straight to private storage)
+    POST .../evidence/{id}/complete  confirm  -> HEAD the object, record what it says
+
+The alternative — create the record *after* the upload, as the Architecture RFC §18
+step list reads — would need the client to hand back the key it uploaded to. A
+client-supplied key is a client-supplied storage path, and threat model §12 requires
+server-generated ones. So the key is minted and recorded first, and the presigned URL is
+signed for that key alone.
+
+**Validation is split, deliberately.** Media type and declared size are refused at
+presign, before a byte is written — MVP §8.9's "rejected before processing". Actual size
+comes from the store at completion, because what a client declares is not what it
+uploads. Magic-byte verification needs the content itself and belongs to the worker's
+`VALIDATING` state in slice 2; until then a file whose bytes contradict its declared
+type reaches `UPLOADED` and no further. That is the honest reading of "before
+processing", not a gap.
+
+Nothing here trusts a storage key, or a token, as authorisation (Domain §52). Every path
+re-reads the item through `get_active_for_case`, the case arrives from
+`require_case_access`, and the token carries integrity only - it proves the server minted
+the key, never that the caller may use it.
+"""
+
+import uuid
+from dataclasses import dataclass
+
+from sqlalchemy.orm import Session
+
+from app.auth.schemas import CurrentUser
+from app.cases.domain import ApplicationCase, LifecycleStatus
+from app.core.config import get_settings
+from app.core.storage import StorageAdapter, build_key
+from app.evidence import upload_token
+from app.evidence.domain import (
+    EvidenceCategory,
+    EvidenceFile,
+    EvidenceItem,
+    EvidenceUploaded,
+    utcnow,
+)
+from app.evidence.repository import EvidenceRepository
+from app.shared.errors import (
+    CaseNotActive,
+    EvidenceNotFound,
+    EvidenceTooLarge,
+    EvidenceUploadIncomplete,
+    UnsupportedEvidenceType,
+)
+from app.shared.unit_of_work import UnitOfWork
+
+# The document types this product can actually read. PDF is the real target; the image
+# types exist because a phone photo of a letter is what people have. Anything else is
+# refused at presign rather than accepted and then failed, so the user finds out before
+# waiting for an upload (MVP §8.9).
+SUPPORTED_MEDIA_TYPES: tuple[str, ...] = (
+    "application/pdf",
+    "image/jpeg",
+    "image/png",
+    "image/heic",
+)
+
+
+@dataclass(frozen=True)
+class UploadGrant:
+    """What the client needs to perform the upload, and nothing more."""
+
+    upload_url: str
+    upload_token: str
+    media_type: str
+    expires_in_seconds: int
+
+
+def _require_active_case(case: ApplicationCase) -> None:
+    """Evidence exists to support an assessment, and a case that cannot be assessed
+    cannot hold any. Mirrors `residence._require_active_writable_case`; a non-active
+    case is a 409 with a code, never a 404 — it is real and owned, just not ready."""
+    if case.lifecycle_status is not LifecycleStatus.ACTIVE:
+        raise CaseNotActive(case.lifecycle_status.value)
+
+
+def start_upload(
+    storage: StorageAdapter,
+    *,
+    case: ApplicationCase,
+    media_type: str,
+    declared_size_bytes: int,
+) -> UploadGrant:
+    """Mint a storage key and sign a URL and a token for it. Writes nothing.
+
+    Refusing the media type and the declared size here is MVP §8.9's "unsupported file
+    types are rejected before processing" in its strongest form: the user finds out
+    before uploading, and no object is ever written for a type this product cannot read.
+    The type is also bound into the presigned URL's signature, so it is the only type
+    the store will accept at that URL.
+    """
+    _require_active_case(case)
+
+    settings = get_settings()
+    if media_type not in SUPPORTED_MEDIA_TYPES:
+        raise UnsupportedEvidenceType(media_type, SUPPORTED_MEDIA_TYPES)
+    if declared_size_bytes > settings.max_upload_bytes:
+        raise EvidenceTooLarge(declared_size_bytes, settings.max_upload_bytes)
+
+    ttl = settings.storage_presign_ttl_seconds
+    key = build_key(case_id=case.id, evidence_item_id=uuid.uuid4())
+    return UploadGrant(
+        upload_url=storage.presigned_put_url(key, media_type=media_type, ttl_seconds=ttl),
+        upload_token=upload_token.issue(
+            case_id=case.id, storage_key=key, media_type=media_type, ttl_seconds=ttl
+        ),
+        media_type=media_type,
+        expires_in_seconds=ttl,
+    )
+
+
+def record_upload(
+    session: Session,
+    storage: StorageAdapter,
+    *,
+    case: ApplicationCase,
+    user: CurrentUser,
+    token: str,
+    category: EvidenceCategory,
+    display_name: str,
+    original_filename: str | None,
+) -> tuple[EvidenceItem, EvidenceFile]:
+    """Confirm the bytes are really there, then record the document.
+
+    Size and checksum come from the store, never from the request: the client has
+    already said what it intended to upload, and this is where we find out what it did.
+
+    State, event, audit entry and outbox row commit together through `UnitOfWork`, or
+    not at all.
+    """
+    _require_active_case(case)
+
+    grant = upload_token.verify(token, case_id=case.id)
+
+    stored = storage.head(grant.storage_key)
+    if stored is None:
+        raise EvidenceUploadIncomplete()
+
+    settings = get_settings()
+    if stored.size_bytes > settings.max_upload_bytes:
+        # The declared size passed and the real one did not. The object is left for the
+        # purge path rather than deleted here: nothing outside the deletion path ever
+        # removes stored content, which is what keeps "processing failure never deletes
+        # the uploaded evidence" a property of the code's shape rather than a promise.
+        raise EvidenceTooLarge(stored.size_bytes, settings.max_upload_bytes)
+
+    at = utcnow()
+    item = EvidenceItem.uploaded(
+        case_id=case.id,
+        category=category,
+        display_name=display_name,
+        created_by=user.user_id,
+    )
+    EvidenceRepository.add_item(session, item)
+    # Flush before the child: SQLAlchemy orders a flush from `relationship()`
+    # dependencies, and these aggregates are joined by an app-maintained pointer rather
+    # than a relationship (the 0003/0005 convention). Without this the file row inserts
+    # first and `evidence_files`' RLS policy - which predicates through its parent -
+    # correctly refuses a row whose parent does not exist yet.
+    session.flush()
+
+    file = EvidenceFile.landed(
+        evidence_item_id=item.id,
+        version_number=1,
+        storage_key=grant.storage_key,
+        original_filename=original_filename,
+        media_type=grant.media_type,
+        size_bytes=stored.size_bytes,
+        checksum=stored.etag,
+        at=at,
+    )
+    EvidenceRepository.add_file(session, file)
+    session.flush()
+    item.point_at_file(file_id=file.id, at=at)
+
+    uow = UnitOfWork(session, actor_id=user.user_id)
+    uow.emit(
+        EvidenceUploaded(
+            aggregate_id=item.id,
+            case_id=case.id,
+            evidence_file_id=file.id,
+            category=item.category,
+            media_type=file.media_type,
+            size_bytes=file.size_bytes,
+        ),
+        case_id=case.id,
+        action="EVIDENCE_UPLOADED",
+        target_type="EvidenceItem",
+        target_id=item.id,
+        # Safe metadata only (Domain §38.1): no filename, no key, no content.
+        safe_metadata={"category": item.category, "media_type": file.media_type},
+    )
+    uow.commit()
+    return item, file
+
+
+def list_evidence(
+    session: Session, *, case: ApplicationCase
+) -> list[tuple[EvidenceItem, EvidenceFile]]:
+    return EvidenceRepository.list_uploaded_for_case(session, case_id=case.id)
+
+
+def get_evidence(
+    session: Session, *, case: ApplicationCase, evidence_item_id: uuid.UUID
+) -> tuple[EvidenceItem, EvidenceFile]:
+    item = EvidenceRepository.get_active_for_case(
+        session, case_id=case.id, evidence_item_id=evidence_item_id
+    )
+    if item is None:
+        raise EvidenceNotFound()
+    file = EvidenceRepository.get_current_file(session, evidence_item_id=item.id)
+    if file is None or not file.is_available:
+        raise EvidenceNotFound()
+    return item, file
+
+
+def content_url(
+    session: Session,
+    storage: StorageAdapter,
+    *,
+    case: ApplicationCase,
+    evidence_item_id: uuid.UUID,
+) -> tuple[str, int]:
+    """A short-lived, case-authorised URL for the file's content.
+
+    The ownership check happens here, before the URL exists — the URL is a consequence
+    of authorisation, never a substitute for it (Domain §52). It cannot be revoked once
+    issued, so its TTL is the whole of its life; see ADR-0018.
+    """
+    item, file = get_evidence(session, case=case, evidence_item_id=evidence_item_id)
+    settings = get_settings()
+    return (
+        storage.presigned_get_url(
+            file.storage_key,
+            ttl_seconds=settings.storage_presign_ttl_seconds,
+            download_filename=file.original_filename or item.display_name,
+        ),
+        settings.storage_presign_ttl_seconds,
+    )

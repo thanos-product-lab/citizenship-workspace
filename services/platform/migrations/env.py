@@ -15,6 +15,7 @@ from sqlalchemy import engine_from_config, pool
 # so autogenerate and `target_metadata` see the full schema.
 import app.applicants.domain
 import app.cases.domain
+import app.evidence.domain
 import app.shared.records  # noqa: F401  (registration side effect)
 from app.core.config import get_settings
 from app.shared.db import Base

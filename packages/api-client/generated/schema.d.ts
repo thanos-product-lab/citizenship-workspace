@@ -122,6 +122,75 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/cases/{case_id}/evidence": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Evidence */
+        get: operations["list_evidence_api_v1_cases__case_id__evidence_get"];
+        put?: never;
+        /** Record Upload */
+        post: operations["record_upload_api_v1_cases__case_id__evidence_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cases/{case_id}/evidence/uploads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Start Upload */
+        post: operations["start_upload_api_v1_cases__case_id__evidence_uploads_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cases/{case_id}/evidence/{evidence_item_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Evidence */
+        get: operations["get_evidence_api_v1_cases__case_id__evidence__evidence_item_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cases/{case_id}/evidence/{evidence_item_id}/content": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Content Url */
+        get: operations["get_content_url_api_v1_cases__case_id__evidence__evidence_item_id__content_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/cases/{case_id}/issues": {
         parameters: {
             query?: never;
@@ -555,6 +624,106 @@ export interface components {
          */
         DateConfidence: "EXACT" | "ESTIMATED" | "CONFLICTING" | "UNKNOWN";
         /**
+         * EvidenceCategory
+         * @description Domain §14.2, verbatim.
+         *
+         *     §14.2: `OTHER` and `UNKNOWN` "can be stored but cannot create trusted domain facts
+         *     without a supported review path". Nothing creates a fact from evidence until M8, so
+         *     that constraint has no enforcement point yet — it arrives with `FactEvidenceLink`.
+         * @enum {string}
+         */
+        EvidenceCategory: "IMMIGRATION_STATUS" | "ENGLISH_LANGUAGE" | "LIFE_IN_THE_UK" | "TRAVEL_SUPPORT" | "OTHER" | "UNKNOWN";
+        /**
+         * EvidenceContentResponse
+         * @description A short-lived URL for the file itself.
+         *
+         *     Returned as JSON rather than as a 302 so the client controls navigation, and so the
+         *     URL never lands in a browser's address bar or `Referer` where a signed URL would
+         *     outlive the click (threat model §6.4 forbids logging signed URLs; a redirect puts one
+         *     in the history).
+         */
+        EvidenceContentResponse: {
+            /** Expires In Seconds */
+            expires_in_seconds: number;
+            /** Url */
+            url: string;
+        };
+        /**
+         * EvidenceLibraryResponse
+         * @description The case's evidence, and the vocabulary the client needs to offer an upload.
+         *
+         *     `supported_media_types` is served rather than hard-coded in the frontend so the
+         *     accept-list and the server's allowlist cannot drift into disagreeing about what is
+         *     uploadable — the client would otherwise offer a type the server refuses.
+         */
+        EvidenceLibraryResponse: {
+            /** Items */
+            items: components["schemas"]["EvidenceResponse"][];
+            /** Max Upload Bytes */
+            max_upload_bytes: number;
+            /** Supported Media Types */
+            supported_media_types?: string[];
+        };
+        /**
+         * EvidenceLifecycleStatus
+         * @description Domain §14.3, verbatim.
+         * @enum {string}
+         */
+        EvidenceLifecycleStatus: "ACTIVE" | "DELETION_PENDING" | "DELETED";
+        /**
+         * EvidenceProcessingStatus
+         * @description Domain §14.4, verbatim — and the *only* vocabulary the API may project.
+         *
+         *     These are domain states. Raw Celery states (`PENDING`, `STARTED`, `RETRY`, …) are
+         *     never shown to a user (Technical Architecture RFC §18, MVP §8.9), and
+         *     `tests/evidence/test_processing_states.py` asserts none of them can reach a
+         *     response.
+         *
+         *     Reachability in M7: `UPLOADED` here in slice 1; `VALIDATING` in slice 2;
+         *     `EXTRACTING_TEXT`, `ANALYSING`, `COMPLETED`, `PARTIALLY_COMPLETED`, `FAILED`,
+         *     `UNSUPPORTED` in slice 3. `AWAITING_CONFIRMATION` has no producer until claims
+         *     exist in M8, and ships unreachable rather than faked — the UI must not offer it as
+         *     a stage a document might enter.
+         * @enum {string}
+         */
+        EvidenceProcessingStatus: "UPLOADED" | "VALIDATING" | "EXTRACTING_TEXT" | "ANALYSING" | "AWAITING_CONFIRMATION" | "COMPLETED" | "PARTIALLY_COMPLETED" | "FAILED" | "UNSUPPORTED";
+        /** EvidenceResponse */
+        EvidenceResponse: {
+            /**
+             * Case Id
+             * Format: uuid
+             */
+            case_id: string;
+            category: components["schemas"]["EvidenceCategory"];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Display Name */
+            display_name: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            lifecycle_status: components["schemas"]["EvidenceLifecycleStatus"];
+            /** Media Type */
+            media_type: string;
+            /** Original Filename */
+            original_filename: string | null;
+            processing_status: components["schemas"]["EvidenceProcessingStatus"];
+            /** Revision */
+            revision: number;
+            /** Size Bytes */
+            size_bytes: number;
+            /**
+             * Uploaded At
+             * Format: date-time
+             */
+            uploaded_at: string;
+        };
+        /**
          * GroupSummaryView
          * @description One requirement group, compressed without losing what its members said.
          *
@@ -864,6 +1033,19 @@ export interface components {
             result_count: number;
             /** Trigger Type */
             trigger_type: string;
+        };
+        /**
+         * RecordUploadRequest
+         * @description The document's user-facing metadata, plus the token from the grant.
+         */
+        RecordUploadRequest: {
+            category: components["schemas"]["EvidenceCategory"];
+            /** Display Name */
+            display_name: string;
+            /** Original Filename */
+            original_filename?: string | null;
+            /** Upload Token */
+            upload_token: string;
         };
         /**
          * RenderedMessage
@@ -1297,6 +1479,20 @@ export interface components {
             reason_code: string | null;
         };
         /**
+         * StartUploadRequest
+         * @description What the client declares before uploading. Both fields are untrusted.
+         *
+         *     `declared_size_bytes` buys the user an early refusal on an obviously oversized file
+         *     rather than a failure after the upload; the store's own count is checked again when
+         *     the document is recorded, and that is the number that counts.
+         */
+        StartUploadRequest: {
+            /** Declared Size Bytes */
+            declared_size_bytes: number;
+            /** Media Type */
+            media_type: string;
+        };
+        /**
          * StatusType
          * @enum {string}
          */
@@ -1518,6 +1714,24 @@ export interface components {
          * @enum {string}
          */
         TravelReviewState: "DRAFT" | "CONFIRMED" | "UNCERTAIN";
+        /**
+         * UploadGrantResponse
+         * @description The presigned PUT, and the signed token that carries the storage key back.
+         *
+         *     The token is opaque to the client and is not a capability: presenting it proves the
+         *     server minted the key, never that the caller may use it. Ownership is re-checked on
+         *     the recording call like every other route.
+         */
+        UploadGrantResponse: {
+            /** Expires In Seconds */
+            expires_in_seconds: number;
+            /** Media Type */
+            media_type: string;
+            /** Upload Token */
+            upload_token: string;
+            /** Upload Url */
+            upload_url: string;
+        };
         /** ValidationError */
         ValidationError: {
             /** Context */
@@ -1774,6 +1988,171 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RecalculateResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_evidence_api_v1_cases__case_id__evidence_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvidenceLibraryResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    record_upload_api_v1_cases__case_id__evidence_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecordUploadRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvidenceResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_upload_api_v1_cases__case_id__evidence_uploads_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StartUploadRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UploadGrantResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_evidence_api_v1_cases__case_id__evidence__evidence_item_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                evidence_item_id: string;
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvidenceResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_content_url_api_v1_cases__case_id__evidence__evidence_item_id__content_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                evidence_item_id: string;
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvidenceContentResponse"];
                 };
             };
             /** @description Validation Error */

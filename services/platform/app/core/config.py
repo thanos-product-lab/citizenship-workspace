@@ -49,6 +49,12 @@ class Settings(BaseSettings):
     # is the whole of the bound on an issued URL's life (ADR-0018).
     storage_presign_ttl_seconds: int = 60
 
+    # HMAC key for the signed upload token that carries a storage key back from the
+    # client (app/evidence/upload_token.py). Unset means a per-process key, which is
+    # fine for one API and wrong for several — `check_upload_secret` warns at boot,
+    # the same shape as the superuser-login-role warning.
+    upload_token_secret: str = ""
+
     # Hard ceiling on an uploaded file. Enforced twice: declared size at presign
     # (cheap, pre-upload) and actual size at completion (authoritative — a client
     # controls what it declares, not what the store reports).
