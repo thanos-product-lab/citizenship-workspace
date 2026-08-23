@@ -431,3 +431,23 @@ def test_the_configuration_line_reports_presence_and_never_a_value(
 
     rendered = "".join(record.getMessage() for record in caplog.records)
     assert secret not in rendered
+
+
+def test_the_configuration_line_is_emitted_before_the_guard_can_raise() -> None:
+    """Order matters more than it looks.
+
+    The guard used to raise from the lifespan, where FastAPI's `merged_lifespan` recurses
+    once per mounted router: ~100 traceback frames per crash, ten crashes in the restart
+    loop, and 824 of the 1001 log lines a real platform retained were
+    `async with original_context(app)`. Both the cause and this diagnostic were pushed out
+    of the window, and it took three deploys to establish what a single line already knew.
+
+    So `create_app` logs the configuration first and validates second, and this pins that
+    order rather than trusting it.
+    """
+    import inspect
+
+    from app import main
+
+    source = inspect.getsource(main.create_app)
+    assert source.index("_log_configuration") < source.index("check_upload_secret()")

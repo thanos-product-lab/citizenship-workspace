@@ -65,7 +65,6 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
             "rls.login_role_superuser",
             detail="DB login role is a superuser; RLS backstop relies on per-request SET ROLE only",
         )
-    check_upload_secret()
     # Create the evidence bucket in the environments that own their own storage.
     # Deployment provisions its bucket out of band: an application that can create
     # buckets is an application whose credentials can create a *public* one.
@@ -80,6 +79,22 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 def create_app() -> FastAPI:
     settings = get_settings()
     configure_logging(settings)
+    _log_configuration(settings)
+
+    # Configuration is validated *here*, at import, rather than inside the lifespan.
+    #
+    # Raising from a lifespan produces a traceback through FastAPI's `merged_lifespan`,
+    # which recurses once per mounted router — on a real deployment that was ~100 frames
+    # per crash, ten crashes in the restart loop, and 824 of the 1001 log lines the
+    # platform retained were `async with original_context(app)`. The one line naming the
+    # cause, and the `app.configuration` line built to answer "is it actually set?", were
+    # both pushed out of the window. A guard nobody can read is a guard that costs three
+    # deploys to diagnose.
+    #
+    # Failing at import gives a short traceback with the message at the top, and it fails
+    # before the health check ever has something to poll — which is what "fail closed"
+    # should have looked like the first time.
+    check_upload_secret()
 
     app = FastAPI(title="Citizenship Platform", version="0.1.0", lifespan=lifespan)
     origins = [o.strip() for o in settings.cors_allow_origins.split(",") if o.strip()]

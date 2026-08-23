@@ -753,7 +753,21 @@ crash-looped on `RuntimeError: UPLOAD_TOKEN_SECRET must be set outside local
 development`, ten restarts, nothing else in the logs. The guard did exactly what it was
 built to do.
 
-**The defect is not the guard, it is that the same commit did not update the deployment
+**Three deploys were spent establishing a fact one log line already knew**, and that is
+the more useful failure. The guard raised from the FastAPI lifespan, where
+`merged_lifespan` recurses once per mounted router: ~100 traceback frames per crash, ten
+crashes in the restart loop, and **824 of the 1001 log lines the platform retained were
+`async with original_context(app)`**. The line naming the cause, and the
+`app.configuration` line added specifically to answer "is it actually set?", were both
+pushed out of the retained window.
+
+Configuration is now validated in `create_app()`, at import: 44 lines instead of ~100,
+zero nested frames, the diagnostic first so it survives any truncation, and the failure
+lands before the health check has anything to poll. A guard nobody can read is a guard
+that costs three deploys. The pre-deploy migration is unaffected — `migrations/env.py`
+imports the domain modules, never `app.main`.
+
+**The other defect is that the same commit did not update the deployment
 docs.** A required environment variable was introduced and `docs/DEPLOYMENT.md` still
 listed six. Adding a boot-blocking requirement without documenting it in the same change
 is how a security control becomes an outage.
