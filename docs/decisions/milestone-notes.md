@@ -713,6 +713,21 @@ address → 403, signed → 200, TTL 60s, no `storage_key` in any document respo
 case's evidence id → 404 byte-identical to an unknown id, and zero rows in `domain_events`,
 `audit_entries` or `outbox_events` containing a filename, a key or `.pdf`.
 
+### The CI-only failure
+
+`ApplicationDateCard`'s "announces what the date does not fix" test failed on CI and
+passed locally, five runs out of five, before and after. It is a real race and not an
+infrastructure hiccup: the panel text comes from the preview, while the announcement is
+set by an **effect keyed on that preview**, so `findByText` can resolve on the commit
+before the effect has flushed and the live region is still empty. It was the only
+live-region *text* assertion in the suite written without a `waitFor` — the two in
+`IssuesDestination` assert presence, which cannot race — so it was the one that broke.
+
+Worth recording because the diff that surfaced it changed one line in that file, an
+import path, and nothing about its timing. A slower machine was the whole difference. The
+lesson is the file's own: an assertion that reads state set by an effect has to wait for
+it, and passing locally is not evidence that it does.
+
 _Known gaps carried forward:_
 
 - **`AWAITING_CONFIRMATION` ships unreachable.** No producer until claims exist in M8. The

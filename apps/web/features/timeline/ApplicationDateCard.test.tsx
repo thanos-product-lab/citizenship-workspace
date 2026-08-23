@@ -511,9 +511,17 @@ describe("ApplicationDateCard", () => {
     await previewADate("2027-04-20");
     await screen.findByText(/still not satisfied on this date/i);
 
+    // `waitFor`, because the announcement lands one render later than the panel: the
+    // panel text comes from the preview itself, while the announcement is set by an
+    // effect keyed on that preview, so `findByText` above can resolve on the commit
+    // *before* the effect has flushed. Asserting synchronously read an empty live region
+    // on CI while passing every time locally — the only live-region assertion in this
+    // file written without a wait, which is why it was the one that broke.
     const live = container.querySelector('[aria-live="polite"]');
-    expect(live).toHaveTextContent(/no conclusion changes/i);
-    expect(live).toHaveTextContent(/1 requirement is still not satisfied on this date/i);
+    await waitFor(() => {
+      expect(live).toHaveTextContent(/no conclusion changes/i);
+      expect(live).toHaveTextContent(/1 requirement is still not satisfied on this date/i);
+    });
   });
 
   it("tells a keyboard user why the alternative date is being offered", async () => {
