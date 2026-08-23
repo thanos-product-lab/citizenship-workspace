@@ -746,8 +746,30 @@ the diff to explain it.
 Verified by running a container with the exact workflow command and pointing the storage
 suite at it — 39 passed — rather than by pushing and waiting.
 
+### The deployment failure
+
+The fail-closed added in response to the security review took Railway down: the API
+crash-looped on `RuntimeError: UPLOAD_TOKEN_SECRET must be set outside local
+development`, ten restarts, nothing else in the logs. The guard did exactly what it was
+built to do.
+
+**The defect is not the guard, it is that the same commit did not update the deployment
+docs.** A required environment variable was introduced and `docs/DEPLOYMENT.md` still
+listed six. Adding a boot-blocking requirement without documenting it in the same change
+is how a security control becomes an outage.
+
+It also surfaced something larger, which the local-only verification could not:
+**evidence upload cannot work on Railway at all yet.** There is no managed object storage
+there, the storage settings default to a local MinIO, and `ensure_bucket()` deliberately
+runs only under `local`/`docker`. So the deployed app boots, lists an empty library, and
+fails on the first upload. M7 slice 1 is complete locally and **not deployable** until a
+private S3-compatible bucket is provisioned — recorded here rather than discovered at the
+milestone gate, which asks for "deployed environment still works, not just local".
+
 _Known gaps carried forward:_
 
+- **Evidence upload is not functional on Railway** until a private bucket exists and the
+  `STORAGE_*` variables are set on both the API and the worker. Boots fine; uploads fail.
 - **`AWAITING_CONFIRMATION` ships unreachable.** No producer until claims exist in M8. The
   UI must not offer it as a stage a document might enter.
 - **Magic-byte validation is not in slice 1.** The declared media type is bound into the

@@ -21,10 +21,41 @@ Prerequisites: a Railway account, a Vercel account, and your Clerk keys.
    - `CLERK_ISSUER` = `https://<your-instance>.clerk.accounts.dev`
    - `CORS_ALLOW_ORIGINS` = your Vercel URL (fill in after step B)
    - `CLERK_AUTHORIZED_PARTIES` = your Vercel URL (optional; must match exactly)
+   - `UPLOAD_TOKEN_SECRET` = 32+ random characters. **The API refuses to boot without
+     it** whenever `ENVIRONMENT` is anything but `local`/`docker`/`test`. Generate one
+     with `python -c "import secrets; print(secrets.token_urlsafe(48))"`.
 
    Then **Settings → Networking → Generate Domain** and note the **API URL**.
    Set the env before the first successful deploy — `/health/ready` needs Postgres
    and Redis reachable, or the health check fails.
+
+   > **Why `UPLOAD_TOKEN_SECRET` is fatal rather than a warning.** It signs the token
+   > that carries an evidence upload's storage key back from the browser (ADR-0019).
+   > Unset, the key is per-process — fine for one instance, and silently wrong for two:
+   > a token signed by one replica is rejected by the other, and the symptom is
+   > intermittent 422s indistinguishable from tampering. Discovering that from a support
+   > conversation is worse than failing at boot.
+
+### Object storage for evidence (M7)
+
+**Evidence upload does not work on Railway until an S3-compatible bucket exists.** There
+is no managed object storage on Railway, and the storage settings default to a local
+MinIO — so on a deployed instance the API boots and the Evidence destination lists
+nothing, but any upload fails. Reads of existing rows are unaffected; nothing touches
+storage until an upload or a content URL is requested.
+
+To make it work, provision a private bucket anywhere S3-compatible (Cloudflare R2, AWS
+S3, Backblaze B2, or a MinIO service in the same Railway project) and set on **both** the
+API and the worker:
+
+   - `STORAGE_ENDPOINT_URL` (omit for real AWS S3)
+   - `STORAGE_BUCKET`
+   - `STORAGE_ACCESS_KEY` / `STORAGE_SECRET_KEY`
+   - `STORAGE_REGION` if the provider needs one
+
+The bucket must be **private**, and the application does not create it: an application
+whose credentials can create buckets is an application whose credentials can create a
+*public* one. `ensure_bucket()` runs only under `ENVIRONMENT=local`/`docker`.
 4. **Worker service** — New service from the **same repo**; under
    **Settings → Deploy → Start Command** set:
    ```
