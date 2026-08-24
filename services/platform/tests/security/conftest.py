@@ -13,11 +13,13 @@ writes. Each step exists to reach a specific table:
     add a second travel record   -> issues            (STALE_ASSESSMENT opens)
     recalculate again            -> issue_resolutions (the same issues resolve)
     upload a document            -> evidence_items, evidence_files
+    validate it                  -> evidence_processing_runs
 
 A table with no row proves nothing about its policy, so `assert_populated` is called
 before the isolation assertions rather than trusting the arrangement.
 """
 
+import uuid
 from collections.abc import Callable, Iterator
 
 import pytest
@@ -45,6 +47,7 @@ CASE_SCOPED_TABLES: tuple[str, ...] = (
     "issue_resolutions",
     "evidence_items",
     "evidence_files",
+    "evidence_processing_runs",
 )
 
 SUPPORTED_ANSWERS = {
@@ -86,6 +89,8 @@ def _upload_document(api: Api, user: str, case_id: str) -> None:
     those live in `tests/evidence/test_storage_minio.py`.
     """
     from app.core.storage import InMemoryStorage, get_storage
+    from app.shared.db import get_sessionmaker
+    from app.shared.tenant import set_tenant
 
     grant = (
         api(user)
@@ -102,15 +107,37 @@ def _upload_document(api: Api, user: str, case_id: str) -> None:
         str(grant["upload_url"]).removeprefix("memory://put/").split("?", 1)[0], b"%PDF-1.7 x"
     )
 
-    api(user).post(
-        f"/api/v1/cases/{case_id}/evidence",
-        json={
-            "upload_token": grant["upload_token"],
-            "category": "TRAVEL_SUPPORT",
-            "display_name": "A document",
-            "original_filename": "doc.pdf",
-        },
+    item = (
+        api(user)
+        .post(
+            f"/api/v1/cases/{case_id}/evidence",
+            json={
+                "upload_token": grant["upload_token"],
+                "category": "TRAVEL_SUPPORT",
+                "display_name": "A document",
+                "original_filename": "doc.pdf",
+            },
+        )
+        .json()
     )
+
+    # Run validation inline rather than through the broker: this suite is about row
+    # visibility, and a processing run is one of the rows. Whether Celery can reach
+    # Redis is a different question, asked in `tests/evidence/`.
+    from app.evidence import processing
+
+    session = get_sessionmaker()()
+    try:
+        set_tenant(session, user)
+        processing.validate_evidence(
+            session,
+            get_storage(),
+            evidence_item_id=uuid.UUID(item["id"]),
+            idempotency_key=f"seed-{item['id']}",
+            trace_id=None,
+        )
+    finally:
+        session.close()
 
 
 def _add_trip(api: Api, user: str, case_id: str, departure: str, return_: str) -> None:

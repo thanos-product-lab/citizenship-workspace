@@ -94,6 +94,8 @@ class StorageAdapter(Protocol):
 
     def head(self, key: str) -> StoredObject | None: ...
 
+    def read_prefix(self, key: str, *, length: int) -> bytes: ...
+
     def delete(self, key: str) -> None: ...
 
 
@@ -219,6 +221,24 @@ class S3Storage:
             etag=str(response["ETag"]).strip('"'),
         )
 
+    def read_prefix(self, key: str, *, length: int) -> bytes:
+        """The object's first bytes, as a ranged GET.
+
+        A range rather than a download: the caller is deciding whether these bytes are
+        what they claim to be, and pulling twenty megabytes of an attacker-controlled
+        file into memory to look at its first eight is the wrong order to do that in.
+        """
+        try:
+            response = self._client.get_object(
+                Bucket=self._bucket, Key=key, Range=f"bytes=0-{max(length - 1, 0)}"
+            )
+            return bytes(response["Body"].read())
+        except ClientError as exc:
+            code = exc.response.get("Error", {}).get("Code")
+            if code in {"404", "NoSuchKey", "NotFound"}:
+                return b""
+            raise StorageError("could not read object content") from exc
+
     def delete(self, key: str) -> None:
         """Idempotent: S3 does not distinguish deleting an absent key from a present
         one, which is what Domain §51.1 needs — deletion must be safe to redeliver."""
@@ -263,6 +283,9 @@ class InMemoryStorage:
         if body is None:
             return None
         return StoredObject(size_bytes=len(body), etag=hashlib.md5(body).hexdigest())
+
+    def read_prefix(self, key: str, *, length: int) -> bytes:
+        return self.objects.get(key, b"")[:length]
 
     def delete(self, key: str) -> None:
         self.objects.pop(key, None)

@@ -250,3 +250,144 @@ class EvidenceUploaded(DomainEvent):
             "media_type": self.media_type,
             "size_bytes": self.size_bytes,
         }
+
+
+# --- processing runs ---------------------------------------------------------------
+
+
+class ProcessingRunStatus(StrEnum):
+    """Domain §16.1, verbatim. **Internal**: this is the worker's vocabulary, and it is
+    never projected to a user. `PROCESSING_STATUS_FOR_RUN` below maps it onto the §14.4
+    states the API is allowed to speak."""
+
+    QUEUED = "QUEUED"
+    RUNNING = "RUNNING"
+    SUCCEEDED = "SUCCEEDED"
+    PARTIAL = "PARTIAL"
+    FAILED = "FAILED"
+    CANCELLED = "CANCELLED"
+
+
+class ProcessingFailureCode(StrEnum):
+    """Why a run stopped, as a stable code.
+
+    Codes, never prose, for the same reason `AssessmentResult` uses summary codes: a
+    message is written once and read forever, and an exception string carries whatever
+    the driver felt like including — in slice 1 that turned out to be the storage key and
+    the original filename (ADR-0019).
+
+    Split by whether a retry could ever help, which is what `TRANSIENT_FAILURE_CODES`
+    below encodes:
+
+    - **Terminal.** The file is what it is; running again produces the same answer.
+    - **Transient.** The store or the network was unavailable; the same file may well
+      succeed in ten seconds.
+    """
+
+    # Terminal — Technical Architecture RFC §18, "do not automatically retry".
+    UNSUPPORTED_MEDIA_TYPE = "UNSUPPORTED_MEDIA_TYPE"
+    CONTENT_DOES_NOT_MATCH_TYPE = "CONTENT_DOES_NOT_MATCH_TYPE"
+    CORRUPT_FILE = "CORRUPT_FILE"
+    PASSWORD_PROTECTED = "PASSWORD_PROTECTED"
+    FILE_TOO_LARGE = "FILE_TOO_LARGE"
+    EMPTY_FILE = "EMPTY_FILE"
+    # Transient — retried with backoff.
+    STORAGE_UNAVAILABLE = "STORAGE_UNAVAILABLE"
+    TIMED_OUT = "TIMED_OUT"
+
+
+TRANSIENT_FAILURE_CODES = frozenset(
+    {ProcessingFailureCode.STORAGE_UNAVAILABLE, ProcessingFailureCode.TIMED_OUT}
+)
+
+#: How a run's internal status becomes the state a user is shown (§14.4).
+#:
+#: Total over `ProcessingRunStatus` on purpose, and asserted to be in
+#: `tests/evidence/test_processing_states.py`: a status with no mapping would otherwise
+#: fall through to whatever the item already said, which is the quiet failure mode —
+#: a document that finished and still reads as though nothing happened.
+#:
+#: `SUCCEEDED` maps back to `UPLOADED` in this slice because validation is all that
+#: runs: the file is stored, it has been checked, and nothing has read its contents.
+#: That is exactly what `UPLOADED` means and exactly what the library says. Slice 3
+#: carries the same run on into extraction, where `SUCCEEDED` becomes `COMPLETED`.
+PROCESSING_STATUS_FOR_RUN: dict[ProcessingRunStatus, EvidenceProcessingStatus | None] = {
+    ProcessingRunStatus.QUEUED: EvidenceProcessingStatus.UPLOADED,
+    ProcessingRunStatus.RUNNING: EvidenceProcessingStatus.VALIDATING,
+    ProcessingRunStatus.SUCCEEDED: EvidenceProcessingStatus.UPLOADED,
+    ProcessingRunStatus.PARTIAL: EvidenceProcessingStatus.PARTIALLY_COMPLETED,
+    ProcessingRunStatus.FAILED: EvidenceProcessingStatus.FAILED,
+    # A cancelled run leaves the item's state alone: the case or the document is being
+    # deleted, and "Failed" would tell the user their document could not be processed
+    # when what happened is that they deleted it.
+    ProcessingRunStatus.CANCELLED: None,
+}
+
+#: Bumped when the deterministic pipeline changes in a way that would produce a
+#: different result for the same bytes. Not a `RuleVersion` and carries no eligibility
+#: meaning — it versions a mechanism, not a conclusion.
+PIPELINE_VERSION = "m7.validate.1"
+
+
+class EvidenceProcessingRun(Base):
+    """One execution of the processing pipeline against one exact file version (§16)."""
+
+    __tablename__ = "evidence_processing_runs"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    evidence_item_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("evidence_items.id"), index=True)
+    # §16.2: "a run cannot process a file version different from the one recorded."
+    evidence_file_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("evidence_files.id"))
+    status: Mapped[str] = mapped_column(String(20))
+    pipeline_version: Mapped[str] = mapped_column(String(40))
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    retry_count: Mapped[int] = mapped_column(Integer, default=0)
+    failure_code: Mapped[str | None] = mapped_column(String(40))
+    # A short, safe sentence. Never an exception string and never document content
+    # (§16.2: "failure summaries must not contain raw document content").
+    failure_summary: Mapped[str | None] = mapped_column(String(200))
+    trace_id: Mapped[str | None] = mapped_column(String(64))
+    #: **The outbox row's own id.** Making the delivery identity the idempotency identity
+    #: gets both cases right with no extra state: a duplicate delivery reuses the row and
+    #: so collides here, while a user-initiated retry writes a *new* outbox row and so
+    #: gets a genuinely new run. Keying on `file_id:pipeline_version` instead cannot tell
+    #: those apart.
+    idempotency_key: Mapped[str] = mapped_column(String(80), unique=True)
+
+    @classmethod
+    def start(
+        cls,
+        *,
+        evidence_item_id: uuid.UUID,
+        evidence_file_id: uuid.UUID,
+        idempotency_key: str,
+        trace_id: str | None,
+    ) -> "EvidenceProcessingRun":
+        return cls(
+            id=uuid.uuid4(),
+            evidence_item_id=evidence_item_id,
+            evidence_file_id=evidence_file_id,
+            status=ProcessingRunStatus.RUNNING.value,
+            pipeline_version=PIPELINE_VERSION,
+            idempotency_key=idempotency_key,
+            trace_id=trace_id,
+        )
+
+    @property
+    def run_status(self) -> ProcessingRunStatus:
+        return ProcessingRunStatus(self.status)
+
+    def succeed(self, *, at: datetime) -> None:
+        self.status = ProcessingRunStatus.SUCCEEDED.value
+        self.completed_at = at
+
+    def fail(self, *, code: ProcessingFailureCode, summary: str, at: datetime) -> None:
+        self.status = ProcessingRunStatus.FAILED.value
+        self.failure_code = code.value
+        self.failure_summary = summary[:200]
+        self.completed_at = at
+
+    def cancel(self, *, at: datetime) -> None:
+        self.status = ProcessingRunStatus.CANCELLED.value
+        self.completed_at = at
