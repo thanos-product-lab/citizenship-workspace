@@ -42,6 +42,13 @@ package = false
 target-version = "py312"
 line-length = 100
 src = ["app", "worker", "tests"]
+# Migrations are formatted by hand when written and never touched again. Excluded from
+# the formatter because a repo-wide `ruff format` reflowed a *shipped* one (0004) and
+# swept it into an unrelated commit. The change was semantically nothing, which is the
+# problem: the rule "never edit a shipped migration" is only useful while every hit on
+# one is a real signal, and formatting churn teaches a reviewer to skim past it.
+# `ruff check` still lints them.
+format.exclude = ["migrations/versions/*.py"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]

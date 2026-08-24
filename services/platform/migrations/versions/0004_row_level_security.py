@@ -57,7 +57,9 @@ def upgrade() -> None:
     # Postgres 15+ does not grant schema USAGE to new roles by default.
     op.execute(f"GRANT USAGE ON SCHEMA public TO {APP_ROLE}")
     op.execute(f"GRANT {_DML} ON ALL TABLES IN SCHEMA public TO {APP_ROLE}")
-    op.execute(f"ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT {_DML} ON TABLES TO {APP_ROLE}")
+    op.execute(
+        f"ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT {_DML} ON TABLES TO {APP_ROLE}"
+    )
     # Let the connecting (owner) role switch into app_rls via SET ROLE.
     op.execute(f"GRANT {APP_ROLE} TO CURRENT_USER")
 
@@ -75,7 +77,9 @@ def downgrade() -> None:
         op.execute(f"DROP POLICY IF EXISTS {table}_tenant ON {table}")
         op.execute(f"ALTER TABLE {table} NO FORCE ROW LEVEL SECURITY")
         op.execute(f"ALTER TABLE {table} DISABLE ROW LEVEL SECURITY")
-    op.execute(f"ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE {_DML} ON TABLES FROM {APP_ROLE}")
+    op.execute(
+        f"ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE {_DML} ON TABLES FROM {APP_ROLE}"
+    )
     # DROP OWNED clears the role's grants so the role can be dropped.
     op.execute(f"DROP OWNED BY {APP_ROLE}")
     op.execute(f"REVOKE {APP_ROLE} FROM CURRENT_USER")
