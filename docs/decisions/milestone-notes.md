@@ -809,3 +809,105 @@ _Known gaps carried forward:_
   blocked, which is what matters now; the read guard belongs with slice 5.
 - **`domain_events`, `audit_entries` and `outbox_events` still have no RLS policy** —
   carried from M2, and now more pressing: slice 2 builds the reader that consumes them.
+
+### Slice 2 — the outbox reader, and tenant context outside a request
+
+The outbox has a reader; a Celery task establishes an RLS tenant with no request around
+it; an uploaded document's bytes are checked against the type it claimed.
+
+**Deviation from the plan:** `EvidenceProcessingRun` came forward from slice 3, because
+§4 requires the first worker task to be idempotent and the run table is where
+`idempotency_key` lives. Slice 3 extends the same run into extraction rather than
+inventing a second concept.
+
+`EvidenceProcessingRun` also settled a question the plan left open: what a *successful*
+validation leaves behind. `SUCCEEDED` maps back to `UPLOADED`, because in this slice
+nothing reads a document's contents, so "stored" and "stored and checked" say the same
+true thing to a user. Claiming more would be the reassurance the product exists to avoid.
+
+### What went wrong, and what it taught
+
+**Three defects found before review, all in the same shape: the code did something, and
+the thing it did was nothing.**
+
+- **The relay redelivered its entire backlog on every pass.** `autoflush=False`, so
+  `published_at` had not reached the database before the next `SELECT ... FOR UPDATE`
+  claimed the same rows again.
+- **The tenant mark landed on the wrong object.** `tenant_scoped` applied *inside*
+  `celery_app.task` stamps the plain function, which Celery then wraps in a `Task` the
+  harness cannot see through. Decorator order is load-bearing.
+- **A document could strand in `VALIDATING` forever.** `autoretry_for` re-raises when
+  retries run out and the task simply ends — run still RUNNING, item still VALIDATING,
+  nothing left that could move them, and the client polling every 1.5s for as long as the
+  tab was open.
+
+**And then the review found that the fix for the third one was unreachable**, which is
+the finding worth keeping.
+
+The idempotency short-circuit fired on *any* existing run for the key — including the
+RUNNING one the same delivery had written seconds earlier. So the retry found its own
+attempt, returned `already_done=True`, and the task succeeded having done nothing.
+`request.retries` never advanced, the exhaustion branch never executed, `abandon_run` was
+dead code in production, and the original defect was worse than diagnosed: **the retries
+were not happening at all.** My test for it called `abandon_run` directly, so it was
+green while the only path that would call it was unreachable. A RUNNING run under the same
+key is this delivery's own attempt, not a duplicate; §16.2 allows "a new attempt record",
+and that is what it now is.
+
+**The task-tenant harness did not catch the mutation it advertised.** Its docstring said
+`test_a_tenantless_task_session_sees_no_evidence_at_all` was "the mutation the gate runs —
+delete `set_tenant` from `case_task` — expressed as a standing test". It was not: the test
+opened its own session and never called `case_task` at all. The reviewer neutralised
+`set_tenant` and all ten tests passed, along with the rest of the security suite. The
+guardrail rested entirely on an attribute anyone could stamp on a task that never
+established a tenant.
+
+The fix needed a design change, not a test change: `case_task` hard-coded
+`get_sessionmaker()`, so it could only ever run on the superuser connection where RLS is
+inert. It now takes an injectable factory — production passes nothing — and the tests
+drive the real wrapper on the non-superuser role. The mutation now kills two tests.
+
+**Which surfaced a genuine correctness bug the superuser connection had been hiding.**
+`resolve_evidence_owner` must run before any tenant exists, so RLS cannot police it — and
+under a real non-superuser role it returned **zero rows**. Every document would have sat
+at `UPLOADED` forever while the logs reported the evidence absent. The privilege is now
+explicit: a `SECURITY DEFINER` function (migration 0017), one id in, three columns out,
+`EXECUTE` granted to the application role alone, `search_path` pinned. Accidental
+privilege became stated privilege, and ADR-0006 R1 is no longer blocked by this path.
+
+Also removed: `resolve_case_owner`, dead on arrival — an ownership oracle taking any case
+id with no user, no membership check and no tenant, exported from a module the *API*
+imports, whose docstring claimed a uniqueness that `resolve_evidence_owner` also claimed.
+Two functions each documented as the only one of their kind is how the second gets called
+from a request path.
+
+### Gate evidence — slice 2
+
+| # | Mutation | Result |
+|---|---|---|
+| 1 | delete `set_tenant` from `case_task` | 2 red (was **0** before the harness was rebuilt) |
+| 2 | short-circuit on any run, not only settled ones | 1 red — the retry does nothing |
+| 3 | drop `evidence_file_id` from the dispatch kwargs | 1 red — kwargs shape |
+| 4 | rename an event type without deciding its consumer | 1 red — `test_every_event_type_has_a_decision_recorded` |
+
+`just lint`, `just typecheck`, **639 backend tests**, 273 frontend, zero API-client drift,
+migrations 0015–0017 applied.
+
+Verified against real infrastructure, twice — before and after the review fixes: beat
+schedules, the relay dispatches, the worker resolves its own tenant from an evidence id
+alone, a real PDF reaches `SUCCEEDED`/`UPLOADED` in two seconds, an executable labelled
+`application/pdf` reaches `FAILED`/`UNSUPPORTED` with `CONTENT_DOES_NOT_MATCH_TYPE`, and
+**the trace propagates** — `trace-abc-123` landed on its run, so browser → API → outbox →
+worker now holds end to end.
+
+_Known gaps carried forward:_
+
+- **`domain_events`, `audit_entries` and `outbox_events` still have no RLS policy.**
+  Carried since M2, and now load-bearing: the relay reads `outbox_events` with no tenant
+  by design. It reads one table and forwards identifiers, which is what makes that
+  survivable rather than correct.
+- **The worker never checks whether its login role is a superuser.** `app/main.py` warns
+  at API boot; the worker and beat processes do not, and they are now the processes where
+  it matters most.
+- **SSE is deferred** — ADR-0020. Polling is bounded by activity, and `UPLOADED` sits in
+  neither the in-flight nor the terminal set because it means two different things.
