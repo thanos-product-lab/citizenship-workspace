@@ -13,7 +13,7 @@ writes. Each step exists to reach a specific table:
     add a second travel record   -> issues            (STALE_ASSESSMENT opens)
     recalculate again            -> issue_resolutions (the same issues resolve)
     upload a document            -> evidence_items, evidence_files
-    validate it                  -> evidence_processing_runs
+    validate and read it         -> evidence_processing_runs, evidence_file_texts
 
 A table with no row proves nothing about its policy, so `assert_populated` is called
 before the isolation assertions rather than trusting the arrangement.
@@ -21,6 +21,7 @@ before the isolation assertions rather than trusting the arrangement.
 
 import uuid
 from collections.abc import Callable, Iterator
+from datetime import UTC, datetime
 
 import pytest
 from fastapi.testclient import TestClient
@@ -48,6 +49,7 @@ CASE_SCOPED_TABLES: tuple[str, ...] = (
     "evidence_items",
     "evidence_files",
     "evidence_processing_runs",
+    "evidence_file_texts",
 )
 
 SUPPORTED_ANSWERS = {
@@ -60,7 +62,7 @@ SUPPORTED_ANSWERS = {
 
 
 @pytest.fixture
-def seeded_case(api: Api) -> str:
+def seeded_case(api: Api, db_session: Session) -> str:
     """A fully assessed case owned by `user_a`, with at least one row in every table in
     `CASE_SCOPED_TABLES`. Returns the case id."""
     user = "user_a"
@@ -77,11 +79,11 @@ def seeded_case(api: Api) -> str:
     # which is the only path that writes an issue_resolutions row.
     _add_trip(api, user, case_id, "2024-02-01", "2024-02-20")
     api(user).post(f"/api/v1/cases/{case_id}/assessments/recalculate")
-    _upload_document(api, user, case_id)
+    _upload_document(api, user, case_id, db_session)
     return case_id
 
 
-def _upload_document(api: Api, user: str, case_id: str) -> None:
+def _upload_document(api: Api, user: str, case_id: str, session: Session) -> None:
     """Put one document in the case, through the real two-call upload path.
 
     The bytes go into the in-process store rather than MinIO — this suite is about row
@@ -89,8 +91,6 @@ def _upload_document(api: Api, user: str, case_id: str) -> None:
     those live in `tests/evidence/test_storage_minio.py`.
     """
     from app.core.storage import InMemoryStorage, get_storage
-    from app.shared.db import get_sessionmaker
-    from app.shared.tenant import set_tenant
 
     grant = (
         api(user)
@@ -103,9 +103,12 @@ def _upload_document(api: Api, user: str, case_id: str) -> None:
 
     store = get_storage()
     assert isinstance(store, InMemoryStorage)
-    store.put(
-        str(grant["upload_url"]).removeprefix("memory://put/").split("?", 1)[0], b"%PDF-1.7 x"
-    )
+    # A *real* PDF, because the arrangement now has to reach `evidence_file_texts` and a
+    # parser has to be able to open it. `b"%PDF-1.7 x"` passes the magic-byte check and
+    # is not a document.
+    from tests.evidence.conftest import fixture_bytes
+
+    store.put(str(grant["upload_fields"]["key"]), fixture_bytes("travel-booking.pdf"))
 
     item = (
         api(user)
@@ -124,20 +127,52 @@ def _upload_document(api: Api, user: str, case_id: str) -> None:
     # Run validation inline rather than through the broker: this suite is about row
     # visibility, and a processing run is one of the rows. Whether Celery can reach
     # Redis is a different question, asked in `tests/evidence/`.
-    from app.evidence import processing
 
-    session = get_sessionmaker()()
-    try:
-        set_tenant(session, user)
-        processing.validate_evidence(
-            session,
-            get_storage(),
+    # The processing rows are inserted directly rather than by running the pipeline.
+    #
+    # This suite asks one question — is every case-scoped row invisible to another
+    # tenant — and its arrangement's only job is to put one row in each table. Driving
+    # the worker pipeline inline to get there meant an HTTP-created aggregate and a
+    # worker-style multi-commit update sharing one engine, which the product never does:
+    # in production those are different processes on different connections. It produced
+    # an intermittent `StaleDataError` on `evidence_items` reported at the setup or
+    # teardown of whichever test came next — a flake that says nothing about RLS.
+    #
+    # The pipeline is exercised properly in `tests/evidence/test_processing.py` and end
+    # to end against the real worker. Here, two inserts are the honest arrangement.
+    from app.evidence.domain import (
+        PIPELINE_VERSION,
+        EvidenceFileText,
+        EvidenceProcessingRun,
+        ProcessingRunStatus,
+    )
+
+    file_id = session.execute(
+        text("SELECT id FROM evidence_files WHERE evidence_item_id = :i"),
+        {"i": uuid.UUID(item["id"])},
+    ).scalar_one()
+
+    session.add(
+        EvidenceProcessingRun(
             evidence_item_id=uuid.UUID(item["id"]),
+            evidence_file_id=file_id,
+            status=ProcessingRunStatus.SUCCEEDED.value,
+            pipeline_version=PIPELINE_VERSION,
+            completed_at=datetime.now(UTC),
             idempotency_key=f"seed-{item['id']}",
-            trace_id=None,
         )
-    finally:
-        session.close()
+    )
+    session.add(
+        EvidenceFileText(
+            evidence_file_id=file_id,
+            page_count=1,
+            character_count=17,
+            content="synthetic content",
+            pipeline_version=PIPELINE_VERSION,
+        )
+    )
+    session.commit()
+    session.expire_all()
 
 
 def _add_trip(api: Api, user: str, case_id: str, departure: str, return_: str) -> None:

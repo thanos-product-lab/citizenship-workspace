@@ -22,12 +22,13 @@ from pydantic import BaseModel, Field
 from app.evidence.domain import (
     EvidenceCategory,
     EvidenceFile,
+    EvidenceFileText,
     EvidenceItem,
     EvidenceLifecycleStatus,
     EvidenceProcessingRun,
     EvidenceProcessingStatus,
 )
-from app.evidence.service import SUPPORTED_MEDIA_TYPES, UploadGrant
+from app.evidence.service import RETRYABLE_STATUSES, SUPPORTED_MEDIA_TYPES, UploadGrant
 
 
 class StartUploadRequest(BaseModel):
@@ -99,6 +100,20 @@ class EvidenceResponse(BaseModel):
     #: — and neither ever contains document content (§16.2).
     failure_code: str | None = None
     failure_reason: str | None = None
+    #: What extraction found, as counts and a short excerpt — **never the text itself**.
+    #: Domain §15.1 and §7.4 of the M7 plan: full document text stays server-side until
+    #: M8 has a review surface designed for it, so Tier-3 content does not sit in an API
+    #: response, in the Next.js server's memory, or in an error reporter's breadcrumbs
+    #: for the sake of a screen that only has to say "this worked".
+    page_count: int | None = None
+    character_count: int | None = None
+    excerpt: str | None = None
+    #: A cap stopped the read. Shown, because a user looking at a 400-page document
+    #: should know only the first 40 were read.
+    text_truncated: bool = False
+    #: Whether a retry would do anything. Computed here rather than in the client so the
+    #: rule lives in one place — the client must not decide `UNSUPPORTED` is retryable.
+    can_retry: bool = False
     media_type: str
     size_bytes: int
     original_filename: str | None
@@ -112,16 +127,23 @@ class EvidenceResponse(BaseModel):
         item: EvidenceItem,
         file: EvidenceFile,
         run: EvidenceProcessingRun | None = None,
+        text: EvidenceFileText | None = None,
     ) -> "EvidenceResponse":
+        status = EvidenceProcessingStatus(item.processing_status)
         return cls(
             id=item.id,
             case_id=item.case_id,
             category=EvidenceCategory(item.category),
             display_name=item.display_name,
             lifecycle_status=item.lifecycle_status,
-            processing_status=EvidenceProcessingStatus(item.processing_status),
+            processing_status=status,
             failure_code=run.failure_code if run else None,
             failure_reason=run.failure_summary if run else None,
+            page_count=text.page_count if text else None,
+            character_count=text.character_count if text else None,
+            excerpt=text.excerpt if text else None,
+            text_truncated=text.truncated if text else False,
+            can_retry=status in RETRYABLE_STATUSES,
             media_type=file.media_type,
             size_bytes=file.size_bytes,
             original_filename=file.original_filename,

@@ -22,17 +22,21 @@ and it is total over both enums.
 
 import uuid
 from dataclasses import dataclass
+from datetime import datetime
 
 import structlog
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.core.storage import StorageAdapter, StorageError
-from app.evidence import validation
+from app.evidence import extraction, validation
 from app.evidence.domain import (
+    PIPELINE_VERSION,
     PROCESSING_STATUS_FOR_RUN,
     EvidenceFile,
+    EvidenceFileText,
     EvidenceItem,
     EvidenceLifecycleStatus,
     EvidenceProcessingRun,
@@ -248,9 +252,15 @@ def validate_evidence(
     at = utcnow()
 
     if result.matches:
-        run.succeed(at=at)
-        item.processing_status = EvidenceProcessingStatus.UPLOADED.value
-        failure: ProcessingFailureCode | None = None
+        return _extract(
+            session,
+            storage,
+            item=item,
+            file=file,
+            run=run,
+            detected=result.detected,
+            trace_id=trace_id,
+        )
     else:
         failure = (
             ProcessingFailureCode.EMPTY_FILE
@@ -268,23 +278,205 @@ def validate_evidence(
             ),
             at=at,
         )
-        item.processing_status = EvidenceProcessingStatus.UNSUPPORTED.value
-
+    item.processing_status = EvidenceProcessingStatus.UNSUPPORTED.value
     item.updated_at = at
     session.commit()
 
     _log.info(
-        "evidence.validated",
+        "evidence.validation_refused",
         evidence_item_id=str(item.id),
         run_id=str(run.id),
-        # Media types and a boolean. No filename, no storage key, no content.
+        # Media types and a failure code. No filename, no storage key, no content.
         declared_media_type=file.media_type,
         detected_media_type=result.detected,
-        matched=result.matches,
+        failure_code=failure.value,
         trace_id=trace_id,
     )
     return ProcessingOutcome(
         run_id=run.id,
         processing_status=EvidenceProcessingStatus(item.processing_status),
         failure_code=failure,
+    )
+
+
+def _extract(
+    session: Session,
+    storage: StorageAdapter,
+    *,
+    item: EvidenceItem,
+    file: EvidenceFile,
+    run: EvidenceProcessingRun,
+    detected: str | None,
+    trace_id: str | None,
+) -> ProcessingOutcome:
+    """Read the document's native text, and record what was found.
+
+    A third commit, after validation's two. The tenant survives all of them because
+    ADR-0017 re-applies it per transaction; publishing `EXTRACTING_TEXT` before the read
+    rather than after is what makes the state honest while a slow document is being
+    parsed.
+
+    Images are skipped rather than failed. A JPEG is a supported document with no text
+    layer to read, which is the same finding as a scanned PDF and gets the same answer.
+    """
+    item.processing_status = EvidenceProcessingStatus.EXTRACTING_TEXT.value
+    item.updated_at = utcnow()
+    session.commit()
+
+    if file.media_type != "application/pdf":
+        return _finish_without_text(
+            session, item=item, run=run, reason="not_a_pdf", trace_id=trace_id
+        )
+
+    try:
+        content = storage.read(file.storage_key, max_bytes=get_settings().max_upload_bytes)
+    except StorageError as exc:
+        raise TransientProcessingError("storage unavailable") from exc
+
+    at = utcnow()
+    try:
+        found = extraction.extract(content)
+    except extraction.PasswordProtected:
+        return _fail(
+            session,
+            item=item,
+            run=run,
+            code=ProcessingFailureCode.PASSWORD_PROTECTED,
+            summary="This document is password-protected, so its contents cannot be read.",
+            at=at,
+            trace_id=trace_id,
+        )
+    except extraction.UnreadableDocument:
+        return _fail(
+            session,
+            item=item,
+            run=run,
+            code=ProcessingFailureCode.CORRUPT_FILE,
+            summary="This file could not be opened as a PDF.",
+            at=at,
+            trace_id=trace_id,
+        )
+
+    _record_text(session, file_id=file.id, found=found)
+
+    if found.has_text_layer:
+        run.succeed(at=at)
+        item.processing_status = EvidenceProcessingStatus.COMPLETED.value
+    else:
+        # A real, readable document that happens to have no text layer — a scan. Reading
+        # it needs OCR or a multimodal model, both M8. `PARTIALLY_COMPLETED` says exactly
+        # that: the work was done and there was nothing to find.
+        run.partial(at=at)
+        item.processing_status = EvidenceProcessingStatus.PARTIALLY_COMPLETED.value
+    item.updated_at = at
+    session.commit()
+
+    _log.info(
+        "evidence.extracted",
+        evidence_item_id=str(item.id),
+        run_id=str(run.id),
+        # Counts and flags. Never the text, never a filename, never a key.
+        page_count=found.page_count,
+        character_count=found.character_count,
+        truncated=found.truncated,
+        has_text_layer=found.has_text_layer,
+        detected_media_type=detected,
+        trace_id=trace_id,
+    )
+    return ProcessingOutcome(
+        run_id=run.id,
+        processing_status=EvidenceProcessingStatus(item.processing_status),
+        failure_code=None,
+    )
+
+
+def _record_text(session: Session, *, file_id: uuid.UUID, found: extraction.ExtractedText) -> None:
+    """Store what was read, replacing any earlier reading of the same bytes.
+
+    One row per file version (Domain §15.1), so a **retry replaces rather than appends**.
+    Inserting blindly made a user-initiated retry violate the unique constraint, which is
+    the one path this slice exists to support — and the `IntegrityError` would have
+    carried the entire document text in its bound parameters had `hide_parameters` not
+    been set in slice 1.
+
+    Replacing is also the right answer on its merits: re-reading the same bytes with the
+    same pipeline produces the same text, and re-reading them with a *newer* pipeline
+    should supersede the old reading rather than sit beside it with no way to tell which
+    is current.
+    """
+    existing = session.execute(
+        select(EvidenceFileText).where(EvidenceFileText.evidence_file_id == file_id)
+    ).scalar_one_or_none()
+
+    if existing is None:
+        session.add(
+            EvidenceFileText(
+                evidence_file_id=file_id,
+                page_count=found.page_count,
+                character_count=found.character_count,
+                content=found.content,
+                pipeline_version=PIPELINE_VERSION,
+                truncated=found.truncated,
+            )
+        )
+        return
+
+    existing.page_count = found.page_count
+    existing.character_count = found.character_count
+    existing.content = found.content
+    existing.pipeline_version = PIPELINE_VERSION
+    existing.truncated = found.truncated
+    existing.extracted_at = utcnow()
+
+
+def _finish_without_text(
+    session: Session,
+    *,
+    item: EvidenceItem,
+    run: EvidenceProcessingRun,
+    reason: str,
+    trace_id: str | None,
+) -> ProcessingOutcome:
+    at = utcnow()
+    run.partial(at=at)
+    item.processing_status = EvidenceProcessingStatus.PARTIALLY_COMPLETED.value
+    item.updated_at = at
+    session.commit()
+    _log.info(
+        "evidence.no_text_layer",
+        evidence_item_id=str(item.id),
+        run_id=str(run.id),
+        reason=reason,
+        trace_id=trace_id,
+    )
+    return ProcessingOutcome(
+        run_id=run.id,
+        processing_status=EvidenceProcessingStatus.PARTIALLY_COMPLETED,
+        failure_code=None,
+    )
+
+
+def _fail(
+    session: Session,
+    *,
+    item: EvidenceItem,
+    run: EvidenceProcessingRun,
+    code: ProcessingFailureCode,
+    summary: str,
+    at: datetime,
+    trace_id: str | None,
+) -> ProcessingOutcome:
+    run.fail(code=code, summary=summary, at=at)
+    item.processing_status = EvidenceProcessingStatus.FAILED.value
+    item.updated_at = at
+    session.commit()
+    _log.info(
+        "evidence.extraction_failed",
+        evidence_item_id=str(item.id),
+        run_id=str(run.id),
+        failure_code=code.value,
+        trace_id=trace_id,
+    )
+    return ProcessingOutcome(
+        run_id=run.id, processing_status=EvidenceProcessingStatus.FAILED, failure_code=code
     )

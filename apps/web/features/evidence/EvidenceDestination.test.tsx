@@ -33,6 +33,11 @@ function anItem(overrides: Record<string, unknown> = {}) {
     original_filename: "booking.pdf",
     failure_code: null,
     failure_reason: null,
+    page_count: null,
+    character_count: null,
+    excerpt: null,
+    text_truncated: false,
+    can_retry: false,
     uploaded_at: "2026-08-20T10:00:00Z",
     created_at: "2026-08-20T10:00:00Z",
     revision: 1,
@@ -318,5 +323,104 @@ describe("keyboard focus and announcements", () => {
     // `role="status"` mounted with its text already inside does not announce reliably,
     // so both the empty and the populated case go through the always-mounted region.
     await waitFor(() => expect(screen.getByText("1 document.")).toBeTruthy());
+  });
+});
+
+describe("what extraction found", () => {
+  it("reports pages read, never the text itself", async () => {
+    // Full document content stays server-side until M8 has a review surface for it.
+    // The screen only has to say "this worked".
+    get.mockResolvedValue({
+      data: aLibrary([
+        anItem({
+          processing_status: "COMPLETED",
+          page_count: 3,
+          character_count: 1200,
+          excerpt: "Passenger: Amara Okonkwo",
+        }),
+      ]),
+    });
+    renderWithQuery(<EvidenceDestination caseId={CASE_ID} />);
+
+    const row = within(await screen.findByRole("row", { name: /Athens booking/ }));
+    expect(row.getByText("Read")).toBeTruthy();
+    expect(row.getByText("3 pages")).toBeTruthy();
+  });
+
+  it("says plainly when a document had no text to read", async () => {
+    // A scan is a valid document, not a broken one. "Failed" would tell the user to fix
+    // a file that is perfectly fine.
+    get.mockResolvedValue({
+      data: aLibrary([
+        anItem({ processing_status: "PARTIALLY_COMPLETED", page_count: 1, character_count: 0 }),
+      ]),
+    });
+    renderWithQuery(<EvidenceDestination caseId={CASE_ID} />);
+
+    const row = within(await screen.findByRole("row", { name: /Athens booking/ }));
+    expect(row.getByText("No text found")).toBeTruthy();
+    expect(row.getByText(/scan or a photo/)).toBeTruthy();
+  });
+
+  it("does not let a bounded read look like a complete one", async () => {
+    get.mockResolvedValue({
+      data: aLibrary([
+        anItem({
+          processing_status: "COMPLETED",
+          page_count: 60,
+          character_count: 9000,
+          text_truncated: true,
+        }),
+      ]),
+    });
+    renderWithQuery(<EvidenceDestination caseId={CASE_ID} />);
+
+    const row = within(await screen.findByRole("row", { name: /Athens booking/ }));
+    expect(row.getByText(/60 pages, first 40 read/)).toBeTruthy();
+  });
+});
+
+describe("retrying", () => {
+  it("offers a retry only where the server says one would do something", async () => {
+    // `UNSUPPORTED` is a verdict about the file: the same bytes through the same check
+    // reach the same answer. A button that cannot work invites the user to keep pressing.
+    get.mockResolvedValue({
+      data: aLibrary([
+        anItem({ id: "a", processing_status: "FAILED", can_retry: true }),
+        anItem({ id: "b", display_name: "Bad file", processing_status: "UNSUPPORTED" }),
+      ]),
+    });
+    renderWithQuery(<EvidenceDestination caseId={CASE_ID} />);
+
+    await screen.findByRole("row", { name: /Athens booking/ });
+    expect(screen.getAllByRole("button", { name: /Read it again/ })).toHaveLength(1);
+  });
+
+  it("names which document a retry belongs to", async () => {
+    // "Read it again" repeated down a column has no antecedent in a screen reader's
+    // control list. Same hidden-suffix pattern as the issue queue's Dismiss.
+    get.mockResolvedValue({
+      data: aLibrary([anItem({ processing_status: "FAILED", can_retry: true })]),
+    });
+    renderWithQuery(<EvidenceDestination caseId={CASE_ID} />);
+
+    const button = await screen.findByRole("button", { name: /Read it again/ });
+    expect(button.textContent).toMatch(/Athens booking/);
+  });
+
+  it("does not show the document moving until the server has agreed", async () => {
+    get.mockResolvedValue({
+      data: aLibrary([anItem({ processing_status: "FAILED", can_retry: true })]),
+    });
+    post.mockImplementation(() => new Promise(() => {}));
+    renderWithQuery(<EvidenceDestination caseId={CASE_ID} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /Read it again/ }));
+
+    // Still shows the real state; only the control reports that something was asked for.
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /Reading again/ })).toBeTruthy(),
+    );
+    expect(screen.getByText("Failed")).toBeTruthy();
   });
 });

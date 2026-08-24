@@ -44,6 +44,19 @@ celery_app.conf.worker_prefetch_multiplier = 1
 celery_app.conf.task_soft_time_limit = 60
 celery_app.conf.task_time_limit = 90
 
+# Recycle a child that has grown, rather than letting it grow until the container dies.
+#
+# A page cap does not bound a decompression bomb: those blow up on `open()` or on a
+# single page, before any counting happens. Malware scanning is a documented non-goal
+# (threat model §7, §28) — resource exhaustion is not. So the answer is that the *child*
+# dies and is replaced, which costs one task, instead of the box dying, which costs every
+# task and the queue with it. In kilobytes, per Celery's units.
+celery_app.conf.worker_max_memory_per_child = 400_000
+
+# And a child is replaced after this many tasks regardless, so a slow leak in a C parser
+# cannot accumulate across a long-lived worker.
+celery_app.conf.worker_max_tasks_per_child = 100
+
 #: How often the relay looks for undelivered outbox rows. A second is short enough that
 #: an upload appears to process immediately and long enough that an idle system is not
 #: doing meaningful work.

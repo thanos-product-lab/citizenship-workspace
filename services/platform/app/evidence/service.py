@@ -41,6 +41,8 @@ from app.evidence.domain import (
     EvidenceCategory,
     EvidenceFile,
     EvidenceItem,
+    EvidenceProcessingRequested,
+    EvidenceProcessingStatus,
     EvidenceUploaded,
     utcnow,
 )
@@ -48,6 +50,7 @@ from app.evidence.repository import EvidenceRepository
 from app.shared.errors import (
     CaseNotActive,
     EvidenceNotFound,
+    EvidenceNotRetryable,
     EvidenceTooLarge,
     EvidenceUploadIncomplete,
     UnsupportedEvidenceType,
@@ -271,3 +274,58 @@ def content_url(
         ),
         settings.storage_presign_ttl_seconds,
     )
+
+
+#: States a user may ask us to try again from. Deliberately not `UNSUPPORTED`: that
+#: verdict is about the *file*, and running the same bytes through the same check will
+#: reach the same answer. Offering a retry there would be a button that cannot work,
+#: which is worse than no button — the honest action is to upload a different file.
+RETRYABLE_STATUSES = frozenset(
+    {
+        EvidenceProcessingStatus.FAILED,
+        EvidenceProcessingStatus.PARTIALLY_COMPLETED,
+    }
+)
+
+
+def request_reprocessing(
+    session: Session,
+    *,
+    case: ApplicationCase,
+    user: CurrentUser,
+    evidence_item_id: uuid.UUID,
+) -> tuple[EvidenceItem, EvidenceFile]:
+    """Ask for a document to be processed again.
+
+    Writes a **new outbox row**, which is the whole mechanism: the idempotency key is the
+    outbox row's id, so a new row is a new key, and the run is not short-circuited as a
+    duplicate. Nothing about the file changes and nothing is deleted — a retry is a new
+    attempt at reading the same bytes, not a re-upload.
+    """
+    _require_active_case(case)
+
+    item, file = get_evidence(session, case=case, evidence_item_id=evidence_item_id)
+    current = EvidenceProcessingStatus(item.processing_status)
+    if current not in RETRYABLE_STATUSES:
+        raise EvidenceNotRetryable(current.value)
+
+    uow = UnitOfWork(session, actor_id=user.user_id)
+    uow.emit(
+        EvidenceProcessingRequested(
+            aggregate_id=item.id,
+            case_id=case.id,
+            evidence_file_id=file.id,
+            previous_status=current.value,
+        ),
+        case_id=case.id,
+        action="EVIDENCE_REPROCESSING_REQUESTED",
+        target_type="EvidenceItem",
+        target_id=item.id,
+        safe_metadata={"previous_status": current.value},
+    )
+    # Back to a state that says something is happening, so the client resumes polling
+    # rather than showing a stale terminal verdict until the next reload.
+    item.processing_status = EvidenceProcessingStatus.VALIDATING.value
+    item.updated_at = utcnow()
+    uow.commit()
+    return item, file

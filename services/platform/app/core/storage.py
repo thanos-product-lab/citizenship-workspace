@@ -96,6 +96,8 @@ class StorageAdapter(Protocol):
 
     def read_prefix(self, key: str, *, length: int) -> bytes: ...
 
+    def read(self, key: str, *, max_bytes: int) -> bytes: ...
+
     def delete(self, key: str) -> None: ...
 
 
@@ -239,6 +241,26 @@ class S3Storage:
                 return b""
             raise StorageError("could not read object content") from exc
 
+    def read(self, key: str, *, max_bytes: int) -> bytes:
+        """The whole object, up to a ceiling.
+
+        `max_bytes` is not belt-and-braces over the upload limit: the upload policy
+        bounds what a *client* can put there, and this bounds what the worker will pull
+        into memory regardless of how the object came to be that size. A ranged GET means
+        the ceiling is enforced by the store rather than by us remembering to stop
+        reading.
+        """
+        try:
+            response = self._client.get_object(
+                Bucket=self._bucket, Key=key, Range=f"bytes=0-{max(max_bytes - 1, 0)}"
+            )
+            return bytes(response["Body"].read())
+        except ClientError as exc:
+            code = exc.response.get("Error", {}).get("Code")
+            if code in {"404", "NoSuchKey", "NotFound"}:
+                return b""
+            raise StorageError("could not read object content") from exc
+
     def delete(self, key: str) -> None:
         """Idempotent: S3 does not distinguish deleting an absent key from a present
         one, which is what Domain §51.1 needs — deletion must be safe to redeliver."""
@@ -286,6 +308,9 @@ class InMemoryStorage:
 
     def read_prefix(self, key: str, *, length: int) -> bytes:
         return self.objects.get(key, b"")[:length]
+
+    def read(self, key: str, *, max_bytes: int) -> bytes:
+        return self.objects.get(key, b"")[:max_bytes]
 
     def delete(self, key: str) -> None:
         self.objects.pop(key, None)

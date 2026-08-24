@@ -22,9 +22,7 @@ class IssueRepository:
 
     @staticmethod
     def get(session: Session, case_id: uuid.UUID, issue_id: uuid.UUID) -> Issue | None:
-        return session.scalar(
-            select(Issue).where(Issue.id == issue_id, Issue.case_id == case_id)
-        )
+        return session.scalar(select(Issue).where(Issue.id == issue_id, Issue.case_id == case_id))
 
     @staticmethod
     def list_live(session: Session, case_id: uuid.UUID) -> list[Issue]:

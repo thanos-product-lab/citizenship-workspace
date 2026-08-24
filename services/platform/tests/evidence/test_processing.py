@@ -21,19 +21,20 @@ from app.evidence import processing
 from app.evidence.domain import (
     PROCESSING_STATUS_FOR_RUN,
     EvidenceFile,
+    EvidenceFileText,
     EvidenceItem,
     EvidenceProcessingRun,
     EvidenceProcessingStatus,
     ProcessingFailureCode,
     ProcessingRunStatus,
 )
+from tests.evidence.conftest import fixture_bytes as _fixture
 from tests.security.conftest import SUPPORTED_ANSWERS
 
 pytestmark = pytest.mark.integration
 
 Api = Callable[[str], TestClient]
 
-_PDF = b"%PDF-1.7 a synthetic, fictional document"
 _NOT_A_PDF = b"MZ\x90\x00 this is a windows executable"
 
 
@@ -43,7 +44,23 @@ def _store() -> InMemoryStorage:
     return store
 
 
-def _uploaded(api: Api, user: str, *, content: bytes = _PDF) -> uuid.UUID:
+def _text_for(session: Session, evidence_item_id: uuid.UUID) -> EvidenceFileText | None:
+    stmt = (
+        select(EvidenceFileText)
+        .join(EvidenceFile, EvidenceFile.id == EvidenceFileText.evidence_file_id)
+        .where(EvidenceFile.evidence_item_id == evidence_item_id)
+    )
+    return session.execute(stmt).scalar_one_or_none()
+
+
+def _uploaded(
+    api: Api, user: str, *, content: bytes | None = None, media_type: str = "application/pdf"
+) -> uuid.UUID:
+    # A *real* PDF by default. `b"%PDF-1.7 ..."` passes the magic-byte check and is not a
+    # document — fine while validation was all that ran, and a corrupt file the moment a
+    # parser had to open it.
+    if content is None:
+        content = _fixture("travel-booking.pdf")
     case_id = str(api(user).post("/api/v1/cases", json={"title": "Processing"}).json()["id"])
     api(user).put(f"/api/v1/cases/{case_id}/route-profile", json=SUPPORTED_ANSWERS)
     api(user).post(f"/api/v1/cases/{case_id}/route-profile/confirm", json={})
@@ -52,7 +69,7 @@ def _uploaded(api: Api, user: str, *, content: bytes = _PDF) -> uuid.UUID:
         api(user)
         .post(
             f"/api/v1/cases/{case_id}/evidence/uploads",
-            json={"media_type": "application/pdf", "declared_size_bytes": len(content)},
+            json={"media_type": media_type, "declared_size_bytes": len(content)},
         )
         .json()
     )
@@ -83,20 +100,83 @@ def _runs(session: Session, evidence_item_id: uuid.UUID) -> list[EvidenceProcess
 # --- what validation concludes -------------------------------------------------------
 
 
-def test_a_real_pdf_validates_and_returns_to_uploaded(api: Api, db_session: Session) -> None:
-    """`UPLOADED` after a successful validation is the honest state in this slice: the
-    file is stored, it has been checked, and nothing has read its contents — which is
-    exactly what the library already tells the user."""
-    item_id = _uploaded(api, "user_a")
+def test_a_real_pdf_is_validated_then_read(api: Api, db_session: Session) -> None:
+    """The whole pipeline in one: validate the bytes, then read the text out of them."""
+    item_id = _uploaded(api, "user_a", content=_fixture("travel-booking.pdf"))
 
     outcome = processing.validate_evidence(
         db_session, _store(), evidence_item_id=item_id, idempotency_key="k1", trace_id=None
     )
 
-    assert outcome.processing_status is EvidenceProcessingStatus.UPLOADED
+    assert outcome.processing_status is EvidenceProcessingStatus.COMPLETED
     assert outcome.failure_code is None
-    runs = _runs(db_session, item_id)
-    assert [r.run_status for r in runs] == [ProcessingRunStatus.SUCCEEDED]
+    assert [r.run_status for r in _runs(db_session, item_id)] == [ProcessingRunStatus.SUCCEEDED]
+
+    text = _text_for(db_session, item_id)
+    assert text is not None
+    assert text.page_count == 1
+    assert text.character_count > 0
+    assert "Amara Okonkwo" in text.content
+
+
+def test_a_scan_completes_partially_rather_than_failing(api: Api, db_session: Session) -> None:
+    """A photograph of a page is a valid document with nothing for a text parser to read.
+    `FAILED` would tell the user to fix a file that is perfectly fine."""
+    item_id = _uploaded(api, "user_a", content=_fixture("scan-no-text-layer.pdf"))
+
+    outcome = processing.validate_evidence(
+        db_session, _store(), evidence_item_id=item_id, idempotency_key="k1", trace_id=None
+    )
+
+    assert outcome.processing_status is EvidenceProcessingStatus.PARTIALLY_COMPLETED
+    assert outcome.failure_code is None
+    text = _text_for(db_session, item_id)
+    assert text is not None and text.character_count == 0
+
+
+def test_a_password_protected_document_fails_with_a_reason(api: Api, db_session: Session) -> None:
+    item_id = _uploaded(api, "user_a", content=_fixture("password-protected.pdf"))
+
+    outcome = processing.validate_evidence(
+        db_session, _store(), evidence_item_id=item_id, idempotency_key="k1", trace_id=None
+    )
+
+    assert outcome.processing_status is EvidenceProcessingStatus.FAILED
+    assert outcome.failure_code is ProcessingFailureCode.PASSWORD_PROTECTED
+    # Nothing was read, so nothing is stored.
+    assert _text_for(db_session, item_id) is None
+
+
+def test_a_long_document_records_that_the_read_was_bounded(api: Api, db_session: Session) -> None:
+    """`truncated` is what stops M8 drawing a conclusion from page 40 of 60 without
+    knowing that is what it is looking at."""
+    item_id = _uploaded(api, "user_a", content=_fixture("many-pages.pdf"))
+
+    processing.validate_evidence(
+        db_session, _store(), evidence_item_id=item_id, idempotency_key="k1", trace_id=None
+    )
+
+    text = _text_for(db_session, item_id)
+    assert text is not None
+    assert text.truncated is True
+    assert text.page_count == 60
+
+
+def test_an_image_is_completed_partially_without_being_parsed(
+    api: Api, db_session: Session
+) -> None:
+    """A JPEG is a supported document with no text layer. Handing it to a PDF parser to
+    find that out would be a parser failure standing in for a known answer."""
+    item_id = _uploaded(
+        api, "user_a", content=b"\xff\xd8\xff a synthetic jpeg", media_type="image/jpeg"
+    )
+
+    outcome = processing.validate_evidence(
+        db_session, _store(), evidence_item_id=item_id, idempotency_key="k1", trace_id=None
+    )
+
+    assert outcome.processing_status is EvidenceProcessingStatus.PARTIALLY_COMPLETED
+    assert _text_for(db_session, item_id) is None
 
 
 def test_content_that_contradicts_its_declared_type_is_unsupported(
@@ -134,7 +214,7 @@ def test_the_refusal_is_phrased_in_the_users_vocabulary(api: Api, db_session: Se
 def test_a_failure_summary_says_nothing_about_the_document(api: Api, db_session: Session) -> None:
     """§16.2: failure summaries must not contain raw document content. The summary talks
     about media types, which this module computed, not about anything it read."""
-    item_id = _uploaded(api, "user_a", content=b"%PDF-NOT windows executable secret-token")
+    item_id = _uploaded(api, "user_a", content=b"MZ\x90\x00 windows executable secret-token")
 
     processing.validate_evidence(
         db_session, _store(), evidence_item_id=item_id, idempotency_key="k1", trace_id=None
@@ -260,7 +340,7 @@ def test_a_retry_after_a_transient_failure_actually_runs(api: Api, db_session: S
     )
 
     assert outcome.already_done is False, "the retry short-circuited on its own attempt"
-    assert outcome.processing_status is EvidenceProcessingStatus.UPLOADED
+    assert outcome.processing_status is EvidenceProcessingStatus.COMPLETED
     runs = _runs(db_session, item_id)
     # One run, not two: the attempt is counted on the run rather than duplicating it
     # (§16.2 — "a retry creates a new run or a new attempt record").
@@ -303,7 +383,7 @@ def test_the_delivery_acts_on_the_file_version_it_names(api: Api, db_session: Se
         trace_id=None,
         evidence_file_id=file.id,
     )
-    assert outcome.processing_status is EvidenceProcessingStatus.UPLOADED
+    assert outcome.processing_status is EvidenceProcessingStatus.COMPLETED
 
     # A version that does not belong to this item is refused rather than silently
     # falling back to whatever is current.
@@ -394,3 +474,104 @@ def test_no_celery_state_can_reach_a_user() -> None:
 def test_a_cancelled_run_leaves_the_users_state_alone() -> None:
     """A case being deleted is not a processing failure, and must not be shown as one."""
     assert PROCESSING_STATUS_FOR_RUN[ProcessingRunStatus.CANCELLED] is None
+
+
+# --- retry -------------------------------------------------------------------------
+
+
+def test_a_retry_writes_a_new_outbox_row_so_the_key_differs(api: Api, db_session: Session) -> None:
+    """The mechanism the whole retry rests on.
+
+    The idempotency key is the outbox row's id, so a retry only works if it *is* a new
+    delivery. Re-emitting nothing, or reusing the upload's row, would leave the retry
+    short-circuiting as a duplicate — which is what `file_id:pipeline_version` as a key
+    could never have distinguished.
+    """
+    from sqlalchemy import func
+
+    from app.evidence import service as evidence_service
+    from app.shared.records import OutboxEventRecord
+
+    item_id = _uploaded(api, "user_a", content=_fixture("password-protected.pdf"))
+    processing.validate_evidence(
+        db_session, _store(), evidence_item_id=item_id, idempotency_key="k1", trace_id=None
+    )
+    item = db_session.get(EvidenceItem, item_id)
+    assert item is not None and item.processing_status == EvidenceProcessingStatus.FAILED.value
+
+    before = db_session.execute(select(func.count()).select_from(OutboxEventRecord)).scalar_one()
+
+    from app.cases import service as cases_service
+    from tests.conftest import as_user
+
+    user = as_user("user_a")
+    case = cases_service.get_case(db_session, case_id=item.case_id, user=user)
+    assert case is not None
+    evidence_service.request_reprocessing(
+        db_session, case=case, user=user, evidence_item_id=item_id
+    )
+
+    after = db_session.execute(select(func.count()).select_from(OutboxEventRecord)).scalar_one()
+    assert after == before + 1
+
+    row = db_session.execute(
+        select(OutboxEventRecord)
+        .where(OutboxEventRecord.event_type == "EvidenceProcessingRequested")
+        .order_by(OutboxEventRecord.created_at.desc())
+        .limit(1)
+    ).scalar_one()
+    assert row.published_at is None, "a fresh row, waiting for the relay"
+    assert row.payload["previous_status"] == "FAILED"
+
+    # And the document says something is happening again, so the client resumes polling
+    # instead of showing a stale verdict until the next reload.
+    db_session.refresh(item)
+    assert item.processing_status == EvidenceProcessingStatus.VALIDATING.value
+
+
+def test_an_unsupported_document_is_not_offered_a_retry(api: Api, db_session: Session) -> None:
+    """`UNSUPPORTED` is a verdict about the *file*. Running the same bytes through the
+    same check reaches the same answer, so a retry there would be a button that cannot
+    work — worse than no button, because it invites the user to keep pressing it."""
+    from app.cases import service as cases_service
+    from app.evidence import service as evidence_service
+    from app.shared.errors import EvidenceNotRetryable
+    from tests.conftest import as_user
+
+    item_id = _uploaded(api, "user_a", content=_NOT_A_PDF)
+    processing.validate_evidence(
+        db_session, _store(), evidence_item_id=item_id, idempotency_key="k1", trace_id=None
+    )
+    item = db_session.get(EvidenceItem, item_id)
+    assert item is not None
+
+    user = as_user("user_a")
+    case = cases_service.get_case(db_session, case_id=item.case_id, user=user)
+    assert case is not None
+    with pytest.raises(EvidenceNotRetryable):
+        evidence_service.request_reprocessing(
+            db_session, case=case, user=user, evidence_item_id=item_id
+        )
+
+
+def test_re_extraction_replaces_rather_than_appends(api: Api, db_session: Session) -> None:
+    """One row per file version (Domain §15.1). Inserting blindly made a user retry
+    violate the unique constraint — and the resulting IntegrityError would have carried
+    the entire document text in its bound parameters had `hide_parameters` not been set
+    in slice 1."""
+    item_id = _uploaded(api, "user_a")
+
+    processing.validate_evidence(
+        db_session, _store(), evidence_item_id=item_id, idempotency_key="k1", trace_id=None
+    )
+    first = _text_for(db_session, item_id)
+    assert first is not None
+    first_id = first.id
+
+    processing.validate_evidence(
+        db_session, _store(), evidence_item_id=item_id, idempotency_key="k2", trace_id=None
+    )
+    second = _text_for(db_session, item_id)
+
+    assert second is not None
+    assert second.id == first_id, "the reading was replaced, not duplicated"

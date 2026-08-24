@@ -132,6 +132,21 @@ class InvalidUploadGrant(DomainError):
     code = "INVALID_UPLOAD_GRANT"
 
 
+class EvidenceNotRetryable(DomainError):
+    """A retry was asked for on a document that has nothing to retry.
+
+    Either the work is still in flight, or it already succeeded, or — the interesting
+    case — the verdict was `UNSUPPORTED`, which is about the *file*. Running the same
+    bytes through the same check reaches the same answer, so a retry there would be a
+    button that cannot work. The honest action is to upload a different file."""
+
+    code = "EVIDENCE_NOT_RETRYABLE"
+
+    def __init__(self, processing_status: str) -> None:
+        self.processing_status = processing_status
+        super().__init__(f"a document that is {processing_status} cannot be retried")
+
+
 class EvidenceUploadIncomplete(DomainError):
     """Completion was called for a reservation whose object is not in the store. The
     presigned URL was issued but never used, or the upload failed. Nothing is recorded:
@@ -221,6 +236,17 @@ def register_exception_handlers(app: FastAPI) -> None:
             content={
                 "detail": "The upload could not be recorded; try uploading again.",
                 "code": exc.code,
+            },
+        )
+
+    @app.exception_handler(EvidenceNotRetryable)
+    async def _not_retryable(_request: Request, exc: EvidenceNotRetryable) -> JSONResponse:
+        return JSONResponse(
+            status_code=status.HTTP_409_CONFLICT,
+            content={
+                "detail": str(exc),
+                "code": exc.code,
+                "processing_status": exc.processing_status,
             },
         )
 

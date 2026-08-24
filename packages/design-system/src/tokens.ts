@@ -192,8 +192,10 @@ export const provenanceTokens: Record<ProvenanceKind, ProvenanceToken> = {
  *
  * - `uploaded` — M7 slice 1.
  * - `validating`, `unsupported`, `failed` — M7 slice 2, with validation in the worker.
- * - `extracting_text`, `analysing`, `completed`, `partially_completed` — M7 slice 3,
- *   with deterministic extraction.
+ * - `extracting_text`, `completed`, `partially_completed` — M7 slice 3, with
+ *   deterministic extraction.
+ * - `analysing` — M8. Deterministic extraction passes through no such stage: there is
+ *   nothing to analyse until a model is doing the looking.
  * - `awaiting_confirmation` — **M8, and deliberately absent**. It has no producer until
  *   extracted claims exist. A token for it would let the UI name it as a stage a
  *   document might enter, which is a promise the product cannot keep; a state the
@@ -204,6 +206,9 @@ export const provenanceTokens: Record<ProvenanceKind, ProvenanceToken> = {
 export const evidenceProcessingStates = [
   "uploaded",
   "validating",
+  "extracting_text",
+  "completed",
+  "partially_completed",
   "unsupported",
   "failed",
 ] as const;
@@ -237,6 +242,29 @@ export const evidenceProcessingTokens: Record<
     glyph: "clock",
     label: "Validating",
     meaning: "Checking the file is the kind of document it says it is.",
+  },
+  extracting_text: {
+    colorVar: "--cw-currency-provisional",
+    glyph: "clock",
+    label: "Reading",
+    meaning: "Reading the text out of the document.",
+  },
+  completed: {
+    colorVar: "--cw-status-supported",
+    glyph: "check",
+    // "Read", not "Completed" — the state is §14.4's `COMPLETED`, but what a user needs
+    // to know is what was done, and what was done is that the text was read. Nothing has
+    // been understood, checked against the case, or turned into a fact.
+    label: "Read",
+    meaning: "The text has been read. Nothing has been checked against your case yet.",
+  },
+  partially_completed: {
+    colorVar: "--cw-status-incomplete",
+    glyph: "dashed-circle",
+    label: "No text found",
+    // A scan or a photo. The document is fine; there is simply nothing for a text
+    // parser to read, and reading it needs OCR — which is M8.
+    meaning: "This looks like a scan or a photo, so there was no text to read.",
   },
   unsupported: {
     colorVar: "--cw-status-incomplete",

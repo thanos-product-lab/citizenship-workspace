@@ -441,6 +441,11 @@
       },
       "EvidenceResponse": {
         "properties": {
+          "can_retry": {
+            "default": false,
+            "title": "Can Retry",
+            "type": "boolean"
+          },
           "case_id": {
             "format": "uuid",
             "title": "Case Id",
@@ -448,6 +453,17 @@
           },
           "category": {
             "$ref": "#/components/schemas/EvidenceCategory"
+          },
+          "character_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Character Count"
           },
           "created_at": {
             "format": "date-time",
@@ -457,6 +473,17 @@
           "display_name": {
             "title": "Display Name",
             "type": "string"
+          },
+          "excerpt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Excerpt"
           },
           "failure_code": {
             "anyOf": [
@@ -503,6 +530,17 @@
             ],
             "title": "Original Filename"
           },
+          "page_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Page Count"
+          },
           "processing_status": {
             "$ref": "#/components/schemas/EvidenceProcessingStatus"
           },
@@ -513,6 +551,11 @@
           "size_bytes": {
             "title": "Size Bytes",
             "type": "integer"
+          },
+          "text_truncated": {
+            "default": false,
+            "title": "Text Truncated",
+            "type": "boolean"
           },
           "uploaded_at": {
             "format": "date-time",
@@ -3655,6 +3698,64 @@
           }
         ],
         "summary": "Get Content Url",
+        "tags": [
+          "evidence"
+        ]
+      }
+    },
+    "/api/v1/cases/{case_id}/evidence/{evidence_item_id}/retry": {
+      "post": {
+        "operationId": "retry_processing_api_v1_cases__case_id__evidence__evidence_item_id__retry_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "evidence_item_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Evidence Item Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Case Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvidenceResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Retry Processing",
         "tags": [
           "evidence"
         ]

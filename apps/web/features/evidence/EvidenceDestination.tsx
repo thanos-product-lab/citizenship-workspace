@@ -4,12 +4,13 @@ import { type JSX, useEffect, useRef, useState } from "react";
 
 import { EvidenceState } from "@cw/design-system";
 
-import { cardStyle, errorTextStyle, secondaryButtonStyle } from "@/components/ui";
+import { cardStyle, errorTextStyle, linkButtonStyle, secondaryButtonStyle } from "@/components/ui";
 
 
 import { CATEGORY_LABELS, formatBytes, type EvidenceItem } from "./library";
 import { UploadDocument } from "./UploadDocument";
 import { useEvidence } from "./useEvidence";
+import { useRetryProcessing } from "./useRetryProcessing";
 
 /**
  * The Evidence destination: the documents this case holds, and what has been done to them.
@@ -39,6 +40,8 @@ export function EvidenceDestination({ caseId }: { caseId: string }): JSX.Element
   // never run and focus would stay on the control that just unmounted. Copied from
   // IssuesDestination, where the same trap was found.
   const [returnFocus, setReturnFocus] = useState(false);
+  const [retryingId, setRetryingId] = useState<string | null>(null);
+  const retry = useRetryProcessing(caseId);
 
   // The retry button disappears on success, taking keyboard focus to <body> with it, so
   // focus is parked on the heading once the refetch settles.
@@ -132,7 +135,16 @@ export function EvidenceDestination({ caseId }: { caseId: string }): JSX.Element
               No documents yet. Uploading one stores it privately against this case.
             </p>
           ) : (
-            <EvidenceTable items={data.items as EvidenceItem[]} busy={isFetching} />
+            <EvidenceTable
+              items={data.items as EvidenceItem[]}
+              busy={isFetching}
+              retryingId={retry.isPending ? retryingId : null}
+              onRetry={(id) => {
+                setRetryingId(id);
+                setAnnouncement("Reading that document again.");
+                retry.mutate(id);
+              }}
+            />
           )}
         </>
       ) : null}
@@ -140,7 +152,55 @@ export function EvidenceDestination({ caseId }: { caseId: string }): JSX.Element
   );
 }
 
-function EvidenceTable({ items, busy }: { items: EvidenceItem[]; busy: boolean }): JSX.Element {
+/**
+ * What extraction found, in one short phrase.
+ *
+ * Counts and a flag — never the text. Full document content stays server-side until M8
+ * has a review surface designed for it, so Tier-3 content does not sit in a response, in
+ * the Next.js server's memory, or in an error reporter's breadcrumbs for the sake of a
+ * cell that only has to say "this worked".
+ */
+/**
+ * The one-line note beneath a state, or null where the state speaks for itself.
+ *
+ * A failure always carries its reason. "No text found" carries one too, because without
+ * it the user cannot tell whether their document is broken — it is not; a scan simply
+ * has no text layer, and reading one needs OCR, which is M8.
+ */
+function stateNote(item: EvidenceItem): string | null {
+  if (item.failure_reason) return item.failure_reason;
+  if (item.processing_status === "PARTIALLY_COMPLETED") {
+    return "This looks like a scan or a photo, so there was no text to read.";
+  }
+  return null;
+}
+
+function describeText(item: EvidenceItem): string {
+  if (item.character_count === null || item.character_count === undefined) {
+    return formatBytes(item.size_bytes);
+  }
+  if (item.character_count === 0) return "No text";
+
+  const pages = item.page_count ?? 0;
+  const pageLabel = pages === 1 ? "1 page" : `${pages} pages`;
+  // "First 40 of 60 pages" rather than a bare page count: a user looking at a long
+  // document must not think all of it was read.
+  return item.text_truncated
+    ? `${pageLabel}, first ${item.page_count ? Math.min(pages, 40) : 0} read`
+    : pageLabel;
+}
+
+function EvidenceTable({
+  items,
+  busy,
+  onRetry,
+  retryingId,
+}: {
+  items: EvidenceItem[];
+  busy: boolean;
+  onRetry: (id: string) => void;
+  retryingId: string | null;
+}): JSX.Element {
   return (
     <div className="cw-trips-wrap">
       <table className="cw-trips" aria-busy={busy || undefined}>
@@ -184,7 +244,13 @@ function EvidenceTable({ items, busy }: { items: EvidenceItem[]; busy: boolean }
                     user cannot tell whether to re-export the file, try a different one,
                     or give up. The sentence comes from the server so the client never
                     has to guess at a failure it did not observe. */}
-                {item.failure_reason ? (
+                {/* A note, but only where the state does not explain itself.
+                    The accessibility review objected to `withMeaning` repeating the same
+                    sentence on every row — and it was right about that. This is the
+                    narrower case: a *specific* state that leaves the user with a
+                    question ("no text found" — is my document broken?), shown on the few
+                    rows that need it rather than all of them. */}
+                {stateNote(item) ? (
                   <span
                     style={{
                       display: "block",
@@ -193,11 +259,29 @@ function EvidenceTable({ items, busy }: { items: EvidenceItem[]; busy: boolean }
                       marginTop: "var(--cw-space-1)",
                     }}
                   >
-                    {item.failure_reason}
+                    {stateNote(item)}
                   </span>
                 ) : null}
+                {/* Offered only where the server says a retry could do something. The
+                    rule lives on the server so the client cannot decide, for instance,
+                    that an UNSUPPORTED file is worth trying again — it is not, and a
+                    button that cannot work invites the user to keep pressing it. */}
+                {item.can_retry ? (
+                  <button
+                    type="button"
+                    style={{ ...linkButtonStyle, marginTop: "var(--cw-space-1)" }}
+                    aria-disabled={retryingId === item.id}
+                    onClick={() => {
+                      if (retryingId === item.id) return;
+                      onRetry(item.id);
+                    }}
+                  >
+                    {retryingId === item.id ? "Reading again…" : "Read it again"}
+                    <span className="cw-visually-hidden"> — {item.display_name}</span>
+                  </button>
+                ) : null}
               </td>
-              <td>{formatBytes(item.size_bytes)}</td>
+              <td>{describeText(item)}</td>
               <td>{formatDate(item.uploaded_at)}</td>
             </tr>
           ))}

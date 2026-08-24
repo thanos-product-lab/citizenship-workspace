@@ -48,6 +48,9 @@ DEFAULT_BATCH = 50
 #: `event_type` -> the Celery task that consumes it.
 HANDLERS: dict[str, str] = {
     "EvidenceUploaded": "worker.evidence.validate",
+    # The same consumer. A retry differs from an upload only in that its outbox row is
+    # new — which is precisely what stops the idempotency key short-circuiting it.
+    "EvidenceProcessingRequested": "worker.evidence.validate",
 }
 
 #: Event types with no consumer, and never a mistake. Each is a fact worth recording in

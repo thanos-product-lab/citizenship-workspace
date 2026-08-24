@@ -951,6 +951,51 @@ EvidenceFile
 - Deleted file content cannot be served through an old signed URL.
 - Sensitive file names must not appear in logs.
 
+### 15.1 EvidenceFileText
+
+**Added at M7 slice 3.** The text a deterministic parser read out of one exact file
+version, with the page metadata that came with it.
+
+```text
+EvidenceFileText
+├── id
+├── evidence_file_id
+├── page_count
+├── character_count
+├── content
+├── pipeline_version
+├── truncated
+└── extracted_at
+```
+
+**Why this is not an `ExtractionRun` (§17).** `ExtractionRun` is shaped for a model
+call — provider, model, prompt version, schema version, tokens, estimated cost — and all
+four of its capabilities (§17.1) are AI ones. Recording native PDF text there would mean
+a row of nulls in every column that gives the aggregate its meaning, and would blur the
+line the product is built on: this text is *read*, not *inferred*, so nothing about it is
+a claim. `ExtractionRun` stays reserved for M8, where a provider and a prompt version are
+real.
+
+**Why it is not columns on `EvidenceFile`.** The library projection selects the file row
+for every document on the screen. Document text is Tier-3 content (threat model §3), and
+a listing that drags it into the API process on every page load is the surface M7 is
+arranged to avoid. A separate row is loaded only when something asks for it, and is
+deleted by evidence deletion without touching the file's tombstone.
+
+**Invariants**
+
+- One row per file version at most; extraction never appends a second reading of the
+  same bytes.
+- `content` is never projected over HTTP in M7. Page count, character count and a short
+  excerpt are (see §7.4 of the M7 plan); the full text waits for M8's review surface.
+- A PDF with no text layer produces a row with `character_count = 0`, which is a
+  *finding* rather than a failure — the file is real and readable, it simply has no text
+  to read. That is the `PARTIALLY_COMPLETED` case in §14.4.
+- `truncated` records that a page or character cap stopped the read, so a downstream
+  consumer never mistakes a bounded read for a complete one.
+- Deleting evidence deletes this row outright. It carries no audit value: it is a copy of
+  content the user asked to be removed.
+
 ---
 
 ## 16. EvidenceProcessingRun Aggregate

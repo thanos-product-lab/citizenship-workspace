@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.evidence.domain import (
     EvidenceFile,
+    EvidenceFileText,
     EvidenceItem,
     EvidenceLifecycleStatus,
     EvidenceProcessingRun,
@@ -125,6 +126,30 @@ class EvidenceRepository:
         for run in session.execute(stmt).scalars().all():
             latest.setdefault(run.evidence_item_id, run)
         return latest
+
+    @staticmethod
+    def texts_for_case(
+        session: Session, *, case_id: uuid.UUID
+    ) -> dict[uuid.UUID, EvidenceFileText]:
+        """Extraction results per file, for the whole library in one query.
+
+        `content` is a deferred column, so this loads the counts and flags without
+        pulling every document's text into the API process — which is the reason the
+        text lives in its own table at all.
+        """
+        stmt = (
+            select(EvidenceFileText)
+            .join(EvidenceFile, EvidenceFile.id == EvidenceFileText.evidence_file_id)
+            .join(EvidenceItem, EvidenceItem.id == EvidenceFile.evidence_item_id)
+            .where(EvidenceItem.case_id == case_id)
+        )
+        return {text.evidence_file_id: text for text in session.execute(stmt).scalars().all()}
+
+    @staticmethod
+    def text_for_file(session: Session, *, evidence_file_id: uuid.UUID) -> EvidenceFileText | None:
+        return session.execute(
+            select(EvidenceFileText).where(EvidenceFileText.evidence_file_id == evidence_file_id)
+        ).scalar_one_or_none()
 
     @staticmethod
     def latest_run(

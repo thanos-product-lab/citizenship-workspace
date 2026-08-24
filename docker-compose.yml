@@ -75,6 +75,11 @@ services:
       context: .
       dockerfile: infra/docker/platform.Dockerfile
     command: uv run celery -A worker.celery_app.celery_app worker --loglevel info
+    # A hard ceiling under Celery's own child-recycling limit, so a document that
+    # allocates faster than the recycler can react takes the container down rather than
+    # the host. PyMuPDF is a C parser on attacker-controlled input and malware scanning
+    # is a documented non-goal; bounding the blast radius is the control we do have.
+    mem_limit: 1g
     environment:
       ENVIRONMENT: docker
       DATABASE_URL: postgresql+psycopg://citizenship:citizenship@postgres:5432/citizenship

@@ -63,6 +63,13 @@ module = ["celery.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
+# PyMuPDF ships type stubs whose methods are largely untyped, so strict mode rejects
+# every call into it. Scoped to the one module that touches the parser, so the rest of
+# `app/` keeps the full strictness — and that module is deliberately small.
+module = ["app.evidence.extraction"]
+disallow_untyped_calls = false
+
+[[tool.mypy.overrides]]
 # Celery's task decorators are untyped; allow them in task modules only.
 module = ["worker.*"]
 disallow_untyped_decorators = false

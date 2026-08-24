@@ -24,7 +24,7 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any, ClassVar
 
-from sqlalchemy import BigInteger, DateTime, ForeignKey, Integer, String, func
+from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Integer, String, Text, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -231,6 +231,38 @@ def utcnow() -> datetime:
 
 
 @dataclass(frozen=True)
+class EvidenceProcessingRequested(DomainEvent):
+    """A user asked for a document to be processed again.
+
+    Its own event type rather than re-emitting `EvidenceUploaded`, because it is not true
+    that the document was uploaded again — and `domain_events` is the immutable record of
+    what happened, not a queue of things to do.
+
+    Emitting it writes a **new outbox row**, which is what makes retry work at all: the
+    idempotency key is the outbox row's id, so a new row means a new key, and a new key
+    means the run is not short-circuited as a duplicate. That is the reason the key is
+    the delivery's identity rather than `file_id:pipeline_version`, which could not have
+    told a retry from a redelivery.
+    """
+
+    aggregate_type: ClassVar[str] = "EvidenceItem"
+    event_type: ClassVar[str] = "EvidenceProcessingRequested"
+
+    case_id: uuid.UUID
+    evidence_file_id: uuid.UUID
+    #: Which terminal state the user is retrying from, so the history says what they saw.
+    previous_status: str
+
+    def payload(self) -> dict[str, Any]:
+        return {
+            "case_id": str(self.case_id),
+            "evidence_item_id": str(self.aggregate_id),
+            "evidence_file_id": str(self.evidence_file_id),
+            "previous_status": self.previous_status,
+        }
+
+
+@dataclass(frozen=True)
 class EvidenceUploaded(DomainEvent):
     aggregate_type: ClassVar[str] = "EvidenceItem"
     event_type: ClassVar[str] = "EvidenceUploaded"
@@ -291,6 +323,11 @@ class ProcessingFailureCode(StrEnum):
     PASSWORD_PROTECTED = "PASSWORD_PROTECTED"
     FILE_TOO_LARGE = "FILE_TOO_LARGE"
     EMPTY_FILE = "EMPTY_FILE"
+    #: The worker was stopped by its time or memory limit. Terminal *by default* — a
+    #: document that exhausted a bound once will exhaust it again — but a user retry is
+    #: still offered, because the bound may have been hit for reasons the document is
+    #: not responsible for.
+    RESOURCE_LIMIT = "RESOURCE_LIMIT"
     # Transient — retried with backoff.
     STORAGE_UNAVAILABLE = "STORAGE_UNAVAILABLE"
     TIMED_OUT = "TIMED_OUT"
@@ -307,14 +344,15 @@ TRANSIENT_FAILURE_CODES = frozenset(
 #: fall through to whatever the item already said, which is the quiet failure mode —
 #: a document that finished and still reads as though nothing happened.
 #:
-#: `SUCCEEDED` maps back to `UPLOADED` in this slice because validation is all that
-#: runs: the file is stored, it has been checked, and nothing has read its contents.
-#: That is exactly what `UPLOADED` means and exactly what the library says. Slice 3
-#: carries the same run on into extraction, where `SUCCEEDED` becomes `COMPLETED`.
+#: `SUCCEEDED` means the run finished everything it set out to do — from slice 3 that
+#: includes reading the text, so it maps to `COMPLETED`. `PARTIAL` is the document that
+#: was read successfully and turned out to have nothing to read: a scan with no text
+#: layer is a valid file this pipeline cannot get words out of, which is a finding rather
+#: than a failure, and OCR is M8's problem.
 PROCESSING_STATUS_FOR_RUN: dict[ProcessingRunStatus, EvidenceProcessingStatus | None] = {
     ProcessingRunStatus.QUEUED: EvidenceProcessingStatus.UPLOADED,
     ProcessingRunStatus.RUNNING: EvidenceProcessingStatus.VALIDATING,
-    ProcessingRunStatus.SUCCEEDED: EvidenceProcessingStatus.UPLOADED,
+    ProcessingRunStatus.SUCCEEDED: EvidenceProcessingStatus.COMPLETED,
     ProcessingRunStatus.PARTIAL: EvidenceProcessingStatus.PARTIALLY_COMPLETED,
     ProcessingRunStatus.FAILED: EvidenceProcessingStatus.FAILED,
     # A cancelled run leaves the item's state alone: the case or the document is being
@@ -382,6 +420,15 @@ class EvidenceProcessingRun(Base):
         self.status = ProcessingRunStatus.SUCCEEDED.value
         self.completed_at = at
 
+    def partial(self, *, at: datetime) -> None:
+        """Everything ran and there was less to find than hoped.
+
+        Distinct from `FAILED`: nothing went wrong. A scan has no text layer, and saying
+        the document failed would tell a user to fix a file that is perfectly fine.
+        """
+        self.status = ProcessingRunStatus.PARTIAL.value
+        self.completed_at = at
+
     def fail(self, *, code: ProcessingFailureCode, summary: str, at: datetime) -> None:
         self.status = ProcessingRunStatus.FAILED.value
         self.failure_code = code.value
@@ -391,3 +438,52 @@ class EvidenceProcessingRun(Base):
     def cancel(self, *, at: datetime) -> None:
         self.status = ProcessingRunStatus.CANCELLED.value
         self.completed_at = at
+
+
+class EvidenceFileText(Base):
+    """What a deterministic parser read out of one file version (Domain §15.1).
+
+    Read, never inferred — which is why it is not an `ExtractionRun` (§17), whose shape
+    is provider/model/prompt/tokens and whose capabilities are all M8's. Nothing here is
+    a claim; it is the bytes, decoded.
+
+    A separate table from `evidence_files` because the library projection selects that
+    row for every document on the screen, and document text is Tier-3 content: a listing
+    that drags it into the API process on every page load is the surface M7 exists to
+    avoid.
+    """
+
+    __tablename__ = "evidence_file_texts"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    evidence_file_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("evidence_files.id"), unique=True
+    )
+    page_count: Mapped[int] = mapped_column(Integer)
+    character_count: Mapped[int] = mapped_column(Integer)
+    #: The text itself. **Never projected over HTTP in M7** — the API serves a count and
+    #: a short excerpt, and the full text waits for M8's review surface (§7.4 of the M7
+    #: plan). Deferred so that touching a file row does not load it.
+    content: Mapped[str] = mapped_column(Text, deferred=True)
+    pipeline_version: Mapped[str] = mapped_column(String(40))
+    #: A cap stopped the read. Recorded so nothing downstream mistakes a bounded read for
+    #: a complete one — an M8 extractor drawing a conclusion from page 20 of a 400-page
+    #: document should know that is what it is looking at.
+    truncated: Mapped[bool] = mapped_column(Boolean, default=False)
+    extracted_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+    @property
+    def excerpt(self) -> str:
+        """The first few hundred characters, for showing that extraction worked.
+
+        Bounded here rather than at the call site so there is one place where the size of
+        what crosses the API boundary is decided.
+        """
+        return self.content[:EXCERPT_CHARS]
+
+
+#: How much of a document may be shown as evidence that extraction succeeded. Enough to
+#: recognise the document, far short of reproducing it.
+EXCERPT_CHARS = 280

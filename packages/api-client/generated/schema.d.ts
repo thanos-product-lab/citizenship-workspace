@@ -191,6 +191,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/cases/{case_id}/evidence/{evidence_item_id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Retry Processing */
+        post: operations["retry_processing_api_v1_cases__case_id__evidence__evidence_item_id__retry_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/cases/{case_id}/issues": {
         parameters: {
             query?: never;
@@ -692,11 +709,18 @@ export interface components {
         /** EvidenceResponse */
         EvidenceResponse: {
             /**
+             * Can Retry
+             * @default false
+             */
+            can_retry: boolean;
+            /**
              * Case Id
              * Format: uuid
              */
             case_id: string;
             category: components["schemas"]["EvidenceCategory"];
+            /** Character Count */
+            character_count?: number | null;
             /**
              * Created At
              * Format: date-time
@@ -704,6 +728,8 @@ export interface components {
             created_at: string;
             /** Display Name */
             display_name: string;
+            /** Excerpt */
+            excerpt?: string | null;
             /** Failure Code */
             failure_code?: string | null;
             /** Failure Reason */
@@ -718,11 +744,18 @@ export interface components {
             media_type: string;
             /** Original Filename */
             original_filename: string | null;
+            /** Page Count */
+            page_count?: number | null;
             processing_status: components["schemas"]["EvidenceProcessingStatus"];
             /** Revision */
             revision: number;
             /** Size Bytes */
             size_bytes: number;
+            /**
+             * Text Truncated
+             * @default false
+             */
+            text_truncated: boolean;
             /**
              * Uploaded At
              * Format: date-time
@@ -2163,6 +2196,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EvidenceContentResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    retry_processing_api_v1_cases__case_id__evidence__evidence_item_id__retry_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                evidence_item_id: string;
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvidenceResponse"];
                 };
             };
             /** @description Validation Error */

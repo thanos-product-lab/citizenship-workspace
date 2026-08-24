@@ -82,6 +82,21 @@ def record_upload(
     return EvidenceResponse.from_domain(item, file)
 
 
+@router.post("/{evidence_item_id}/retry", response_model=EvidenceResponse)
+def retry_processing(
+    evidence_item_id: uuid.UUID,
+    case: Annotated[ApplicationCase, Depends(require_case_access)],
+    session: Annotated[Session, Depends(get_tenant_session)],
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+) -> EvidenceResponse:
+    item, file = service.request_reprocessing(
+        session, case=case, user=user, evidence_item_id=evidence_item_id
+    )
+    run = EvidenceRepository.latest_run(session, evidence_item_id=item.id)
+    text = EvidenceRepository.text_for_file(session, evidence_file_id=file.id)
+    return EvidenceResponse.from_domain(item, file, run, text)
+
+
 @router.get("", response_model=EvidenceLibraryResponse)
 def list_evidence(
     case: Annotated[ApplicationCase, Depends(require_case_access)],
@@ -103,7 +118,8 @@ def get_evidence(
 ) -> EvidenceResponse:
     item, file = service.get_evidence(session, case=case, evidence_item_id=evidence_item_id)
     run = EvidenceRepository.latest_run(session, evidence_item_id=item.id)
-    return EvidenceResponse.from_domain(item, file, run)
+    text = EvidenceRepository.text_for_file(session, evidence_file_id=file.id)
+    return EvidenceResponse.from_domain(item, file, run, text)
 
 
 @router.get("/{evidence_item_id}/content", response_model=EvidenceContentResponse)
