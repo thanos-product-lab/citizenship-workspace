@@ -231,6 +231,60 @@ def test_an_unreachable_store_is_transient_and_records_no_verdict(
     assert run.failure_code is None
 
 
+def test_giving_up_on_a_transient_failure_leaves_a_state_the_user_can_act_on(
+    api: Api, db_session: Session
+) -> None:
+    """The stranded-document defect, pinned.
+
+    `autoretry_for` re-raises when the retries run out and the task simply ends — run
+    still RUNNING, item still VALIDATING, and nothing left in the system that will ever
+    move them. The user watches a state that cannot resolve and the client polls it for
+    as long as the tab is open. Exhaustion has to be a state transition.
+    """
+    item_id = _uploaded(api, "user_a")
+
+    class Unreachable(InMemoryStorage):
+        def read_prefix(self, key: str, *, length: int) -> bytes:
+            raise StorageError("connection reset")
+
+    with pytest.raises(processing.TransientProcessingError):
+        processing.validate_evidence(
+            db_session, Unreachable(), evidence_item_id=item_id, idempotency_key="k1", trace_id=None
+        )
+    assert _runs(db_session, item_id)[0].run_status is ProcessingRunStatus.RUNNING
+
+    outcome = processing.abandon_run(
+        db_session,
+        idempotency_key="k1",
+        code=ProcessingFailureCode.STORAGE_UNAVAILABLE,
+        summary="We could not read this file. You can try again.",
+    )
+
+    assert outcome is not None
+    assert outcome.processing_status is EvidenceProcessingStatus.FAILED
+    run = _runs(db_session, item_id)[0]
+    assert run.run_status is ProcessingRunStatus.FAILED
+    assert run.failure_code == ProcessingFailureCode.STORAGE_UNAVAILABLE.value
+    # And FAILED is terminal for the client, so the poll stops.
+    item = db_session.get(EvidenceItem, item_id)
+    assert item is not None
+    assert item.processing_status == EvidenceProcessingStatus.FAILED.value
+
+
+def test_abandoning_a_run_that_was_never_written_does_nothing(db_session: Session) -> None:
+    """The failure happened before a run existed, so there is nothing to correct — and
+    inventing a FAILED run for a document that was never touched would be worse."""
+    assert (
+        processing.abandon_run(
+            db_session,
+            idempotency_key="never-existed",
+            code=ProcessingFailureCode.STORAGE_UNAVAILABLE,
+            summary="…",
+        )
+        is None
+    )
+
+
 # --- domain states, never queue states ------------------------------------------------
 
 

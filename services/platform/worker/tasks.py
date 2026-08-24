@@ -19,25 +19,30 @@ from typing import Any
 
 import structlog
 from celery import Task
+from sqlalchemy.orm import Session
 
 from app.core.storage import get_storage
 from app.evidence import processing
+from app.evidence.domain import ProcessingFailureCode
 from app.shared import outbox
 from app.shared.db import get_sessionmaker
+from app.shared.tenant import set_tenant
 from worker.celery_app import celery_app
 from worker.context import (
     CaseNoLongerWritable,
     EvidenceNoLongerPresent,
     case_task,
+    resolve_evidence_owner,
     tenant_scoped,
 )
 
 _log = structlog.get_logger()
 
-#: Transient failures are retried with backoff; terminal ones are not (Technical
-#: Architecture RFC §18). `TransientProcessingError` is raised only where nothing has
-#: been concluded about the file — the store was unreachable, not the document unusable.
-_RETRY_FOR = (processing.TransientProcessingError,)
+#: How many times a transient failure is retried before the run is abandoned.
+MAX_RETRIES = 3
+
+#: Base for the exponential backoff, in seconds: 2, 4, 8.
+_BACKOFF_BASE = 2
 
 
 @celery_app.task(name="worker.ping")
@@ -76,20 +81,28 @@ def _dispatch(task_name: str, kwargs: dict[str, object]) -> None:
     celery_app.send_task(task_name, kwargs=kwargs)
 
 
+def _owner_for(session: Session, evidence_item_id: uuid.UUID) -> str | None:
+    """The tenant for the abandon path, resolved the same way as everywhere else.
+
+    Separate from `case_task` because abandoning happens *after* the context manager has
+    unwound, and re-entering it would re-check case writability — a case deleted while
+    the retries ran would then skip the correction and leave the document mid-flight,
+    which is the exact state this path exists to clear.
+    """
+    try:
+        owner, _case_id, _lifecycle = resolve_evidence_owner(session, evidence_item_id)
+    except EvidenceNoLongerPresent:
+        return None
+    return owner
+
+
 # `tenant_scoped` is the **outer** decorator, and the order is load-bearing: applied
 # inside, it stamps the plain function, which `celery_app.task` then wraps in a `Task`
 # object the harness cannot see through. The mark has to land on the registered task,
 # because that is what `celery_app.tasks` hands the harness. Written the other way round
 # first, and caught by `test_a_known_case_scoped_task_is_seen_by_the_check`.
 @tenant_scoped
-@celery_app.task(
-    bind=True,
-    name="worker.evidence.validate",
-    autoretry_for=_RETRY_FOR,
-    retry_backoff=True,
-    retry_jitter=True,
-    max_retries=3,
-)
+@celery_app.task(bind=True, name="worker.evidence.validate", max_retries=MAX_RETRIES)
 def validate_evidence(
     self: Task, *, outbox_event_id: str, aggregate_id: str, trace_id: str | None = None, **_: Any
 ) -> dict[str, object]:
@@ -111,6 +124,35 @@ def validate_evidence(
                 idempotency_key=outbox_event_id,
                 trace_id=trace_id,
             )
+    except processing.TransientProcessingError as exc:
+        # Retried by hand rather than with `autoretry_for`, because the interesting
+        # moment is the *last* one. `autoretry_for` re-raises when the retries run out,
+        # and the task simply ends — leaving the run RUNNING and the document showing
+        # "Validating" with nothing left in the system that will ever move it. The user
+        # watches a state that cannot resolve and the client polls it for as long as the
+        # tab is open. So exhaustion is a state transition, not an exception.
+        if self.request.retries < MAX_RETRIES:
+            raise self.retry(
+                exc=exc, countdown=_BACKOFF_BASE ** (self.request.retries + 1)
+            ) from exc
+
+        with get_sessionmaker()() as session:
+            owner = _owner_for(session, evidence_item_id)
+            if owner is not None:
+                set_tenant(session, owner)
+                processing.abandon_run(
+                    session,
+                    idempotency_key=outbox_event_id,
+                    code=ProcessingFailureCode.STORAGE_UNAVAILABLE,
+                    summary="We could not read this file. You can try again.",
+                )
+        _log.warning(
+            "evidence.validate_abandoned",
+            reason="transient_failure_retries_exhausted",
+            evidence_item_id=str(evidence_item_id),
+            attempts=self.request.retries + 1,
+        )
+        return {"failed": True, "reason": "storage_unavailable"}
     except CaseNoLongerWritable as stop:
         # Not a failure and not a retry: no number of attempts makes a deleted case
         # writable, and a FAILED run would open a PROCESSING_FAILURE issue telling the

@@ -58,6 +58,42 @@ class ProcessingOutcome:
     already_done: bool = False
 
 
+def abandon_run(
+    session: Session,
+    *,
+    idempotency_key: str,
+    code: ProcessingFailureCode,
+    summary: str,
+) -> ProcessingOutcome | None:
+    """Record that a run gave up, so the document does not sit mid-flight forever.
+
+    Called when the retries for a transient failure are exhausted. Without it, the run
+    stays RUNNING and the item stays VALIDATING with nothing left to move them: the user
+    watches a document that will never resolve, and the client polls it for as long as
+    the tab is open. "Failed, and you can try again" is both true and actionable;
+    "Validating" forever is neither.
+
+    Returns None if there is no run to abandon — the failure happened before one was
+    written, and there is nothing to correct.
+    """
+    run = _existing_run(session, idempotency_key)
+    if run is None:
+        return None
+
+    at = utcnow()
+    run.fail(code=code, summary=summary, at=at)
+    item = session.get(EvidenceItem, run.evidence_item_id)
+    if item is not None and item.lifecycle_status is EvidenceLifecycleStatus.ACTIVE:
+        item.processing_status = EvidenceProcessingStatus.FAILED.value
+        item.updated_at = at
+    session.commit()
+    return ProcessingOutcome(
+        run_id=run.id,
+        processing_status=EvidenceProcessingStatus.FAILED,
+        failure_code=code,
+    )
+
+
 def _existing_run(session: Session, idempotency_key: str) -> EvidenceProcessingRun | None:
     stmt = select(EvidenceProcessingRun).where(
         EvidenceProcessingRun.idempotency_key == idempotency_key
