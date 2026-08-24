@@ -169,6 +169,30 @@ def test_a_scan_completes_partially_rather_than_failing(api: Api, db_session: Se
     assert text is not None and text.character_count == 0
 
 
+def test_a_multi_page_scan_completes_partially_through_the_whole_pipeline(
+    api: Api, db_session: Session
+) -> None:
+    """The single-page scan test could not find this.
+
+    Through the pipeline rather than through `extract()` alone, because the defect lived
+    between them: `character_count` counted the joined string, so a three-page scan
+    reported two characters — and after that was fixed, migration 0018's consistency
+    check still encoded the buggy relationship and rejected the row outright. Only a
+    multi-page scan going all the way to the database exercises both.
+    """
+    item_id = _uploaded(api, "user_a", content=_fixture("scan-multi-page.pdf"))
+
+    outcome = _process(item_id, idempotency_key="k1")
+
+    assert outcome.processing_status is EvidenceProcessingStatus.PARTIALLY_COMPLETED
+    assert outcome.failure_code is None
+    text = _text_for(db_session, item_id)
+    assert text is not None
+    assert text.page_count == 3
+    assert text.pages_read == 3
+    assert text.character_count == 0
+
+
 def test_a_password_protected_document_fails_with_a_reason(api: Api, db_session: Session) -> None:
     item_id = _uploaded(api, "user_a", content=_fixture("password-protected.pdf"))
 
