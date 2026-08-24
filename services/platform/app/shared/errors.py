@@ -147,6 +147,20 @@ class EvidenceNotRetryable(DomainError):
         super().__init__(f"a document that is {processing_status} cannot be retried")
 
 
+class EvidenceRetryTooSoon(DomainError):
+    """A retry was asked for too soon after the last attempt.
+
+    Two of the retryable states are deterministic — re-reading a scan yields a scan — so
+    without a cooldown the button is a loop, each turn costing a full parse on a queue
+    shared with every other case."""
+
+    code = "EVIDENCE_RETRY_TOO_SOON"
+
+    def __init__(self, retry_after_seconds: int) -> None:
+        self.retry_after_seconds = retry_after_seconds
+        super().__init__(f"try again in {retry_after_seconds} seconds")
+
+
 class EvidenceUploadIncomplete(DomainError):
     """Completion was called for a reservation whose object is not in the store. The
     presigned URL was issued but never used, or the upload failed. Nothing is recorded:
@@ -248,6 +262,18 @@ def register_exception_handlers(app: FastAPI) -> None:
                 "code": exc.code,
                 "processing_status": exc.processing_status,
             },
+        )
+
+    @app.exception_handler(EvidenceRetryTooSoon)
+    async def _retry_too_soon(_request: Request, exc: EvidenceRetryTooSoon) -> JSONResponse:
+        return JSONResponse(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            content={
+                "detail": str(exc),
+                "code": exc.code,
+                "retry_after_seconds": exc.retry_after_seconds,
+            },
+            headers={"Retry-After": str(exc.retry_after_seconds)},
         )
 
     @app.exception_handler(EvidenceUploadIncomplete)

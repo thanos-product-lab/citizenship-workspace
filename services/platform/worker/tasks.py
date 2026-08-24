@@ -19,6 +19,7 @@ from typing import Any
 
 import structlog
 from celery import Task
+from celery.exceptions import SoftTimeLimitExceeded
 from sqlalchemy.orm import Session
 
 from app.core.storage import get_storage
@@ -131,6 +132,33 @@ def validate_evidence(
                 trace_id=trace_id,
                 evidence_file_id=uuid.UUID(evidence_file_id) if evidence_file_id else None,
             )
+    except SoftTimeLimitExceeded:
+        # The bound that slice 3 added, and the trap that came with it. A child killed by
+        # the soft time limit — or by `worker_max_memory_per_child` on the next task —
+        # leaves the item in `EXTRACTING_TEXT`, which is not retryable, so the user
+        # watches "Reading" for good with no control. That is the stranded document again,
+        # arriving through the door the resource limits opened.
+        #
+        # Not retried: a document that exhausted a bound once will exhaust it again, and
+        # three more attempts is three more chances to take a worker down. It becomes a
+        # terminal failure the user *can* retry deliberately, which is a different thing
+        # from retrying it for them.
+        with get_sessionmaker()() as session:
+            owner = _owner_for(session, evidence_item_id)
+            if owner is not None:
+                set_tenant(session, owner)
+                processing.abandon_run(
+                    session,
+                    idempotency_key=outbox_event_id,
+                    code=ProcessingFailureCode.RESOURCE_LIMIT,
+                    summary="This document was too large or too slow to read.",
+                )
+        _log.warning(
+            "evidence.validate_abandoned",
+            reason="resource_limit",
+            evidence_item_id=str(evidence_item_id),
+        )
+        return {"failed": True, "reason": "resource_limit"}
     except processing.TransientProcessingError as exc:
         # Retried by hand rather than with `autoretry_for`, because the interesting
         # moment is the *last* one. `autoretry_for` re-raises when the retries run out,
@@ -178,6 +206,25 @@ def validate_evidence(
             evidence_item_id=str(evidence_item_id),
         )
         return {"cancelled": True, "reason": "evidence_absent"}
+    except Exception:
+        # The catch-all exists because of what its absence costs. Anything unnamed above
+        # left `run.status = RUNNING` and the item in `EXTRACTING_TEXT` — a state that is
+        # in neither the terminal set nor the retryable one, so the client polls forever
+        # and the retry button answers 409. No user or system recovery existed. An
+        # unexpected error should leave a document a person can act on, and then be
+        # re-raised so it is visible rather than swallowed.
+        with get_sessionmaker()() as session:
+            owner = _owner_for(session, evidence_item_id)
+            if owner is not None:
+                set_tenant(session, owner)
+                processing.abandon_run(
+                    session,
+                    idempotency_key=outbox_event_id,
+                    code=ProcessingFailureCode.CORRUPT_FILE,
+                    summary="Something went wrong reading this file. You can try again.",
+                )
+        _log.exception("evidence.validate_errored", evidence_item_id=str(evidence_item_id))
+        raise
     finally:
         structlog.contextvars.unbind_contextvars("trace_id")
 

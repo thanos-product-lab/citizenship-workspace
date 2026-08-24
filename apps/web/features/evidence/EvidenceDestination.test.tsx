@@ -34,8 +34,8 @@ function anItem(overrides: Record<string, unknown> = {}) {
     failure_code: null,
     failure_reason: null,
     page_count: null,
+    pages_read: null,
     character_count: null,
-    excerpt: null,
     text_truncated: false,
     can_retry: false,
     uploaded_at: "2026-08-20T10:00:00Z",
@@ -335,8 +335,8 @@ describe("what extraction found", () => {
         anItem({
           processing_status: "COMPLETED",
           page_count: 3,
+          pages_read: 3,
           character_count: 1200,
-          excerpt: "Passenger: Amara Okonkwo",
         }),
       ]),
     });
@@ -368,6 +368,7 @@ describe("what extraction found", () => {
         anItem({
           processing_status: "COMPLETED",
           page_count: 60,
+          pages_read: 40,
           character_count: 9000,
           text_truncated: true,
         }),
@@ -377,6 +378,28 @@ describe("what extraction found", () => {
 
     const row = within(await screen.findByRole("row", { name: /Athens booking/ }));
     expect(row.getByText(/60 pages, first 40 read/)).toBeTruthy();
+  });
+
+  it("does not invent page arithmetic when the character cap stopped the read", async () => {
+    // Every page was opened and the read still stopped early. The first version
+    // computed `min(pages, 40)` and rendered "10 pages, first 10 read" — untrue, and
+    // reassuring in the wrong direction.
+    get.mockResolvedValue({
+      data: aLibrary([
+        anItem({
+          processing_status: "COMPLETED",
+          page_count: 10,
+          pages_read: 10,
+          character_count: 200_000,
+          text_truncated: true,
+        }),
+      ]),
+    });
+    renderWithQuery(<EvidenceDestination caseId={CASE_ID} />);
+
+    const row = within(await screen.findByRole("row", { name: /Athens booking/ }));
+    expect(row.getByText("10 pages, partly read")).toBeTruthy();
+    expect(row.queryByText(/first 10 read/)).toBeNull();
   });
 });
 

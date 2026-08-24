@@ -474,17 +474,6 @@
             "title": "Display Name",
             "type": "string"
           },
-          "excerpt": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Excerpt"
-          },
           "failure_code": {
             "anyOf": [
               {
@@ -540,6 +529,17 @@
               }
             ],
             "title": "Page Count"
+          },
+          "pages_read": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pages Read"
           },
           "processing_status": {
             "$ref": "#/components/schemas/EvidenceProcessingStatus"

@@ -66,7 +66,7 @@ ignore_missing_imports = true
 # PyMuPDF ships type stubs whose methods are largely untyped, so strict mode rejects
 # every call into it. Scoped to the one module that touches the parser, so the rest of
 # `app/` keeps the full strictness — and that module is deliberately small.
-module = ["app.evidence.extraction"]
+module = ["app.evidence.extraction", "tests.evidence.test_extraction", "scripts.make_fixtures"]
 disallow_untyped_calls = false
 
 [[tool.mypy.overrides]]

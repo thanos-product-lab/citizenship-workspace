@@ -51,6 +51,7 @@ from app.shared.errors import (
     CaseNotActive,
     EvidenceNotFound,
     EvidenceNotRetryable,
+    EvidenceRetryTooSoon,
     EvidenceTooLarge,
     EvidenceUploadIncomplete,
     UnsupportedEvidenceType,
@@ -276,10 +277,20 @@ def content_url(
     )
 
 
-#: States a user may ask us to try again from. Deliberately not `UNSUPPORTED`: that
-#: verdict is about the *file*, and running the same bytes through the same check will
-#: reach the same answer. Offering a retry there would be a button that cannot work,
-#: which is worse than no button — the honest action is to upload a different file.
+#: States a user may ask us to try again from.
+#:
+#: Deliberately not `UNSUPPORTED`: that verdict is about the *file*, and running the same
+#: bytes through the same check reaches the same answer. A button that cannot work is
+#: worse than no button — the honest action is to upload a different file.
+#:
+#: `FAILED` covers the resource-limit case too, which is why a document the worker could
+#: not finish reading is retryable by a *person* while not being retried automatically:
+#: three more attempts at a document that already exhausted a bound is three more chances
+#: to take a worker down, but a user who knows the system was busy should be able to ask
+#: again.
+#: How long after an attempt starts before another may be asked for.
+RETRY_COOLDOWN_SECONDS = 30.0
+
 RETRYABLE_STATUSES = frozenset(
     {
         EvidenceProcessingStatus.FAILED,
@@ -308,6 +319,18 @@ def request_reprocessing(
     current = EvidenceProcessingStatus(item.processing_status)
     if current not in RETRYABLE_STATUSES:
         raise EvidenceNotRetryable(current.value)
+
+    # A cooldown, because two of the retryable states are deterministic. Re-reading a
+    # scan yields a scan, so `PARTIALLY_COMPLETED` returns to `PARTIALLY_COMPLETED` and
+    # the button is available again immediately — an unbounded loop by construction, each
+    # turn costing a full parse on a shared queue. There is no rate limiting anywhere in
+    # this application yet, so the bound lives here, on the one command that is cheap to
+    # ask for and expensive to serve.
+    latest = EvidenceRepository.latest_run(session, evidence_item_id=item.id)
+    if latest is not None:
+        since = (utcnow() - latest.started_at).total_seconds()
+        if since < RETRY_COOLDOWN_SECONDS:
+            raise EvidenceRetryTooSoon(int(RETRY_COOLDOWN_SECONDS - since))
 
     uow = UnitOfWork(session, actor_id=user.user_id)
     uow.emit(

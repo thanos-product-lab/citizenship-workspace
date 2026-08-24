@@ -166,6 +166,7 @@ def _upload_document(api: Api, user: str, case_id: str, session: Session) -> Non
         EvidenceFileText(
             evidence_file_id=file_id,
             page_count=1,
+            pages_read=1,
             character_count=17,
             content="synthetic content",
             pipeline_version=PIPELINE_VERSION,

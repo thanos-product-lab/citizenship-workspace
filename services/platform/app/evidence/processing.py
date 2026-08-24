@@ -49,6 +49,11 @@ from app.evidence.domain import (
 _log = structlog.get_logger()
 
 
+#: How many times one delivery may attempt the same document before it is declared
+#: unreadable. Counts *all* attempts, including redeliveries caused by a worker being
+#: killed — which is the case that would otherwise never terminate.
+MAX_ATTEMPTS = 3
+
 #: Run statuses that mean a verdict was reached. A run in any other state is either
 #: this delivery's own attempt in progress or one that died mid-flight — and in both
 #: cases the right move is to carry on, not to report the work already done.
@@ -106,6 +111,13 @@ def abandon_run(
     """
     run = _existing_run(session, idempotency_key)
     if run is None:
+        return None
+    if run.run_status in SETTLED_RUN_STATUSES:
+        # Duplicate delivery is possible by design — `published_at` is committed after
+        # the broker accepts — so two deliveries can share one idempotency key. If one
+        # exhausts its retries after the other has already succeeded, overwriting would
+        # turn a good reading into a FAILED document while `evidence_file_texts` still
+        # holds the text. A run that reached a verdict keeps it.
         return None
 
     at = utcnow()
@@ -203,6 +215,37 @@ def validate_evidence(
     file = _file_for(session, evidence_item_id, evidence_file_id)
     if file is None:
         raise EvidenceNotProcessable(f"evidence item {evidence_item_id} has no file to process")
+
+    if existing is not None and existing.retry_count >= MAX_ATTEMPTS:
+        # The redelivery loop, closed.
+        #
+        # `task_reject_on_worker_lost` requeues a task whose child was killed — which is
+        # exactly what a memory-bomb document produces under a container limit — and the
+        # requeue carries the *same* outbox id, so the same idempotency key. The run is
+        # still RUNNING, so without this the next delivery bumps `retry_count` and runs
+        # the identical parse again, forever, at whatever cost the document chose.
+        # Nothing read `retry_count`; now something does.
+        at = utcnow()
+        existing.fail(
+            code=ProcessingFailureCode.RESOURCE_LIMIT,
+            summary="This document was too large or too slow to read.",
+            at=at,
+        )
+        item = session.get(EvidenceItem, evidence_item_id)
+        if item is not None and item.lifecycle_status is EvidenceLifecycleStatus.ACTIVE:
+            item.processing_status = EvidenceProcessingStatus.FAILED.value
+            item.updated_at = at
+        session.commit()
+        _log.warning(
+            "evidence.attempts_exhausted",
+            evidence_item_id=str(evidence_item_id),
+            attempts=existing.retry_count,
+        )
+        return ProcessingOutcome(
+            run_id=existing.id,
+            processing_status=EvidenceProcessingStatus.FAILED,
+            failure_code=ProcessingFailureCode.RESOURCE_LIMIT,
+        )
 
     if existing is not None:
         # A RUNNING run under this key is **this delivery's own earlier attempt**, not a
@@ -356,6 +399,16 @@ def _extract(
             at=at,
             trace_id=trace_id,
         )
+    except extraction.ReadTookTooLong:
+        return _fail(
+            session,
+            item=item,
+            run=run,
+            code=ProcessingFailureCode.RESOURCE_LIMIT,
+            summary="This document took too long to read.",
+            at=at,
+            trace_id=trace_id,
+        )
 
     _record_text(session, file_id=file.id, found=found)
 
@@ -413,6 +466,7 @@ def _record_text(session: Session, *, file_id: uuid.UUID, found: extraction.Extr
             EvidenceFileText(
                 evidence_file_id=file_id,
                 page_count=found.page_count,
+                pages_read=found.pages_read,
                 character_count=found.character_count,
                 content=found.content,
                 pipeline_version=PIPELINE_VERSION,
@@ -422,6 +476,7 @@ def _record_text(session: Session, *, file_id: uuid.UUID, found: extraction.Extr
         return
 
     existing.page_count = found.page_count
+    existing.pages_read = found.pages_read
     existing.character_count = found.character_count
     existing.content = found.content
     existing.pipeline_version = PIPELINE_VERSION

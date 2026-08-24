@@ -728,8 +728,6 @@ export interface components {
             created_at: string;
             /** Display Name */
             display_name: string;
-            /** Excerpt */
-            excerpt?: string | null;
             /** Failure Code */
             failure_code?: string | null;
             /** Failure Reason */
@@ -746,6 +744,8 @@ export interface components {
             original_filename: string | null;
             /** Page Count */
             page_count?: number | null;
+            /** Pages Read */
+            pages_read?: number | null;
             processing_status: components["schemas"]["EvidenceProcessingStatus"];
             /** Revision */
             revision: number;

@@ -90,6 +90,45 @@ def _uploaded(
     return uuid.UUID(item["id"])
 
 
+def _process(
+    evidence_item_id: uuid.UUID,
+    *,
+    idempotency_key: str,
+    storage: object | None = None,
+    evidence_file_id: uuid.UUID | None = None,
+) -> processing.ProcessingOutcome:
+    """Run the pipeline on its own session, as the worker does.
+
+    Not on `db_session`, and the reason is not tidiness. Sync FastAPI endpoints run in a
+    threadpool, so the TestClient mutates the shared session from *another thread*; this
+    pipeline is the first thing in the suite to make multi-commit updates to a versioned
+    aggregate (`EvidenceItem` carries a `version_id_col`) that the API created. Sharing
+    the session produced an intermittent `StaleDataError: expected to update 1 row(s); 0
+    were matched`, appearing on a different test each run.
+
+    In production these are different processes on different connections, so a separate
+    session is also the more faithful arrangement — the shared one was the artificial
+    part.
+    """
+    from app.core.storage import get_storage as _get_storage
+    from app.shared.db import get_sessionmaker
+    from app.shared.tenant import set_tenant
+
+    session = get_sessionmaker()()
+    try:
+        set_tenant(session, "user_a")
+        return processing.validate_evidence(
+            session,
+            storage or _get_storage(),  # type: ignore[arg-type]
+            evidence_item_id=evidence_item_id,
+            idempotency_key=idempotency_key,
+            trace_id=None,
+            evidence_file_id=evidence_file_id,
+        )
+    finally:
+        session.close()
+
+
 def _runs(session: Session, evidence_item_id: uuid.UUID) -> list[EvidenceProcessingRun]:
     stmt = select(EvidenceProcessingRun).where(
         EvidenceProcessingRun.evidence_item_id == evidence_item_id
@@ -104,9 +143,7 @@ def test_a_real_pdf_is_validated_then_read(api: Api, db_session: Session) -> Non
     """The whole pipeline in one: validate the bytes, then read the text out of them."""
     item_id = _uploaded(api, "user_a", content=_fixture("travel-booking.pdf"))
 
-    outcome = processing.validate_evidence(
-        db_session, _store(), evidence_item_id=item_id, idempotency_key="k1", trace_id=None
-    )
+    outcome = _process(item_id, idempotency_key="k1")
 
     assert outcome.processing_status is EvidenceProcessingStatus.COMPLETED
     assert outcome.failure_code is None
@@ -124,9 +161,7 @@ def test_a_scan_completes_partially_rather_than_failing(api: Api, db_session: Se
     `FAILED` would tell the user to fix a file that is perfectly fine."""
     item_id = _uploaded(api, "user_a", content=_fixture("scan-no-text-layer.pdf"))
 
-    outcome = processing.validate_evidence(
-        db_session, _store(), evidence_item_id=item_id, idempotency_key="k1", trace_id=None
-    )
+    outcome = _process(item_id, idempotency_key="k1")
 
     assert outcome.processing_status is EvidenceProcessingStatus.PARTIALLY_COMPLETED
     assert outcome.failure_code is None
@@ -137,9 +172,7 @@ def test_a_scan_completes_partially_rather_than_failing(api: Api, db_session: Se
 def test_a_password_protected_document_fails_with_a_reason(api: Api, db_session: Session) -> None:
     item_id = _uploaded(api, "user_a", content=_fixture("password-protected.pdf"))
 
-    outcome = processing.validate_evidence(
-        db_session, _store(), evidence_item_id=item_id, idempotency_key="k1", trace_id=None
-    )
+    outcome = _process(item_id, idempotency_key="k1")
 
     assert outcome.processing_status is EvidenceProcessingStatus.FAILED
     assert outcome.failure_code is ProcessingFailureCode.PASSWORD_PROTECTED
@@ -152,9 +185,7 @@ def test_a_long_document_records_that_the_read_was_bounded(api: Api, db_session:
     knowing that is what it is looking at."""
     item_id = _uploaded(api, "user_a", content=_fixture("many-pages.pdf"))
 
-    processing.validate_evidence(
-        db_session, _store(), evidence_item_id=item_id, idempotency_key="k1", trace_id=None
-    )
+    _process(item_id, idempotency_key="k1")
 
     text = _text_for(db_session, item_id)
     assert text is not None
@@ -171,9 +202,7 @@ def test_an_image_is_completed_partially_without_being_parsed(
         api, "user_a", content=b"\xff\xd8\xff a synthetic jpeg", media_type="image/jpeg"
     )
 
-    outcome = processing.validate_evidence(
-        db_session, _store(), evidence_item_id=item_id, idempotency_key="k1", trace_id=None
-    )
+    outcome = _process(item_id, idempotency_key="k1")
 
     assert outcome.processing_status is EvidenceProcessingStatus.PARTIALLY_COMPLETED
     assert _text_for(db_session, item_id) is None
@@ -188,9 +217,7 @@ def test_content_that_contradicts_its_declared_type_is_unsupported(
     why it is in the worker."""
     item_id = _uploaded(api, "user_a", content=_NOT_A_PDF)
 
-    outcome = processing.validate_evidence(
-        db_session, _store(), evidence_item_id=item_id, idempotency_key="k1", trace_id=None
-    )
+    outcome = _process(item_id, idempotency_key="k1")
 
     assert outcome.processing_status is EvidenceProcessingStatus.UNSUPPORTED
     assert outcome.failure_code is ProcessingFailureCode.CONTENT_DOES_NOT_MATCH_TYPE
@@ -202,9 +229,7 @@ def test_the_refusal_is_phrased_in_the_users_vocabulary(api: Api, db_session: Se
     first version read "not a application/pdf document", which is also ungrammatical."""
     item_id = _uploaded(api, "user_a", content=_NOT_A_PDF)
 
-    processing.validate_evidence(
-        db_session, _store(), evidence_item_id=item_id, idempotency_key="k1", trace_id=None
-    )
+    _process(item_id, idempotency_key="k1")
 
     summary = _runs(db_session, item_id)[0].failure_summary or ""
     assert summary == "This file is not a PDF."
@@ -216,9 +241,7 @@ def test_a_failure_summary_says_nothing_about_the_document(api: Api, db_session:
     about media types, which this module computed, not about anything it read."""
     item_id = _uploaded(api, "user_a", content=b"MZ\x90\x00 windows executable secret-token")
 
-    processing.validate_evidence(
-        db_session, _store(), evidence_item_id=item_id, idempotency_key="k1", trace_id=None
-    )
+    _process(item_id, idempotency_key="k1")
 
     summary = _runs(db_session, item_id)[0].failure_summary or ""
     assert "secret-token" not in summary
@@ -233,12 +256,8 @@ def test_a_duplicate_delivery_creates_no_second_run(api: Api, db_session: Sessio
     results. `acks_late` makes redelivery ordinary rather than exceptional."""
     item_id = _uploaded(api, "user_a")
 
-    first = processing.validate_evidence(
-        db_session, _store(), evidence_item_id=item_id, idempotency_key="same", trace_id=None
-    )
-    second = processing.validate_evidence(
-        db_session, _store(), evidence_item_id=item_id, idempotency_key="same", trace_id=None
-    )
+    first = _process(item_id, idempotency_key="same")
+    second = _process(item_id, idempotency_key="same")
 
     assert second.already_done is True
     assert second.run_id == first.run_id
@@ -251,12 +270,8 @@ def test_a_user_retry_gets_a_new_run(api: Api, db_session: Session) -> None:
     and the composite key could not have told the two apart."""
     item_id = _uploaded(api, "user_a")
 
-    first = processing.validate_evidence(
-        db_session, _store(), evidence_item_id=item_id, idempotency_key="delivery-1", trace_id=None
-    )
-    second = processing.validate_evidence(
-        db_session, _store(), evidence_item_id=item_id, idempotency_key="delivery-2", trace_id=None
-    )
+    first = _process(item_id, idempotency_key="delivery-1")
+    second = _process(item_id, idempotency_key="delivery-2")
 
     assert second.already_done is False
     assert second.run_id != first.run_id
@@ -279,9 +294,7 @@ def test_a_terminal_failure_leaves_the_uploaded_file_alone(api: Api, db_session:
     ).scalar_one()
     key = file.storage_key
 
-    processing.validate_evidence(
-        db_session, _store(), evidence_item_id=item_id, idempotency_key="k1", trace_id=None
-    )
+    _process(item_id, idempotency_key="k1")
 
     db_session.refresh(file)
     assert _store().head(key) is not None, "the stored object was removed by a failure"
@@ -302,9 +315,7 @@ def test_an_unreachable_store_is_transient_and_records_no_verdict(
             raise StorageError("connection reset")
 
     with pytest.raises(processing.TransientProcessingError):
-        processing.validate_evidence(
-            db_session, Unreachable(), evidence_item_id=item_id, idempotency_key="k1", trace_id=None
-        )
+        _process(item_id, idempotency_key="k1", storage=Unreachable())
 
     run = _runs(db_session, item_id)[0]
     assert run.run_status is ProcessingRunStatus.RUNNING
@@ -330,14 +341,10 @@ def test_a_retry_after_a_transient_failure_actually_runs(api: Api, db_session: S
             raise StorageError("connection reset")
 
     with pytest.raises(processing.TransientProcessingError):
-        processing.validate_evidence(
-            db_session, Unreachable(), evidence_item_id=item_id, idempotency_key="k1", trace_id=None
-        )
+        _process(item_id, idempotency_key="k1", storage=Unreachable())
 
     # The store recovers and the same delivery is retried.
-    outcome = processing.validate_evidence(
-        db_session, _store(), evidence_item_id=item_id, idempotency_key="k1", trace_id=None
-    )
+    outcome = _process(item_id, idempotency_key="k1")
 
     assert outcome.already_done is False, "the retry short-circuited on its own attempt"
     assert outcome.processing_status is EvidenceProcessingStatus.COMPLETED
@@ -354,12 +361,8 @@ def test_a_settled_run_still_short_circuits(api: Api, db_session: Session) -> No
     that already reached a verdict does nothing."""
     item_id = _uploaded(api, "user_a")
 
-    first = processing.validate_evidence(
-        db_session, _store(), evidence_item_id=item_id, idempotency_key="k1", trace_id=None
-    )
-    second = processing.validate_evidence(
-        db_session, _store(), evidence_item_id=item_id, idempotency_key="k1", trace_id=None
-    )
+    first = _process(item_id, idempotency_key="k1")
+    second = _process(item_id, idempotency_key="k1")
 
     assert second.already_done is True
     assert second.run_id == first.run_id
@@ -375,27 +378,13 @@ def test_the_delivery_acts_on_the_file_version_it_names(api: Api, db_session: Se
         select(EvidenceFile).where(EvidenceFile.evidence_item_id == item_id)
     ).scalar_one()
 
-    outcome = processing.validate_evidence(
-        db_session,
-        _store(),
-        evidence_item_id=item_id,
-        idempotency_key="k1",
-        trace_id=None,
-        evidence_file_id=file.id,
-    )
+    outcome = _process(item_id, idempotency_key="k1", evidence_file_id=file.id)
     assert outcome.processing_status is EvidenceProcessingStatus.COMPLETED
 
     # A version that does not belong to this item is refused rather than silently
     # falling back to whatever is current.
     with pytest.raises(processing.EvidenceNotProcessable):
-        processing.validate_evidence(
-            db_session,
-            _store(),
-            evidence_item_id=item_id,
-            idempotency_key="k2",
-            trace_id=None,
-            evidence_file_id=uuid.uuid4(),
-        )
+        _process(item_id, idempotency_key="k2", evidence_file_id=uuid.uuid4())
 
 
 def test_giving_up_on_a_transient_failure_leaves_a_state_the_user_can_act_on(
@@ -415,9 +404,7 @@ def test_giving_up_on_a_transient_failure_leaves_a_state_the_user_can_act_on(
             raise StorageError("connection reset")
 
     with pytest.raises(processing.TransientProcessingError):
-        processing.validate_evidence(
-            db_session, Unreachable(), evidence_item_id=item_id, idempotency_key="k1", trace_id=None
-        )
+        _process(item_id, idempotency_key="k1", storage=Unreachable())
     assert _runs(db_session, item_id)[0].run_status is ProcessingRunStatus.RUNNING
 
     outcome = processing.abandon_run(
@@ -479,7 +466,9 @@ def test_a_cancelled_run_leaves_the_users_state_alone() -> None:
 # --- retry -------------------------------------------------------------------------
 
 
-def test_a_retry_writes_a_new_outbox_row_so_the_key_differs(api: Api, db_session: Session) -> None:
+def test_a_retry_writes_a_new_outbox_row_so_the_key_differs(
+    api: Api, db_session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """The mechanism the whole retry rests on.
 
     The idempotency key is the outbox row's id, so a retry only works if it *is* a new
@@ -492,10 +481,11 @@ def test_a_retry_writes_a_new_outbox_row_so_the_key_differs(api: Api, db_session
     from app.evidence import service as evidence_service
     from app.shared.records import OutboxEventRecord
 
+    # The cooldown is a rate limit, not the behaviour under test here.
+    monkeypatch.setattr(evidence_service, "RETRY_COOLDOWN_SECONDS", 0.0)
+
     item_id = _uploaded(api, "user_a", content=_fixture("password-protected.pdf"))
-    processing.validate_evidence(
-        db_session, _store(), evidence_item_id=item_id, idempotency_key="k1", trace_id=None
-    )
+    _process(item_id, idempotency_key="k1")
     item = db_session.get(EvidenceItem, item_id)
     assert item is not None and item.processing_status == EvidenceProcessingStatus.FAILED.value
 
@@ -539,9 +529,7 @@ def test_an_unsupported_document_is_not_offered_a_retry(api: Api, db_session: Se
     from tests.conftest import as_user
 
     item_id = _uploaded(api, "user_a", content=_NOT_A_PDF)
-    processing.validate_evidence(
-        db_session, _store(), evidence_item_id=item_id, idempotency_key="k1", trace_id=None
-    )
+    _process(item_id, idempotency_key="k1")
     item = db_session.get(EvidenceItem, item_id)
     assert item is not None
 
@@ -561,17 +549,80 @@ def test_re_extraction_replaces_rather_than_appends(api: Api, db_session: Sessio
     in slice 1."""
     item_id = _uploaded(api, "user_a")
 
-    processing.validate_evidence(
-        db_session, _store(), evidence_item_id=item_id, idempotency_key="k1", trace_id=None
-    )
+    _process(item_id, idempotency_key="k1")
     first = _text_for(db_session, item_id)
     assert first is not None
     first_id = first.id
 
-    processing.validate_evidence(
-        db_session, _store(), evidence_item_id=item_id, idempotency_key="k2", trace_id=None
-    )
+    _process(item_id, idempotency_key="k2")
     second = _text_for(db_session, item_id)
 
     assert second is not None
     assert second.id == first_id, "the reading was replaced, not duplicated"
+
+
+def test_the_library_carries_what_extraction_found(api: Api, db_session: Session) -> None:
+    """The list route, not the detail route.
+
+    `texts_for_case` existed and was never called from the list projection, so
+    `page_count` and `text_truncated` were always null there — and the library is the
+    only endpoint the Evidence screen reads. A 60-page document read to page 40 rendered
+    as "Read" with no qualification at all, which is exactly what `truncated` exists to
+    prevent. Every existing test asserted against the database row or the detail route,
+    so none of them saw it.
+    """
+    item_id = _uploaded(api, "user_a", content=_fixture("many-pages.pdf"))
+    _process(item_id, idempotency_key="k1")
+    db_session.expire_all()
+
+    item = db_session.get(EvidenceItem, item_id)
+    assert item is not None
+    library = api("user_a").get(f"/api/v1/cases/{item.case_id}/evidence").json()
+    row = next(entry for entry in library["items"] if entry["id"] == str(item_id))
+
+    assert row["page_count"] == 60
+    assert row["pages_read"] == 40
+    assert row["text_truncated"] is True
+
+
+def test_no_evidence_response_ever_carries_document_text(api: Api, db_session: Session) -> None:
+    """Counts and flags cross the boundary; words do not. Asserted against the real
+    responses rather than only against the schema, because a field is not the only way
+    text can end up in a payload."""
+    item_id = _uploaded(api, "user_a")
+    _process(item_id, idempotency_key="k1")
+    db_session.expire_all()
+
+    item = db_session.get(EvidenceItem, item_id)
+    assert item is not None
+    for path in ("", f"/{item_id}"):
+        body = api("user_a").get(f"/api/v1/cases/{item.case_id}/evidence{path}").text
+        # A string from inside the synthetic booking document.
+        assert "Amara Okonkwo" not in body
+        assert "SYNTH-TRV" not in body
+
+
+def test_abandoning_cannot_overwrite_a_run_that_already_succeeded(
+    api: Api, db_session: Session
+) -> None:
+    """Duplicate delivery is possible by design — `published_at` commits after the broker
+    accepts — so two deliveries can share one idempotency key. If one exhausts its
+    retries after the other has succeeded, overwriting would turn a good reading into a
+    FAILED document while the text sits in the database.
+    """
+    item_id = _uploaded(api, "user_a")
+    _process(item_id, idempotency_key="k1")
+
+    outcome = processing.abandon_run(
+        db_session,
+        idempotency_key="k1",
+        code=ProcessingFailureCode.RESOURCE_LIMIT,
+        summary="…",
+    )
+
+    assert outcome is None, "a settled run was overwritten"
+    run = _runs(db_session, item_id)[0]
+    assert run.run_status is ProcessingRunStatus.SUCCEEDED
+    item = db_session.get(EvidenceItem, item_id)
+    assert item is not None
+    assert item.processing_status == EvidenceProcessingStatus.COMPLETED.value

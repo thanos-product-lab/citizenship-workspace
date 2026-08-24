@@ -111,3 +111,112 @@ def test_the_character_cap_holds_even_when_the_page_cap_does_not(
 
     assert found.character_count <= 50
     assert found.truncated
+
+
+def test_a_multi_page_scan_is_not_reported_as_read() -> None:
+    """The defect a single-page fixture could not find.
+
+    `"\\n".join` over N empty pages gives a string of length N-1, so counting the joined
+    string reported a three-page scan as having two characters — `has_text_layer` became
+    True, the run SUCCEEDED, and the user was shown "Read — the text has been read" about
+    a document from which nothing was read. Directive 7, inverted, on the screen whose
+    entire job is to say what the system has and has not done.
+    """
+    found = extraction.extract(_read("scan-multi-page.pdf"))
+
+    assert found.page_count == 3
+    assert found.pages_read == 3
+    assert found.character_count == 0
+    assert not found.has_text_layer
+
+
+def test_a_page_of_only_whitespace_counts_as_no_text() -> None:
+    """A page containing a space is a page with nothing on it. Counting it as text would
+    reintroduce the same false reassurance by a narrower route."""
+    import io
+
+    import pymupdf
+
+    doc = pymupdf.open()
+    page = doc.new_page()
+    page.insert_text((72, 100), "   ")
+    buffer = io.BytesIO()
+    doc.save(buffer)
+    doc.close()
+
+    found = extraction.extract(buffer.getvalue())
+    assert not found.has_text_layer
+
+
+def test_pages_read_is_reported_separately_from_the_page_count() -> None:
+    """They are not interchangeable, and a consumer that assumes they are describes a
+    partial reading as a complete one."""
+    found = extraction.extract(_read("many-pages.pdf"))
+
+    assert found.page_count == 60
+    assert found.pages_read == extraction.MAX_PAGES
+    assert found.pages_read < found.page_count
+
+
+def test_a_document_that_tries_to_give_instructions_is_read_as_inert_text() -> None:
+    """Directive 8: uploaded documents are data, never instructions.
+
+    No model reads this in M7 — there is none — so the assertion available today is that
+    extraction treats an injection payload exactly like any other text: returned, with no
+    branch anywhere that notices what it says. That is the correct behaviour and worth
+    pinning *now*, because this function is what will hand text to a model in M8, and the
+    property to preserve is that this layer never interprets.
+    """
+    found = extraction.extract(_read("prompt-injection.pdf"))
+
+    assert found.has_text_layer
+    # Returned verbatim: not stripped, not flagged, not acted on.
+    assert "IGNORE ALL PREVIOUS INSTRUCTIONS" in found.content
+    assert "</system>" in found.content
+    # And it is text like any other — the counts treat it no differently.
+    assert found.character_count == len(found.content)
+
+
+def test_a_pdf_with_no_pages_is_corrupt_rather_than_a_scan() -> None:
+    """A truncated or structurally broken file opens and reports zero pages. Landing that
+    on the zero-length reading path would call it a scan — telling the user their
+    perfectly good photograph could not be read, when what they have is a damaged file."""
+    with pytest.raises(extraction.UnreadableDocument):
+        extraction.extract(b"%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\ntrailer\n<< >>\n")
+
+
+def test_the_read_gives_up_at_its_deadline(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The bound that was missing, and the one that matters.
+
+    A page cap bounds how much text comes *out*, not how much work it costs to get — a
+    single-page PDF nesting Form XObjects costs exponential time inside one `get_text()`
+    call while producing two characters, at around 6 KB. The deadline is what stops a
+    multi-page version of that holding a worker slot for as long as the uploader likes.
+    """
+    monkeypatch.setattr(extraction, "DEADLINE_SECONDS", -1.0)
+
+    found = extraction.extract(_read("many-pages.pdf"))
+
+    assert found.pages_read == 0, "the deadline was already past, so nothing was read"
+    assert found.truncated, "a bounded read must say it was bounded"
+    assert found.page_count == 60, "the document's own page count is still reported"
+
+
+def test_the_task_deadline_is_never_reported_as_a_corrupt_document(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`SoftTimeLimitExceeded` derives from `Exception`, so the broad parser-failure
+    handlers caught Celery's own deadline and reported the file as corrupt — telling the
+    user a false thing about their document, and letting the task carry on writing past
+    the moment it was told to stop. It has to pass through."""
+    from celery.exceptions import SoftTimeLimitExceeded
+
+    def stop(*_args: object, **_kwargs: object) -> None:
+        raise SoftTimeLimitExceeded()
+
+    # Patched by name on the module under test rather than through its import, so the
+    # patch cannot reach any other user of PyMuPDF in the process.
+    monkeypatch.setattr("app.evidence.extraction.pymupdf.open", stop)
+
+    with pytest.raises(SoftTimeLimitExceeded):
+        extraction.extract(_read("travel-booking.pdf"))

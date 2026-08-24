@@ -961,12 +961,20 @@ EvidenceFileText
 ├── id
 ├── evidence_file_id
 ├── page_count
+├── pages_read
 ├── character_count
 ├── content
 ├── pipeline_version
 ├── truncated
 └── extracted_at
 ```
+
+**What it is, in trust terms.** Decoded bytes. It is **untrusted material of exactly the
+same standing as the file it came from** — not a third category beside claims and facts.
+A claim is a *proposition about the case* that a person must adjudicate; text read out of
+a document asserts nothing about the case, so there is nothing to confirm or correct. The
+line to hold is between statements about the *file* ("60 pages", "no text found"), which
+this makes, and statements about the *applicant*, which only a claim may make.
 
 **Why this is not an `ExtractionRun` (§17).** `ExtractionRun` is shaped for a model
 call — provider, model, prompt version, schema version, tokens, estimated cost — and all
@@ -986,8 +994,10 @@ deleted by evidence deletion without touching the file's tombstone.
 
 - One row per file version at most; extraction never appends a second reading of the
   same bytes.
-- `content` is never projected over HTTP in M7. Page count, character count and a short
-  excerpt are (see §7.4 of the M7 plan); the full text waits for M8's review surface.
+- `content` is never projected over HTTP in M7 — not in full and not as an excerpt. Only
+  counts and flags cross the boundary. Document text is Tier-3 (threat model §3), and the
+  screens that exist in M7 need only to say that extraction happened; the text itself
+  waits for M8's review surface, which is the first thing that has a reason to show it.
 - A PDF with no text layer produces a row with `character_count = 0`, which is a
   *finding* rather than a failure — the file is real and readable, it simply has no text
   to read. That is the `PARTIALLY_COMPLETED` case in §14.4.
@@ -995,6 +1005,22 @@ deleted by evidence deletion without touching the file's tombstone.
   consumer never mistakes a bounded read for a complete one.
 - Deleting evidence deletes this row outright. It carries no audit value: it is a copy of
   content the user asked to be removed.
+- **It is never an assessed input.** It never appears in an `AssessmentInputLink`, is
+  never read by a rule evaluator, and no `RuleDependencyDefinition` may name it. This is
+  the invariant that makes "neither a claim nor a fact" enforceable rather than merely
+  asserted, and it is the one to check first if this row ever seems to matter to a
+  conclusion.
+- **It is never placed in a system or instruction context.** Directive 8 — uploaded
+  documents are data, never instructions — applies to this row above all, because this is
+  the row that will actually carry an injection attempt when M8 feeds it to a model.
+- **A reading that has been cited is frozen.** From M8 an `ExtractedClaim` will point at a
+  page and offset in this text. Re-reading in place would silently repoint every citation
+  at different content. Before claims exist, replacement is correct and is what happens;
+  once they do, either the row is frozen or it becomes keyed by
+  `(evidence_file_id, pipeline_version)`.
+- `page_count` is the *document's* page count and `pages_read` is how much of it was
+  looked at. They are not interchangeable, and a consumer that assumes they are will
+  describe a partial reading as a complete one.
 
 ---
 

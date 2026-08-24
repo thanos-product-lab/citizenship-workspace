@@ -364,7 +364,12 @@ PROCESSING_STATUS_FOR_RUN: dict[ProcessingRunStatus, EvidenceProcessingStatus | 
 #: Bumped when the deterministic pipeline changes in a way that would produce a
 #: different result for the same bytes. Not a `RuleVersion` and carries no eligibility
 #: meaning — it versions a mechanism, not a conclusion.
-PIPELINE_VERSION = "m7.validate.1"
+#:
+#: `m7.validate.1` -> `m7.extract.1` when slice 3 added text extraction. Without the
+#: bump, a validate-only reading and a validate-and-extract one carry the same stamp,
+#: and nothing downstream can tell which it is looking at — which is precisely the
+#: question `_record_text`'s "a newer pipeline supersedes the old reading" rests on.
+PIPELINE_VERSION = "m7.extract.1"
 
 
 class EvidenceProcessingRun(Base):
@@ -459,7 +464,12 @@ class EvidenceFileText(Base):
     evidence_file_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("evidence_files.id"), unique=True
     )
+    #: The document's own page count.
     page_count: Mapped[int] = mapped_column(Integer)
+    #: How many pages were actually read. Separate from `page_count` because a cap can
+    #: stop the read early, and a reader who assumes they match will describe a partial
+    #: reading as a complete one.
+    pages_read: Mapped[int] = mapped_column(Integer)
     character_count: Mapped[int] = mapped_column(Integer)
     #: The text itself. **Never projected over HTTP in M7** — the API serves a count and
     #: a short excerpt, and the full text waits for M8's review surface (§7.4 of the M7
@@ -473,17 +483,3 @@ class EvidenceFileText(Base):
     extracted_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
-
-    @property
-    def excerpt(self) -> str:
-        """The first few hundred characters, for showing that extraction worked.
-
-        Bounded here rather than at the call site so there is one place where the size of
-        what crosses the API boundary is decided.
-        """
-        return self.content[:EXCERPT_CHARS]
-
-
-#: How much of a document may be shown as evidence that extraction succeeded. Enough to
-#: recognise the document, far short of reproducing it.
-EXCERPT_CHARS = 280

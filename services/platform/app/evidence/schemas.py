@@ -100,14 +100,20 @@ class EvidenceResponse(BaseModel):
     #: — and neither ever contains document content (§16.2).
     failure_code: str | None = None
     failure_reason: str | None = None
-    #: What extraction found, as counts and a short excerpt — **never the text itself**.
+    #: What extraction found, as counts — **never the text, and not even an excerpt**.
+    #:
+    #: An excerpt was here and was removed: nothing consumed it, and the counts already
+    #: prove extraction worked. Shipping 280 characters of a document in every library
+    #: response, for a screen whose job is to say "this worked", is the surface §7.4
+    #: exists to avoid — sitting in a response, in the Next.js server's memory, and in
+    #: any error reporter's breadcrumbs, for no reader.
     #: Domain §15.1 and §7.4 of the M7 plan: full document text stays server-side until
     #: M8 has a review surface designed for it, so Tier-3 content does not sit in an API
     #: response, in the Next.js server's memory, or in an error reporter's breadcrumbs
     #: for the sake of a screen that only has to say "this worked".
     page_count: int | None = None
+    pages_read: int | None = None
     character_count: int | None = None
-    excerpt: str | None = None
     #: A cap stopped the read. Shown, because a user looking at a 400-page document
     #: should know only the first 40 were read.
     text_truncated: bool = False
@@ -140,8 +146,8 @@ class EvidenceResponse(BaseModel):
             failure_code=run.failure_code if run else None,
             failure_reason=run.failure_summary if run else None,
             page_count=text.page_count if text else None,
+            pages_read=text.pages_read if text else None,
             character_count=text.character_count if text else None,
-            excerpt=text.excerpt if text else None,
             text_truncated=text.truncated if text else False,
             can_retry=status in RETRYABLE_STATUSES,
             media_type=file.media_type,

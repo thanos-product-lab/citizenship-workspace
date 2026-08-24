@@ -182,12 +182,20 @@ function describeText(item: EvidenceItem): string {
   if (item.character_count === 0) return "No text";
 
   const pages = item.page_count ?? 0;
+  const read = item.pages_read ?? pages;
   const pageLabel = pages === 1 ? "1 page" : `${pages} pages`;
-  // "First 40 of 60 pages" rather than a bare page count: a user looking at a long
-  // document must not think all of it was read.
-  return item.text_truncated
-    ? `${pageLabel}, first ${item.page_count ? Math.min(pages, 40) : 0} read`
-    : pageLabel;
+
+  if (!item.text_truncated) return pageLabel;
+
+  // `pages_read` comes from the server. The first version recomputed it in TypeScript
+  // against a duplicated copy of the page cap, which was wrong twice over: changing the
+  // server's cap would have made this lie, and when truncation was caused by the
+  // *character* cap instead the arithmetic produced "10 pages, first 10 read" — a
+  // sentence that is untrue and reassuring in the wrong direction.
+  //
+  // Where every page was opened but the read still stopped early, there is no page
+  // arithmetic to state, so it says the honest general thing instead.
+  return read < pages ? `${pageLabel}, first ${read} read` : `${pageLabel}, partly read`;
 }
 
 function EvidenceTable({

@@ -104,8 +104,16 @@ def list_evidence(
 ) -> EvidenceLibraryResponse:
     rows = service.list_evidence(session, case=case)
     runs = EvidenceRepository.latest_runs_for_case(session, case_id=case.id)
+    # Without this the library's page counts and truncation flag are always null, and a
+    # 400-page document read only to page 40 reads as "Read" with no qualification —
+    # which is exactly what `truncated` exists to prevent. `texts_for_case` was written
+    # for this call and sat unused.
+    texts = EvidenceRepository.texts_for_case(session, case_id=case.id)
     return EvidenceLibraryResponse(
-        items=[EvidenceResponse.from_domain(item, file, runs.get(item.id)) for item, file in rows],
+        items=[
+            EvidenceResponse.from_domain(item, file, runs.get(item.id), texts.get(file.id))
+            for item, file in rows
+        ],
         max_upload_bytes=get_settings().max_upload_bytes,
     )
 
