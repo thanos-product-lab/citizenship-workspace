@@ -78,6 +78,7 @@ class UnitOfWork:
                 aggregate_id=event.aggregate_id,
                 event_type=event.event_type,
                 payload=payload,
+                trace_id=trace,
             )
         )
         self.session.add(
@@ -100,9 +101,7 @@ class UnitOfWork:
         # autoflush is disabled on the sessionmaker, so nothing has flushed yet.
         if self._events == 0 and self._has_business_state_change():
             self.session.rollback()
-            raise StateWithoutEventError(
-                "business state changed without an emitted domain event"
-            )
+            raise StateWithoutEventError("business state changed without an emitted domain event")
         try:
             self.session.commit()  # flushes first; a stale revision raises here
         except StaleDataError as exc:
