@@ -49,7 +49,9 @@ class RouteProfile(Base):
     # App-maintained pointer to the current version. Kept as a plain column (not a
     # DB FK) to avoid a circular constraint with route_profile_versions.
     current_version_id: Mapped[uuid.UUID | None] = mapped_column()
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
     revision: Mapped[int] = mapped_column(Integer, nullable=False)
 
     # SQLAlchemy optimistic concurrency; a stale revision raises StaleDataError.
@@ -64,7 +66,9 @@ class RouteProfileVersion(Base):
     __tablename__ = "route_profile_versions"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    route_profile_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("route_profiles.id"), index=True)
+    route_profile_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("route_profiles.id"), index=True
+    )
     version_number: Mapped[int] = mapped_column(Integer)
     # All answer fields are nullable: a draft is a partially-filled form. Completeness
     # is enforced at CONFIRM time (a later slice), not during capture.
@@ -75,7 +79,9 @@ class RouteProfileVersion(Base):
     may_already_be_british: Mapped[bool | None] = mapped_column(Boolean)
     review_state: Mapped[str] = mapped_column(String(20))
     created_by: Mapped[str] = mapped_column(String(255))
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
     # App-maintained pointer to the version this one supersedes (null for a draft).
     supersedes_version_id: Mapped[uuid.UUID | None] = mapped_column()
 
