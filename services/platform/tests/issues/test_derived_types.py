@@ -160,9 +160,10 @@ def test_an_escalated_issue_cannot_be_dismissed(api: Api) -> None:
     _recalc(api, case_id)
 
     issue = _of_type(_queue(api, case_id), "UNSUPPORTED_COMPLEXITY")[0]
-    assert api("user_a").post(
-        f"/api/v1/cases/{case_id}/issues/{issue['id']}/dismiss"
-    ).status_code == 409
+    assert (
+        api("user_a").post(f"/api/v1/cases/{case_id}/issues/{issue['id']}/dismiss").status_code
+        == 409
+    )
 
 
 # --- OVERLAPPING_TRAVEL ------------------------------------------------------

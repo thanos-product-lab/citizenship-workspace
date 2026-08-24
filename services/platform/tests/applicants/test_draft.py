@@ -74,9 +74,7 @@ def test_draft_updates_in_place_without_proliferation(api: Api, db_session: Sess
 
 def test_stale_revision_conflicts_instead_of_overwriting(api: Api) -> None:
     case_id = _create_case(api, "user_a")
-    first = api("user_a").put(
-        f"/api/v1/cases/{case_id}/route-profile", json={"status_type": "ILR"}
-    )
+    first = api("user_a").put(f"/api/v1/cases/{case_id}/route-profile", json={"status_type": "ILR"})
     assert first.status_code == 200  # revision now 2
 
     # A second client still holding revision 1 tries to write.

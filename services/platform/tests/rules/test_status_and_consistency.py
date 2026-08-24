@@ -110,8 +110,6 @@ def test_out_of_window_conflict_is_not_flagged() -> None:
     assert result.summary_code == "TRAVEL_RECORDS_CONSISTENT"
 
 
-
-
 def test_boundary_trip_is_flagged_but_stays_consistent() -> None:
     # A trip whose absent set contains the anchor 2022-04-16 raises a boundary note, but
     # a single clean-confidence trip is not itself an inconsistency.

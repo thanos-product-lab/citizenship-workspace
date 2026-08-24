@@ -16,9 +16,14 @@ install:
 # --- quality gates ---
 
 # Lint everything (eslint + ruff).
+# `ruff format --check` is here deliberately. Without it, formatting drifts in files
+# nobody is editing, and the next person to run `ruff format` sweeps a dozen unrelated
+# files into their commit — which happened in M5, M6 and twice in M7, and was reverted
+# by hand every time. Enforcing it means the drift is fixed once, by whoever introduced
+# it, instead of repeatedly by whoever noticed.
 lint:
     pnpm run lint
-    cd services/platform && uv run ruff check .
+    cd services/platform && uv run ruff check . && uv run ruff format --check .
 
 # Strict type-check everything (tsc + mypy).
 typecheck:

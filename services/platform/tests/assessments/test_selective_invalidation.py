@@ -87,9 +87,7 @@ def test_application_date_fan_out_is_the_declared_set_plus_composition_closure(
     """
     direct = _declaring(db_session, DependencyInputKind.PROPOSED_APPLICATION_DATE)
     edges = RequirementCatalogRepository.list_active_composition_edges(db_session)
-    expected = direct | {
-        downstream for downstream, upstream in edges if upstream in direct
-    }
+    expected = direct | {downstream for downstream, upstream in edges if upstream in direct}
 
     selective = resolve_affected_requirements(
         db_session, input_kind=DependencyInputKind.PROPOSED_APPLICATION_DATE

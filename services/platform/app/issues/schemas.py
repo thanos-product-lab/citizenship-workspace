@@ -192,8 +192,7 @@ class IssueQueue(BaseModel):
             case_id=case_id,
             open_count=len(open_views),
             groups=[
-                IssueGroupView(action_group=group, issues=views)
-                for group, views in grouped.items()
+                IssueGroupView(action_group=group, issues=views) for group, views in grouped.items()
             ],
             history=history,
         )

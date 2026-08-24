@@ -81,9 +81,7 @@ def test_unsupported_status_is_stopped(api: Api) -> None:
 
 
 def test_may_already_be_british_is_review_needed(api: Api) -> None:
-    case_id = _case_with_draft(
-        api, "user_a", {**SUPPORTED_ANSWERS, "may_already_be_british": True}
-    )
+    case_id = _case_with_draft(api, "user_a", {**SUPPORTED_ANSWERS, "may_already_be_british": True})
     _status, body = _confirm(api, "user_a", case_id)
     assert body["support_status"] == "REQUIRES_REVIEW"
     assert body["conclusion"] == "REQUIRES_JUDGEMENT"

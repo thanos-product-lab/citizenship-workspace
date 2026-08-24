@@ -26,9 +26,7 @@ from app.shared.unit_of_work import UnitOfWork
 def create_case(session: Session, *, user: CurrentUser, title: str) -> ApplicationCase:
     case = ApplicationCase.create(owner_user_id=user.user_id, title=title)
     CaseRepository.add(session, case)
-    MembershipRepository.add(
-        session, CaseMembership.owner(case_id=case.id, user_id=user.user_id)
-    )
+    MembershipRepository.add(session, CaseMembership.owner(case_id=case.id, user_id=user.user_id))
 
     uow = UnitOfWork(session, actor_id=user.user_id)
     uow.emit(

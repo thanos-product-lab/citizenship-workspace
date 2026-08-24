@@ -59,9 +59,7 @@ def test_writes_are_blocked_once_deletion_is_pending(api: Api) -> None:
     case_id = _create_case(api, "user_a")
     api("user_a").delete(f"/api/v1/cases/{case_id}")
 
-    save = api("user_a").put(
-        f"/api/v1/cases/{case_id}/route-profile", json={"status_type": "ILR"}
-    )
+    save = api("user_a").put(f"/api/v1/cases/{case_id}/route-profile", json={"status_type": "ILR"})
     assert save.status_code == 409
     confirm = api("user_a").post(f"/api/v1/cases/{case_id}/route-profile/confirm", json={})
     assert confirm.status_code == 409

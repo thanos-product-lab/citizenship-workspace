@@ -59,11 +59,7 @@ def _queue(api: Api, user: str, case_id: str) -> dict[str, Any]:
 
 
 def _open_keys(queue: dict[str, Any]) -> set[str]:
-    return {
-        issue["affected_object_id"]
-        for group in queue["groups"]
-        for issue in group["issues"]
-    }
+    return {issue["affected_object_id"] for group in queue["groups"] for issue in group["issues"]}
 
 
 def test_an_assessed_case_with_nothing_wrong_has_an_empty_queue(api: Api) -> None:

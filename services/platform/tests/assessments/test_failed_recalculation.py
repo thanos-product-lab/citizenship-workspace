@@ -94,9 +94,7 @@ def break_persistence(monkeypatch: pytest.MonkeyPatch) -> Callable[..., None]:
     """
     original = assessments_service._persist_result
 
-    def install(
-        *, after: int = 3, exc: BaseException | None = None
-    ) -> None:
+    def install(*, after: int = 3, exc: BaseException | None = None) -> None:
         state = {"calls": 0}
 
         def failing(*args: Any, **kwargs: Any) -> None:
@@ -478,9 +476,7 @@ def test_a_concurrency_conflict_records_no_failure(
     assert response.status_code == 409
 
     db_session.rollback()
-    assert [r.status for r in _runs(db_session, case_id)] == [
-        AssessmentRunStatus.COMPLETED.value
-    ]
+    assert [r.status for r in _runs(db_session, case_id)] == [AssessmentRunStatus.COMPLETED.value]
     assert _issues(db_session, case_id, IssueType.PROCESSING_FAILURE) == []
 
 
