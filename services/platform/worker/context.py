@@ -44,11 +44,10 @@ from dataclasses import dataclass
 from typing import Any
 
 import structlog
-from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy import text
+from sqlalchemy.orm import Session, sessionmaker
 
-from app.cases.domain import ApplicationCase, LifecycleStatus
-from app.evidence.domain import EvidenceItem
+from app.cases.domain import LifecycleStatus
 from app.shared.db import get_sessionmaker
 from app.shared.tenant import clear_tenant, set_tenant
 
@@ -99,19 +98,21 @@ def resolve_evidence_owner(
 ) -> tuple[str, uuid.UUID, str]:
     """The one privileged read: who owns this evidence, and is its case still writable.
 
-    Runs before any tenant exists, which is why it is this small. Returns the owner, the
-    case, and the case's lifecycle — three values, one join, nothing else.
+    Runs before any tenant exists — it is what *produces* the tenant — so RLS cannot
+    police it. That used to mean it worked only because every environment connects as a
+    superuser, and would have returned zero rows under the non-superuser role ADR-0006 R1
+    targets: every document stuck at `UPLOADED`, with the logs reporting the evidence
+    absent. The privilege is now explicit instead: `evidence_owner` is a `SECURITY
+    DEFINER` function (migration 0017) granted to the application role alone.
+
+    One id in, three columns out. It is an ownership oracle by construction, because that
+    is precisely what a task needs before it can know whose data it is touching — so it
+    is kept as small as an oracle can be, and it is the *only* one.
     """
-    stmt = (
-        select(
-            ApplicationCase.owner_user_id,
-            ApplicationCase.id,
-            ApplicationCase._lifecycle_status,
-        )
-        .join(EvidenceItem, EvidenceItem.case_id == ApplicationCase.id)
-        .where(EvidenceItem.id == evidence_item_id)
-    )
-    row = session.execute(stmt).first()
+    row = session.execute(
+        text("SELECT owner_user_id, case_id, lifecycle_status FROM evidence_owner(:id)"),
+        {"id": evidence_item_id},
+    ).first()
     if row is None:
         raise EvidenceNoLongerPresent(str(evidence_item_id))
     owner, case_id, lifecycle = row
@@ -119,13 +120,24 @@ def resolve_evidence_owner(
 
 
 @contextmanager
-def case_task(evidence_item_id: uuid.UUID) -> Iterator[TaskContext]:
+def case_task(
+    evidence_item_id: uuid.UUID,
+    *,
+    sessions: sessionmaker[Session] | None = None,
+) -> Iterator[TaskContext]:
     """Open a session, establish the tenant from the database, and yield it.
 
     Everything after `set_tenant` runs inside the tenant context, across as many commits
     as the task needs, because the `after_begin` listener re-applies on each one.
+
+    `sessions` is injectable for one reason, and it is not tidiness: with the factory
+    hard-coded, this function could only ever be driven on the superuser connection every
+    environment actually uses, where RLS is inert. The security suite has a non-superuser
+    login role precisely so a forgotten tenant fails closed — and a wrapper that cannot be
+    pointed at it is a wrapper whose tenant nobody can test. Production passes nothing.
     """
-    with get_sessionmaker()() as session:
+    factory = sessions or get_sessionmaker()
+    with factory() as session:
         owner, case_id, lifecycle = resolve_evidence_owner(session, evidence_item_id)
         if lifecycle in {state.value for state in TERMINAL_CASE_STATES}:
             raise CaseNoLongerWritable(case_id, lifecycle)
@@ -139,10 +151,17 @@ def case_task(evidence_item_id: uuid.UUID) -> Iterator[TaskContext]:
                 evidence_item_id=evidence_item_id,
             )
         finally:
-            # The session is about to close, but clearing is not redundant: a pooled
-            # connection must never carry a tenant back to the pool, and the checkin
-            # reset is belt-and-braces rather than the only guard (ADR-0017).
-            clear_tenant(session)
+            # Roll back first. `clear_tenant` issues SQL, so on a session left needing
+            # rollback — any DB error, including the one that classifies a retry — it
+            # raises `PendingRollbackError` *from the finally*, replacing the in-flight
+            # exception. `TransientProcessingError` would then never reach the handler
+            # that retries it, and the run would stay RUNNING with no retry and no
+            # abandonment: the stranded document again, arriving by a different door.
+            try:
+                session.rollback()
+                clear_tenant(session)
+            except Exception:
+                _log.warning("worker.tenant_clear_failed", case_id=str(case_id))
 
 
 def tenant_scoped[T](func: T) -> T:

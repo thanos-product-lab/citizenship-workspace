@@ -38,10 +38,34 @@ from app.evidence.domain import (
     EvidenceProcessingRun,
     EvidenceProcessingStatus,
     ProcessingFailureCode,
+    ProcessingRunStatus,
     utcnow,
 )
 
 _log = structlog.get_logger()
+
+
+#: Run statuses that mean a verdict was reached. A run in any other state is either
+#: this delivery's own attempt in progress or one that died mid-flight — and in both
+#: cases the right move is to carry on, not to report the work already done.
+SETTLED_RUN_STATUSES = frozenset(
+    {
+        ProcessingRunStatus.SUCCEEDED,
+        ProcessingRunStatus.FAILED,
+        ProcessingRunStatus.PARTIAL,
+        ProcessingRunStatus.CANCELLED,
+    }
+)
+
+
+class EvidenceNotProcessable(Exception):
+    """There is nothing here to process: the item is gone, deleted, or has no file.
+
+    A dedicated type rather than `LookupError`, because `KeyError` *is* a `LookupError`
+    — so catching the latter in the task turned every dict miss anywhere in the pipeline
+    into a silent "evidence absent" success, leaving a real bug looking like a tidy
+    cancellation. That gets worse in slice 3, where extraction adds lookups.
+    """
 
 
 class TransientProcessingError(Exception):
@@ -101,6 +125,28 @@ def _existing_run(session: Session, idempotency_key: str) -> EvidenceProcessingR
     return session.execute(stmt).scalar_one_or_none()
 
 
+def _file_for(
+    session: Session, evidence_item_id: uuid.UUID, evidence_file_id: uuid.UUID | None
+) -> EvidenceFile | None:
+    """The file this delivery is about.
+
+    Named explicitly where the event carried it, so a task acts on the version the event
+    described rather than on whatever is newest when it happens to run. Falls back to the
+    current file for deliveries written before the id was carried — there is exactly one
+    version per item today, so the two agree; the parameter exists so they still agree
+    once replacement lands.
+    """
+    if evidence_file_id is not None:
+        return session.execute(
+            select(EvidenceFile).where(
+                EvidenceFile.id == evidence_file_id,
+                EvidenceFile.evidence_item_id == evidence_item_id,
+                EvidenceFile.deleted_at.is_(None),
+            )
+        ).scalar_one_or_none()
+    return _current_file(session, evidence_item_id)
+
+
 def _current_file(session: Session, evidence_item_id: uuid.UUID) -> EvidenceFile | None:
     stmt = (
         select(EvidenceFile)
@@ -121,6 +167,7 @@ def validate_evidence(
     evidence_item_id: uuid.UUID,
     idempotency_key: str,
     trace_id: str | None,
+    evidence_file_id: uuid.UUID | None = None,
 ) -> ProcessingOutcome:
     """Check that the stored bytes are what the upload claimed, and record the run.
 
@@ -129,15 +176,16 @@ def validate_evidence(
     because ADR-0017 re-applies it on each transaction — this multi-commit shape is
     precisely what that ADR made safe.
     """
-    settled = _existing_run(session, idempotency_key)
-    if settled is not None:
-        # A redelivery. The work is done or in flight under the same key; doing it again
-        # would write a second run for one delivery, which is the thing §16.2 forbids.
+    existing = _existing_run(session, idempotency_key)
+
+    if existing is not None and existing.run_status in SETTLED_RUN_STATUSES:
+        # A genuine redelivery of work that already reached a verdict. Doing it again
+        # would write a second run for one delivery, which is what §16.2 forbids.
         return ProcessingOutcome(
-            run_id=settled.id,
-            processing_status=PROCESSING_STATUS_FOR_RUN[settled.run_status],
+            run_id=existing.id,
+            processing_status=PROCESSING_STATUS_FOR_RUN[existing.run_status],
             failure_code=(
-                ProcessingFailureCode(settled.failure_code) if settled.failure_code else None
+                ProcessingFailureCode(existing.failure_code) if existing.failure_code else None
             ),
             already_done=True,
         )
@@ -146,19 +194,30 @@ def validate_evidence(
     if item is None or item.lifecycle_status is not EvidenceLifecycleStatus.ACTIVE:
         # §14.5: a deleted evidence item cannot be reprocessed. Nothing is recorded —
         # there is no aggregate left to record it against.
-        raise LookupError(f"evidence item {evidence_item_id} is not active")
+        raise EvidenceNotProcessable(f"evidence item {evidence_item_id} is not active")
 
-    file = _current_file(session, evidence_item_id)
+    file = _file_for(session, evidence_item_id, evidence_file_id)
     if file is None:
-        raise LookupError(f"evidence item {evidence_item_id} has no current file")
+        raise EvidenceNotProcessable(f"evidence item {evidence_item_id} has no file to process")
 
-    run = EvidenceProcessingRun.start(
-        evidence_item_id=item.id,
-        evidence_file_id=file.id,
-        idempotency_key=idempotency_key,
-        trace_id=trace_id,
-    )
-    session.add(run)
+    if existing is not None:
+        # A RUNNING run under this key is **this delivery's own earlier attempt**, not a
+        # duplicate: the previous try wrote the run, published VALIDATING, and then hit a
+        # transient failure. Treating it as "already done" is what made the retry a
+        # silent no-op — the task returned successfully, `request.retries` never
+        # advanced, the exhaustion branch never ran, and the document sat in VALIDATING
+        # for good. §16.2 allows "a new attempt record"; this is that attempt, counted.
+        run = existing
+        run.retry_count += 1
+    else:
+        run = EvidenceProcessingRun.start(
+            evidence_item_id=item.id,
+            evidence_file_id=file.id,
+            idempotency_key=idempotency_key,
+            trace_id=trace_id,
+        )
+        session.add(run)
+
     item.processing_status = EvidenceProcessingStatus.VALIDATING.value
     item.updated_at = utcnow()
     try:
@@ -167,12 +226,12 @@ def validate_evidence(
         # Two deliveries raced past the read above and one lost on the unique key. The
         # loser did nothing, which is the correct outcome for a duplicate.
         session.rollback()
-        existing = _existing_run(session, idempotency_key)
-        if existing is None:  # pragma: no cover - a genuine integrity bug, not a race
+        raced = _existing_run(session, idempotency_key)
+        if raced is None:  # pragma: no cover - a genuine integrity bug, not a race
             raise
         return ProcessingOutcome(
-            run_id=existing.id,
-            processing_status=PROCESSING_STATUS_FOR_RUN[existing.run_status],
+            run_id=raced.id,
+            processing_status=PROCESSING_STATUS_FOR_RUN[raced.run_status],
             failure_code=None,
             already_done=True,
         )

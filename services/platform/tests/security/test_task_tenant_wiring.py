@@ -199,48 +199,117 @@ def test_a_task_whose_case_is_being_deleted_stops_rather_than_failing(
     assert stopped.value.lifecycle_status == "DELETION_PENDING"
 
 
-def test_a_task_writing_under_the_wrong_tenant_is_refused_by_the_policy(
+def test_case_task_puts_the_resolved_owner_on_the_session(
     api: Api, db_session: Session, rls_sessionmaker: sessionmaker[Session]
 ) -> None:
-    """The behavioural half, on the non-superuser connection.
+    """The assertion that kills the mutation.
 
-    A static attribute says a task *claims* to establish a tenant. This says the tenant
-    it establishes is load-bearing: point the resolution at the wrong user and the
-    policies refuse the write, rather than the task quietly succeeding against another
-    tenant's rows. On the superuser connection every environment actually runs, this
-    would pass either way — which is what `tests/security/`'s login role exists for.
+    The first version of this file never called `case_task` at all — it opened its own
+    session, called `set_tenant` by hand and counted rows, which is what
+    `test_rls_matrix.py` already does. A reviewer neutralised `set_tenant` inside
+    `worker.context` and **all ten tests in this file passed**, along with the rest of
+    the security suite. The docstring claimed to express the gate's mutation as a
+    standing test; it expressed an RLS test wearing a task's name.
+
+    This drives the real wrapper and reads what it actually bound, on the non-superuser
+    connection where a missing tenant fails closed rather than being invisible.
     """
-    from app.shared.tenant import set_tenant
+    from app.shared.tenant import TENANT_SESSION_KEY
+    from worker.context import case_task
 
     _, evidence_item_id = _case_with_evidence(api, "user_a")
     db_session.commit()
 
-    with rls_sessionmaker() as session:
-        set_tenant(session, "user_b")
-        visible = session.execute(
-            text("SELECT count(*) FROM evidence_items WHERE id = :i"),
-            {"i": evidence_item_id},
-        ).scalar_one()
-        # user_b cannot even see it, so a task that resolved the wrong tenant would find
-        # nothing to work on rather than working on someone else's document.
-        assert visible == 0
-
-    with rls_sessionmaker() as session:
-        set_tenant(session, "user_a")
-        visible = session.execute(
-            text("SELECT count(*) FROM evidence_items WHERE id = :i"),
-            {"i": evidence_item_id},
-        ).scalar_one()
-        assert visible == 1
+    with case_task(evidence_item_id, sessions=rls_sessionmaker) as ctx:
+        assert ctx.owner_user_id == "user_a"
+        assert ctx.session.info.get(TENANT_SESSION_KEY) == "user_a"
 
 
-def test_a_tenantless_task_session_sees_no_evidence_at_all(
+def test_the_tenant_case_task_establishes_is_the_one_the_policies_see(
     api: Api, db_session: Session, rls_sessionmaker: sessionmaker[Session]
 ) -> None:
-    """Fail closed: forgetting `set_tenant` entirely must yield nothing, not everything.
+    """`session.info` is a record of intent; this is whether the database agrees.
 
-    This is the mutation the gate runs — delete `set_tenant` from `case_task` — expressed
-    as a standing test rather than a manual step.
+    On the non-superuser connection, a context whose tenant never reached the GUC sees
+    nothing — so the row being visible is the tenant being real. Delete `set_tenant`
+    from `case_task` and this goes red where the static attribute check cannot.
+    """
+    from worker.context import case_task
+
+    _, evidence_item_id = _case_with_evidence(api, "user_a")
+    db_session.commit()
+
+    with case_task(evidence_item_id, sessions=rls_sessionmaker) as ctx:
+        visible = ctx.session.execute(
+            text("SELECT count(*) FROM evidence_items WHERE id = :i"),
+            {"i": evidence_item_id},
+        ).scalar_one()
+        assert visible == 1, (
+            "the task's own session cannot see the document it was given — the tenant "
+            "was never established, and on the superuser connection this would pass"
+        )
+
+
+def test_a_task_context_cannot_reach_another_users_evidence(
+    api: Api, db_session: Session, rls_sessionmaker: sessionmaker[Session]
+) -> None:
+    """The boundary, from inside the wrapper rather than beside it."""
+    from worker.context import case_task
+
+    _, mine = _case_with_evidence(api, "user_a")
+    _, theirs = _case_with_evidence(api, "user_b")
+    db_session.commit()
+
+    with case_task(mine, sessions=rls_sessionmaker) as ctx:
+        others = ctx.session.execute(
+            text("SELECT count(*) FROM evidence_items WHERE id = :i"), {"i": theirs}
+        ).scalar_one()
+        assert others == 0
+
+
+def test_a_task_context_cannot_write_against_another_users_evidence(
+    api: Api, db_session: Session, rls_sessionmaker: sessionmaker[Session]
+) -> None:
+    """A write against another tenant's row changes nothing.
+
+    It does not *raise*, and expecting it to was wrong: the policy's `USING` clause
+    filters the row out of the statement's scope, so the `UPDATE` matches zero rows and
+    reports success. `WITH CHECK` is what raises, and it fires on a row being written
+    *into* a tenant the writer does not own — which this policy, predicated on ownership
+    rather than on any mutable column, cannot be steered into via an UPDATE.
+
+    Silent-zero-rows is the right behaviour and the more important one to pin: a task
+    that resolved the wrong tenant does not corrupt another user's document, it simply
+    accomplishes nothing.
+    """
+    from worker.context import case_task
+
+    _, mine = _case_with_evidence(api, "user_a")
+    _, theirs = _case_with_evidence(api, "user_b")
+    db_session.commit()
+
+    with case_task(mine, sessions=rls_sessionmaker) as ctx:
+        ctx.session.execute(
+            text("UPDATE evidence_items SET processing_status = 'FAILED' WHERE id = :i"),
+            {"i": theirs},
+        )
+        ctx.session.commit()
+
+    # And the other user's document is untouched.
+    survived = db_session.execute(
+        text("SELECT processing_status FROM evidence_items WHERE id = :i"), {"i": theirs}
+    ).scalar_one()
+    assert survived != "FAILED"
+
+
+def test_a_tenantless_session_sees_no_evidence_at_all(
+    api: Api, db_session: Session, rls_sessionmaker: sessionmaker[Session]
+) -> None:
+    """Fail closed: a session with no tenant yields nothing, not everything.
+
+    This is a property of the *policies*, not of `case_task` — the tests above are what
+    exercise the wrapper. Kept because it is the premise the others rest on: if a
+    tenantless session could read, none of them would mean anything.
     """
     _case_with_evidence(api, "user_a")
     db_session.commit()

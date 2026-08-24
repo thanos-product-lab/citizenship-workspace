@@ -12,8 +12,9 @@ consumer that cannot tolerate a repeat is a broken consumer — hence
 
 **No ordering across aggregates.** Rows are claimed in `(created_at, id)` order, but
 Celery gives no execution-order guarantee, so two tasks dispatched in order can run in
-either. Consumers must be order-independent. M7's two are: processing is keyed to an
-exact file version (§16.2), and purge is terminal and idempotent.
+either. Consumers must be order-independent, and the way processing achieves that is by
+carrying `evidence_file_id` in the dispatch: the task acts on the version the event was
+about, not on whatever is newest when it happens to run (§16.2).
 
 **A row is delivered or explicitly declined, never silently skipped.** An event type
 with no handler is marked published and logged once, because leaving it would hand every
@@ -29,7 +30,6 @@ it never reads a domain row, never touches storage, and passes only identifiers 
 Establishing the tenant is the consuming task's job (`worker/context.py`).
 """
 
-import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -152,6 +152,13 @@ def relay_batch(
                     "outbox_event_id": str(row.id),
                     "aggregate_id": str(row.aggregate_id),
                     "trace_id": row.trace_id,
+                    # The exact version this delivery is about. Without it the consumer
+                    # re-reads "the newest file" at execution time, so two out-of-order
+                    # deliveries could leave the item carrying the *older* file's
+                    # verdict — including `UPLOADED` for a file nothing ever checked.
+                    # No re-upload route exists yet, so this is latent; it is carried
+                    # now because it is one line now and an ordering bug later.
+                    "evidence_file_id": row.payload.get("evidence_file_id"),
                 },
             )
         except Exception as exc:
@@ -188,15 +195,10 @@ def known_event_types() -> frozenset[str]:
     return frozenset(HANDLERS) | NO_CONSUMER
 
 
-def resolve_case_owner(session: Session, case_id: uuid.UUID) -> str | None:
-    """The user a case belongs to. Deliberately here rather than in `cases`.
-
-    This is the one read in the system that runs with no tenant established, so it is
-    kept small, kept in the module that owns the tenantless path, and reads two columns.
-    Callers are worker tasks establishing their own tenant context; nothing in a request
-    should use it.
-    """
-    from app.cases.domain import ApplicationCase
-
-    stmt = select(ApplicationCase.owner_user_id).where(ApplicationCase.id == case_id)
-    return session.execute(stmt).scalar_one_or_none()
+# `resolve_case_owner` used to live here and was deleted unused. It answered "who owns
+# this case?" for any case id, with no authenticated user, no membership check and no
+# tenant — an ownership oracle exported from a module the *API process* imports. Its
+# docstring also claimed to be "the one read that runs with no tenant established",
+# which `worker/context.py` claims of `resolve_evidence_owner`. Two functions each
+# documented as the only one of their kind is how the second gets called from a request
+# path. There is exactly one such read, and it lives with the worker.

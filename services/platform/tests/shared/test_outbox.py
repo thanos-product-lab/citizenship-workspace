@@ -71,9 +71,19 @@ def test_a_task_argument_carries_identifiers_and_nothing_else(db_session: Sessio
     outbox.relay_batch(db_session, dispatch)
 
     _, kwargs = dispatch.calls[0]
-    assert set(kwargs) == {"outbox_event_id", "aggregate_id", "trace_id"}
+    assert set(kwargs) == {
+        "outbox_event_id",
+        "aggregate_id",
+        "trace_id",
+        # The exact version this delivery is about, so the consumer acts on the file the
+        # event described rather than on whatever is newest when it runs.
+        "evidence_file_id",
+    }
+    # Every value is an identifier or a trace. Nothing here is a credential, and nothing
+    # is the tenant — that is resolved from the database inside the task.
     assert "user" not in str(kwargs).lower()
     assert "storage" not in str(kwargs).lower()
+    assert "key" not in str(kwargs).lower()
 
 
 def test_an_event_with_no_consumer_is_declined_rather_than_retried_forever(

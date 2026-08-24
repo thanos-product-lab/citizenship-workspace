@@ -231,6 +231,93 @@ def test_an_unreachable_store_is_transient_and_records_no_verdict(
     assert run.failure_code is None
 
 
+def test_a_retry_after_a_transient_failure_actually_runs(api: Api, db_session: Session) -> None:
+    """The defect this test exists for was in the fix for the previous one.
+
+    The idempotency short-circuit fired on *any* existing run for the key — including the
+    RUNNING one this same delivery had written seconds earlier. So the retry found its own
+    attempt, returned `already_done=True`, and the task succeeded having done nothing.
+    `request.retries` never advanced, the exhaustion branch never ran, `abandon_run` was
+    unreachable in production, and the document sat in VALIDATING for good while the
+    client polled it every 1.5 seconds for as long as the tab was open.
+
+    A RUNNING run under the same key is this delivery's own attempt, not a duplicate.
+    """
+    item_id = _uploaded(api, "user_a")
+
+    class Unreachable(InMemoryStorage):
+        def read_prefix(self, key: str, *, length: int) -> bytes:
+            raise StorageError("connection reset")
+
+    with pytest.raises(processing.TransientProcessingError):
+        processing.validate_evidence(
+            db_session, Unreachable(), evidence_item_id=item_id, idempotency_key="k1", trace_id=None
+        )
+
+    # The store recovers and the same delivery is retried.
+    outcome = processing.validate_evidence(
+        db_session, _store(), evidence_item_id=item_id, idempotency_key="k1", trace_id=None
+    )
+
+    assert outcome.already_done is False, "the retry short-circuited on its own attempt"
+    assert outcome.processing_status is EvidenceProcessingStatus.UPLOADED
+    runs = _runs(db_session, item_id)
+    # One run, not two: the attempt is counted on the run rather than duplicating it
+    # (§16.2 — "a retry creates a new run or a new attempt record").
+    assert len(runs) == 1
+    assert runs[0].retry_count == 1
+    assert runs[0].run_status is ProcessingRunStatus.SUCCEEDED
+
+
+def test_a_settled_run_still_short_circuits(api: Api, db_session: Session) -> None:
+    """Fixing the retry must not break the thing the key is for: a redelivery of work
+    that already reached a verdict does nothing."""
+    item_id = _uploaded(api, "user_a")
+
+    first = processing.validate_evidence(
+        db_session, _store(), evidence_item_id=item_id, idempotency_key="k1", trace_id=None
+    )
+    second = processing.validate_evidence(
+        db_session, _store(), evidence_item_id=item_id, idempotency_key="k1", trace_id=None
+    )
+
+    assert second.already_done is True
+    assert second.run_id == first.run_id
+    assert len(_runs(db_session, item_id)) == 1
+
+
+def test_the_delivery_acts_on_the_file_version_it_names(api: Api, db_session: Session) -> None:
+    """A consumer that re-reads "the newest file" is a consumer two out-of-order
+    deliveries can leave carrying the older file's verdict. Latent today — there is one
+    version per item — which is exactly why it is cheap to bind now."""
+    item_id = _uploaded(api, "user_a")
+    file = db_session.execute(
+        select(EvidenceFile).where(EvidenceFile.evidence_item_id == item_id)
+    ).scalar_one()
+
+    outcome = processing.validate_evidence(
+        db_session,
+        _store(),
+        evidence_item_id=item_id,
+        idempotency_key="k1",
+        trace_id=None,
+        evidence_file_id=file.id,
+    )
+    assert outcome.processing_status is EvidenceProcessingStatus.UPLOADED
+
+    # A version that does not belong to this item is refused rather than silently
+    # falling back to whatever is current.
+    with pytest.raises(processing.EvidenceNotProcessable):
+        processing.validate_evidence(
+            db_session,
+            _store(),
+            evidence_item_id=item_id,
+            idempotency_key="k2",
+            trace_id=None,
+            evidence_file_id=uuid.uuid4(),
+        )
+
+
 def test_giving_up_on_a_transient_failure_leaves_a_state_the_user_can_act_on(
     api: Api, db_session: Session
 ) -> None:

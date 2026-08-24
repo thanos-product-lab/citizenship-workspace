@@ -104,7 +104,13 @@ def _owner_for(session: Session, evidence_item_id: uuid.UUID) -> str | None:
 @tenant_scoped
 @celery_app.task(bind=True, name="worker.evidence.validate", max_retries=MAX_RETRIES)
 def validate_evidence(
-    self: Task, *, outbox_event_id: str, aggregate_id: str, trace_id: str | None = None, **_: Any
+    self: Task,
+    *,
+    outbox_event_id: str,
+    aggregate_id: str,
+    trace_id: str | None = None,
+    evidence_file_id: str | None = None,
+    **_: Any,
 ) -> dict[str, object]:
     """Check an uploaded document's bytes against the type it claimed to be.
 
@@ -123,6 +129,7 @@ def validate_evidence(
                 evidence_item_id=evidence_item_id,
                 idempotency_key=outbox_event_id,
                 trace_id=trace_id,
+                evidence_file_id=uuid.UUID(evidence_file_id) if evidence_file_id else None,
             )
     except processing.TransientProcessingError as exc:
         # Retried by hand rather than with `autoretry_for`, because the interesting
@@ -164,7 +171,7 @@ def validate_evidence(
             evidence_item_id=str(evidence_item_id),
         )
         return {"cancelled": True, "reason": "case_not_writable"}
-    except (EvidenceNoLongerPresent, LookupError):
+    except (EvidenceNoLongerPresent, processing.EvidenceNotProcessable):
         _log.info(
             "evidence.validate_cancelled",
             reason="evidence_absent",
