@@ -704,6 +704,10 @@ export interface components {
             created_at: string;
             /** Display Name */
             display_name: string;
+            /** Failure Code */
+            failure_code?: string | null;
+            /** Failure Reason */
+            failure_reason?: string | null;
             /**
              * Id
              * Format: uuid

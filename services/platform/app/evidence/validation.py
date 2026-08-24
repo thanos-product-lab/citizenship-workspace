@@ -71,3 +71,19 @@ def check(prefix: bytes, *, declared: str) -> ContentCheck:
         return ContentCheck(matches=False, detected=None)
     detected = detect(prefix)
     return ContentCheck(matches=detected == declared, detected=detected)
+
+
+#: What to call each supported type when speaking to a person. A failure summary is read
+#: by someone wondering why their document was refused, and "not a application/pdf
+#: document" answers in a vocabulary they did not choose — as well as being ungrammatical,
+#: which is how this was noticed.
+HUMAN_NAMES: dict[str, str] = {
+    "application/pdf": "a PDF",
+    "image/jpeg": "a JPEG image",
+    "image/png": "a PNG image",
+    "image/heic": "a HEIC image",
+}
+
+
+def human_name(media_type: str) -> str:
+    return HUMAN_NAMES.get(media_type, "a supported document")

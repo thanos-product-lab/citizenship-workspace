@@ -169,7 +169,7 @@ def validate_evidence(
             summary=(
                 "The file is empty."
                 if failure is ProcessingFailureCode.EMPTY_FILE
-                else f"The file is not a {file.media_type} document."
+                else f"This file is not {validation.human_name(file.media_type)}."
             ),
             at=at,
         )

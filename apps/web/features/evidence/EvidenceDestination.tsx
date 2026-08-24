@@ -180,6 +180,22 @@ function EvidenceTable({ items, busy }: { items: EvidenceItem[]; busy: boolean }
                     row means a screen-reader user hears the same sentence twenty times
                     down a twenty-document library. */}
                 <EvidenceState status={item.processing_status} size="sm" />
+                {/* A document reading "Unsupported" with no reason is a dead end: the
+                    user cannot tell whether to re-export the file, try a different one,
+                    or give up. The sentence comes from the server so the client never
+                    has to guess at a failure it did not observe. */}
+                {item.failure_reason ? (
+                  <span
+                    style={{
+                      display: "block",
+                      color: "var(--cw-text-muted)",
+                      fontSize: "var(--cw-text-xs)",
+                      marginTop: "var(--cw-space-1)",
+                    }}
+                  >
+                    {item.failure_reason}
+                  </span>
+                ) : null}
               </td>
               <td>{formatBytes(item.size_bytes)}</td>
               <td>{formatDate(item.uploaded_at)}</td>

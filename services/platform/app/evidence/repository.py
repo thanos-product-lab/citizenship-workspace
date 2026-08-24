@@ -14,6 +14,7 @@ from app.evidence.domain import (
     EvidenceFile,
     EvidenceItem,
     EvidenceLifecycleStatus,
+    EvidenceProcessingRun,
 )
 
 
@@ -100,6 +101,42 @@ class EvidenceRepository:
         )
         row = session.execute(stmt).first()
         return (row[0], row[1]) if row is not None else None
+
+    @staticmethod
+    def latest_runs_for_case(
+        session: Session, *, case_id: uuid.UUID
+    ) -> dict[uuid.UUID, EvidenceProcessingRun]:
+        """The most recent processing run per evidence item.
+
+        Fetched for the whole library in one query rather than per row: the library is
+        the only reader, and a per-item lookup here is the N+1 that turns a page into a
+        hundred round trips the first time someone uploads a hundred documents.
+        """
+        stmt = (
+            select(EvidenceProcessingRun)
+            .join(EvidenceItem, EvidenceItem.id == EvidenceProcessingRun.evidence_item_id)
+            .where(EvidenceItem.case_id == case_id)
+            .order_by(
+                EvidenceProcessingRun.evidence_item_id,
+                EvidenceProcessingRun.started_at.desc(),
+            )
+        )
+        latest: dict[uuid.UUID, EvidenceProcessingRun] = {}
+        for run in session.execute(stmt).scalars().all():
+            latest.setdefault(run.evidence_item_id, run)
+        return latest
+
+    @staticmethod
+    def latest_run(
+        session: Session, *, evidence_item_id: uuid.UUID
+    ) -> EvidenceProcessingRun | None:
+        stmt = (
+            select(EvidenceProcessingRun)
+            .where(EvidenceProcessingRun.evidence_item_id == evidence_item_id)
+            .order_by(EvidenceProcessingRun.started_at.desc())
+            .limit(1)
+        )
+        return session.execute(stmt).scalars().first()
 
     @staticmethod
     def next_version_number(session: Session, *, evidence_item_id: uuid.UUID) -> int:

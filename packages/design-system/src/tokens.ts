@@ -190,10 +190,10 @@ export const provenanceTokens: Record<ProvenanceKind, ProvenanceToken> = {
  * §14.4 defines nine. This map holds the ones a document can *reach* in the milestone
  * that ships it, and grows as producers land:
  *
- * - `uploaded` — M7 slice 1 (here).
- * - `validating`, `unsupported` — M7 slice 2, when validation moves into the worker.
- * - `extracting_text`, `analysing`, `completed`, `partially_completed`, `failed` —
- *   M7 slice 3, with deterministic extraction.
+ * - `uploaded` — M7 slice 1.
+ * - `validating`, `unsupported`, `failed` — M7 slice 2, with validation in the worker.
+ * - `extracting_text`, `analysing`, `completed`, `partially_completed` — M7 slice 3,
+ *   with deterministic extraction.
  * - `awaiting_confirmation` — **M8, and deliberately absent**. It has no producer until
  *   extracted claims exist. A token for it would let the UI name it as a stage a
  *   document might enter, which is a promise the product cannot keep; a state the
@@ -201,7 +201,12 @@ export const provenanceTokens: Record<ProvenanceKind, ProvenanceToken> = {
  *   `EvidenceState` renders any state it has no token for verbatim, so when M8 makes it
  *   reachable the wire value shows up honestly rather than silently as something benign.
  */
-export const evidenceProcessingStates = ["uploaded"] as const;
+export const evidenceProcessingStates = [
+  "uploaded",
+  "validating",
+  "unsupported",
+  "failed",
+] as const;
 
 export type EvidenceProcessingState = (typeof evidenceProcessingStates)[number];
 
@@ -221,6 +226,28 @@ export const evidenceProcessingTokens: Record<
     colorVar: "--cw-provenance-evidence-supported",
     glyph: "paperclip",
     label: "Uploaded",
+    // True both before validation runs and after it passes. In this milestone nothing
+    // reads a document's contents, so "stored and checked" and "stored" say the same
+    // thing to a user — and claiming more would be the false reassurance the product
+    // exists to avoid.
     meaning: "Stored, and not yet read by anything.",
+  },
+  validating: {
+    colorVar: "--cw-currency-provisional",
+    glyph: "clock",
+    label: "Validating",
+    meaning: "Checking the file is the kind of document it says it is.",
+  },
+  unsupported: {
+    colorVar: "--cw-status-incomplete",
+    glyph: "minus-circle",
+    label: "Unsupported",
+    meaning: "This file is not a document the product can read.",
+  },
+  failed: {
+    colorVar: "--cw-status-not-satisfied",
+    glyph: "conflict",
+    label: "Failed",
+    meaning: "Something went wrong reading this file. You can try again.",
   },
 };

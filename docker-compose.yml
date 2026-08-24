@@ -91,6 +91,25 @@ services:
       minio:
         condition: service_healthy
 
+  # Celery beat, which runs the outbox relay. A separate service from the worker because
+  # beat must be a *single* process: two schedulers means every tick fires twice, and the
+  # relay would dispatch each outbox row to two tasks. Idempotency makes that survivable
+  # rather than correct, and there is no reason to lean on it.
+  beat:
+    build:
+      context: .
+      dockerfile: infra/docker/platform.Dockerfile
+    command: uv run celery -A worker.celery_app.celery_app beat --loglevel info
+    environment:
+      ENVIRONMENT: docker
+      DATABASE_URL: postgresql+psycopg://citizenship:citizenship@postgres:5432/citizenship
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
 volumes:
   pgdata:
   miniodata:

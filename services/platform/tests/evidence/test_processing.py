@@ -116,6 +116,21 @@ def test_content_that_contradicts_its_declared_type_is_unsupported(
     assert outcome.failure_code is ProcessingFailureCode.CONTENT_DOES_NOT_MATCH_TYPE
 
 
+def test_the_refusal_is_phrased_in_the_users_vocabulary(api: Api, db_session: Session) -> None:
+    """A failure summary is read by someone wondering why their document was refused.
+    Answering with a MIME type answers in a vocabulary they did not choose — and the
+    first version read "not a application/pdf document", which is also ungrammatical."""
+    item_id = _uploaded(api, "user_a", content=_NOT_A_PDF)
+
+    processing.validate_evidence(
+        db_session, _store(), evidence_item_id=item_id, idempotency_key="k1", trace_id=None
+    )
+
+    summary = _runs(db_session, item_id)[0].failure_summary or ""
+    assert summary == "This file is not a PDF."
+    assert "application/pdf" not in summary
+
+
 def test_a_failure_summary_says_nothing_about_the_document(api: Api, db_session: Session) -> None:
     """§16.2: failure summaries must not contain raw document content. The summary talks
     about media types, which this module computed, not about anything it read."""

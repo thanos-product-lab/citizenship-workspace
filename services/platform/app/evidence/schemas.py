@@ -24,6 +24,7 @@ from app.evidence.domain import (
     EvidenceFile,
     EvidenceItem,
     EvidenceLifecycleStatus,
+    EvidenceProcessingRun,
     EvidenceProcessingStatus,
 )
 from app.evidence.service import SUPPORTED_MEDIA_TYPES, UploadGrant
@@ -92,6 +93,12 @@ class EvidenceResponse(BaseModel):
     # projected, so in practice this is always set here. Typed to the domain enum so a
     # queue state cannot be serialised in its place.
     processing_status: EvidenceProcessingStatus
+    #: Why processing stopped, when it did. A document reading "Unsupported" with no
+    #: reason is a dead end: the user cannot tell whether to re-export the file, try a
+    #: different one, or give up. The code is for the client, the sentence for the person
+    #: — and neither ever contains document content (§16.2).
+    failure_code: str | None = None
+    failure_reason: str | None = None
     media_type: str
     size_bytes: int
     original_filename: str | None
@@ -100,7 +107,12 @@ class EvidenceResponse(BaseModel):
     revision: int
 
     @classmethod
-    def from_domain(cls, item: EvidenceItem, file: EvidenceFile) -> "EvidenceResponse":
+    def from_domain(
+        cls,
+        item: EvidenceItem,
+        file: EvidenceFile,
+        run: EvidenceProcessingRun | None = None,
+    ) -> "EvidenceResponse":
         return cls(
             id=item.id,
             case_id=item.case_id,
@@ -108,6 +120,8 @@ class EvidenceResponse(BaseModel):
             display_name=item.display_name,
             lifecycle_status=item.lifecycle_status,
             processing_status=EvidenceProcessingStatus(item.processing_status),
+            failure_code=run.failure_code if run else None,
+            failure_reason=run.failure_summary if run else None,
             media_type=file.media_type,
             size_bytes=file.size_bytes,
             original_filename=file.original_filename,

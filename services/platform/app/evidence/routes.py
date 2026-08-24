@@ -27,6 +27,7 @@ from app.cases.domain import ApplicationCase
 from app.core.config import get_settings
 from app.core.storage import StorageAdapter, get_storage
 from app.evidence import service
+from app.evidence.repository import EvidenceRepository
 from app.evidence.schemas import (
     EvidenceContentResponse,
     EvidenceLibraryResponse,
@@ -87,8 +88,9 @@ def list_evidence(
     session: Annotated[Session, Depends(get_tenant_session)],
 ) -> EvidenceLibraryResponse:
     rows = service.list_evidence(session, case=case)
+    runs = EvidenceRepository.latest_runs_for_case(session, case_id=case.id)
     return EvidenceLibraryResponse(
-        items=[EvidenceResponse.from_domain(item, file) for item, file in rows],
+        items=[EvidenceResponse.from_domain(item, file, runs.get(item.id)) for item, file in rows],
         max_upload_bytes=get_settings().max_upload_bytes,
     )
 
@@ -100,7 +102,8 @@ def get_evidence(
     session: Annotated[Session, Depends(get_tenant_session)],
 ) -> EvidenceResponse:
     item, file = service.get_evidence(session, case=case, evidence_item_id=evidence_item_id)
-    return EvidenceResponse.from_domain(item, file)
+    run = EvidenceRepository.latest_run(session, evidence_item_id=item.id)
+    return EvidenceResponse.from_domain(item, file, run)
 
 
 @router.get("/{evidence_item_id}/content", response_model=EvidenceContentResponse)

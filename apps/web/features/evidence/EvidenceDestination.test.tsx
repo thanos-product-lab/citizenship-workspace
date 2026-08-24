@@ -31,6 +31,8 @@ function anItem(overrides: Record<string, unknown> = {}) {
     media_type: "application/pdf",
     size_bytes: 2048,
     original_filename: "booking.pdf",
+    failure_code: null,
+    failure_reason: null,
     uploaded_at: "2026-08-20T10:00:00Z",
     created_at: "2026-08-20T10:00:00Z",
     revision: 1,
@@ -87,7 +89,35 @@ describe("EvidenceDestination", () => {
     expect(container.querySelector("progress")).toBeNull();
   });
 
+  it("says why a document was refused, not only that it was", async () => {
+    // "Unsupported" with no reason is a dead end: the user cannot tell whether to
+    // re-export the file, try a different one, or give up.
+    get.mockResolvedValue({
+      data: aLibrary([
+        anItem({
+          processing_status: "UNSUPPORTED",
+          failure_code: "CONTENT_DOES_NOT_MATCH_TYPE",
+          failure_reason: "This file is not a PDF.",
+        }),
+      ]),
+    });
+    renderWithQuery(<EvidenceDestination caseId={CASE_ID} />);
+
+    const row = within(await screen.findByRole("row", { name: /Athens booking/ }));
+    expect(row.getByText("Unsupported")).toBeTruthy();
+    expect(row.getByText("This file is not a PDF.")).toBeTruthy();
+  });
+
+  it("shows a document moving through validation", async () => {
+    get.mockResolvedValue({ data: aLibrary([anItem({ processing_status: "VALIDATING" })]) });
+    renderWithQuery(<EvidenceDestination caseId={CASE_ID} />);
+
+    const row = within(await screen.findByRole("row", { name: /Athens booking/ }));
+    expect(row.getByText("Validating")).toBeTruthy();
+  });
+
   it("shows an unrecognised state verbatim rather than as something benign", async () => {
+    // ANALYSING is in the domain enum but has no token until slice 3.
     get.mockResolvedValue({ data: aLibrary([anItem({ processing_status: "ANALYSING" })]) });
     renderWithQuery(<EvidenceDestination caseId={CASE_ID} />);
 
