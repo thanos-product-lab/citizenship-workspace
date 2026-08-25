@@ -312,19 +312,30 @@ eventual issue set, and what of it is live:
 
 | Issue type | Cause | Dismissible | Status |
 |---|---|---|---|
-| `NEAR_THRESHOLD` | total absences 439, against a threshold of 450 | No | ✅ **live** — the one issue the case shows standing still |
+| `NEAR_THRESHOLD` | total absences 439, against a threshold of 450 | No | ✅ **live** — the issue the case shows standing still |
 | `STALE_ASSESSMENT` | appears transiently after §7 step 5 | No (auto-resolves) | ✅ **live** — four issues, not five (§7) |
 | `CONFLICTING_CLAIMS` | trip 11 return date 10 vs 11 May | No | ❌ M8 — needs somewhere to hold the competing value |
-| `MISSING_EVIDENCE` | trip 6 (Greece) unevidenced | Yes (INFORMATION) | ❌ M7 — no evidence model |
+| `MISSING_EVIDENCE` | trip 6 (Greece) unevidenced | Yes (INFORMATION) | ✅ **live** from M7 slice 4a |
 | `MISSING_REQUIRED_FACT` | second referee absent | No | ❌ no reachable producer (below) |
 | `PROCESSING_FAILURE` | a recalculation that did not finish | No | ✅ **live** — not by this fixture; see below |
 
-**What the canonical case produces at M6.** Exactly one standing issue: `NEAR_THRESHOLD`
-on `residence.total_absences`. Editing trip 11 opens four `STALE_ASSESSMENT` issues in the
+**What the canonical case produces from M7 slice 4a.** Two standing issues:
+`NEAR_THRESHOLD` on `residence.total_absences`, and one `MISSING_EVIDENCE` on trip 6. The
+seed attaches a synthetic booking to trips 1–5 and 7–12 and leaves Greece bare, so the
+unevidenced state is a deliberate hole in otherwise complete coverage rather than an
+artefact of an empty library.
+
+**The stale-transition demo is unchanged by that second issue**, which is the reason trip 6
+was chosen rather than trip 11. Editing trip 11 opens four `STALE_ASSESSMENT` issues in the
 same transaction; recalculation resolves all four into the settled list while the
 near-threshold issue **stays open**, because 439 → 440 does not widen the margin. That
 contrast is the demo — issues that clear themselves beside one that does not, for a visible
-reason.
+reason — and `MISSING_EVIDENCE` sits alongside it untouched, since editing a trip's dates
+does not change which trips have documents attached.
+
+**At M6 the count was one.** Recorded because the earlier text said "exactly one standing
+issue", and a reader comparing this document to a running case needs to know which
+milestone's count they are looking at.
 
 **`MISSING_REQUIRED_FACT` has no reachable producer, and not only because referees are
 unmodelled.** The type derives from a requirement concluding INCOMPLETE for want of a fact.

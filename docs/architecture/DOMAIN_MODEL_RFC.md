@@ -740,6 +740,52 @@ Provisional output must be labelled and cannot replace the trusted current asses
 - A travel record may link to zero or more evidence items.
 - A travel record without evidence may still be user-confirmed but must expose its support state.
 
+### 11.9 EvidenceTravelLink
+
+The table behind the last two invariants above. Added at **M7 slice 4a**, where a document
+first influences an assessment.
+
+```text
+EvidenceTravelLink
+├── id
+├── case_id
+├── travel_record_id
+├── evidence_item_id
+├── availability
+├── linked_at
+└── unlinked_at
+```
+
+`availability` uses the §22.2 values — `AVAILABLE`, `DELETED`, `UNAVAILABLE` — and the same
+reasoning: deleting a document changes a link's availability rather than removing the row,
+so a historical assessment can still show what it read and say that it is no longer
+available (§22.3).
+
+**It links the record, not the version.** A travel record is versioned and editing a trip's
+dates creates a new version. What the booking evidences is *the trip*, not one revision of
+its dates, so linking `travel_record_version_id` would drop every attachment on every edit —
+a user correcting a return date would find their evidence silently gone. This is the
+opposite choice to `FactEvidenceLink` (§22), which links a fact *version*, and the
+difference is not inconsistency: a fact's value is the thing being evidenced, so a new value
+genuinely needs re-evidencing. A trip's identity survives a date correction.
+
+**Relationship to `FactEvidenceLink`.** Both exist; neither replaces the other. This one
+attaches a document to a user-entered travel record and is available from M7. That one
+attaches a document to a fact version and arrives with facts in M8. Rules asking "is this
+evidenced?" ask it of *available links of any kind* — see DETERMINISTIC_RULES_SPEC §7.8 —
+so M8 widens the graph rather than rewriting the rule.
+
+**Invariants**
+
+- A link belongs to exactly one case, and both endpoints must belong to that same case.
+- A link points at an active evidence item; a deleted item's links become `DELETED`.
+- Coverage is derived from links whose availability is `AVAILABLE`.
+- Removing or restoring a link marks assessments declaring `EVIDENCE_SUPPORT` stale
+  (§25.1), in the same transaction as the link change.
+- A link is not a judgement that the document is the *right* document. Nothing in M7
+  inspects a linked document's contents to decide whether it supports the trip; that is a
+  model's job and belongs to M8.
+
 ---
 
 ## 12. KnowledgeRequirementRecord
@@ -1497,9 +1543,14 @@ Examples:
 ANY_CURRENT_VERSION
 SPECIFIC_FACT_KEY
 ALL_ACTIVE_TRAVEL_RECORDS
+ALL_ACTIVE_EVIDENCE_LINKS
 REFEREE_SLOT_FIRST
 REFEREE_SLOT_SECOND
 ```
+
+`ALL_ACTIVE_EVIDENCE_LINKS` (M7) is the evidence counterpart of
+`ALL_ACTIVE_TRAVEL_RECORDS`: the rule reads every available link in the case rather than
+naming one, because "which trips lack evidence?" cannot be answered from a single link.
 
 ### 25.3 Invariants
 
@@ -1794,10 +1845,23 @@ TRAVEL_RECORD_VERSION
 FACT_VERSION
 KNOWLEDGE_VERSION
 REFEREE_VERSION
+EVIDENCE_LINK
 GUIDANCE_VERSION
 ```
 
 The physical implementation may use typed link tables rather than a polymorphic foreign key. The domain contract remains the same.
+
+**`EVIDENCE_LINK` (M7) points at an `EvidenceTravelLink` (§11.9), not at an
+`EvidenceItem`.** It is the only member of this enum whose name does not end `_VERSION`,
+and that is deliberate rather than an oversight: an evidence link has no version sequence.
+What it has is `availability`, and availability is precisely the thing whose change must
+stale a result. Linking the *item* would record which document was read but not whether the
+attachment still stands, so a detached document would leave a result looking as well
+supported as before. Linking the *link* records both — the item is reachable through it.
+
+A rule declaring `EVIDENCE_SUPPORT` (§25.1) writes one of these per link it read. Without
+this member such a rule could declare a dependency it had no way to evidence, which
+directive 5 forbids: no conclusion without provenance.
 
 ### 31.2 Contribution Role
 

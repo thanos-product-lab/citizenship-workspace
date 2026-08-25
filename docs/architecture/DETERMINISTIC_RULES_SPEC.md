@@ -559,10 +559,10 @@ Detections, each raising a typed issue:
 |---|---|
 | `departure_date > return_date` | rejected at validation, never persisted |
 | Two active trips whose absent-date sets intersect | `OVERLAPPING_TRAVEL` |
-| Two active trips with identical dates and destination | `DUPLICATE_EVIDENCE` |
+| Two active trips with identical dates and destination | `DUPLICATE_TRAVEL_RECORD` (see below) |
 | Trip with `date_confidence ∈ {ESTIMATED, UNKNOWN}` inside the qualifying period | `UNCERTAIN_TRAVEL_DATE` |
 | Trip whose absent-date set contains `physical_presence_date` | `NEAR_THRESHOLD` (boundary-critical) |
-| Confirmed trip with no `FactEvidenceLink` | `MISSING_EVIDENCE` (`INFORMATION` severity) |
+| Confirmed trip with no available evidence link | `MISSING_EVIDENCE` (`INFORMATION` severity) |
 | Trip wholly outside the qualifying period | informational only; excluded from totals |
 
 | Condition | Conclusion |
@@ -576,7 +576,26 @@ Summary codes: `TRAVEL_RECORDS_CONSISTENT`, `TRAVEL_RECORDS_OVERLAP`,
 `TRAVEL_RECORDS_CONFLICT` (a `CONFLICTING` date confidence, distinct from a set overlap),
 `TRAVEL_RECORDS_UNCERTAIN`, `TRAVEL_RECORDS_UNEVIDENCED`. Detection limitation codes:
 `CONFLICTING_SOURCE_DATES`, `OVERLAPPING_TRAVEL`, `UNCERTAIN_TRAVEL_DATE`,
-`NEAR_STANDARD_THRESHOLD` (boundary-critical), `TRAVEL_OUTSIDE_WINDOW` (`INFORMATION`).
+`NEAR_STANDARD_THRESHOLD` (boundary-critical), `TRAVEL_OUTSIDE_WINDOW` (`INFORMATION`),
+`MISSING_TRAVEL_EVIDENCE` (`INFORMATION`).
+
+**"Available evidence link" [PRODUCT], M7.** Deliberately not the name of a table. A trip
+is evidenced when *some* link of `availability = AVAILABLE` points at it. At M7 that means
+an `EvidenceTravelLink` (Domain §11.9), which attaches a document directly to a travel
+record. At M8, `FactEvidenceLink` (Domain §22) joins it, attaching a document to a fact
+version. The rule asks the same question of a wider graph rather than being rewritten, and
+neither link kind is privileged over the other.
+
+Earlier drafts of this row named `FactEvidenceLink` specifically. That was wrong in a way
+worth recording: `FactEvidenceLink` hangs off `FactVersion`, so a spec written that way
+made an M7 detection depend on an M8 entity, and the detection could not be built at all
+until facts existed — for no reason connected to what it actually measures.
+
+**Coverage is not window-scoped**, unlike the `CONFLICTING` and `{ESTIMATED, UNKNOWN}`
+detections below. A trip wholly outside the qualifying period still appears in the user's
+travel history and is still a trip they may be asked to evidence; suppressing its coverage
+state would make the history's support column silently incomplete. What is window-scoped is
+whether a *questionable date* can distort a total, which is a different question.
 
 **M3B scope note [PRODUCT].** At M3B this rule detects conflicts (`CONFLICTING` confidence),
 overlaps (intersecting absent-date sets, which also catches identical-date duplicates),
@@ -584,10 +603,26 @@ uncertain dates, boundary-critical trips, and out-of-window trips. "Inside the q
 period" is read as *the trip has at least one absent day within the window*; a trip wholly
 outside the window is informational only. Both `CONFLICTING` and `{ESTIMATED, UNKNOWN}`
 detections are window-scoped this way, so a questionable date on out-of-window history that
-cannot affect the assessment is not surfaced as an inconsistency. Destination-aware
-`DUPLICATE_EVIDENCE` and the unevidenced-trip `MISSING_EVIDENCE` detection depend on the
-destination field and the evidence graph, which arrive in M4; they are deferred. This rule
-creates structured limitations, not `Issue` rows — issue derivation is M6.
+cannot affect the assessment is not surfaced as an inconsistency. This rule creates
+structured limitations, not `Issue` rows — issue derivation is M6.
+
+**Deferral status [PRODUCT], corrected at M7.** An earlier version of this note said
+destination-aware `DUPLICATE_EVIDENCE` and the unevidenced-trip `MISSING_EVIDENCE`
+detection "arrive in M4". Both halves were wrong. `destination_country_code` has existed on
+`TravelRecordVersion` since M3B, so the duplicate detection was never blocked on a field;
+and M4 shipped without either. Current status:
+
+- `MISSING_EVIDENCE` (unevidenced trip) — **M7 slice 4a**, against `EvidenceTravelLink`.
+- Duplicate travel records (identical dates *and* destination) — **M7 slice 4b**, and see
+  the note below on the issue type it raises.
+
+**The `DUPLICATE_EVIDENCE` row names a duplicate *travel record*, not a duplicate
+document.** Two unlike detections had collected under one issue type: this one, where the
+user has entered the same trip twice, and Domain §15's checksum collision, where the user
+has uploaded the same file twice. They have different causes, different affected objects,
+and different remedies — merge two trips, versus delete a redundant upload. At M7 slice 4b
+they split: this row raises `DUPLICATE_TRAVEL_RECORD`, and `DUPLICATE_EVIDENCE` keeps the
+meaning its name implies.
 
 ---
 
@@ -772,7 +807,7 @@ Drives selective invalidation (Domain Model §41.5, roadmap M6).
 | `residence.physical_presence_start_date` | application date, **all** active travel records |
 | `residence.total_absences` | application date, **all** active travel records |
 | `residence.final_year_absences` | application date, **all** active travel records |
-| `residence.travel_consistency` | **all** active travel records, application date |
+| `residence.travel_consistency` | **all** active travel records, application date, **all** active evidence links (from v2.0.0, M7) |
 | `knowledge.life_in_uk` | Life in the UK knowledge record |
 | `knowledge.english_language` | English knowledge record, application date |
 | `referees.first` | referee slot FIRST, referee slot SECOND (cross-check) |
@@ -780,7 +815,17 @@ Drives selective invalidation (Domain Model §41.5, roadmap M6).
 | `character.review` | `character.review_acknowledged` |
 | `preparation.case_complete` | all current assessment results |
 
-Four consequences worth noting.
+Five consequences worth noting.
+
+**The evidence fan-out is one, and that narrowness is the point.** `EVIDENCE_SUPPORT` is
+declared by `residence.travel_consistency` alone. Attaching or removing a document must
+stale the consistency verdict and **must not** touch `residence.total_absences`,
+`residence.final_year_absences`, or the physical-presence date — those read travel records,
+and a document is not a travel record. A user who deletes a booking has not changed how
+many days they were absent; they have changed how well supported their own account of it
+is. Collapsing the two would make every upload invalidate the whole residence group, which
+is over-firing of exactly the kind ADR-0014 exists to prevent, and it would teach the user
+that the totals are less stable than they are.
 
 **The application-date fan-out is nine, not eight.** Eight requirements above name
 the application date directly. `route.standard_section_6_1` names none of its own —
