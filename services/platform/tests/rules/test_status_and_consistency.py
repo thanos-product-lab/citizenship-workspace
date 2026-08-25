@@ -7,6 +7,7 @@ from app.requirements.domain import Conclusion
 from app.requirements.evaluation import (
     KEY_TRAVEL_CONSISTENCY,
     EvaluatedResult,
+    EvidenceLinkInput,
     ResidenceAssessmentInputs,
     RouteAssessmentInputs,
     TripInput,
@@ -61,17 +62,45 @@ def test_holding_period_incomplete_when_grant_date_missing() -> None:
     assert result.conclusion == Conclusion.INCOMPLETE.value
 
 
-def _consistency(*trips: TripInput) -> EvaluatedResult:
+def _consistency(*trips: TripInput, evidenced: bool = True) -> EvaluatedResult:
+    """Evaluate the consistency rule.
+
+    `evidenced=True` by default — one link per trip — so the tests below stay about the
+    property each is named for. Without it every one of them would also be asserting the
+    coverage detection, and a change to coverage would turn a dozen unrelated tests red.
+    The coverage tests pass `evidenced=False` and say so.
+    """
+    links = (
+        tuple(
+            EvidenceLinkInput(link_id=uuid.uuid4(), travel_record_id=t.travel_record_id)
+            for t in trips
+        )
+        if evidenced
+        else ()
+    )
     inputs = ResidenceAssessmentInputs(
-        application_date=_APP, application_date_version_id=uuid.uuid4(), trips=tuple(trips)
+        application_date=_APP,
+        application_date_version_id=uuid.uuid4(),
+        trips=tuple(trips),
+        evidence_links=links,
     )
     return {r.requirement_key: r for r in evaluate_residence_requirements(inputs)}[
         KEY_TRAVEL_CONSISTENCY
     ]
 
 
-def _trip(dep: date, ret: date, *, confidence: str = "EXACT", trusted: bool = True) -> TripInput:
-    return TripInput(dep, ret, uuid.uuid4(), trusted, confidence)
+def _trip(
+    dep: date,
+    ret: date,
+    *,
+    confidence: str = "EXACT",
+    trusted: bool = True,
+    record_id: uuid.UUID | None = None,
+    review_state: str = "CONFIRMED",
+) -> TripInput:
+    return TripInput(
+        dep, ret, uuid.uuid4(), record_id or uuid.uuid4(), trusted, confidence, review_state
+    )
 
 
 def test_consistency_supported_with_clean_records() -> None:
@@ -116,3 +145,154 @@ def test_boundary_trip_is_flagged_but_stays_consistent() -> None:
     result = _consistency(_trip(date(2022, 4, 14), date(2022, 4, 26)))
     assert result.conclusion == Conclusion.SUPPORTED.value
     assert any(limitation.code == "NEAR_STANDARD_THRESHOLD" for limitation in result.limitations)
+
+
+# --- coverage (§7.8, from v2.0.0) ---------------------------------------------------
+
+
+def test_a_confirmed_trip_with_no_document_is_reported_but_still_consistent() -> None:
+    """§7.8: "only informational detections → SUPPORTED + limitations".
+
+    The conclusion stays SUPPORTED because the *records* are consistent — what is missing
+    is paperwork the user has not filed. A data-quality rule that downgraded its verdict
+    for that would be reporting a document-management state as a defect in the travel
+    history, and the user would go looking for an error in dates that are perfectly fine.
+    """
+    result = _consistency(_trip(date(2023, 1, 1), date(2023, 1, 20)), evidenced=False)
+
+    assert result.conclusion == Conclusion.SUPPORTED.value
+    assert result.summary_code == "TRAVEL_RECORDS_UNEVIDENCED"
+    codes = [lim.code for lim in result.limitations]
+    assert "MISSING_TRAVEL_EVIDENCE" in codes
+
+
+def test_an_evidenced_trip_is_not_reported() -> None:
+    result = _consistency(_trip(date(2023, 1, 1), date(2023, 1, 20)))
+
+    assert result.summary_code == "TRAVEL_RECORDS_CONSISTENT"
+    assert [lim.code for lim in result.limitations] == []
+
+
+def test_only_the_unevidenced_trips_are_named() -> None:
+    """The limitation carries `affected_input_ids`, which the issue queue turns into one
+    item per trip. Naming an evidenced trip there would send the user to a row with a
+    document already attached and nothing to do."""
+    covered = _trip(date(2023, 1, 1), date(2023, 1, 20))
+    bare = _trip(date(2024, 3, 1), date(2024, 3, 10))
+
+    inputs = ResidenceAssessmentInputs(
+        application_date=_APP,
+        application_date_version_id=uuid.uuid4(),
+        trips=(covered, bare),
+        evidence_links=(
+            EvidenceLinkInput(link_id=uuid.uuid4(), travel_record_id=covered.travel_record_id),
+        ),
+    )
+    result = {r.requirement_key: r for r in evaluate_residence_requirements(inputs)}[
+        KEY_TRAVEL_CONSISTENCY
+    ]
+
+    limitation = next(lim for lim in result.limitations if lim.code == "MISSING_TRAVEL_EVIDENCE")
+    assert limitation.affected_input_ids == (str(bare.travel_record_version_id),)
+
+
+def test_an_unconfirmed_trip_is_not_asked_for_documents() -> None:
+    """§7.8 says *confirmed* trip. A draft or uncertain record is something the user is
+    still deciding about, and asking them to evidence it before they have decided it
+    happened is noise in a queue whose value is that everything in it is actionable."""
+    result = _consistency(
+        _trip(date(2023, 1, 1), date(2023, 1, 20), review_state="DRAFT"), evidenced=False
+    )
+
+    assert [lim.code for lim in result.limitations] == []
+    assert result.summary_code == "TRAVEL_RECORDS_CONSISTENT"
+
+
+def test_a_trip_outside_the_window_is_still_asked_for_documents() -> None:
+    """Coverage is **not** window-scoped, unlike the confidence detections.
+
+    Those ask "can this distort a total?", which is a question about the qualifying
+    window. This asks "has the user evidenced this trip?", which is a question about the
+    trip — it is still in their travel history and still theirs to evidence, and hiding
+    its coverage state would make the support column silently incomplete.
+    """
+    ancient = _trip(date(2015, 1, 1), date(2015, 1, 20))
+    result = _consistency(ancient, evidenced=False)
+
+    limitation = next(lim for lim in result.limitations if lim.code == "MISSING_TRAVEL_EVIDENCE")
+    assert limitation.affected_input_ids == (str(ancient.travel_record_version_id),)
+
+
+def test_a_more_serious_detection_wins_the_summary_code() -> None:
+    """Precedence: an overlap is an inconsistency and unevidenced trips are not. The
+    summary code is what the requirement card leads with, and leading with the weakest
+    finding while records overlap would bury the thing that needs attention."""
+    result = _consistency(
+        _trip(date(2023, 1, 1), date(2023, 1, 20)),
+        _trip(date(2023, 1, 10), date(2023, 1, 30)),
+        evidenced=False,
+    )
+
+    assert result.conclusion == Conclusion.INCONSISTENT.value
+    assert result.summary_code == "TRAVEL_RECORDS_OVERLAP"
+    # ... and the coverage finding is still recorded, not dropped.
+    assert "MISSING_TRAVEL_EVIDENCE" in [lim.code for lim in result.limitations]
+
+
+def test_the_rule_links_every_evidence_link_it_read() -> None:
+    """Provenance (directive 5, and the `new-rule` skill's step 6): a rule that declares
+    `EVIDENCE_SUPPORT` must record the links it read, including those on trips it did not
+    flag. Provenance describes what was read, not what turned out to matter."""
+    from app.requirements.evaluation import LinkInputKind
+
+    covered = _trip(date(2023, 1, 1), date(2023, 1, 20))
+    bare = _trip(date(2024, 3, 1), date(2024, 3, 10))
+    link = EvidenceLinkInput(link_id=uuid.uuid4(), travel_record_id=covered.travel_record_id)
+
+    inputs = ResidenceAssessmentInputs(
+        application_date=_APP,
+        application_date_version_id=uuid.uuid4(),
+        trips=(covered, bare),
+        evidence_links=(link,),
+    )
+    result = {r.requirement_key: r for r in evaluate_residence_requirements(inputs)}[
+        KEY_TRAVEL_CONSISTENCY
+    ]
+
+    evidence_links = [
+        spec for spec in result.input_links if spec.input_kind == LinkInputKind.EVIDENCE_LINK
+    ]
+    assert [spec.input_version_id for spec in evidence_links] == [link.link_id]
+
+
+def test_evaluating_twice_over_the_same_inputs_gives_the_same_answer() -> None:
+    """Determinism, with evidence in the mix. The links arrive in a stable order from the
+    repository precisely so the provenance rows do not shuffle between runs — two
+    assessments over identical inputs must be byte-identical, or comparing them shows a
+    diff where nothing changed."""
+    trips = (_trip(date(2023, 1, 1), date(2023, 1, 20)), _trip(date(2024, 3, 1), date(2024, 3, 10)))
+    links = tuple(
+        EvidenceLinkInput(link_id=uuid.uuid4(), travel_record_id=t.travel_record_id) for t in trips
+    )
+
+    # Hoisted: minting a fresh one per run made the *application date* link differ and
+    # the test fail for a reason that had nothing to do with determinism.
+    date_version = uuid.uuid4()
+
+    def run() -> EvaluatedResult:
+        inputs = ResidenceAssessmentInputs(
+            application_date=_APP,
+            application_date_version_id=date_version,
+            trips=trips,
+            evidence_links=links,
+        )
+        return {r.requirement_key: r for r in evaluate_residence_requirements(inputs)}[
+            KEY_TRAVEL_CONSISTENCY
+        ]
+
+    first, second = run(), run()
+    assert first.summary_code == second.summary_code
+    assert first.limitations == second.limitations
+    assert [s.input_version_id for s in first.input_links] == [
+        s.input_version_id for s in second.input_links
+    ]

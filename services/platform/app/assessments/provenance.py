@@ -32,6 +32,7 @@ from sqlalchemy.orm import Session
 from app.applicants.domain import ReviewState as ProfileReviewState
 from app.applicants.repository import RouteProfileRepository
 from app.assessments.domain import AssessmentInputLink
+from app.evidence.domain import EvidenceTravelLink
 from app.requirements.evaluation import LinkInputKind
 from app.requirements.messages import format_date
 from app.residence.domain import (
@@ -106,6 +107,8 @@ def _resolve(session: Session, link: AssessmentInputLink) -> ResolvedInput:
         return _resolve_travel_record(session, link)
     if link.input_kind == LinkInputKind.ROUTE_PROFILE_VERSION.value:
         return _resolve_route_profile(session, link)
+    if link.input_kind == LinkInputKind.EVIDENCE_LINK.value:
+        return _resolve_evidence_link(session, link)
     return _unavailable(link, label="Unrecognised input")
 
 
@@ -206,6 +209,57 @@ def _travel_provenance(*, removed: bool, confirmed: bool, date_confidence: str) 
     if confirmed:
         return "user_confirmed"
     return "unavailable"
+
+
+def _resolve_evidence_link(session: Session, link: AssessmentInputLink) -> ResolvedInput:
+    """Describe an evidence link the assessment read (Domain §31.1, `EVIDENCE_LINK`).
+
+    Needed as its own branch rather than left to fall through: an unrecognised kind
+    renders as "No longer available", and saying that about a document the user attached
+    five minutes ago is a false statement in the one part of the UI whose entire job is to
+    be trustworthy about what a conclusion rested on.
+
+    **The document's name is deliberately absent.** The row names the trip and says a
+    document is attached. Surfacing the display name here would put user-supplied text
+    from the evidence library into the provenance panel, and — more to the point — the
+    rule never read the name. Provenance describes what was read.
+
+    `is_still_current` carries availability: a link withdrawn since the assessment ran is
+    exactly the "this input is no longer current" case the panel exists to show.
+    """
+    evidence_link = session.get(EvidenceTravelLink, link.input_version_id)
+    if evidence_link is None:
+        return _unavailable(link, label="Attached document")
+
+    found = TravelRecordRepository.get(session, evidence_link.travel_record_id)
+    label = "Attached document"
+    detail = "A document you attached to this trip. Nothing has read it to check it."
+    if found is not None and found.current_version_id is not None:
+        version = TravelRecordRepository.get_version(session, found.current_version_id)
+        if version is not None:
+            label = f"Document for {version.destination_label}"
+
+    available = evidence_link.is_available
+    if not available:
+        detail = "This document is no longer attached to the trip."
+
+    return ResolvedInput(
+        input_kind=link.input_kind,
+        input_key=link.input_key,
+        input_version_id=link.input_version_id,
+        contribution_role=link.contribution_role,
+        label=label,
+        value="Attached" if available else "No longer attached",
+        detail=detail,
+        # A link has no version sequence — that is why §31.1 does not name it `_VERSION`.
+        version_number=None,
+        is_still_current=available,
+        # The §6.1 trust gate is about travel records counting toward a figure. A link
+        # counts toward no figure, so the question does not apply and None says so —
+        # False would read as "this did not count", implying it might have.
+        counts_as_confirmed=None,
+        provenance_kind="evidence_supported" if available else "unavailable",
+    )
 
 
 def _resolve_route_profile(session: Session, link: AssessmentInputLink) -> ResolvedInput:

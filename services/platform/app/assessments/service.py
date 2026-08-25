@@ -44,11 +44,13 @@ from app.auth.schemas import CurrentUser
 from app.cases import service as cases_service
 from app.cases.domain import ApplicationCase, CasePhase, LifecycleStatus
 from app.cases.phase import RequirementState, derive_phase
+from app.evidence.repository import EvidenceLinkRepository
 from app.issues import service as issues_service
 from app.issues.repository import IssueRepository
 from app.requirements.domain import Conclusion
 from app.requirements.evaluation import (
     EvaluatedResult,
+    EvidenceLinkInput,
     ResidenceAssessmentInputs,
     RouteAssessmentInputs,
     TripInput,
@@ -240,6 +242,7 @@ def evaluate_case(
         application_date=application_date,
         application_date_version_id=date_version.id,
         trips=_gather_trips(session, case.id),
+        evidence_links=_gather_evidence_links(session, case.id),
     )
     evaluated = [
         *evaluate_route_requirements(route_inputs),
@@ -648,10 +651,26 @@ def _gather_trips(session: Session, case_id: uuid.UUID) -> tuple[TripInput, ...]
             departure_date=version.departure_date,
             return_date=version.return_date,
             travel_record_version_id=version.id,
+            travel_record_id=record.id,
             is_trusted=counts_toward_trusted_total(record, version),
             date_confidence=version.date_confidence,
+            review_state=version.review_state,
         )
         for record, version in records
+    )
+
+
+def _gather_evidence_links(session: Session, case_id: uuid.UUID) -> tuple[EvidenceLinkInput, ...]:
+    """Every link currently counting as coverage, flattened to two ids.
+
+    Two ids, because that is all the rule is allowed to see. Passing the `EvidenceItem`
+    would let a later change read its category or its extracted text and turn coverage
+    into a judgement about whether the document fits — which needs a model and is M8's
+    (ADR-0021). The narrow shape is the enforcement.
+    """
+    return tuple(
+        EvidenceLinkInput(link_id=link.id, travel_record_id=link.travel_record_id)
+        for link in EvidenceLinkRepository.live_for_case(session, case_id=case_id)
     )
 
 

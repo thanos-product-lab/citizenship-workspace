@@ -308,6 +308,13 @@ SUMMARY_TEMPLATES: dict[str, _Template] = {
         "At least one travel record inside your qualifying period has dates marked as "
         "estimated or unknown, so your absence totals are not yet settled."
     ),
+    # Says the records are consistent *first*. The unevidenced trips are a separate,
+    # weaker fact, and leading with them would read as though something were wrong with
+    # the travel history — which is precisely what this rule has just found is not so.
+    "TRAVEL_RECORDS_UNEVIDENCED": lambda p: (
+        "Your travel records are internally consistent. Some confirmed trips have no "
+        "document attached, which does not affect any total."
+    ),
 }
 
 
@@ -356,6 +363,17 @@ LIMITATION_TEMPLATES: dict[str, _Template] = {
         "This trip covers "
         f"{format_date(p.get('physical_presence_date'))}, the first day of your "
         "qualifying period — the single day presence is tested on."
+    ),
+    # "no document attached", not "no evidence" — the user attaches documents, and
+    # "evidence" invites them to think something has judged what they attached. Nothing
+    # has: attaching is their assertion, and no rule reads the document (ADR-0021).
+    #
+    # It also does not tell them to attach one. A trip with no booking is not a defect —
+    # people take trips they have no paperwork for — so this states the fact and leaves
+    # the decision with them.
+    "MISSING_TRAVEL_EVIDENCE": lambda p: (
+        "No document is attached to this trip. That does not affect your absence "
+        "totals, which are worked out from the dates you entered."
     ),
     "TRAVEL_OUTSIDE_WINDOW": lambda p: (
         "This trip falls entirely outside your qualifying period, so it does not "

@@ -44,6 +44,7 @@ _NOT_MESSAGE_CODES = frozenset(
         "ROUTE_PROFILE_VERSION",
         "APPLICATION_DATE_VERSION",
         "TRAVEL_RECORD_VERSION",
+        "EVIDENCE_LINK",
         # ContributionRole
         "REQUIRED",
         "SUPPORTING",
@@ -60,6 +61,10 @@ _NOT_MESSAGE_CODES = frozenset(
         "ESTIMATED",
         "UNKNOWN",
         "CONFLICTING",
+        # TravelReviewState, likewise — §7.8's coverage detection is about *confirmed*
+        # trips, and the evaluator compares the raw string rather than importing the
+        # residence domain.
+        "CONFIRMED",
         # StatusType, likewise
         "EU_SETTLED_STATUS",
     }

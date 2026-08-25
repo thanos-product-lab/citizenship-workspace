@@ -80,6 +80,11 @@ class LinkInputKind(StrEnum):
     ROUTE_PROFILE_VERSION = "ROUTE_PROFILE_VERSION"
     APPLICATION_DATE_VERSION = "APPLICATION_DATE_VERSION"
     TRAVEL_RECORD_VERSION = "TRAVEL_RECORD_VERSION"
+    #: Points at an `EvidenceTravelLink`, not at an `EvidenceItem` — the only member here
+    #: that is not a version, because a link has no version sequence. What it has is
+    #: `availability`, and availability is precisely what must stale a result when it
+    #: changes. See Domain §31.1.
+    EVIDENCE_LINK = "EVIDENCE_LINK"
 
 
 class ContributionRole(StrEnum):
@@ -370,8 +375,37 @@ class TripInput:
     departure_date: date
     return_date: date
     travel_record_version_id: uuid.UUID
+    #: The *record* id, distinct from the version id above. Evidence links point at the
+    #: record, because a booking evidences the trip rather than one revision of its dates
+    #: (Domain §11.9, ADR-0021), so coverage cannot be looked up by version.
+    #:
+    #: Required rather than defaulted, and that is the point. A first draft made it
+    #: optional to save churn in tests that do not care about coverage, which meant a trip
+    #: constructed without one was silently treated as *evidenced* — a false negative on a
+    #: detection whose whole job is to notice something missing. A required field turns
+    #: that into a construction error at the one place trips are built.
+    travel_record_id: uuid.UUID
     is_trusted: bool
     date_confidence: str = "EXACT"
+    #: Carried raw for the data-quality rule, like `date_confidence`. Coarser than
+    #: `is_trusted`, which additionally requires EXACT dates: §7.8's unevidenced detection
+    #: is about *confirmed* trips, and a confirmed trip with estimated dates is confirmed.
+    review_state: str = "CONFIRMED"
+
+
+@dataclass(frozen=True)
+class EvidenceLinkInput:
+    """One live evidence link, flattened (Domain §11.9).
+
+    Two ids and nothing else — deliberately. The rule answers "is this trip evidenced?"
+    and must not be able to answer anything about the document, so the document's
+    category, filename, extracted text and processing state are all absent from what the
+    evaluator can see. Making that structural rather than a convention is what stops a
+    later change quietly turning coverage into a judgement about fitness (ADR-0021).
+    """
+
+    link_id: uuid.UUID
+    travel_record_id: uuid.UUID
 
 
 @dataclass(frozen=True)
@@ -379,10 +413,35 @@ class ResidenceAssessmentInputs:
     application_date: date
     application_date_version_id: uuid.UUID
     trips: tuple[TripInput, ...]
+    #: Every link currently counting as coverage, in a stable order. Ordered because the
+    #: rule writes one `AssessmentInputLink` per link, and an unordered read would make
+    #: provenance rows differ between two runs over identical inputs.
+    evidence_links: tuple[EvidenceLinkInput, ...] = ()
 
 
 def _app_date_link(inputs: ResidenceAssessmentInputs) -> InputLinkSpec:
     return InputLinkSpec(LinkInputKind.APPLICATION_DATE_VERSION, inputs.application_date_version_id)
+
+
+def _evidence_links(links: tuple["EvidenceLinkInput", ...]) -> tuple[InputLinkSpec, ...]:
+    """One link per evidence link read — the `ALL_ACTIVE_EVIDENCE_LINKS` dependency.
+
+    `CONTEXTUAL` rather than `SUPPORTING`: §31.2's `SUPPORTING` means the input supports
+    the *conclusion*, and the conclusion here is about the consistency of the travel
+    records. A booking is context the rule counted, not grounds for the verdict.
+
+    Every live link is linked, including those on trips the rule did not flag — the
+    dependency is over all of them, and provenance has to record what was read rather
+    than only what turned out to matter.
+    """
+    return tuple(
+        InputLinkSpec(
+            LinkInputKind.EVIDENCE_LINK,
+            link.link_id,
+            contribution_role=ContributionRole.CONTEXTUAL,
+        )
+        for link in links
+    )
 
 
 def _travel_links(trips: tuple[TripInput, ...]) -> tuple[InputLinkSpec, ...]:
@@ -595,9 +654,10 @@ def _evaluate_travel_consistency(inputs: ResidenceAssessmentInputs) -> Evaluated
     totals are surfaced. Detections are structured limitations; conflicts/overlaps →
     INCONSISTENT, uncertain dates → INCOMPLETE, else SUPPORTED.
 
-    Destination-aware duplicate detection (DUPLICATE_EVIDENCE) and unevidenced-trip detection
-    (MISSING_EVIDENCE) need the destination and the evidence graph, which arrive in M4;
-    absent-set overlap already catches identical-date trips here."""
+    From v2.0.0 it also reads evidence coverage (§7.8, "confirmed trip with no available
+    evidence link"). Duplicate *travel record* detection — identical dates and destination,
+    raising `DUPLICATE_TRAVEL_RECORD` — is slice 4b; absent-set overlap already catches
+    identical-date trips here."""
     trips = inputs.trips
     anchor = physical_presence_date(inputs.application_date)
     qwindow = qualifying_window(inputs.application_date)
@@ -660,6 +720,29 @@ def _evaluate_travel_consistency(inputs: ResidenceAssessmentInputs) -> Evaluated
             )
         )
 
+    # Coverage (§7.8, from v2.0.0). Only *confirmed* trips: a draft or uncertain record is
+    # something the user is still deciding about, and asking them to evidence it before
+    # they have decided it happened is noise.
+    #
+    # Not window-scoped, unlike the confidence detections above, and the spec says so
+    # explicitly. Those ask "can this distort a total?", which is a question about the
+    # qualifying window. This asks "has the user evidenced this trip?", which is a
+    # question about the trip — a trip outside the window is still in their travel history
+    # and still theirs to evidence, and hiding its coverage state would make the support
+    # column silently incomplete.
+    evidenced = {link.travel_record_id for link in inputs.evidence_links}
+    unevidenced = [
+        t for t in trips if t.review_state == "CONFIRMED" and t.travel_record_id not in evidenced
+    ]
+    if unevidenced:
+        limitations.append(
+            Limitation(
+                "MISSING_TRAVEL_EVIDENCE",
+                LimitationSeverity.INFORMATION,
+                affected_input_ids=tuple(str(t.travel_record_version_id) for t in unevidenced),
+            )
+        )
+
     outside = [
         t
         for t in trips
@@ -683,6 +766,13 @@ def _evaluate_travel_consistency(inputs: ResidenceAssessmentInputs) -> Evaluated
         conclusion, code = Conclusion.INCONSISTENT, "TRAVEL_RECORDS_OVERLAP"
     elif uncertain:
         conclusion, code = Conclusion.INCOMPLETE, "TRAVEL_RECORDS_UNCERTAIN"
+    elif unevidenced:
+        # SUPPORTED, not INCOMPLETE. §7.8: "only informational detections → SUPPORTED +
+        # limitations". The records themselves are consistent; what is missing is
+        # paperwork the user has not filed yet, and a data-quality rule that downgraded
+        # its verdict for that would be reporting a document-management state as a defect
+        # in the travel history.
+        conclusion, code = Conclusion.SUPPORTED, "TRAVEL_RECORDS_UNEVIDENCED"
     else:
         conclusion, code = Conclusion.SUPPORTED, "TRAVEL_RECORDS_CONSISTENT"
 
@@ -690,7 +780,11 @@ def _evaluate_travel_consistency(inputs: ResidenceAssessmentInputs) -> Evaluated
         requirement_key=KEY_TRAVEL_CONSISTENCY,
         conclusion=conclusion.value,
         summary_code=code,
-        input_links=(_app_date_link(inputs), *_travel_links(inputs.trips)),
+        input_links=(
+            _app_date_link(inputs),
+            *_travel_links(inputs.trips),
+            *_evidence_links(inputs.evidence_links),
+        ),
         limitations=tuple(limitations),
     )
 

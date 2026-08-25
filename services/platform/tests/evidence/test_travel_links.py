@@ -283,3 +283,113 @@ def test_a_removed_trip_cannot_be_evidenced(api: Api, db_session: Session) -> No
 #
 # Every test above goes through a route that checks ownership itself, so all of them would
 # still pass with the policy dropped. That is what the matrix suite is for.
+
+
+# --- what a link change invalidates -------------------------------------------------
+
+
+def _currency(api: Api, case_id: str) -> dict[str, str]:
+    rows = api("user_a").get(f"/api/v1/cases/{case_id}/requirements").json()
+    return {row["requirement_key"]: row["currency"] for row in rows}
+
+
+def test_attaching_a_document_stales_the_consistency_verdict_only(
+    api: Api, db_session: Session
+) -> None:
+    """The fan-out, end to end, and both halves are the test.
+
+    Attaching **must** stale `residence.travel_consistency`: the rule reads coverage, so a
+    coverage change under a CURRENT result would leave a stale result being returned as
+    current (CLAUDE.md §9).
+
+    It **must not** stale the absence totals. Attaching a booking does not change how many
+    days the user was outside the UK — it changes how well supported their own account of
+    it is. The unit-level version of this property is in
+    `test_selective_invalidation.py`; this one proves the command actually fires it, which
+    a declaration alone never shows.
+    """
+    case_id, trip_id = _case_with_trip(api, "user_a")
+    item_id = _document(api, "user_a", case_id)
+    api("user_a").post(f"/api/v1/cases/{case_id}/assessments/recalculate")
+    assert _currency(api, case_id)["residence.travel_consistency"] == "CURRENT"
+
+    api("user_a").post(
+        f"/api/v1/cases/{case_id}/travel-records/{trip_id}/evidence",
+        json={"evidence_item_id": item_id},
+    )
+
+    after = _currency(api, case_id)
+    assert after["residence.travel_consistency"] == "STALE"
+    assert after["residence.total_absences"] == "CURRENT"
+    assert after["residence.final_year_absences"] == "CURRENT"
+    assert after["residence.physical_presence_start_date"] == "CURRENT"
+
+
+def test_detaching_a_document_stales_it_too(api: Api, db_session: Session) -> None:
+    """The direction that matters most for the trust model. Removing support must not
+    leave a conclusion standing that was drawn while the support existed — that is
+    "quietly confident", which is the failure this whole product is built against."""
+    case_id, trip_id = _case_with_trip(api, "user_a")
+    item_id = _document(api, "user_a", case_id)
+    path = f"/api/v1/cases/{case_id}/travel-records/{trip_id}/evidence"
+    api("user_a").post(path, json={"evidence_item_id": item_id})
+    api("user_a").post(f"/api/v1/cases/{case_id}/assessments/recalculate")
+    assert _currency(api, case_id)["residence.travel_consistency"] == "CURRENT"
+
+    api("user_a").delete(f"{path}/{item_id}")
+
+    after = _currency(api, case_id)
+    assert after["residence.travel_consistency"] == "STALE"
+    assert after["residence.total_absences"] == "CURRENT"
+
+
+def test_the_stale_reason_says_it_was_the_documents(api: Api, db_session: Session) -> None:
+    """`EVIDENCE_SUPPORT_CHANGED`, not `TRAVEL_RECORD_CHANGED`. The user is shown this
+    sentence, and telling them their travel records changed when they attached a document
+    would send them to check dates they never touched."""
+    case_id, trip_id = _case_with_trip(api, "user_a")
+    item_id = _document(api, "user_a", case_id)
+    api("user_a").post(f"/api/v1/cases/{case_id}/assessments/recalculate")
+    api("user_a").post(
+        f"/api/v1/cases/{case_id}/travel-records/{trip_id}/evidence",
+        json={"evidence_item_id": item_id},
+    )
+
+    consistency = (
+        api("user_a")
+        .get(f"/api/v1/cases/{case_id}/requirements/residence.travel_consistency")
+        .json()
+    )
+    stale = consistency["stale"]
+    assert stale["reason_code"] == "EVIDENCE_SUPPORT_CHANGED"
+    assert "documents attached" in stale["reason"]
+
+
+def test_a_recalculation_records_the_links_it_read(api: Api, db_session: Session) -> None:
+    """Provenance reaches the database, not only the evaluator's return value: a trusted
+    result must reference the exact inputs behind it (directive 5)."""
+    from app.assessments.domain import AssessmentInputLink, AssessmentResult
+    from app.requirements.models import RequirementDefinition
+
+    case_id, trip_id = _case_with_trip(api, "user_a")
+    item_id = _document(api, "user_a", case_id)
+    api("user_a").post(
+        f"/api/v1/cases/{case_id}/travel-records/{trip_id}/evidence",
+        json={"evidence_item_id": item_id},
+    )
+    api("user_a").post(f"/api/v1/cases/{case_id}/assessments/recalculate")
+
+    db_session.expire_all()
+    links = db_session.execute(
+        select(AssessmentInputLink)
+        .join(AssessmentResult, AssessmentResult.id == AssessmentInputLink.assessment_result_id)
+        .join(RequirementDefinition, RequirementDefinition.id == AssessmentResult.requirement_id)
+        .where(
+            RequirementDefinition.requirement_key == "residence.travel_consistency",
+            AssessmentInputLink.input_kind == "EVIDENCE_LINK",
+            AssessmentResult.case_id == uuid.UUID(case_id),
+        )
+    ).scalars()
+    recorded = [link.input_version_id for link in links]
+    stored = _links(db_session, case_id)
+    assert recorded == [stored[0].id], "the link row itself is the input, not the document"

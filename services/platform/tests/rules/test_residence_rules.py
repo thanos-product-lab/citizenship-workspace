@@ -35,6 +35,7 @@ def _trip(dep: date, absent_days: int, *, trusted: bool = True) -> TripInput:
         departure_date=dep,
         return_date=dep + timedelta(days=absent_days + 1),
         travel_record_version_id=uuid.uuid4(),
+        travel_record_id=uuid.uuid4(),
         is_trusted=trusted,
     )
 
@@ -64,9 +65,9 @@ def test_presence_supported_when_no_trip_covers_the_anchor() -> None:
 
 def test_presence_not_satisfied_offers_the_resolving_date() -> None:
     # A trusted trip 14→26 Apr 2022 covers the anchor 16 Apr 2022 → confirmed absent.
-    result = _evaluate(TripInput(date(2022, 4, 14), date(2022, 4, 26), uuid.uuid4(), True))[
-        KEY_PHYSICAL_PRESENCE
-    ]
+    result = _evaluate(
+        TripInput(date(2022, 4, 14), date(2022, 4, 26), uuid.uuid4(), uuid.uuid4(), True)
+    )[KEY_PHYSICAL_PRESENCE]
     assert result.conclusion == Conclusion.NOT_CURRENTLY_SATISFIED.value
     assert result.summary_code == "PRESENCE_NOT_SUPPORTED"
     assert result.summary_parameters["resolving_application_date"] == "2027-04-25"
@@ -76,9 +77,9 @@ def test_presence_not_satisfied_offers_the_resolving_date() -> None:
 
 def test_presence_uncertain_when_only_an_unconfirmed_trip_covers_the_anchor() -> None:
     # Same covering trip, but ESTIMATED (not trusted): the anchor is only provisionally absent.
-    result = _evaluate(TripInput(date(2022, 4, 14), date(2022, 4, 26), uuid.uuid4(), False))[
-        KEY_PHYSICAL_PRESENCE
-    ]
+    result = _evaluate(
+        TripInput(date(2022, 4, 14), date(2022, 4, 26), uuid.uuid4(), uuid.uuid4(), False)
+    )[KEY_PHYSICAL_PRESENCE]
     assert result.conclusion == Conclusion.INCOMPLETE.value
     assert result.summary_code == "PRESENCE_UNCERTAIN"
     assert result.limitations[0].code == "UNCONFIRMED_RECORDS_AFFECT_CONCLUSION"

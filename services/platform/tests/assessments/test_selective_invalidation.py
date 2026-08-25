@@ -151,12 +151,47 @@ def test_a_change_matches_every_declaration_of_its_kind_regardless_of_key(
 
 
 def test_a_kind_no_rule_declares_invalidates_nothing(db_session: Session) -> None:
-    """Domain §41.5's last row: an unrelated input invalidates nothing, unless a rule declares
-    it. No rule reads evidence support yet."""
+    """Domain §41.5's last row: an unrelated input invalidates nothing, unless a rule
+    declares it.
+
+    `CASE_FACT`, because nothing produces or reads a fact until M8. This test named
+    `EVIDENCE_SUPPORT` until M7 slice 4a, when `residence.travel_consistency` v2.0.0
+    started declaring it — at which point the test was asserting the opposite of the
+    truth, and said so.
+    """
     assert (
-        resolve_affected_requirements(db_session, input_kind=DependencyInputKind.EVIDENCE_SUPPORT)
+        resolve_affected_requirements(db_session, input_kind=DependencyInputKind.CASE_FACT)
         == frozenset()
     )
+
+
+def test_evidence_support_stales_the_consistency_rule_and_nothing_else(
+    db_session: Session,
+) -> None:
+    """The evidence fan-out is exactly one, and both halves matter (RULES_SPEC §8).
+
+    Attaching a document must stale the consistency verdict — otherwise the coverage the
+    rule just started reading can change under a CURRENT result, and a stale result is
+    returned as current (CLAUDE.md §9).
+
+    It must **not** stale the absence totals. A user who attaches or deletes a booking has
+    not changed how many days they were absent; they have changed how well supported their
+    own account of it is. Collapsing the two would restale the whole residence group on
+    every upload — over-firing of exactly the kind ADR-0014 exists to prevent — and would
+    teach the user their totals are less stable than they are.
+    """
+    resolved = resolve_affected_requirements(
+        db_session, input_kind=DependencyInputKind.EVIDENCE_SUPPORT
+    )
+
+    assert resolved == {"residence.travel_consistency"}
+    for untouched in (
+        "residence.total_absences",
+        "residence.final_year_absences",
+        "residence.physical_presence_start_date",
+        "residence.qualifying_period",
+    ):
+        assert untouched not in resolved
 
 
 def test_resolution_never_names_a_requirement_without_an_evaluator(db_session: Session) -> None:
