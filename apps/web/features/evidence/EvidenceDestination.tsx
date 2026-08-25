@@ -2,15 +2,23 @@
 
 import { type JSX, useEffect, useRef, useState } from "react";
 
-import { EvidenceState } from "@cw/design-system";
+import {
+  EvidenceState,
+  evidenceProcessingTokens,
+  toEvidenceProcessingState,
+} from "@cw/design-system";
 
 import { cardStyle, errorTextStyle, linkButtonStyle, secondaryButtonStyle } from "@/components/ui";
 
 
-import { CATEGORY_LABELS, formatBytes, type EvidenceItem } from "./library";
+import {
+  CATEGORY_LABELS,
+  TERMINAL_PROCESSING_STATES,
+  type EvidenceItem,
+} from "./library";
 import { UploadDocument } from "./UploadDocument";
 import { useEvidence } from "./useEvidence";
-import { useRetryProcessing } from "./useRetryProcessing";
+import { useRetryProcessing, type RetryRefusal } from "./useRetryProcessing";
 
 /**
  * The Evidence destination: the documents this case holds, and what has been done to them.
@@ -41,7 +49,21 @@ export function EvidenceDestination({ caseId }: { caseId: string }): JSX.Element
   // IssuesDestination, where the same trap was found.
   const [returnFocus, setReturnFocus] = useState(false);
   const [retryingId, setRetryingId] = useState<string | null>(null);
+  // Which row to put focus back on once its retry control disappears. Pressing "Read it
+  // again" moves the document to a non-retryable state, so the button unmounts and takes
+  // keyboard focus to <body> with it — verified in the browser, and the third time this
+  // codebase has been caught by a control destroyed by the success it reports. The row
+  // itself is the right landing place: it keeps the user where they were and names what
+  // they just acted on, where sending them to the page heading would not.
+  const [returnFocusToRow, setReturnFocusToRow] = useState<string | null>(null);
   const retry = useRetryProcessing(caseId);
+
+  useEffect(() => {
+    if (!returnFocusToRow || retry.isPending) return;
+    const row = document.getElementById(`evidence-row-${returnFocusToRow}`);
+    setReturnFocusToRow(null);
+    row?.focus();
+  }, [returnFocusToRow, retry.isPending]);
 
   // The retry button disappears on success, taking keyboard focus to <body> with it, so
   // focus is parked on the heading once the refetch settles.
@@ -65,15 +87,45 @@ export function EvidenceDestination({ caseId }: { caseId: string }): JSX.Element
     );
   }, [status, itemCount]);
 
+  // Announce a document *finishing*, once each.
+  //
+  // Polling rewrites the State cell every 1.5 seconds — Reading becomes Read, or No text
+  // found, or Failed — and none of it reached the live region. A screen-reader user who
+  // asked for a re-read was told it had started and then never told how it ended, which
+  // is the half of the interaction that carries the answer.
+  const settledRef = useRef<Map<string, string>>(new Map());
+  const items = data?.items;
+  useEffect(() => {
+    if (!items) return;
+    for (const item of items as EvidenceItem[]) {
+      const previous = settledRef.current.get(item.id);
+      settledRef.current.set(item.id, item.processing_status);
+      if (previous === item.processing_status) continue;
+      if (!TERMINAL_PROCESSING_STATES.has(item.processing_status)) continue;
+      // Silent on the *first sighting of the row*, not on the first terminal status:
+      // arriving on a page of settled rows is not five things happening, but a document
+      // watched through Validating and Reading has been seen before, and its ending is
+      // the half of the interaction that carries the answer. Recording every status —
+      // not only terminal ones — is what tells those two apart. Skipping the non-terminal
+      // ones made the row look newly arrived at the moment it settled, so the one
+      // transition worth announcing was the one that stayed silent.
+      if (previous !== undefined) setAnnouncement(`${item.display_name}: ${describeOutcome(item)}`);
+    }
+  }, [items]);
+
   return (
     <section aria-labelledby="evidence-heading">
       <h2 id="evidence-heading" ref={headingRef} tabIndex={-1} className="cw-case-data__heading">
         Evidence
       </h2>
       <p className="cw-case-data__note">
-        Documents you have uploaded to support this case. Nothing here has been read or
-        checked yet, so every figure in your assessment still rests on dates you entered
-        yourself.
+        {/* Describes what this screen does, not what has happened on it. The first
+            version said "nothing here has been read yet", which slice 3 made false; the
+            second said "their text has been read", which is false on a case with no
+            documents. A sentence about the capability is true in both. */}
+        Documents you upload to support this case. Reading one extracts its text —
+        nothing here is checked against your case, so every figure in your assessment
+        still rests on dates you entered yourself.
       </p>
 
       <div aria-live="polite" className="cw-visually-hidden">
@@ -124,9 +176,10 @@ export function EvidenceDestination({ caseId }: { caseId: string }): JSX.Element
               // Says where it went and what state it is in, not just that it happened —
               // and the trailing space differs from the "Uploading…" message above, so
               // two uploads of the same document still re-announce.
-              setAnnouncement(
-                `${name} uploaded. It is listed as Uploaded, and nothing has read it yet.`,
-              )
+              // The caption and the page note were both corrected when reading landed;
+              // this third copy was missed, and it is the only one no sighted user ever
+              // sees. Reading starts seconds later and the table would contradict it.
+              setAnnouncement(`${name} uploaded. Reading will start shortly.`)
             }
           />
 
@@ -137,12 +190,22 @@ export function EvidenceDestination({ caseId }: { caseId: string }): JSX.Element
           ) : (
             <EvidenceTable
               items={data.items as EvidenceItem[]}
-              busy={isFetching}
-              retryingId={retry.isPending ? retryingId : null}
+              retryingId={retryingId}
+              // Every row shares one mutation observer, so a second retry while the
+              // first is in flight silently abandons it — its button reverts and its
+              // outcome is reported nowhere. Blocking all of them while any one is
+              // pending is the same answer the issue queue reached for Dismiss.
+              anyRetryPending={retry.isPending}
               onRetry={(id) => {
                 setRetryingId(id);
                 setAnnouncement("Reading that document again.");
-                retry.mutate(id);
+                // Focus is armed in `onSettled`, not here. Setting it synchronously lets
+                // the effect fire before `isPending` is true and yank focus off the
+                // button mid-press.
+                retry.mutate(id, {
+                  onSettled: () => setReturnFocusToRow(id),
+                  onError: (refusal) => setAnnouncement(refusalMessage(refusal)),
+                });
               }}
             />
           )}
@@ -170,14 +233,42 @@ export function EvidenceDestination({ caseId }: { caseId: string }): JSX.Element
 function stateNote(item: EvidenceItem): string | null {
   if (item.failure_reason) return item.failure_reason;
   if (item.processing_status === "PARTIALLY_COMPLETED") {
-    return "This looks like a scan or a photo, so there was no text to read.";
+    // Read from the token rather than repeated here: the same sentence written twice in
+    // two packages is two sentences that can drift.
+    return evidenceProcessingTokens.partially_completed.meaning;
   }
   return null;
 }
 
+/** What to say when a document finishes, for the live region. */
+function describeOutcome(item: EvidenceItem): string {
+  const note = stateNote(item);
+  const state = toEvidenceProcessingState(item.processing_status);
+  const label = state ? evidenceProcessingTokens[state].label : item.processing_status;
+  return note ? `${label}. ${note}` : `${label}. ${describeText(item)}.`;
+}
+
+/** Why a retry was refused, in words. The server sends a code and the seconds. */
+function refusalMessage(refusal: RetryRefusal): string {
+  if (refusal.code === "EVIDENCE_RETRY_TOO_SOON") {
+    const seconds = refusal.retryAfterSeconds ?? 30;
+    return `That document was read very recently. You can try again in ${seconds} seconds.`;
+  }
+  if (refusal.code === "EVIDENCE_NOT_RETRYABLE") {
+    return "That document cannot be read again. Uploading a different file may help.";
+  }
+  return "That document could not be sent to be read again.";
+}
+
 function describeText(item: EvidenceItem): string {
   if (item.character_count === null || item.character_count === undefined) {
-    return formatBytes(item.size_bytes);
+    // No reading exists. Under a column headed "What we read", a file size answers a
+    // question nobody asked, and mixing bytes with page counts down one column makes
+    // both harder to scan — the state cell already says why.
+    //
+    // "yet" while the document is still moving: mid-extraction the row was otherwise
+    // heard as "State: Reading. What we read: Not read."
+    return TERMINAL_PROCESSING_STATES.has(item.processing_status) ? "Not read" : "Not read yet";
   }
   if (item.character_count === 0) return "No text";
 
@@ -200,34 +291,60 @@ function describeText(item: EvidenceItem): string {
 
 function EvidenceTable({
   items,
-  busy,
   onRetry,
   retryingId,
+  anyRetryPending,
 }: {
   items: EvidenceItem[];
-  busy: boolean;
   onRetry: (id: string) => void;
   retryingId: string | null;
+  anyRetryPending: boolean;
 }): JSX.Element {
   return (
     <div className="cw-trips-wrap">
-      <table className="cw-trips" aria-busy={busy || undefined}>
+      {/* No `aria-busy` from background polling. It tells assistive technology to
+          suppress reporting changes inside the region, and flapping it twice a second
+          at a table someone may be arrow-keying through is not what it is for. A
+          user-initiated retry announces itself through the live region instead. */}
+      <table className="cw-trips" role="table">
         <caption className="cw-trips__caption">
-          Documents uploaded to this case, newest first. Nothing has read them yet.
+          Documents uploaded to this case, newest first. Reading a document extracts its
+          text; it does not check anything against your case.
         </caption>
-        <thead>
-          <tr>
-            <th scope="col">Document</th>
-            <th scope="col">Type</th>
-            <th scope="col">State</th>
-            <th scope="col">Size</th>
-            <th scope="col">Added</th>
+        <thead role="rowgroup">
+          <tr role="row">
+            {/* Explicit roles, matching `TravelHistory`: the ≤34rem reflow sets
+                `display: block` on the table elements, which strips implicit table
+                semantics in engines that do not special-case it. */}
+            <th role="columnheader" scope="col">
+              Document
+            </th>
+            <th role="columnheader" scope="col">
+              Type
+            </th>
+            <th role="columnheader" scope="col">
+              State
+            </th>
+            <th role="columnheader" scope="col">
+              What we read
+            </th>
+            <th role="columnheader" scope="col">
+              Added
+            </th>
           </tr>
         </thead>
-        <tbody>
+        <tbody role="rowgroup">
           {items.map((item) => (
-            <tr key={item.id}>
-              <th scope="row" className="cw-trips__destination">
+            <tr key={item.id} role="row">
+              <th
+                role="rowheader"
+                scope="row"
+                className="cw-trips__destination"
+                id={`evidence-row-${item.id}`}
+                // Focusable only programmatically: it is a landing place for focus that
+                // would otherwise be dropped, not another stop in the tab order.
+                tabIndex={-1}
+              >
                 {item.display_name}
                 {item.original_filename ? (
                   <span
@@ -242,8 +359,8 @@ function EvidenceTable({
                   </span>
                 ) : null}
               </th>
-              <td>{CATEGORY_LABELS[item.category] ?? item.category}</td>
-              <td>
+              <td role="cell">{CATEGORY_LABELS[item.category] ?? item.category}</td>
+              <td role="cell">
                 {/* No `withMeaning` here: the caption says it once. Repeating it per
                     row means a screen-reader user hears the same sentence twenty times
                     down a twenty-document library. */}
@@ -278,19 +395,25 @@ function EvidenceTable({
                   <button
                     type="button"
                     style={{ ...linkButtonStyle, marginTop: "var(--cw-space-1)" }}
-                    aria-disabled={retryingId === item.id}
+                    aria-disabled={anyRetryPending}
                     onClick={() => {
-                      if (retryingId === item.id) return;
+                      if (anyRetryPending) return;
                       onRetry(item.id);
                     }}
                   >
-                    {retryingId === item.id ? "Reading again…" : "Read it again"}
-                    <span className="cw-visually-hidden"> — {item.display_name}</span>
+                    {anyRetryPending && retryingId === item.id
+                      ? "Reading again…"
+                      : "Read it again"}
+                    {/* The suffix is dropped while busy: keeping it changes the
+                        accessible name under a user whose focus is on the control. */}
+                    {anyRetryPending ? null : (
+                      <span className="cw-visually-hidden"> {item.display_name}</span>
+                    )}
                   </button>
                 ) : null}
               </td>
-              <td>{describeText(item)}</td>
-              <td>{formatDate(item.uploaded_at)}</td>
+              <td role="cell">{describeText(item)}</td>
+              <td role="cell">{formatDate(item.uploaded_at)}</td>
             </tr>
           ))}
         </tbody>

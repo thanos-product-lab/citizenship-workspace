@@ -38,12 +38,14 @@ from app.core.config import get_settings
 from app.core.storage import StorageAdapter, build_key
 from app.evidence import upload_token
 from app.evidence.domain import (
+    USER_RETRYABLE_FAILURE_CODES,
     EvidenceCategory,
     EvidenceFile,
     EvidenceItem,
     EvidenceProcessingRequested,
     EvidenceProcessingStatus,
     EvidenceUploaded,
+    ProcessingFailureCode,
     utcnow,
 )
 from app.evidence.repository import EvidenceRepository
@@ -299,6 +301,38 @@ RETRYABLE_STATUSES = frozenset(
 )
 
 
+def may_retry(status: EvidenceProcessingStatus, failure_code: str | None) -> bool:
+    """Whether asking again could reach a different answer.
+
+    The status alone is not enough, which is what the browser check found: `FAILED`
+    covers both a worker stopped by its own resource bound — worth another go, the box
+    may simply have been busy — and a password-protected document, which is
+    password-protected every time. Both were offered "Read it again"; pressing it on the
+    second spent a worker slot to reach the identical failure.
+
+    `PARTIALLY_COMPLETED` stays retryable regardless. Re-reading a scan does yield a scan,
+    so the answer is usually the same, but that is a *reading* the user may reasonably
+    want repeated after replacing the file's contents is not an option — and the cooldown
+    below is what stops it becoming a loop.
+
+    One function, used by the guard and by the projection that draws the button, so the
+    screen cannot offer what the command will refuse.
+    """
+    if status is EvidenceProcessingStatus.PARTIALLY_COMPLETED:
+        return True
+    if status is not EvidenceProcessingStatus.FAILED:
+        return False
+    # No code recorded: the run failed in a way nothing classified, so nothing can say
+    # the file is at fault. Offer the retry rather than closing the only door.
+    if failure_code is None:
+        return True
+    try:
+        return ProcessingFailureCode(failure_code) in USER_RETRYABLE_FAILURE_CODES
+    except ValueError:
+        # A code this build does not know. Same reasoning as above.
+        return True
+
+
 def request_reprocessing(
     session: Session,
     *,
@@ -317,7 +351,8 @@ def request_reprocessing(
 
     item, file = get_evidence(session, case=case, evidence_item_id=evidence_item_id)
     current = EvidenceProcessingStatus(item.processing_status)
-    if current not in RETRYABLE_STATUSES:
+    latest_run = EvidenceRepository.latest_run(session, evidence_item_id=item.id)
+    if not may_retry(current, latest_run.failure_code if latest_run else None):
         raise EvidenceNotRetryable(current.value)
 
     # A cooldown, because two of the retryable states are deterministic. Re-reading a
@@ -326,9 +361,8 @@ def request_reprocessing(
     # turn costing a full parse on a shared queue. There is no rate limiting anywhere in
     # this application yet, so the bound lives here, on the one command that is cheap to
     # ask for and expensive to serve.
-    latest = EvidenceRepository.latest_run(session, evidence_item_id=item.id)
-    if latest is not None:
-        since = (utcnow() - latest.started_at).total_seconds()
+    if latest_run is not None:
+        since = (utcnow() - latest_run.started_at).total_seconds()
         if since < RETRY_COOLDOWN_SECONDS:
             raise EvidenceRetryTooSoon(int(RETRY_COOLDOWN_SECONDS - since))
 

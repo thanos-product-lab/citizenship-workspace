@@ -704,6 +704,7 @@
   .cw-trips thead,
   .cw-trips tbody,
   .cw-trips tr,
+  .cw-trips th,
   .cw-trips td {
     display: block;
   }

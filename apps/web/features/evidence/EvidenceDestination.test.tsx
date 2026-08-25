@@ -13,6 +13,8 @@ vi.mock("@/lib/api", () => ({ useApiClient: () => client }));
 import { EvidenceDestination } from "./EvidenceDestination";
 
 const CASE_ID = "case-1";
+/** The default id `anItem` carries; named because the focus test addresses the row by it. */
+const ITEM_ID = "ev-1";
 
 /** Pick a file. `fireEvent` is the house convention; `files` needs defining by hand. */
 function choose(input: HTMLInputElement, file: File): void {
@@ -68,19 +70,25 @@ describe("EvidenceDestination", () => {
     const row = within(await screen.findByRole("row", { name: /Athens booking/ }));
     expect(row.getByText("Uploaded")).toBeTruthy();
     expect(row.getByText("Travel booking")).toBeTruthy();
-    expect(row.getByText("2 KB")).toBeTruthy();
+    // No extraction has run on this fixture, so the "What we read" column says so rather
+    // than answering with a file size — and "yet", because UPLOADED is not terminal and
+    // the row would otherwise read "State: Uploaded. What we read: Not read."
+    expect(row.getByText("Not read yet")).toBeTruthy();
     expect(row.getByText("booking.pdf")).toBeTruthy();
   });
 
-  it("says plainly that nothing has read the documents yet", async () => {
+  it("distinguishes reading a document from checking it against the case", async () => {
     get.mockResolvedValue({ data: aLibrary([anItem()]) });
     renderWithQuery(<EvidenceDestination caseId={CASE_ID} />);
 
-    // The whole point of the milestone boundary: a stored document is not a checked one,
-    // and the screen must not let a user infer otherwise. Stated once in the caption and
-    // once in the page note, not once per row.
-    expect(await screen.findByText(/Nothing has read them yet/)).toBeTruthy();
+    // The milestone boundary, and it moved in slice 3: text *is* now read, so the old
+    // copy ("nothing has read them yet") became false and this test caught it. What must
+    // stay true is the distinction the product turns on — reading a document is not
+    // checking it, and no figure in the assessment rests on anything but what the user
+    // typed.
+    expect(await screen.findByText(/does not check anything against your case/)).toBeTruthy();
     expect(screen.getByText(/rests on dates you entered yourself/)).toBeTruthy();
+    expect(screen.getByText(/nothing here is checked against your case/)).toBeTruthy();
   });
 
   it("offers no stage the product cannot reach", async () => {
@@ -297,7 +305,7 @@ describe("keyboard focus and announcements", () => {
     vi.unstubAllGlobals();
   });
 
-  it("returns focus to the heading when a retry succeeds", async () => {
+  it("returns focus to the heading when reloading the library succeeds", async () => {
     get.mockResolvedValueOnce({ data: undefined });
     renderWithQuery(<EvidenceDestination caseId={CASE_ID} />);
 
@@ -343,7 +351,9 @@ describe("what extraction found", () => {
     renderWithQuery(<EvidenceDestination caseId={CASE_ID} />);
 
     const row = within(await screen.findByRole("row", { name: /Athens booking/ }));
-    expect(row.getByText("Read")).toBeTruthy();
+    // "Text read", not "Read": heard as a bare word in a cell, "Read" is a homograph
+    // that flips from "this was done" to an instruction.
+    expect(row.getByText("Text read")).toBeTruthy();
     expect(row.getByText("3 pages")).toBeTruthy();
   });
 
@@ -445,5 +455,183 @@ describe("retrying", () => {
       expect(screen.getByRole("button", { name: /Reading again/ })).toBeTruthy(),
     );
     expect(screen.getByText("Failed")).toBeTruthy();
+  });
+});
+
+describe("focus after a retry", () => {
+  it("returns focus to the row rather than dropping it to the body", async () => {
+    // Verified in the browser before it was written: pressing "Read it again" moves the
+    // document to a non-retryable state, so the button unmounts and takes keyboard focus
+    // with it. `document.activeElement` was `<body>`. Third time this codebase has been
+    // caught by a control destroyed by the success it reports.
+    get.mockResolvedValue({
+      data: aLibrary([anItem({ processing_status: "FAILED", can_retry: true })]),
+    });
+    post.mockResolvedValue({ data: anItem({ processing_status: "VALIDATING" }) });
+
+    renderWithQuery(<EvidenceDestination caseId={CASE_ID} />);
+    const button = await screen.findByRole("button", { name: /Read it again/ });
+    button.focus();
+
+    // The document is no longer retryable, so the control goes away.
+    get.mockResolvedValue({
+      data: aLibrary([anItem({ processing_status: "VALIDATING", can_retry: false })]),
+    });
+    fireEvent.click(button);
+
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: /Read it again/ })).toBeNull(),
+    );
+    await waitFor(() => {
+      expect(document.activeElement).not.toBe(document.body);
+      expect(document.activeElement?.id).toBe(`evidence-row-${ITEM_ID}`);
+    });
+  });
+
+  it("holds focus on the button while the retry is still in flight", async () => {
+    // The counterpart, and the reason focus is armed in onSettled rather than in the click
+    // handler: moving it the moment the button is pressed yanks focus mid-press, before
+    // there is any outcome to move it for.
+    get.mockResolvedValue({
+      data: aLibrary([anItem({ processing_status: "FAILED", can_retry: true })]),
+    });
+    post.mockImplementation(() => new Promise(() => {}));
+
+    renderWithQuery(<EvidenceDestination caseId={CASE_ID} />);
+    const button = await screen.findByRole("button", { name: /Read it again/ });
+    button.focus();
+    fireEvent.click(button);
+
+    await waitFor(() => expect(button).toHaveAttribute("aria-disabled", "true"));
+    expect(document.activeElement).toBe(button);
+  });
+
+  it("announces that the document is being read again", async () => {
+    get.mockResolvedValue({
+      data: aLibrary([anItem({ processing_status: "FAILED", can_retry: true })]),
+    });
+    post.mockResolvedValue({ data: anItem({ processing_status: "VALIDATING" }) });
+
+    renderWithQuery(<EvidenceDestination caseId={CASE_ID} />);
+    fireEvent.click(await screen.findByRole("button", { name: /Read it again/ }));
+
+    await waitFor(() =>
+      expect(screen.getByText("Reading that document again.")).toBeTruthy(),
+    );
+  });
+});
+
+describe("copy that must hold in every state", () => {
+  it("says the same true thing when the case holds no documents", async () => {
+    // The trap this catches: copy that asserts a *state* rather than describing what the
+    // screen does. "Nothing here has been read yet" became false in slice 3; replacing
+    // it with "their text has been read" was false on an empty case. Both were caught in
+    // the browser, neither by a test.
+    get.mockResolvedValue({ data: aLibrary([]) });
+    renderWithQuery(<EvidenceDestination caseId={CASE_ID} />);
+
+    await screen.findByTestId("evidence-empty");
+    expect(screen.getByText(/nothing here is checked against your case/)).toBeTruthy();
+    expect(screen.queryByText(/has been read/)).toBeNull();
+  });
+});
+
+describe("what the screen says out loud", () => {
+  it("reports a refused retry instead of silently reverting", async () => {
+    // Not an edge case: PARTIALLY_COMPLETED is retryable and deterministically returns
+    // to PARTIALLY_COMPLETED, so "retry a scan, watch it come back, retry again" walks
+    // straight into the cooldown. Before this the label flipped back, the row was
+    // unchanged, and nothing on the page said why.
+    get.mockResolvedValue({
+      data: aLibrary([anItem({ processing_status: "PARTIALLY_COMPLETED", can_retry: true })]),
+    });
+    post.mockResolvedValue({
+      data: undefined,
+      error: { code: "EVIDENCE_RETRY_TOO_SOON", retry_after_seconds: 22 },
+    });
+
+    renderWithQuery(<EvidenceDestination caseId={CASE_ID} />);
+    fireEvent.click(await screen.findByRole("button", { name: /Read it again/ }));
+
+    await waitFor(() => expect(screen.getByText(/try again in 22 seconds/)).toBeTruthy());
+  });
+
+  it("explains a refusal that no amount of waiting fixes", async () => {
+    get.mockResolvedValue({
+      data: aLibrary([anItem({ processing_status: "FAILED", can_retry: true })]),
+    });
+    post.mockResolvedValue({ data: undefined, error: { code: "EVIDENCE_NOT_RETRYABLE" } });
+
+    renderWithQuery(<EvidenceDestination caseId={CASE_ID} />);
+    fireEvent.click(await screen.findByRole("button", { name: /Read it again/ }));
+
+    await waitFor(() =>
+      expect(screen.getByText(/Uploading a different file may help/)).toBeTruthy(),
+    );
+  });
+
+  it("announces a document finishing, having announced it starting", async () => {
+    // Polling rewrote the State cell every 1.5s with nothing reaching the live region, so
+    // a screen-reader user who asked for a re-read was told it started and never told how
+    // it ended — the half of the interaction carrying the answer.
+    get.mockResolvedValue({
+      data: aLibrary([anItem({ processing_status: "VALIDATING" })]),
+    });
+    renderWithQuery(<EvidenceDestination caseId={CASE_ID} />);
+    await screen.findByRole("row", { name: /Athens booking/ });
+
+    get.mockResolvedValue({
+      data: aLibrary([
+        anItem({ processing_status: "COMPLETED", page_count: 3, pages_read: 3, character_count: 900 }),
+      ]),
+    });
+
+    await waitFor(
+      () => expect(screen.getByText(/Athens booking: Text read/)).toBeTruthy(),
+      { timeout: 4000 },
+    );
+  });
+
+  it("does not announce documents that were already finished on arrival", async () => {
+    // Landing on a page of settled rows is not five things happening.
+    get.mockResolvedValue({
+      data: aLibrary([anItem({ processing_status: "COMPLETED", page_count: 1, pages_read: 1, character_count: 10 })]),
+    });
+    renderWithQuery(<EvidenceDestination caseId={CASE_ID} />);
+
+    await screen.findByRole("row", { name: /Athens booking/ });
+    expect(screen.queryByText(/Athens booking: Text read/)).toBeNull();
+  });
+
+  it("blocks every retry control while one is in flight", async () => {
+    // One mutation observer serves all rows, so a second press silently abandoned the
+    // first — its button reverted and its outcome was reported nowhere.
+    get.mockResolvedValue({
+      data: aLibrary([
+        anItem({ id: "a", processing_status: "FAILED", can_retry: true }),
+        anItem({ id: "b", display_name: "Second doc", processing_status: "FAILED", can_retry: true }),
+      ]),
+    });
+    post.mockImplementation(() => new Promise(() => {}));
+
+    renderWithQuery(<EvidenceDestination caseId={CASE_ID} />);
+    const buttons = await screen.findAllByRole("button", { name: /Read it again/ });
+    fireEvent.click(buttons[0]!);
+
+    await waitFor(() => {
+      for (const button of screen.getAllByRole("button", { name: /Read/ })) {
+        expect(button).toHaveAttribute("aria-disabled", "true");
+      }
+    });
+  });
+
+  it("never tells an assistive-technology user something the table contradicts", async () => {
+    // The upload announcement said "nothing has read it yet" — corrected in the caption
+    // and the page note when reading landed, missed here, and this is the only copy no
+    // sighted user ever sees.
+    const { container } = renderWithQuery(<EvidenceDestination caseId={CASE_ID} />);
+    await screen.findByTestId("evidence-empty");
+    const live = container.querySelector('[aria-live="polite"]');
+    expect(live?.textContent).not.toMatch(/nothing has read/i);
   });
 });

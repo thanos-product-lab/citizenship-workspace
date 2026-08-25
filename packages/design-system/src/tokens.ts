@@ -252,10 +252,15 @@ export const evidenceProcessingTokens: Record<
   completed: {
     colorVar: "--cw-status-supported",
     glyph: "check",
-    // "Read", not "Completed" — the state is §14.4's `COMPLETED`, but what a user needs
-    // to know is what was done, and what was done is that the text was read. Nothing has
-    // been understood, checked against the case, or turned into a fact.
-    label: "Read",
+    // "Text read", not "Completed" — the state is §14.4's `COMPLETED`, but what a user
+    // needs to know is what was *done*, and what was done is that the text was read.
+    // Nothing has been understood, checked against the case, or turned into a fact.
+    //
+    // Two words rather than one because "Read" alone is a homograph: heard as a bare
+    // word in a table cell with no syntactic context, a screen reader may render it
+    // /riːd/, flipping it from "this was done" to an instruction. It also collided with
+    // the row's own control, so a row read "Read … Read it again".
+    label: "Text read",
     meaning: "The text has been read. Nothing has been checked against your case yet.",
   },
   partially_completed: {

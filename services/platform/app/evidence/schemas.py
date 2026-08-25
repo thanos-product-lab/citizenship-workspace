@@ -28,7 +28,7 @@ from app.evidence.domain import (
     EvidenceProcessingRun,
     EvidenceProcessingStatus,
 )
-from app.evidence.service import RETRYABLE_STATUSES, SUPPORTED_MEDIA_TYPES, UploadGrant
+from app.evidence.service import SUPPORTED_MEDIA_TYPES, UploadGrant, may_retry
 
 
 class StartUploadRequest(BaseModel):
@@ -118,7 +118,9 @@ class EvidenceResponse(BaseModel):
     #: should know only the first 40 were read.
     text_truncated: bool = False
     #: Whether a retry would do anything. Computed here rather than in the client so the
-    #: rule lives in one place — the client must not decide `UNSUPPORTED` is retryable.
+    #: rule lives in one place — the client must not decide `UNSUPPORTED` is retryable —
+    #: and computed by the same `may_retry` the retry command guards with, so the button
+    #: cannot be offered for something the command will refuse.
     can_retry: bool = False
     media_type: str
     size_bytes: int
@@ -149,7 +151,7 @@ class EvidenceResponse(BaseModel):
             pages_read=text.pages_read if text else None,
             character_count=text.character_count if text else None,
             text_truncated=text.truncated if text else False,
-            can_retry=status in RETRYABLE_STATUSES,
+            can_retry=may_retry(status, run.failure_code if run else None),
             media_type=file.media_type,
             size_bytes=file.size_bytes,
             original_filename=file.original_filename,

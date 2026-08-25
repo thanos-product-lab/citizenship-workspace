@@ -911,3 +911,84 @@ _Known gaps carried forward:_
   it matters most.
 - **SSE is deferred** — ADR-0020. Polling is bounded by activity, and `UPLOADED` sits in
   neither the in-flight nor the terminal set because it means two different things.
+
+## M7 slice 3 — deterministic extraction, processing runs, retry
+
+A document now says what was read out of it. PyMuPDF reads the native text layer in the
+worker, the reading is stored in Postgres, and the library shows page count, pages read and
+character count. There is no model anywhere in this path — it decodes, it does not infer,
+which is why the output is neither an `ExtractedClaim` nor a `FactVersion` but untrusted
+material of exactly the same standing as the file it came from.
+
+**The bound that mattered was not the one in the plan.** §7.5 specified a page cap, a memory
+limit and a time limit. The page cap turned out to bound the wrong thing: it limits how much
+text comes *out*, not what it costs to get. A ~6 KB PDF whose content stream nests Form
+XObjects — each invoking the next twice — costs exponential time inside a single
+`get_text()` call and produces two characters. Seconds at depth 20, an hour at depth 30, from
+a genuine PDF three orders of magnitude under the upload limit that passes every check before
+this one. Any authenticated user could hold a worker slot indefinitely. The fix is a
+wall-clock deadline checked between pages, plus Celery's soft limit for the single page that
+never returns; `SoftTimeLimitExceeded` derives from `Exception`, so it had to be re-raised
+explicitly before the parser-failure handlers, which were otherwise reporting Celery's own
+deadline to the user as a corrupt file.
+
+**A three-page scan reported as "Read".** `character_count` was `len("\n".join(pages))`,
+which counts the separators — three empty pages gave 2 characters, `has_text_layer` came out
+true, and the user was told the text had been read from a document with no text in it. That
+is a false reassurance produced by a string operation, and directive 7 makes it the most
+important class of bug in the product. Counting page text and stripping whitespace fixed it;
+migration 0018's consistency constraint then rejected every corrected multi-page scan, so
+migration 0020 restates it against the content itself.
+
+Findings that were green only because nothing tested them: the accessibility review found
+that a retry refusal reverted the button and said nothing, that polling rewrote the state
+cell every 1.5 seconds without a word reaching the live region, and that focus landed on
+`<body>` when a successful retry unmounted the button under the user's finger. Writing the
+completion-announcement test found a fourth I had introduced in the fix: a row first seen
+mid-flight looked newly arrived at the moment it settled, so the one transition worth
+announcing was the one that stayed silent.
+
+`"Read"` became `"Text read"` in the same pass. Alone in a table cell it is a homograph — it
+flips between "this was done" and an instruction depending on how it is read aloud.
+
+**A false affordance the browser found and no test could have.** Retryability keyed on the
+processing status, and `FAILED` covers two unlike things: a worker stopped by its own
+resource bound, where the box may simply have been busy and asking again is reasonable, and
+a password-protected document, which is encrypted every time you read it. Both were offered
+"Read it again". Pressing it on the second spent a worker slot to reach the identical
+failure — the same mistake this module already refuses for `UNSUPPORTED`, whose comment
+reads "a button that cannot work is worse than no button". The domain already drew the line
+(`RESOURCE_LIMIT` is documented as user-retryable, the rest are properties of the file); the
+retry gate just never read it. Now one `may_retry` function serves both the command's guard
+and the projection that draws the button, so the screen cannot offer what the command will
+refuse.
+
+### Gate evidence — slice 3
+
+| # | Mutation | Result |
+|---|---|---|
+| 1 | remove the wall-clock deadline | 1 red — the nested-XObject fixture no longer returns |
+| 2 | swallow `SoftTimeLimitExceeded` in `extract` | 1 red — reported as `UnreadableDocument` |
+| 3 | `character_count = len("\n".join(pages))` | 1 red — the multi-page scan reads as `COMPLETED` |
+| 4 | ignore `retry_count` in the attempt bound | 1 red — redelivery loops past `MAX_ATTEMPTS` |
+| 5 | drop the `onSettled` focus arming | 2 red — focus falls to `<body>` |
+| 6 | return instead of throwing `RetryRefusal` | 2 red — the refusal is silent |
+| 7 | never announce a terminal transition | 1 red |
+| 8 | narrow the retry lock to the pressed row | 1 red — a second press abandons the first |
+| 9 | make every `FAILED` retryable regardless of code | 2 red — the password-protected button returns |
+
+_Known gaps carried forward:_
+
+- **320px reflow is unverified.** Chrome will not size a window below 606px wide, so the
+  narrowest real check available here is 606px, which passes. The `th` selector was added to
+  the reflow rule by inspection, not by seeing it.
+- **Live polling cannot be verified through the automated browser.** The driven window is
+  occluded, so `document.visibilityState` is `hidden` and TanStack Query suspends
+  `refetchInterval` — correctly, and it looks exactly like a broken poll. Overriding the
+  visibility API in page script showed the real behaviour: `Uploaded` → `No text found`
+  without a reload, with the transition announced. Worth knowing before someone else spends
+  an hour on the same false bug.
+- **`ReadTookTooLong` is terminal by choice, not by evidence.** A document that exhausted
+  the bound once will exhaust it again, and auto-retrying is three more chances to occupy a
+  worker. The user can still ask for it deliberately, which is a decision to revisit if an
+  honest slow document ever hits it.

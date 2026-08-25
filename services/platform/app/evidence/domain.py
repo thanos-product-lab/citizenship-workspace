@@ -337,6 +337,19 @@ TRANSIENT_FAILURE_CODES = frozenset(
     {ProcessingFailureCode.STORAGE_UNAVAILABLE, ProcessingFailureCode.TIMED_OUT}
 )
 
+#: Failures a *person* may ask to have another go at.
+#:
+#: Not the same question as `TRANSIENT_FAILURE_CODES`, which decides what the worker
+#: retries by itself. This decides whether the user is shown a button, and the test is
+#: whether running the same bytes again could possibly reach a different answer.
+#:
+#: Every other terminal code is a property of the file rather than of the attempt: a
+#: password-protected document is still password-protected on the fourth press, and
+#: offering that press is the false affordance this module already refuses for
+#: `UNSUPPORTED` ("a button that cannot work is worse than no button"). The honest action
+#: there is to upload a different file, which is what the failure message says.
+USER_RETRYABLE_FAILURE_CODES = TRANSIENT_FAILURE_CODES | {ProcessingFailureCode.RESOURCE_LIMIT}
+
 #: How a run's internal status becomes the state a user is shown (§14.4).
 #:
 #: Total over `ProcessingRunStatus` on purpose, and asserted to be in

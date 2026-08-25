@@ -508,10 +508,27 @@ def test_a_retry_writes_a_new_outbox_row_so_the_key_differs(
     # The cooldown is a rate limit, not the behaviour under test here.
     monkeypatch.setattr(evidence_service, "RETRY_COOLDOWN_SECONDS", 0.0)
 
-    item_id = _uploaded(api, "user_a", content=_fixture("password-protected.pdf"))
-    _process(item_id, idempotency_key="k1")
+    # A store that will not answer, so the document reaches `FAILED` by a route a retry
+    # could actually change. The password-protected fixture used to stand in here, which
+    # was convenient and wrong once retryability started reading the failure code: that
+    # document is encrypted every time, and the command now refuses it.
+    item_id = _uploaded(api, "user_a")
+
+    class Unreachable(InMemoryStorage):
+        def read_prefix(self, key: str, *, length: int) -> bytes:
+            raise StorageError("connection reset")
+
+    with pytest.raises(processing.TransientProcessingError):
+        _process(item_id, idempotency_key="k1", storage=Unreachable())
+    processing.abandon_run(
+        db_session,
+        idempotency_key="k1",
+        code=ProcessingFailureCode.STORAGE_UNAVAILABLE,
+        summary="We could not read this file. You can try again.",
+    )
     item = db_session.get(EvidenceItem, item_id)
-    assert item is not None and item.processing_status == EvidenceProcessingStatus.FAILED.value
+    assert item is not None
+    assert item.processing_status == EvidenceProcessingStatus.FAILED.value
 
     before = db_session.execute(select(func.count()).select_from(OutboxEventRecord)).scalar_one()
 
@@ -650,3 +667,61 @@ def test_abandoning_cannot_overwrite_a_run_that_already_succeeded(
     item = db_session.get(EvidenceItem, item_id)
     assert item is not None
     assert item.processing_status == EvidenceProcessingStatus.COMPLETED.value
+
+
+def test_a_password_protected_document_is_not_offered_a_retry(
+    api: Api, db_session: Session
+) -> None:
+    """Found in the browser, not by a test: the password-protected fixture reached
+    `FAILED` and was shown "Read it again", because retryability keyed on the status and
+    `FAILED` covers both a worker stopped by its own resource bound — worth another go,
+    the box may simply have been busy — and a file that is encrypted every time you read
+    it. Pressing it spent a worker slot to reach the identical failure, which is the same
+    false affordance `UNSUPPORTED` is already refused for.
+    """
+    from app.cases import service as cases_service
+    from app.evidence import service as evidence_service
+    from app.shared.errors import EvidenceNotRetryable
+    from tests.conftest import as_user
+
+    item_id = _uploaded(api, "user_a", content=_fixture("password-protected.pdf"))
+    _process(item_id, idempotency_key="k1")
+    item = db_session.get(EvidenceItem, item_id)
+    assert item is not None
+    assert item.processing_status == EvidenceProcessingStatus.FAILED
+
+    # The screen does not draw the button ...
+    response = api("user_a").get(f"/api/v1/cases/{item.case_id}/evidence/{item_id}")
+    assert response.status_code == 200
+    assert response.json()["can_retry"] is False
+
+    # ... and the command refuses it, so the two cannot drift apart.
+    user = as_user("user_a")
+    case = cases_service.get_case(db_session, case_id=item.case_id, user=user)
+    assert case is not None
+    with pytest.raises(EvidenceNotRetryable):
+        evidence_service.request_reprocessing(
+            db_session, case=case, user=user, evidence_item_id=item_id
+        )
+
+
+def test_a_worker_stopped_by_its_own_limit_is_still_offered_a_retry() -> None:
+    """The other half, and the reason this is not simply "FAILED is terminal".
+
+    `RESOURCE_LIMIT` says the *worker* stopped, which may have nothing to do with the
+    document — a busy box, a memory ceiling hit by something else. The user is allowed to
+    ask again; what they are not allowed is three automatic attempts, which is a separate
+    decision made in `TRANSIENT_FAILURE_CODES`.
+    """
+    from app.evidence.service import may_retry
+
+    assert may_retry(EvidenceProcessingStatus.FAILED, ProcessingFailureCode.RESOURCE_LIMIT)
+    assert may_retry(EvidenceProcessingStatus.FAILED, ProcessingFailureCode.STORAGE_UNAVAILABLE)
+    assert not may_retry(EvidenceProcessingStatus.FAILED, ProcessingFailureCode.CORRUPT_FILE)
+    assert not may_retry(EvidenceProcessingStatus.FAILED, ProcessingFailureCode.EMPTY_FILE)
+    # A scan is still worth asking about, and the cooldown is what bounds it.
+    assert may_retry(EvidenceProcessingStatus.PARTIALLY_COMPLETED, None)
+    # An unclassified or unknown failure keeps the door open rather than closing the only
+    # one: nothing has established that the file is at fault.
+    assert may_retry(EvidenceProcessingStatus.FAILED, None)
+    assert may_retry(EvidenceProcessingStatus.FAILED, "SOMETHING_A_LATER_BUILD_ADDED")

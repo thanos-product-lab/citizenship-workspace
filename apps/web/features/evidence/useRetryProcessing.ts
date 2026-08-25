@@ -17,18 +17,36 @@ import { assessmentTouched, caseKeys } from "@/lib/queries";
  * The response comes back in a non-terminal state, so `useEvidence` resumes polling on
  * its own rather than needing to be told.
  */
+export interface RetryRefusal {
+  /** The server's stable code, so the client never has to parse a sentence. */
+  code: string;
+  /** How long until a retry would be accepted, when the refusal is a cooldown. */
+  retryAfterSeconds?: number | undefined;
+}
+
 export function useRetryProcessing(caseId: string) {
   const api = useApiClient();
   const client = useQueryClient();
 
-  return useMutation({
+  return useMutation<unknown, RetryRefusal, string>({
     mutationKey: [...caseKeys.evidence(caseId), "retry"],
     mutationFn: async (evidenceItemId: string) => {
-      const { data } = await api.POST(
+      const { data, error } = await api.POST(
         "/api/v1/cases/{case_id}/evidence/{evidence_item_id}/retry",
         { params: { path: { case_id: caseId, evidence_item_id: evidenceItemId } } },
       );
-      if (!data) throw new Error("that document could not be sent for reprocessing");
+      if (!data) {
+        // The two refusals below are on the ordinary path, not edge cases:
+        // `PARTIALLY_COMPLETED` is retryable and deterministically returns to
+        // `PARTIALLY_COMPLETED`, so "retry a scan, watch it come back, retry again"
+        // walks straight into the cooldown. Throwing a shaped refusal rather than a bare
+        // Error is what lets the screen say which one happened, and for how long.
+        const refusal = error as { code?: string; retry_after_seconds?: number } | undefined;
+        throw {
+          code: refusal?.code ?? "RETRY_FAILED",
+          retryAfterSeconds: refusal?.retry_after_seconds,
+        } satisfies RetryRefusal;
+      }
       return data;
     },
     onSuccess: () => assessmentTouched(client, caseId),
