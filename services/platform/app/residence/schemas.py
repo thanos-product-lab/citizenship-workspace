@@ -7,6 +7,7 @@ M3B rules concern, deliberately not enforced at this input boundary.
 """
 
 import uuid
+from collections.abc import Sequence
 from datetime import date, datetime
 from typing import Literal
 
@@ -125,15 +126,31 @@ class TravelRecordResponse(BaseModel):
     entry_source: str
     notes: str | None
     lifecycle_status: str
+    #: Documents the user has attached to this trip (Domain §11.9).
+    #:
+    #: Ids only, and deliberately so. §11.8 requires a trip to "expose its support state",
+    #: which is a question about coverage, not about the documents — sending their names
+    #: and page counts here would duplicate the evidence library into every trip row and
+    #: make two places to keep in step. The client already holds the library and joins by
+    #: id.
+    #:
+    #: Empty means unevidenced. It does **not** mean the trip is unsupported in any
+    #: judged sense: nothing has read these documents to decide whether they support the
+    #: trip, and nothing does until M8.
+    supporting_evidence_item_ids: list[uuid.UUID] = []
     revision: int
     created_at: datetime
     updated_at: datetime
 
     @classmethod
     def from_domain(
-        cls, record: TravelRecord, version: TravelRecordVersion
+        cls,
+        record: TravelRecord,
+        version: TravelRecordVersion,
+        supporting_evidence_item_ids: Sequence[uuid.UUID] = (),
     ) -> "TravelRecordResponse":
         return cls(
+            supporting_evidence_item_ids=list(supporting_evidence_item_ids),
             id=record.id,
             case_id=record.case_id,
             version_number=version.version_number,
@@ -150,6 +167,16 @@ class TravelRecordResponse(BaseModel):
             created_at=record.created_at,
             updated_at=record.updated_at,
         )
+
+
+class AttachEvidenceInput(BaseModel):
+    """Which document to attach. The trip is in the path.
+
+    A body rather than a second path segment because the *document* is what the user
+    picked in this interaction — the trip is the row they were already looking at.
+    """
+
+    evidence_item_id: uuid.UUID
 
 
 class CsvImportInput(BaseModel):

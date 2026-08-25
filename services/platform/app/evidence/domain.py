@@ -220,6 +220,140 @@ class EvidenceFile(Base):
         return self.deleted_at is None
 
 
+class LinkAvailability(StrEnum):
+    """Domain §11.9, using §22.2's values.
+
+    Deliberately not a boolean and not a `deleted_at`. `DELETED` says the document is
+    gone; `UNAVAILABLE` says it exists but cannot currently be relied on. A historical
+    assessment needs to distinguish them to say *why* what it read no longer supports the
+    conclusion, and a nullable timestamp can only say "at some point, something".
+    """
+
+    AVAILABLE = "AVAILABLE"
+    DELETED = "DELETED"
+    UNAVAILABLE = "UNAVAILABLE"
+
+
+class EvidenceTravelLink(Base):
+    """A document attached to a trip (Domain §11.9).
+
+    **The record, not the version.** `travel_record_id` points at the record; editing a
+    trip's dates creates a new `TravelRecordVersion` and this link survives it untouched.
+    A version-scoped link would drop every attachment on every date correction, and the
+    travel-consistency rule would then report a newly unevidenced trip as though the user
+    had detached something — telling them they had lost evidence they still have. See
+    ADR-0021, which contrasts this with `FactEvidenceLink`'s opposite and equally correct
+    choice.
+
+    **`case_id` is denormalised onto the row.** It is derivable through either endpoint,
+    and it is stored anyway because it is what the RLS policy predicates on. A policy
+    that had to join to `travel_records` to find the tenant would be a policy whose
+    correctness depends on another table's policy.
+
+    **Unlinking sets `availability`, it does not delete the row.** Same reasoning as
+    §22.2: a historical assessment linked this row as an input, and that link has to keep
+    resolving to something that can say what it read and that it is no longer available
+    (§22.3). Deleting the row would leave the provenance graph with a dangling id.
+    """
+
+    __tablename__ = "evidence_travel_links"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    case_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("cases.id"), index=True)
+    travel_record_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("travel_records.id"), index=True)
+    evidence_item_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("evidence_items.id"), index=True)
+    _availability: Mapped[str] = mapped_column("availability", String(20))
+    linked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    unlinked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    @classmethod
+    def attach(
+        cls,
+        *,
+        case_id: uuid.UUID,
+        travel_record_id: uuid.UUID,
+        evidence_item_id: uuid.UUID,
+        at: datetime,
+    ) -> "EvidenceTravelLink":
+        return cls(
+            id=uuid.uuid4(),
+            case_id=case_id,
+            travel_record_id=travel_record_id,
+            evidence_item_id=evidence_item_id,
+            _availability=LinkAvailability.AVAILABLE.value,
+            linked_at=at,
+        )
+
+    @property
+    def availability(self) -> LinkAvailability:
+        return LinkAvailability(self._availability)
+
+    @property
+    def is_available(self) -> bool:
+        """Whether this link counts as coverage. The single place that question is
+        answered, so "evidenced" cannot come to mean two things in two modules."""
+        return self.availability is LinkAvailability.AVAILABLE
+
+    def withdraw(self, *, availability: LinkAvailability, at: datetime) -> None:
+        """Stop counting as coverage, for a stated reason.
+
+        Idempotent: withdrawing an already-withdrawn link keeps the *first* reason and
+        the first timestamp. A document deleted after being detached was detached, and
+        overwriting that would rewrite what the user did.
+        """
+        if availability is LinkAvailability.AVAILABLE:
+            raise IllegalTransition("withdraw needs a reason that is not AVAILABLE")
+        if not self.is_available:
+            return
+        self._availability = availability.value
+        self.unlinked_at = at
+
+
+@dataclass(frozen=True)
+class EvidenceAttachedToTravelRecord(DomainEvent):
+    aggregate_type: ClassVar[str] = "TravelRecord"
+    event_type: ClassVar[str] = "EvidenceAttachedToTravelRecord"
+
+    case_id: uuid.UUID
+    evidence_item_id: uuid.UUID
+    link_id: uuid.UUID
+
+    def payload(self) -> dict[str, Any]:
+        return {
+            "case_id": str(self.case_id),
+            "travel_record_id": str(self.aggregate_id),
+            "evidence_item_id": str(self.evidence_item_id),
+            "link_id": str(self.link_id),
+        }
+
+
+@dataclass(frozen=True)
+class EvidenceDetachedFromTravelRecord(DomainEvent):
+    """Its own event rather than a flag on the attach event.
+
+    The two are not symmetric in what they mean to a reader of `domain_events`: attaching
+    is the user asserting support, detaching is the user withdrawing it, and a conclusion
+    drawn between them rested on something that no longer holds.
+    """
+
+    aggregate_type: ClassVar[str] = "TravelRecord"
+    event_type: ClassVar[str] = "EvidenceDetachedFromTravelRecord"
+
+    case_id: uuid.UUID
+    evidence_item_id: uuid.UUID
+    link_id: uuid.UUID
+    availability: str
+
+    def payload(self) -> dict[str, Any]:
+        return {
+            "case_id": str(self.case_id),
+            "travel_record_id": str(self.aggregate_id),
+            "evidence_item_id": str(self.evidence_item_id),
+            "link_id": str(self.link_id),
+            "availability": self.availability,
+        }
+
+
 def utcnow() -> datetime:
     return datetime.now(UTC)
 

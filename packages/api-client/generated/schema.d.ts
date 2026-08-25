@@ -423,6 +423,48 @@ export interface paths {
         patch: operations["edit_travel_record_api_v1_cases__case_id__travel_records__travel_record_id__patch"];
         trace?: never;
     };
+    "/api/v1/cases/{case_id}/travel-records/{travel_record_id}/evidence": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Attach Evidence
+         * @description Attach a document to a trip.
+         *
+         *     200 rather than 201 even when a link is created: what the caller gets back is the
+         *     trip, which already existed, and the client re-renders a row rather than following a
+         *     Location. Re-attaching something already attached is also a 200 — the user asked for
+         *     a state that already holds (see `links.attach_to_travel_record`).
+         */
+        post: operations["attach_evidence_api_v1_cases__case_id__travel_records__travel_record_id__evidence_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cases/{case_id}/travel-records/{travel_record_id}/evidence/{evidence_item_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Detach Evidence */
+        delete: operations["detach_evidence_api_v1_cases__case_id__travel_records__travel_record_id__evidence__evidence_item_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/me": {
         parameters: {
             query?: never;
@@ -517,6 +559,20 @@ export interface components {
             saved: false;
             windows_after: components["schemas"]["SimulatedWindowsResponse"];
             windows_before: components["schemas"]["SimulatedWindowsResponse"] | null;
+        };
+        /**
+         * AttachEvidenceInput
+         * @description Which document to attach. The trip is in the path.
+         *
+         *     A body rather than a second path segment because the *document* is what the user
+         *     picked in this interaction — the trip is the row they were already looking at.
+         */
+        AttachEvidenceInput: {
+            /**
+             * Evidence Item Id
+             * Format: uuid
+             */
+            evidence_item_id: string;
         };
         /**
          * CaseOverview
@@ -1741,6 +1797,11 @@ export interface components {
             /** Revision */
             revision: number;
             /**
+             * Supporting Evidence Item Ids
+             * @default []
+             */
+            supporting_evidence_item_ids: string[];
+            /**
              * Updated At
              * Format: date-time
              */
@@ -2715,6 +2776,75 @@ export interface operations {
                 "application/json": components["schemas"]["TravelRecordEditInput"];
             };
         };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TravelRecordResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    attach_evidence_api_v1_cases__case_id__travel_records__travel_record_id__evidence_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                travel_record_id: string;
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AttachEvidenceInput"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TravelRecordResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    detach_evidence_api_v1_cases__case_id__travel_records__travel_record_id__evidence__evidence_item_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                travel_record_id: string;
+                evidence_item_id: string;
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {

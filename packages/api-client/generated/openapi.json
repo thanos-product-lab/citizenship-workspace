@@ -70,6 +70,21 @@
         "title": "ApplicationDateSimulationResponse",
         "type": "object"
       },
+      "AttachEvidenceInput": {
+        "description": "Which document to attach. The trip is in the path.\n\nA body rather than a second path segment because the *document* is what the user\npicked in this interaction \u2014 the trip is the row they were already looking at.",
+        "properties": {
+          "evidence_item_id": {
+            "format": "uuid",
+            "title": "Evidence Item Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "evidence_item_id"
+        ],
+        "title": "AttachEvidenceInput",
+        "type": "object"
+      },
       "CaseOverview": {
         "description": "The case overview read model (Domain \u00a744.1).\n\n`open_issue_count` is present from M6: with issue derivation running, a zero genuinely\nmeans the system looked and found nothing. **`evidence_coverage` is still absent** \u2014\ndocuments can be uploaded from M7 slice 1, but nothing links one to a requirement or\na trip until slice 4, so coverage is not a thing the system can measure yet. A zero\nwould claim a check nobody ran, which is a stronger statement than the product can\nmake.",
         "properties": {
@@ -2905,6 +2920,15 @@
             "title": "Revision",
             "type": "integer"
           },
+          "supporting_evidence_item_ids": {
+            "default": [],
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Supporting Evidence Item Ids",
+            "type": "array"
+          },
           "updated_at": {
             "format": "date-time",
             "title": "Updated At",
@@ -4610,6 +4634,143 @@
           }
         ],
         "summary": "Edit Travel Record",
+        "tags": [
+          "travel-records"
+        ]
+      }
+    },
+    "/api/v1/cases/{case_id}/travel-records/{travel_record_id}/evidence": {
+      "post": {
+        "description": "Attach a document to a trip.\n\n200 rather than 201 even when a link is created: what the caller gets back is the\ntrip, which already existed, and the client re-renders a row rather than following a\nLocation. Re-attaching something already attached is also a 200 \u2014 the user asked for\na state that already holds (see `links.attach_to_travel_record`).",
+        "operationId": "attach_evidence_api_v1_cases__case_id__travel_records__travel_record_id__evidence_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "travel_record_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Travel Record Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Case Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AttachEvidenceInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TravelRecordResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Attach Evidence",
+        "tags": [
+          "travel-records"
+        ]
+      }
+    },
+    "/api/v1/cases/{case_id}/travel-records/{travel_record_id}/evidence/{evidence_item_id}": {
+      "delete": {
+        "operationId": "detach_evidence_api_v1_cases__case_id__travel_records__travel_record_id__evidence__evidence_item_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "travel_record_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Travel Record Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "evidence_item_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Evidence Item Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Case Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TravelRecordResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Detach Evidence",
         "tags": [
           "travel-records"
         ]

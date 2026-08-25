@@ -70,6 +70,13 @@ NO_CONSUMER: frozenset[str] = frozenset(
         "TravelRecordCreated",
         "TravelRecordVersionCreated",
         "TravelRecordRemoved",
+        # Evidence coverage: same reasoning as the residence inputs above. Attaching or
+        # detaching a document stales `residence.travel_consistency` synchronously, in the
+        # link change's own transaction. Nothing asynchronous is owed — and in particular
+        # nothing re-reads the document, because a link is the user's assertion rather
+        # than a request for the machine to check anything (ADR-0021).
+        "EvidenceAttachedToTravelRecord",
+        "EvidenceDetachedFromTravelRecord",
         # Assessment and issue outcomes: history, not work.
         "AssessmentRunCompleted",
         "AssessmentRunFailed",

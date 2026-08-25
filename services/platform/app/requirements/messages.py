@@ -398,6 +398,17 @@ STALE_REASON_TEMPLATES: dict[str, _Template] = {
     "ROUTE_PROFILE_CHANGED": lambda p: (
         "Your immigration status details changed after this was worked out."
     ),
+    # "documents you attached", not "your evidence": the user attached them, and the
+    # sentence has to work whether they added one, removed one, or deleted the file.
+    "EVIDENCE_SUPPORT_CHANGED": lambda p: (
+        "The documents attached to your travel records changed after this was worked out."
+    ),
+    # Says the rules changed, and stops there. It deliberately does not say "your result
+    # may change" — nobody has rechecked it yet, so that would be a guess, and a guess
+    # about eligibility is the one thing this product does not make.
+    "RULE_VERSION_CHANGED": lambda p: (
+        "We updated how this requirement is checked, so this needs working out again."
+    ),
 }
 
 

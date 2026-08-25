@@ -26,10 +26,12 @@ from app.auth.dependencies import get_current_user
 from app.auth.schemas import CurrentUser
 from app.cases.dependencies import require_case_access
 from app.cases.domain import ApplicationCase
+from app.evidence import links
 from app.residence import service, timeline
 from app.residence.domain import TravelRecordFields
 from app.residence.schemas import (
     ApplicationDateSimulationResponse,
+    AttachEvidenceInput,
     CsvImportInput,
     ImportCommitResponse,
     ImportValidationResponse,
@@ -41,6 +43,7 @@ from app.residence.schemas import (
     TravelRecordInput,
     TravelRecordResponse,
 )
+from app.shared.errors import TravelRecordNotFound
 from app.shared.tenant import get_tenant_session
 
 router = APIRouter(prefix="/api/v1/cases/{case_id}/application-dates", tags=["application-dates"])
@@ -136,7 +139,80 @@ def list_travel_records(
     session: Annotated[Session, Depends(get_tenant_session)],
 ) -> list[TravelRecordResponse]:
     outcomes = service.list_travel_records(session, case=case)
-    return [TravelRecordResponse.from_domain(o.record, o.version) for o in outcomes]
+    # One coverage read for the whole list rather than one per trip: twelve trips would
+    # otherwise be twelve queries for a column the user reads at a glance.
+    coverage = links.coverage_for_case(session, case_id=case.id)
+    return [
+        TravelRecordResponse.from_domain(o.record, o.version, coverage.get(o.record.id, ()))
+        for o in outcomes
+    ]
+
+
+@travel_records_router.post(
+    "/{travel_record_id}/evidence",
+    response_model=TravelRecordResponse,
+    status_code=status.HTTP_200_OK,
+)
+def attach_evidence(
+    travel_record_id: uuid.UUID,
+    body: AttachEvidenceInput,
+    case: Annotated[ApplicationCase, Depends(require_case_access)],
+    session: Annotated[Session, Depends(get_tenant_session)],
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+) -> TravelRecordResponse:
+    """Attach a document to a trip.
+
+    200 rather than 201 even when a link is created: what the caller gets back is the
+    trip, which already existed, and the client re-renders a row rather than following a
+    Location. Re-attaching something already attached is also a 200 — the user asked for
+    a state that already holds (see `links.attach_to_travel_record`).
+    """
+    links.attach_to_travel_record(
+        session,
+        case=case,
+        user=user,
+        travel_record_id=travel_record_id,
+        evidence_item_id=body.evidence_item_id,
+    )
+    return _travel_record_with_coverage(session, case, travel_record_id)
+
+
+@travel_records_router.delete(
+    "/{travel_record_id}/evidence/{evidence_item_id}", response_model=TravelRecordResponse
+)
+def detach_evidence(
+    travel_record_id: uuid.UUID,
+    evidence_item_id: uuid.UUID,
+    case: Annotated[ApplicationCase, Depends(require_case_access)],
+    session: Annotated[Session, Depends(get_tenant_session)],
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+) -> TravelRecordResponse:
+    links.detach_from_travel_record(
+        session,
+        case=case,
+        user=user,
+        travel_record_id=travel_record_id,
+        evidence_item_id=evidence_item_id,
+    )
+    return _travel_record_with_coverage(session, case, travel_record_id)
+
+
+def _travel_record_with_coverage(
+    session: Session, case: ApplicationCase, travel_record_id: uuid.UUID
+) -> TravelRecordResponse:
+    """Re-read the trip after a link change so the response carries fresh coverage.
+
+    Re-read rather than patched in memory: the command committed, and the response should
+    describe what is in the database rather than what the handler believes it put there.
+    """
+    outcomes = service.list_travel_records(session, case=case)
+    outcome = next((o for o in outcomes if o.record.id == travel_record_id), None)
+    if outcome is None:  # pragma: no cover - the command already resolved this record
+        raise TravelRecordNotFound()
+    coverage = links.coverage_for_case(session, case_id=case.id)
+    return TravelRecordResponse.from_domain(
+        outcome.record, outcome.version, coverage.get(outcome.record.id, ())
+    )
 
 
 @travel_records_router.post(

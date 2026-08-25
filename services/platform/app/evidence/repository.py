@@ -16,6 +16,8 @@ from app.evidence.domain import (
     EvidenceItem,
     EvidenceLifecycleStatus,
     EvidenceProcessingRun,
+    EvidenceTravelLink,
+    LinkAvailability,
 )
 
 
@@ -170,3 +172,74 @@ class EvidenceRepository:
         )
         existing = list(session.execute(stmt).scalars().all())
         return max(existing, default=0) + 1
+
+
+class EvidenceLinkRepository:
+    """Queries over `evidence_travel_links` (Domain §11.9).
+
+    Its own class rather than more methods on `EvidenceRepository`: a link is a relation
+    between two aggregates, and every question asked of it is about coverage rather than
+    about a document. Keeping them apart stops "list the case's evidence" and "list what
+    evidences this case's trips" from becoming the same method with a flag.
+    """
+
+    @staticmethod
+    def add(session: Session, link: EvidenceTravelLink) -> None:
+        session.add(link)
+
+    @staticmethod
+    def live_for_case(session: Session, *, case_id: uuid.UUID) -> list[EvidenceTravelLink]:
+        """Every link currently counting as coverage, ordered for determinism.
+
+        Ordered by id because the rule that reads this writes one `AssessmentInputLink`
+        per row, and an unordered read would make provenance rows arrive in a different
+        order on every recalculation — comparing two assessments would then show a diff
+        where nothing changed.
+        """
+        stmt = (
+            select(EvidenceTravelLink)
+            .where(
+                EvidenceTravelLink.case_id == case_id,
+                EvidenceTravelLink._availability == LinkAvailability.AVAILABLE.value,
+            )
+            .order_by(EvidenceTravelLink.id)
+        )
+        return list(session.execute(stmt).scalars())
+
+    @staticmethod
+    def live_between(
+        session: Session,
+        *,
+        case_id: uuid.UUID,
+        travel_record_id: uuid.UUID,
+        evidence_item_id: uuid.UUID,
+    ) -> EvidenceTravelLink | None:
+        """The live link joining these two, if there is one.
+
+        Read before attaching so a repeated attach is answered as "already attached"
+        rather than by a unique-index violation surfacing as a 500. The index is still
+        there — this is the courteous path, not the guarantee.
+        """
+        stmt = select(EvidenceTravelLink).where(
+            EvidenceTravelLink.case_id == case_id,
+            EvidenceTravelLink.travel_record_id == travel_record_id,
+            EvidenceTravelLink.evidence_item_id == evidence_item_id,
+            EvidenceTravelLink._availability == LinkAvailability.AVAILABLE.value,
+        )
+        return session.execute(stmt).scalar_one_or_none()
+
+    @staticmethod
+    def live_for_evidence_item(
+        session: Session, *, case_id: uuid.UUID, evidence_item_id: uuid.UUID
+    ) -> list[EvidenceTravelLink]:
+        """Every live link pointing at one document — what slice 5 withdraws on deletion."""
+        stmt = (
+            select(EvidenceTravelLink)
+            .where(
+                EvidenceTravelLink.case_id == case_id,
+                EvidenceTravelLink.evidence_item_id == evidence_item_id,
+                EvidenceTravelLink._availability == LinkAvailability.AVAILABLE.value,
+            )
+            .order_by(EvidenceTravelLink.id)
+        )
+        return list(session.execute(stmt).scalars())

@@ -169,6 +169,32 @@ class EvidenceUploadIncomplete(DomainError):
     code = "EVIDENCE_UPLOAD_INCOMPLETE"
 
 
+class EvidenceNotAttachable(DomainError):
+    """A document was offered as support for a trip while it is still being read.
+
+    Not a failure of the document — it may well succeed. But coverage would flip as
+    processing settled, and a support state that changes on its own is one a user cannot
+    act on. `FAILED` and `UNSUPPORTED` documents *are* attachable: the user may know
+    perfectly well what is in a scan the parser could not read, and the link is their
+    assertion, not the machine's."""
+
+    code = "EVIDENCE_NOT_ATTACHABLE"
+
+    def __init__(self, processing_status: str) -> None:
+        self.processing_status = processing_status
+        super().__init__(f"a document that is {processing_status} cannot be attached yet")
+
+
+class EvidenceLinkNotFound(DomainError):
+    """No live link joins this trip and this document.
+
+    Covers absent, already detached, and belonging to another case — one response for all
+    three, because distinguishing them would tell a caller whether an id they guessed
+    exists somewhere."""
+
+    code = "EVIDENCE_LINK_NOT_FOUND"
+
+
 class StateWithoutEventError(RuntimeError):
     """A unit of work tried to commit business state without emitting a domain event.
 
@@ -285,6 +311,26 @@ def register_exception_handlers(app: FastAPI) -> None:
                 "detail": "The upload did not complete; try uploading again.",
                 "code": exc.code,
             },
+        )
+
+    @app.exception_handler(EvidenceNotAttachable)
+    async def _not_attachable(_request: Request, exc: EvidenceNotAttachable) -> JSONResponse:
+        # 409: the document is real and the request is well-formed; it is simply not
+        # settled yet. The user's action is to wait, which is a state, not a malformed ask.
+        return JSONResponse(
+            status_code=status.HTTP_409_CONFLICT,
+            content={
+                "detail": str(exc),
+                "code": exc.code,
+                "processing_status": exc.processing_status,
+            },
+        )
+
+    @app.exception_handler(EvidenceLinkNotFound)
+    async def _link_not_found(_request: Request, exc: EvidenceLinkNotFound) -> JSONResponse:
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
+            content={"detail": "That document is not attached to this trip.", "code": exc.code},
         )
 
     @app.exception_handler(CsvImportMalformed)

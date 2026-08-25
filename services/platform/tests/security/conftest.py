@@ -50,6 +50,7 @@ CASE_SCOPED_TABLES: tuple[str, ...] = (
     "evidence_files",
     "evidence_processing_runs",
     "evidence_file_texts",
+    "evidence_travel_links",
 )
 
 SUPPORTED_ANSWERS = {
@@ -79,11 +80,26 @@ def seeded_case(api: Api, db_session: Session) -> str:
     # which is the only path that writes an issue_resolutions row.
     _add_trip(api, user, case_id, "2024-02-01", "2024-02-20")
     api(user).post(f"/api/v1/cases/{case_id}/assessments/recalculate")
-    _upload_document(api, user, case_id, db_session)
+    item_id = _upload_document(api, user, case_id, db_session)
+    _attach_document_to_a_trip(api, user, case_id, item_id)
     return case_id
 
 
-def _upload_document(api: Api, user: str, case_id: str, session: Session) -> None:
+def _attach_document_to_a_trip(api: Api, user: str, case_id: str, item_id: str) -> None:
+    """Put one row in `evidence_travel_links`, through the real command.
+
+    Through the route rather than by direct insert, unlike the processing rows above: the
+    attach command is cheap, synchronous, and has no worker-style multi-commit shape, so
+    none of the `StaleDataError` reasoning that forced direct inserts there applies here.
+    """
+    trips = api(user).get(f"/api/v1/cases/{case_id}/travel-records").json()
+    api(user).post(
+        f"/api/v1/cases/{case_id}/travel-records/{trips[0]['id']}/evidence",
+        json={"evidence_item_id": item_id},
+    )
+
+
+def _upload_document(api: Api, user: str, case_id: str, session: Session) -> str:
     """Put one document in the case, through the real two-call upload path.
 
     The bytes go into the in-process store rather than MinIO — this suite is about row
@@ -174,6 +190,7 @@ def _upload_document(api: Api, user: str, case_id: str, session: Session) -> Non
     )
     session.commit()
     session.expire_all()
+    return str(item["id"])
 
 
 def _add_trip(api: Api, user: str, case_id: str, departure: str, return_: str) -> None:

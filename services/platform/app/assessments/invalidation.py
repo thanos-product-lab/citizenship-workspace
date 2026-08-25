@@ -43,6 +43,15 @@ class StaleReason:
     APPLICATION_DATE_CHANGED = "APPLICATION_DATE_CHANGED"
     TRAVEL_RECORD_CHANGED = "TRAVEL_RECORD_CHANGED"
     ROUTE_PROFILE_CHANGED = "ROUTE_PROFILE_CHANGED"
+    #: A document was attached to or detached from a trip, or a linked document was
+    #: deleted. Distinct from `TRAVEL_RECORD_CHANGED`, and the distinction is the whole
+    #: reason evidence gets its own input kind: attaching a booking does not change how
+    #: many days the user was absent, only how well supported their account of it is.
+    EVIDENCE_SUPPORT_CHANGED = "EVIDENCE_SUPPORT_CHANGED"
+    #: The rule that produced the result is no longer the active one (ADR-0022). Written
+    #: by an activation migration rather than by a command, because there is no request in
+    #: flight when a deployment changes the rules.
+    RULE_VERSION_CHANGED = "RULE_VERSION_CHANGED"
 
 
 @dataclass(frozen=True)
