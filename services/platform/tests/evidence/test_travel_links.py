@@ -486,3 +486,34 @@ def test_withdrawing_a_removed_trips_links_is_recorded_in_the_history(
     assert len(payloads) == 1
     assert payloads[0]["availability"] == "UNAVAILABLE"
     assert payloads[0]["travel_record_id"] == trip_id
+
+
+def test_the_fingerprint_query_cannot_see_another_tenants_documents(
+    rls_sessionmaker: object, api: Api, db_session: Session
+) -> None:
+    """The disclosure boundary from the *policy's* side (Domain §15).
+
+    The queue-level test in `tests/issues` covers two cases owned by the same user, where
+    the query's own `case_id` filter is the only thing separating them. This covers the
+    other half: a second tenant's identical document, on the non-superuser connection, so
+    RLS is what refuses. Both halves are needed — the filter would not stop a different
+    tenant if the policy were dropped, and the policy would not stop the caller's own
+    other case.
+    """
+    from app.evidence.repository import EvidenceRepository
+    from app.shared.tenant import set_tenant
+
+    a_case, _ = _case_with_trip(api, "user_a")
+    _document(api, "user_a", a_case, name="Athens booking")
+    b_case, _ = _case_with_trip(api, "user_b", title="B's case")
+    _document(api, "user_b", b_case, name="Athens booking")
+
+    maker = rls_sessionmaker
+    assert callable(maker)
+    with maker() as session:
+        set_tenant(session, "user_a")
+        # user_a asking about user_b's case sees nothing at all — not "no duplicates", but
+        # no rows, because the policy hides them.
+        assert EvidenceRepository.fingerprints_for_case(session, case_id=uuid.UUID(b_case)) == []
+        mine = EvidenceRepository.fingerprints_for_case(session, case_id=uuid.UUID(a_case))
+        assert len(mine) == 1, "and their own case is unaffected"

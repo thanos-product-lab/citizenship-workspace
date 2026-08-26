@@ -70,21 +70,39 @@ class EvidenceRepository:
         return [(item, file) for item, file in session.execute(stmt).all()]
 
     @staticmethod
-    def case_holds_evidence(session: Session, *, case_id: uuid.UUID) -> bool:
-        """Whether the case holds at least one live document.
+    def fingerprints_for_case(
+        session: Session, *, case_id: uuid.UUID
+    ) -> list[tuple[uuid.UUID, str, str]]:
+        """`(item_id, display_name, checksum)` for every live document in one case.
 
-        Its own query rather than `bool(list_uploaded_for_case(...))`: the caller only
-        needs to know *whether*, and materialising every item and file row to test a list
-        for emptiness gets more expensive with every document the user adds.
+        **Case-scoped, and that is a disclosure boundary rather than a filter** (Domain
+        §15). A checksum is a content fingerprint, so widening this query would answer
+        "does anyone else hold this exact document?" — a question about another user, asked
+        by a user who never asked it. RLS would stop a *different tenant's* rows, but not
+        the caller's own other cases, and neither would stop a future caller passing no
+        case at all. The signature makes that impossible.
 
-        Counts items, not attachments. The question is "has this user started providing
-        documents", which is what the `MISSING_EVIDENCE` suppression gate turns on.
+        The item's **current** file only, joined through `current_file_id`. An item whose
+        superseded version once shared a checksum with another item is not a duplicate now,
+        and reporting it as one would name a file the user has already replaced.
+
+        Non-ACTIVE items are excluded, so slice 5's deletion clears any duplicate issue
+        through the ordinary reconciliation path with no extra call site.
+
+        Ordered, because the issue message names *the other* document and an unordered read
+        would let that name change between two reconciliations of unchanged state.
         """
-        stmt = select(EvidenceItem.id).where(
-            EvidenceItem.case_id == case_id,
-            EvidenceItem._lifecycle_status == EvidenceLifecycleStatus.ACTIVE.value,
+        stmt = (
+            select(EvidenceItem.id, EvidenceItem.display_name, EvidenceFile.checksum)
+            .join(EvidenceFile, EvidenceFile.id == EvidenceItem.current_file_id)
+            .where(
+                EvidenceItem.case_id == case_id,
+                EvidenceItem._lifecycle_status == EvidenceLifecycleStatus.ACTIVE.value,
+                EvidenceFile.deleted_at.is_(None),
+            )
+            .order_by(EvidenceItem.created_at, EvidenceItem.id)
         )
-        return session.execute(stmt.limit(1)).first() is not None
+        return [(row[0], row[1], row[2]) for row in session.execute(stmt)]
 
     @staticmethod
     def get_current_file(session: Session, *, evidence_item_id: uuid.UUID) -> EvidenceFile | None:

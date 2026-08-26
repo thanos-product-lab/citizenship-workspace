@@ -79,26 +79,45 @@ TRIP_11_INDEX = 10
 # it: a hole in otherwise complete coverage, rather than an artefact of an empty library.
 TRIP_6_INDEX = 5
 
-#: A minimal, valid, single-page PDF. Generated here rather than read from a fixture file
-#: so the seed has no dependency on the test tree and nothing binary is committed
-#: (CLAUDE.md §2.9 — every value in it is visible in reviewable source).
-#:
-#: Deliberately not a *convincing* booking. The seed's job is to make coverage real — a
-#: document exists and is attached — and nothing in M7 reads it. Inventing plausible
-#: reference numbers here would put fake-looking personal data in the repository for no
-#: gain.
-_SEED_PDF = (
-    b"%PDF-1.4\n"
-    b"1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n"
-    b"2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\n"
-    b"3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 200 200]/Contents 4 0 R"
-    b"/Resources<</Font<</F1 5 0 R>>>>>>endobj\n"
-    b"4 0 obj<</Length 52>>stream\n"
-    b"BT /F1 12 Tf 20 100 Td (Synthetic travel document) Tj ET\n"
-    b"endstream endobj\n"
-    b"5 0 obj<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>endobj\n"
-    b"trailer<</Root 1 0 R>>"
-)
+
+def _seed_pdf(trip: "DemoTrip") -> bytes:
+    """A minimal, valid, single-page PDF naming one destination.
+
+    Built here rather than read from a fixture file so the seed has no dependency on the
+    test tree and nothing binary is committed — every value in it is visible in reviewable
+    source (CLAUDE.md §2.9).
+
+    **Per trip, not per destination and not one shared constant.** The first version
+    returned the same bytes for all eleven, which the slice-4b checksum detection reported
+    as eleven duplicates — correctly, because they *were* the same file. Keying on the
+    destination fixed most of it and left six: the demo visits Spain, Italy and the United
+    States twice each, so a document naming only the country is still the same document for
+    both trips. The departure date is what makes it this trip's document.
+
+    That is also the truthful shape. A booking is for a journey, not for a country.
+
+    Still deliberately not a *convincing* booking. Nothing in M7 reads it, and inventing
+    plausible reference numbers would put fake-looking personal data in the repository for
+    no gain.
+    """
+    text = f"Synthetic travel document - {trip.destination_label} {trip.departure_date}"
+    stream = f"BT /F1 12 Tf 20 100 Td ({text}) Tj ET\n".encode()
+    return (
+        b"%PDF-1.4\n"
+        b"1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n"
+        b"2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\n"
+        b"3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 300 200]/Contents 4 0 R"
+        b"/Resources<</Font<</F1 5 0 R>>>>>>endobj\n"
+        # The length is computed, not hardcoded: a literal would silently disagree with the
+        # stream the moment the text changed, and a parser reads the declared length.
+        b"4 0 obj<</Length "
+        + str(len(stream)).encode()
+        + b">>stream\n"
+        + stream
+        + b"endstream endobj\n"
+        b"5 0 obj<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>endobj\n"
+        b"trailer<</Root 1 0 R>>"
+    )
 
 
 def seed_demo_case(session: Session, *, user_id: str) -> uuid.UUID:
@@ -198,13 +217,14 @@ def _attach_travel_documents(
     for index, record in enumerate(records):
         if index == TRIP_6_INDEX:
             continue
+        content = _seed_pdf(DEMO_TRIPS[index])
         grant = evidence_service.start_upload(
             storage,
             case=case,
             media_type="application/pdf",
-            declared_size_bytes=len(_SEED_PDF),
+            declared_size_bytes=len(content),
         )
-        _upload_bytes(storage, grant, _SEED_PDF)
+        _upload_bytes(storage, grant, content)
         item, _file = evidence_service.record_upload(
             session,
             storage,

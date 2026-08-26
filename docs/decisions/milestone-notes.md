@@ -1198,3 +1198,98 @@ _Known gaps carried forward:_
 - **`DUPLICATE_TRAVEL_RECORD` and `DUPLICATE_EVIDENCE` are 4b.** §7.8 and the Domain enum
   now distinguish a duplicate travel *record* from a duplicate *document*; neither
   detection is built.
+
+## M7 slice 4b — the two duplicate detections
+
+One issue type had been carrying two unrelated meanings. RULES_SPEC §7.8 named
+`DUPLICATE_EVIDENCE` for *"two active trips with identical dates and destination"* — a
+duplicated **travel record** — and Domain §15 named it for *"duplicate checksum detection"* —
+a duplicated **document**. Different causes, different affected objects, different remedies.
+4a split them on paper; this slice builds both.
+
+**Mostly this is accuracy, not new capability.** Identical trips were already reported —
+as `OVERLAPPING_TRAVEL`, because identical dates means identical absent-date sets, which
+intersect. That is the less accurate word for them and it points at the wrong fix: correct a
+date, when what the user needs is to remove a row. So a duplicate now supersedes the overlap
+*issue* for the pair it names, scoped to that pair — a trip overlapping something other than
+its own duplicate still says so.
+
+**Neither detection changes a conclusion**, and that shaped the design. Totals are the
+cardinality of a union (§5.2), so a trip recorded twice contributes the days it would have
+contributed once — there is no figure to correct. The evaluator adds a limitation and leaves
+the banding alone, which means:
+
+- Two identical week-long trips still overlap, still band `INCONSISTENT`. Only the issue
+  changes.
+- Two identical **zero-day** trips (depart *D*, return *D+1*) have empty absent sets, which
+  do not intersect. They never overlapped and still do not — this is the case the overlap
+  detection could not see at all. Banding duplicates `INCONSISTENT` in their own right would
+  have downgraded a verdict on records that distort nothing.
+
+**"Identical destination" needs both fields.** The country code is normalised but nullable —
+derived from the label, set only for known countries — so codes alone would never catch a
+duplicate among free-text destinations like "Conference" or "Mum's house", which are exactly
+the entries a slip duplicates. The label alone reads "Spain" and "España" as different trips
+when the product already knows they are one country. So: the code where both trips have one,
+the case- and whitespace-normalised label where either does not, in prefixed comparison
+spaces so an unmapped label reading like an ISO code cannot collide with the real thing.
+
+**`DUPLICATE_EVIDENCE` has no rule behind it, and that is a boundary worth naming.** A
+duplicated file is not something a requirement concludes; no rule reads it, and inventing one
+would put a document-management fact into the eligibility model. It derives from an evidence
+snapshot passed into `derive`, as `recalculation_failed` already did. The module docstring
+now draws the real distinction — not "results versus inputs" but **derived versus
+recomputed**: nothing here may re-decide what a rule already decided.
+
+That also collapsed 4a's coverage gate. `case_holds_evidence: bool` became `bool(evidence)`
+off the same snapshot, so one read serves both and the two can no longer disagree about what
+"holds a document" means.
+
+**No migration.** `issues.issue_type` is a plain `String(40)` with no check constraint —
+unlike `severity`, `status` and `dismissibility`, which all have one. Worth recording,
+because the absence is what made a new issue type a code change only.
+
+### The detection found a defect in the seed within minutes
+
+The canonical case went from two standing issues to twelve. The detection was right: 4a's
+seed uploaded **eleven byte-identical PDFs**, one per evidenced trip. Keying the content on
+the destination fixed most of it and left six — the demo visits Spain, Italy and the United
+States twice each, so a document naming only the country is still the same document for both
+trips. Keying on the trip (destination *and* departure date) is both unique and the truthful
+shape: a booking is for a journey, not for a country.
+
+Eleven identical files labelled for eleven different countries was a small lie in a fixture
+whose whole purpose is to be a truthful example. Nothing in M7 reads these documents, so
+nothing would have noticed but this.
+
+### Gate evidence — slice 4b
+
+| # | Mutation | Result |
+|---|---|---|
+| 1 | Do not suppress the overlap for a duplicate pair | 2 red |
+| 2 | Suppress overlap case-wide once any duplicate exists | 1 red — the genuine overlap vanishes |
+| 3 | Compare labels raw instead of normalised | 1 red |
+| 4 | Drop the case filter from the checksum query | 2 red — both halves of the boundary |
+| 5 | Include non-ACTIVE items in the checksum query | 1 red |
+| 6 | Let the duplicate detection change the conclusion | 1 red — the zero-day pair |
+
+`just lint`, `just typecheck`, **754 backend tests**, 310 frontend, `just test-rules` green,
+zero API-client drift, no migration.
+
+Verified in Chrome: duplicating the Greece trip produces two `DUPLICATE_TRAVEL_RECORD` items
+and **no** `OVERLAPPING_TRAVEL`; uploading a byte-identical copy of a seeded document produces
+two `DUPLICATE_EVIDENCE` items naming each other, **without recalculating** — which is 4a's
+reconcile-on-upload fix paying for itself.
+
+_Known gaps carried forward:_
+
+- **Cross-case duplicate detection is permanently out of scope**, now recorded in Domain §15
+  as a disclosure boundary rather than an implementation note. A checksum is a content
+  fingerprint, so widening the query would answer "does anyone else hold this exact
+  document?" — about another user, to a user who never asked. Tested from both sides: the
+  caller's own second case (where the query's `case_id` filter is the only separation) and
+  another tenant's case on the non-superuser connection (where RLS is).
+- **Neither duplicate can be resolved yet, only dismissed.** Removing a trip clears its
+  duplicate items; removing a *document* is slice 5. Until then the only way to clear a
+  `DUPLICATE_EVIDENCE` item is to set it aside, which is why dismissible is the right call
+  and would have been even without §15's word "possible".

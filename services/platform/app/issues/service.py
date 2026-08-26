@@ -35,6 +35,7 @@ from app.issues.derivation import (
     LIMITATION_OVERLAPPING,
     LIMITATION_UNCERTAIN,
     DesiredIssue,
+    EvidenceSnapshot,
     LimitationTargets,
     RequirementSnapshot,
     TravelSnapshot,
@@ -96,7 +97,7 @@ def reconcile(
         travel=_travel_snapshots(session, case_id),
         targets=_limitation_targets(session, case_id, requirements),
         recalculation_failed=_recalculation_failed(session, case_id),
-        case_holds_evidence=_case_holds_evidence(session, case_id),
+        evidence=_evidence_snapshots(session, case_id),
     )
     desired_by_key = {issue.deduplication_key: issue for issue in desired}
 
@@ -329,19 +330,24 @@ def _limitation_targets(
     )
 
 
-def _case_holds_evidence(session: Session, case_id: uuid.UUID) -> bool:
-    """Whether the user has uploaded anything at all.
+def _evidence_snapshots(session: Session, case_id: uuid.UUID) -> list[EvidenceSnapshot]:
+    """The case's live documents, for duplicate detection and for the coverage gate.
 
-    The one fact the `MISSING_EVIDENCE` suppression gate turns on — see
-    `derivation._missing_evidence_issues` for why it exists.
+    One read serving both, which is the point: the gate turns on whether the case holds any
+    document, and deriving that from this list (`bool(evidence)`) rather than from a
+    separate count means the two cannot disagree about what "holds a document" means.
 
-    Deliberately "holds a document", not "has attached a document to something". Once a
-    user has uploaded one file they are evidencing the case, and the trips they have not
-    got to yet are exactly the gaps worth listing. Keying on *attachment* instead would
-    make the first attach open issues for all eleven other trips, which reads as being
-    punished for making progress.
+    "Holds a document", not "has attached one to something". Once a user has uploaded a
+    file they are evidencing the case, and the trips they have not got to yet are exactly
+    the gaps worth listing. Keying the gate on *attachment* would make the first attach open
+    issues for every other trip, which reads as being punished for progress.
     """
-    return EvidenceRepository.case_holds_evidence(session, case_id=case_id)
+    return [
+        EvidenceSnapshot(item_id=str(item_id), display_name=display_name, checksum=checksum)
+        for item_id, display_name, checksum in EvidenceRepository.fingerprints_for_case(
+            session, case_id=case_id
+        )
+    ]
 
 
 def _reshape(issue: Issue, wanted: DesiredIssue) -> bool:

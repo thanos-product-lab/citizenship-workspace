@@ -5,7 +5,15 @@ load-bearing rather than tidy. Reconciliation resolves any open issue this modul
 name, so anything non-deterministic here would open and close issues across otherwise
 identical writes — a queue that flaps and a history full of noise.
 
-**Everything derives from assessment results and their limitations, not from raw inputs.**
+**Almost everything derives from assessment results and their limitations, not from raw
+inputs.** The exceptions are the facts no rule concludes: whether the last recalculation
+failed, and — from M7 slice 4b — the case's documents. A duplicated *file* is not something
+a requirement decides; no rule reads it, and inventing one would put a document-management
+fact into the eligibility model. Those arrive as snapshots of durable case state, passed in
+by the service, and are as pure a function here as the rest.
+
+The distinction that matters is not "results versus inputs" but **derived versus
+recomputed**: nothing in this module may re-decide something a rule already decided.
 The evaluators already decide which travel records matter: `UNCERTAIN_TRAVEL_DATE` is
 window-scoped, because a questionable date on a trip wholly outside the qualifying period
 cannot distort a total (RULES_SPEC §7.8). Re-deriving that window here would be a second
@@ -27,6 +35,7 @@ from app.requirements.domain import Conclusion, Currency
 AFFECTED_REQUIREMENT = "Requirement"
 AFFECTED_TRAVEL_RECORD = "TravelRecord"
 AFFECTED_CASE = "Case"
+AFFECTED_EVIDENCE = "Evidence"
 
 #: Limitation codes this module reads. Named here so a rename in the evaluator that this
 #: module fails to follow is visible in one place rather than as a quietly empty queue.
@@ -90,6 +99,20 @@ class TravelSnapshot:
 
 
 @dataclass(frozen=True)
+class EvidenceSnapshot:
+    """One live document, as the queue needs to see it.
+
+    Carries the checksum because duplicate detection is a comparison between documents and
+    has no rule behind it (see the module docstring). It carries nothing else about the
+    file — not its media type, not its processing state, and above all not its text.
+    """
+
+    item_id: str
+    display_name: str
+    checksum: str
+
+
+@dataclass(frozen=True)
 class LimitationTargets:
     """Which *records* the evaluator's limitations named, resolved from the version ids they
     actually carry, and whether that judgement is still current.
@@ -132,9 +155,9 @@ def derive(
     travel: list[TravelSnapshot],
     targets: LimitationTargets,
     recalculation_failed: bool = False,
-    # No default: `False` suppresses every coverage issue, so forgetting it would drop
-    # them silently rather than failing.
-    case_holds_evidence: bool,
+    # No default: an empty list suppresses every coverage issue, so forgetting it would
+    # drop them silently rather than failing.
+    evidence: list[EvidenceSnapshot],
 ) -> list[DesiredIssue]:
     """The complete desired open-issue set for a case.
 
@@ -146,7 +169,54 @@ def derive(
         issues.append(_processing_failure(case_id))
     for requirement in requirements:
         issues.extend(_requirement_issues(requirement))
-    issues.extend(_travel_issues(travel, targets, case_holds_evidence=case_holds_evidence))
+    issues.extend(_travel_issues(travel, targets, case_holds_evidence=bool(evidence)))
+    issues.extend(_duplicate_evidence_issues(evidence))
+    return issues
+
+
+def _duplicate_evidence_issues(evidence: list[EvidenceSnapshot]) -> list[DesiredIssue]:
+    """One item per document sharing its contents with another in the same case (§15).
+
+    Per document rather than per group, matching `OVERLAPPING_TRAVEL` and
+    `DUPLICATE_TRAVEL_RECORD`: the user acts on *a* document, and a group has no single
+    affected object to name. Removing either copy clears both, because the remaining one
+    stops sharing.
+
+    INFORMATION and dismissible. Nothing in any assessment depends on either copy — no rule
+    reads a document at all until M8 — and §15's word is *possible*: two files with
+    identical bytes may well have been uploaded deliberately under different categories.
+
+    The message names the other document, which is why grouping happens here rather than in
+    SQL: an issue that said only "this is a duplicate" would leave the user hunting for what
+    it duplicates.
+    """
+    by_checksum: dict[str, list[EvidenceSnapshot]] = {}
+    for item in evidence:
+        by_checksum.setdefault(item.checksum, []).append(item)
+
+    issues: list[DesiredIssue] = []
+    for group in by_checksum.values():
+        if len(group) < 2:
+            continue
+        for item in group:
+            others = [other.display_name for other in group if other.item_id != item.item_id]
+            issues.append(
+                DesiredIssue(
+                    issue_type=IssueType.DUPLICATE_EVIDENCE,
+                    severity=IssueSeverity.INFORMATION,
+                    dismissibility=Dismissibility.DISMISSIBLE,
+                    title_code="ISSUE_DUPLICATE_EVIDENCE",
+                    affected_object_type=AFFECTED_EVIDENCE,
+                    affected_object_id=item.item_id,
+                    message_parameters={
+                        "display_name": item.display_name,
+                        # Named, and only the first where there are several: "the same as
+                        # A, B and C" is a sentence about the group, and this issue is
+                        # about one document.
+                        "other_name": others[0],
+                    },
+                )
+            )
     return issues
 
 

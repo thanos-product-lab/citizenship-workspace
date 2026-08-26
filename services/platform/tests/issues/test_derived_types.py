@@ -9,11 +9,13 @@ issue was NOT_DISMISSIBLE, so the endpoint and the reconciler's handling of a di
 were guarded only by unit-level tests.
 """
 
+import uuid
 from collections.abc import Callable
 from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy.orm import Session
 
 pytestmark = pytest.mark.integration
 
@@ -512,12 +514,19 @@ def test_the_narrow_margin_issue_names_the_inputs_that_move_it(api: Api) -> None
 # --- MISSING_EVIDENCE --------------------------------------------------------
 
 
-def _upload(api: Api, case_id: str, *, user: str = "user_a", name: str = "A booking") -> str:
+def _upload(
+    api: Api,
+    case_id: str,
+    *,
+    user: str = "user_a",
+    name: str = "A booking",
+    content: bytes | None = None,
+) -> str:
     """Put one real document in the case, through the two-call upload path."""
     from app.core.storage import InMemoryStorage, get_storage
     from tests.evidence.conftest import fixture_bytes
 
-    content = fixture_bytes("travel-booking.pdf")
+    content = content if content is not None else fixture_bytes("travel-booking.pdf")
     grant = (
         api(user)
         .post(
@@ -790,3 +799,111 @@ def test_identical_zero_day_trips_are_caught_though_they_never_overlapped(api: A
     queue = _queue(api, case_id)
     assert len(_of_type(queue, "DUPLICATE_TRAVEL_RECORD")) == 2
     assert _of_type(queue, "OVERLAPPING_TRAVEL") == []
+
+
+# --- DUPLICATE_EVIDENCE ------------------------------------------------------
+
+
+def test_uploading_the_same_file_twice_flags_both_copies(api: Api) -> None:
+    """Domain §15. One item per document, not one per group: the user acts on *a*
+    document, and removing either copy clears both because the other stops sharing."""
+    case_id = _case(api)
+    _upload(api, case_id, name="Athens booking")
+    _upload(api, case_id, name="Athens booking (copy)")
+
+    issues = _of_type(_queue(api, case_id), "DUPLICATE_EVIDENCE")
+    assert len(issues) == 2
+    titles = sorted(issue["title"] for issue in issues)
+    assert titles == [
+        "Athens booking (copy) is already in your documents",
+        "Athens booking is already in your documents",
+    ]
+
+
+def test_the_duplicate_document_issue_names_the_other_copy(api: Api) -> None:
+    """An issue that said only "this is a duplicate" would leave the user hunting for what
+    it duplicates. It says "the same contents as", never "the same document" — what matched
+    is a checksum, and two identical files may have been uploaded deliberately."""
+    case_id = _case(api)
+    _upload(api, case_id, name="Athens booking")
+    _upload(api, case_id, name="Return flight")
+
+    issues = _of_type(_queue(api, case_id), "DUPLICATE_EVIDENCE")
+    bodies = " ".join(issue["body"] for issue in issues)
+    assert "Athens booking" in bodies
+    assert "Return flight" in bodies
+    assert "same contents as" in bodies
+
+
+def test_the_duplicate_document_issue_is_information_the_user_may_set_aside(api: Api) -> None:
+    case_id = _case(api)
+    _upload(api, case_id, name="One")
+    _upload(api, case_id, name="Two")
+
+    issue = _of_type(_queue(api, case_id), "DUPLICATE_EVIDENCE")[0]
+    assert issue["severity"] == "INFORMATION"
+    assert issue["dismissibility"] == "DISMISSIBLE"
+    assert "Nothing in your assessment depends on either copy" in issue["body"]
+
+
+def test_two_different_files_are_not_duplicates(api: Api) -> None:
+    case_id = _case(api)
+    _upload(api, case_id, name="Athens booking")
+    _upload(api, case_id, name="A scan", content=b"%PDF-1.4 something else entirely")
+
+    assert _of_type(_queue(api, case_id), "DUPLICATE_EVIDENCE") == []
+
+
+def test_the_duplicate_appears_without_recalculating(api: Api) -> None:
+    """Uploading stales nothing, so nothing invalidates — but `record_upload` reconciles,
+    which is what makes the queue answer immediately. Without that the user would upload a
+    second copy, see nothing, and find out at their next unrelated edit."""
+    case_id = _case(api)
+    _upload(api, case_id, name="One")
+    assert _of_type(_queue(api, case_id), "DUPLICATE_EVIDENCE") == []
+
+    _upload(api, case_id, name="Two")
+
+    assert len(_of_type(_queue(api, case_id), "DUPLICATE_EVIDENCE")) == 2
+
+
+def test_an_identical_file_in_another_case_raises_nothing(api: Api) -> None:
+    """The disclosure boundary (Domain §15), from the caller's side.
+
+    Both cases belong to the same user, so RLS does not separate them — the case scoping in
+    the query is what does. Widening it would answer "does anyone else hold this exact
+    document?", which is a question about another user that nobody asked.
+    """
+    mine = _case(api)
+    also_mine = _case(api)
+    _upload(api, mine, name="Athens booking")
+    _upload(api, also_mine, name="Athens booking")
+
+    assert _of_type(_queue(api, mine), "DUPLICATE_EVIDENCE") == []
+    assert _of_type(_queue(api, also_mine), "DUPLICATE_EVIDENCE") == []
+
+
+def test_a_deleted_document_stops_being_a_duplicate(api: Api, db_session: Session) -> None:
+    """The exclusion that lets slice 5 clear these issues for free.
+
+    Deletion is not built yet, so this drives the lifecycle column directly — the point is
+    the *query's* contract, not the command that will eventually set it. With
+    non-ACTIVE items excluded, deleting one copy resolves both issues through the ordinary
+    reconciliation path, and slice 5 needs no extra call site.
+    """
+    from app.evidence.domain import EvidenceItem, EvidenceLifecycleStatus
+
+    case_id = _case(api)
+    first = _upload(api, case_id, name="One")
+    _upload(api, case_id, name="Two")
+    assert len(_of_type(_queue(api, case_id), "DUPLICATE_EVIDENCE")) == 2
+
+    item = db_session.get(EvidenceItem, uuid.UUID(first))
+    assert item is not None
+    item._lifecycle_status = EvidenceLifecycleStatus.DELETION_PENDING.value
+    db_session.commit()
+
+    # Reconciliation runs on the next write; an upload is the cheapest one that reconciles.
+    _upload(api, case_id, name="Unrelated", content=b"%PDF-1.4 entirely different bytes")
+
+    assert _of_type(_queue(api, case_id), "DUPLICATE_EVIDENCE") == []
