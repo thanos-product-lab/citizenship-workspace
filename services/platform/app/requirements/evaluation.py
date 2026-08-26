@@ -386,16 +386,20 @@ class TripInput:
     #: that into a construction error at the one place trips are built.
     travel_record_id: uuid.UUID
     is_trusted: bool
+    #: Both destination fields, for §7.8's duplicate detection. Neither alone is enough:
+    #: the code is normalised but nullable, the label is always present but unnormalised.
+    #: See `_same_place`.
+    #:
+    #: Neither has a default, and the label is the reason: `""` is precisely the value that
+    #: makes two unrelated same-date trips look like one place, so a forgotten field would
+    #: *invent* duplicates rather than fail. Same argument as `travel_record_id` above.
+    destination_country_code: str | None
+    destination_label: str
     date_confidence: str = "EXACT"
     #: Carried raw for the data-quality rule, like `date_confidence`. Coarser than
     #: `is_trusted`, which additionally requires EXACT dates: §7.8's unevidenced detection
     #: is about *confirmed* trips, and a confirmed trip with estimated dates is confirmed.
     review_state: str = "CONFIRMED"
-    #: Both destination fields, for §7.8's duplicate detection. Neither alone is enough:
-    #: the code is normalised but nullable, the label is always present but unnormalised.
-    #: See `_destination_key`.
-    destination_country_code: str | None = None
-    destination_label: str = ""
 
 
 @dataclass(frozen=True)
@@ -428,22 +432,61 @@ def _app_date_link(inputs: ResidenceAssessmentInputs) -> InputLinkSpec:
     return InputLinkSpec(LinkInputKind.APPLICATION_DATE_VERSION, inputs.application_date_version_id)
 
 
-def _destination_key(trip: TripInput) -> str:
-    """How two trips are judged to name the same place (§7.8).
+def _same_place(left: TripInput, right: TripInput) -> bool:
+    """§7.8: the same destination when both records have a country code and it matches, or
+    — where either does not — when their normalised labels match.
 
-    The country code where the trip has one, the normalised label where it does not — and
-    the two spaces are kept apart by a prefix, so an unmapped label that happens to read
-    like a country code cannot collide with the real thing.
-
-    Neither field alone works. The code is nullable, derived from the label and set only
-    for known countries, so codes alone would never detect a duplicate among free-text
-    destinations — which are exactly the entries a slip is most likely to duplicate. The
-    label alone would read "Spain" and "España" as different trips when the product already
-    knows they are one country.
+    Two fields rather than one, because neither alone works. The code is normalised but
+    nullable, so codes alone would never detect a duplicate among free-text destinations
+    like "Conference", which are exactly the entries a slip is most likely to duplicate.
+    The label alone would read "Spain" and "España" as different trips when the product
+    already knows they are one country.
     """
-    if trip.destination_country_code:
-        return f"code:{trip.destination_country_code.upper()}"
-    return f"label:{' '.join(trip.destination_label.split()).casefold()}"
+    if left.destination_country_code and right.destination_country_code:
+        return left.destination_country_code.upper() == right.destination_country_code.upper()
+    return _normalised_label(left) == _normalised_label(right)
+
+
+def _normalised_label(trip: TripInput) -> str:
+    return " ".join(trip.destination_label.split()).casefold()
+
+
+def _duplicate_groups(trips: tuple[TripInput, ...]) -> list[list[TripInput]]:
+    """Trips grouped into "the same trip, entered more than once" (§7.8).
+
+    Identical dates *and* destination. Dates bucket exactly; destination uses `_same_place`.
+
+    **The grouping is the transitive closure of `_same_place`, and it has to be.** That
+    relation is not itself transitive: a trip with code `ES` and label "Spain" matches a
+    codeless "Spain" by label, and matches an `ES` "España" by code, while those two match
+    each other by neither. A first implementation sidestepped this by computing one
+    canonical key per trip — the code if present, else the label — which is transitive but
+    is a *different rule*: it never falls back to the label for a pair where only one side
+    carries a code, so the most likely duplicate in the product (import a history, then
+    re-enter a trip by hand) went undetected.
+
+    The spec's relation is the one that wins (CLAUDE.md precedence), and closing it
+    transitively is what makes "a group of duplicates" well-defined: if A is the same trip
+    as B and A is the same trip as C, then all three are one trip.
+    """
+    groups: list[list[TripInput]] = []
+    by_dates: dict[tuple[date, date], list[list[TripInput]]] = {}
+    for trip in trips:
+        buckets = by_dates.setdefault((trip.departure_date, trip.return_date), [])
+        # Merge every bucket this trip matches, not just the first: joining two previously
+        # separate groups is exactly what the transitive closure means.
+        matched = [b for b in buckets if any(_same_place(trip, other) for other in b)]
+        if not matched:
+            buckets.append([trip])
+            continue
+        merged = [trip]
+        for bucket in matched:
+            merged.extend(bucket)
+            buckets.remove(bucket)
+        buckets.append(merged)
+    for buckets in by_dates.values():
+        groups.extend(bucket for bucket in buckets if len(bucket) > 1)
+    return groups
 
 
 def _evidence_links(links: tuple["EvidenceLinkInput", ...]) -> tuple[InputLinkSpec, ...]:
@@ -677,10 +720,14 @@ def _evaluate_travel_consistency(inputs: ResidenceAssessmentInputs) -> Evaluated
     totals are surfaced. Detections are structured limitations; conflicts/overlaps →
     INCONSISTENT, uncertain dates → INCOMPLETE, else SUPPORTED.
 
-    From v2.0.0 it also reads evidence coverage (§7.8, "confirmed trip with no available
-    evidence link"). Duplicate *travel record* detection — identical dates and destination,
-    raising `DUPLICATE_TRAVEL_RECORD` — is slice 4b; absent-set overlap already catches
-    identical-date trips here."""
+    From v2.0.0 it reads evidence coverage (§7.8, "confirmed trip with no available evidence
+    link"). From v2.1.0 it detects duplicate *travel records* — identical dates and
+    destination — and scopes the overlap limitation so a pair whose overlap is fully
+    explained by being duplicates is reported once, as a duplicate.
+
+    That scoping is not cosmetic: an identical pair of *zero-day* trips (depart D, return
+    D+1) has empty absent sets, which never intersected, so absent-set overlap never caught
+    them at all."""
     trips = inputs.trips
     anchor = physical_presence_date(inputs.application_date)
     qwindow = qualifying_window(inputs.application_date)
@@ -708,18 +755,63 @@ def _evaluate_travel_consistency(inputs: ResidenceAssessmentInputs) -> Evaluated
             )
         )
 
+    # Duplicate records (§7.8, from slice 4b). Identical dates *and* destination.
+    #
+    # Computed before the overlap detection because it *scopes* it: identical trips
+    # necessarily overlap, and reporting that overlap would send the user to correct a date
+    # when what they need is to remove a row.
+    #
+    # Deliberately does not touch the banding below. A trip recorded twice contributes the
+    # days it would have contributed once — totals are the cardinality of a union (§5.2) —
+    # so there is no figure to correct.
+    duplicate_group: dict[uuid.UUID, int] = {
+        trip.travel_record_version_id: index
+        for index, group in enumerate(_duplicate_groups(trips))
+        for trip in group
+    }
+    if duplicate_group:
+        limitations.append(
+            Limitation(
+                "DUPLICATE_TRAVEL_RECORD",
+                LimitationSeverity.INFORMATION,
+                affected_input_ids=tuple(sorted(str(i) for i in duplicate_group)),
+            )
+        )
+
+    # Overlaps, in two sets that answer two different questions.
+    #
+    # `overlapping` drives the conclusion: *any* intersecting pair makes the records
+    # inconsistent, duplicates included, so the verdict is unchanged by this slice.
+    #
+    # `overlapping_beyond_duplicates` is what the limitation names, and therefore what the
+    # issue queue reports. A pair that is two copies of one trip has its overlap fully
+    # explained by being a duplicate, so it is left out — the duplicate item covers it.
+    #
+    # The exclusion is per *pair*, which is the whole point and is what a first version got
+    # wrong. Subtracting the duplicated records wholesale (in `issues.derivation`, no less,
+    # where a rules judgement does not belong) silently dropped genuine overlaps: two
+    # duplicated Greece trips and two duplicated Italy trips that overlap each other
+    # produced four duplicate items and *no* overlap item, even though the Greece/Italy
+    # overlap survives removing both duplicates.
     overlapping: set[uuid.UUID] = set()
+    overlapping_beyond_duplicates: set[uuid.UUID] = set()
     ids = list(absents)
     for i, left in enumerate(ids):
         for right in ids[i + 1 :]:
-            if absents[left] & absents[right]:
-                overlapping.update((left, right))
-    if overlapping:
+            if not absents[left] & absents[right]:
+                continue
+            overlapping.update((left, right))
+            same_duplicate_group = left in duplicate_group and duplicate_group[
+                left
+            ] == duplicate_group.get(right)
+            if not same_duplicate_group:
+                overlapping_beyond_duplicates.update((left, right))
+    if overlapping_beyond_duplicates:
         limitations.append(
             Limitation(
                 "OVERLAPPING_TRAVEL",
                 LimitationSeverity.REVIEW_REQUIRED,
-                affected_input_ids=tuple(sorted(str(i) for i in overlapping)),
+                affected_input_ids=tuple(sorted(str(i) for i in overlapping_beyond_duplicates)),
             )
         )
 
@@ -741,28 +833,6 @@ def _evaluate_travel_consistency(inputs: ResidenceAssessmentInputs) -> Evaluated
                 LimitationSeverity.CAUTION,
                 message_parameters={"physical_presence_date": anchor.isoformat()},
                 affected_input_ids=tuple(str(t.travel_record_version_id) for t in boundary),
-            )
-        )
-
-    # Duplicate records (§7.8, from slice 4b). Identical dates *and* destination.
-    #
-    # Deliberately does not touch the banding below. A trip recorded twice contributes the
-    # days it would have contributed once — totals are the cardinality of a union (§5.2) —
-    # so there is no figure to correct. What a duplicate changes is which issue the user is
-    # shown, and that decision lives in `issues.derivation`.
-    by_identity: dict[tuple[date, date, str], list[TripInput]] = {}
-    for trip in trips:
-        key = (trip.departure_date, trip.return_date, _destination_key(trip))
-        by_identity.setdefault(key, []).append(trip)
-    duplicated = [t for group in by_identity.values() if len(group) > 1 for t in group]
-    if duplicated:
-        limitations.append(
-            Limitation(
-                "DUPLICATE_TRAVEL_RECORD",
-                LimitationSeverity.INFORMATION,
-                affected_input_ids=tuple(
-                    sorted(str(t.travel_record_version_id) for t in duplicated)
-                ),
             )
         )
 

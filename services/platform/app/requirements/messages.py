@@ -379,6 +379,18 @@ LIMITATION_TEMPLATES: dict[str, _Template] = {
         f"{format_date(p.get('physical_presence_date'))}, the first day of your "
         "qualifying period — the single day presence is tested on."
     ),
+    # Says what was found, not what to do about it. Two identical rows are almost always a
+    # slip, and "almost always" is not "always" — the product cannot tell a mis-entry from
+    # two real trips on the same dates, so it reports and leaves the judgement.
+    # Says the days are counted once — which is true — and stops there. An earlier version
+    # said "no figure is affected either way", which is a claim about *removing* one, and
+    # that is false when the pair is split on trust: a CONFIRMED+EXACT copy beside an
+    # ESTIMATED one contributes to the trusted total, and deleting the wrong one drops it
+    # to zero. The sentence invited a removal it called inert.
+    "DUPLICATE_TRAVEL_RECORD": lambda p: (
+        "This trip has the same dates and destination as another one. Days outside the UK "
+        "are counted once, so the second record is not adding days to your totals."
+    ),
     # "no document attached", not "no evidence" — the user attaches documents, and
     # "evidence" invites them to think something has judged what they attached. Nothing
     # has: attaching is their assertion, and no rule reads the document (ADR-0021).
@@ -386,13 +398,6 @@ LIMITATION_TEMPLATES: dict[str, _Template] = {
     # It also does not tell them to attach one. A trip with no booking is not a defect —
     # people take trips they have no paperwork for — so this states the fact and leaves
     # the decision with them.
-    # Says what was found, not what to do about it. Two identical rows are almost always a
-    # slip, and "almost always" is not "always" — the product cannot tell a mis-entry from
-    # two real trips on the same dates, so it reports and leaves the judgement.
-    "DUPLICATE_TRAVEL_RECORD": lambda p: (
-        "This trip has the same dates and destination as another one. Your absence totals "
-        "count these days once, so no figure is affected either way."
-    ),
     "MISSING_TRAVEL_EVIDENCE": lambda p: (
         "No document is attached to this trip. That does not affect your absence "
         "totals, which are worked out from the dates you entered."
@@ -571,16 +576,21 @@ ISSUE_BODY_TEMPLATES: dict[str, _Template] = {
     # seeing "recorded twice" will assume their days have been counted twice. They have
     # not: absence totals are a union of dates, so a duplicate adds nothing.
     "ISSUE_DUPLICATE_TRAVEL_RECORD": lambda p: (
-        "Days outside the UK are counted once even when a trip appears twice, so your "
-        "totals are unaffected. If one of these was entered by mistake, removing it will "
-        "tidy your travel history."
+        "Days outside the UK are counted once even when a trip appears twice, so the "
+        "second record is not adding days. If one was entered by mistake, removing it will "
+        "tidy your travel history — check which of the two you confirmed before you do, "
+        "because only confirmed records with exact dates count towards your totals."
     ),
     # "the same contents", not "the same document": what matched is a checksum, and two
     # files with identical bytes may well have been uploaded deliberately under different
     # categories. The sentence must not assert a mistake the product cannot see.
+    # "No conclusion depends on which copy you keep" — not "nothing depends on either
+    # copy", which stopped being true at slice 4a. `residence.travel_consistency` reads
+    # evidence links, and whether the case holds any document at all gates the coverage
+    # items. No *conclusion* moves, which is the honest narrowing.
     "ISSUE_DUPLICATE_EVIDENCE": lambda p: (
         f"This file has the same contents as {p.get('other_name', 'another document')} in "
-        "your documents. Nothing in your assessment depends on either copy."
+        "your documents. No conclusion depends on which copy you keep."
     ),
     "ISSUE_RECALCULATION_FAILED": lambda p: (
         "The last attempt to recheck your conclusions did not finish. Nothing was changed: "
@@ -620,7 +630,7 @@ ISSUE_IMPACT_TEMPLATES: dict[str, _Template] = {
         "No figure changes either way. You can set this aside."
     ),
     "ISSUE_DUPLICATE_TRAVEL_RECORD": lambda p: (
-        "No figure changes either way. You can remove one or set this aside."
+        "Keeping both adds nothing to your totals. Which one you remove can matter."
     ),
     "ISSUE_DUPLICATE_EVIDENCE": lambda p: "No figure changes either way. You can set this aside.",
     # Says plainly that setting it aside is fine, like the out-of-window uncertain date.

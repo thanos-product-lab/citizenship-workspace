@@ -355,9 +355,14 @@ def _travel_issues(
     # One issue per overlapping record, not one per pair: the user fixes an overlap by
     # editing a record, and a pair has no single affected object to name (§36.1).
     #
-    # Scoped to the pair, not the case: `overlapping_records - duplicate_records` leaves a
-    # trip that overlaps something *other* than its duplicate still reporting the overlap.
-    for record_id in sorted(targets.overlapping_records - targets.duplicate_records):
+    # No subtraction here. Excluding the duplicates is a *rules* question — "is this
+    # overlap explained by the duplication?" — and this module may not re-decide something
+    # a rule already decided. It was done here first, as
+    # `overlapping_records - duplicate_records`, which is record-scoped rather than
+    # pair-scoped and silently erased genuine overlaps between two duplicate pairs. The
+    # evaluator has the pairwise information and now names only the overlaps duplication
+    # does not account for.
+    for record_id in sorted(targets.overlapping_records):
         trip = by_record.get(record_id)
         if trip is None:
             continue

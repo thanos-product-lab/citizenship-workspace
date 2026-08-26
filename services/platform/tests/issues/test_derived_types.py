@@ -750,8 +750,14 @@ def test_a_genuine_overlap_still_reports_as_an_overlap(api: Api) -> None:
     queue = _queue(api, case_id)
     assert len(_of_type(queue, "DUPLICATE_TRAVEL_RECORD")) == 2
     overlaps = _of_type(queue, "OVERLAPPING_TRAVEL")
-    assert len(overlaps) == 1, "only Italy, which overlaps without being a duplicate"
-    assert "Italy" in overlaps[0]["title"]
+    # Three, not one: Italy overlaps *both* Greece copies, and each of those overlaps is a
+    # real finding that survives removing the duplicate. A record can be a duplicate of one
+    # trip and genuinely overlap another; both are true and both need saying.
+    assert len(overlaps) == 3
+    assert sorted({issue["title"] for issue in overlaps}) == [
+        "Your trip to Greece overlaps another trip",
+        "Your trip to Italy overlaps another trip",
+    ]
 
 
 def test_removing_one_copy_clears_both_duplicate_issues(api: Api) -> None:
@@ -843,7 +849,7 @@ def test_the_duplicate_document_issue_is_information_the_user_may_set_aside(api:
     issue = _of_type(_queue(api, case_id), "DUPLICATE_EVIDENCE")[0]
     assert issue["severity"] == "INFORMATION"
     assert issue["dismissibility"] == "DISMISSIBLE"
-    assert "Nothing in your assessment depends on either copy" in issue["body"]
+    assert "No conclusion depends on which copy you keep" in issue["body"]
 
 
 def test_two_different_files_are_not_duplicates(api: Api) -> None:

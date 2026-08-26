@@ -52,23 +52,32 @@ class DemoTrip:
     destination_label: str
     departure_date: date
     return_date: date
+    #: The ISO code, set here rather than left None.
+    #:
+    #: The web form derives it from the label; the seed and the CSV import do not, so a
+    #: seeded trip and a hand-entered one for the same place used to disagree — a codeless
+    #: "Greece" beside a `GR` "Greece". §7.8's duplicate detection falls back to the label
+    #: for exactly that mixed pair, so the detection still fires, but a fixture whose rows
+    #: differ from what the product's own form produces is a fixture that tests something
+    #: other than the product.
+    destination_country_code: str | None = None
 
 
 # The twelve trips (SYNTHETIC_DEMO_CASE.md §4), in order. Trip 11 returns 10 May 2026 at
 # M3B (EXACT); the stale demo edits it to 11 May. Raw endpoints — the rules clip and count.
 DEMO_TRIPS: tuple[DemoTrip, ...] = (
-    DemoTrip("Spain", date(2022, 4, 14), date(2022, 4, 26)),
-    DemoTrip("Portugal", date(2022, 8, 10), date(2022, 9, 20)),
-    DemoTrip("France", date(2023, 2, 3), date(2023, 3, 1)),
-    DemoTrip("United States", date(2023, 7, 1), date(2023, 9, 6)),
-    DemoTrip("Germany", date(2024, 1, 15), date(2024, 2, 14)),
-    DemoTrip("Greece", date(2024, 6, 5), date(2024, 7, 15)),
-    DemoTrip("Japan", date(2024, 11, 2), date(2024, 12, 28)),
-    DemoTrip("Italy", date(2025, 5, 4), date(2025, 6, 25)),
-    DemoTrip("Canada", date(2025, 9, 1), date(2025, 10, 28)),
-    DemoTrip("Spain", date(2026, 2, 1), date(2026, 3, 25)),
-    DemoTrip("Italy", date(2026, 5, 4), date(2026, 5, 10)),  # trip 11 — the eventual conflict
-    DemoTrip("United States", date(2026, 5, 16), date(2026, 5, 29)),
+    DemoTrip("Spain", date(2022, 4, 14), date(2022, 4, 26), "ES"),
+    DemoTrip("Portugal", date(2022, 8, 10), date(2022, 9, 20), "PT"),
+    DemoTrip("France", date(2023, 2, 3), date(2023, 3, 1), "FR"),
+    DemoTrip("United States", date(2023, 7, 1), date(2023, 9, 6), "US"),
+    DemoTrip("Germany", date(2024, 1, 15), date(2024, 2, 14), "DE"),
+    DemoTrip("Greece", date(2024, 6, 5), date(2024, 7, 15), "GR"),
+    DemoTrip("Japan", date(2024, 11, 2), date(2024, 12, 28), "JP"),
+    DemoTrip("Italy", date(2025, 5, 4), date(2025, 6, 25), "IT"),
+    DemoTrip("Canada", date(2025, 9, 1), date(2025, 10, 28), "CA"),
+    DemoTrip("Spain", date(2026, 2, 1), date(2026, 3, 25), "ES"),
+    DemoTrip("Italy", date(2026, 5, 4), date(2026, 5, 10), "IT"),  # trip 11 — the eventual conflict
+    DemoTrip("United States", date(2026, 5, 16), date(2026, 5, 29), "US"),
 )
 
 # Zero-based index of trip 11 in DEMO_TRIPS, for the stale-transition demo.
@@ -147,6 +156,7 @@ def seed_demo_case(session: Session, *, user_id: str) -> uuid.UUID:
             user=user,
             fields=TravelRecordFields(
                 destination_label=trip.destination_label,
+                destination_country_code=trip.destination_country_code,
                 departure_date=trip.departure_date,
                 return_date=trip.return_date,
                 date_confidence=DateConfidence.EXACT,

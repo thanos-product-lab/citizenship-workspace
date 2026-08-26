@@ -352,6 +352,17 @@ function affectedLinkFor(caseId: string, issue: Issue): JSX.Element | null {
     );
   }
 
+  if (issue.affected_object_type === "Evidence") {
+    // The Evidence destination owns the library, and there is no per-document route. A
+    // duplicate item without this rendered no footer link at all — the user was told two
+    // of their files match and given no way to go and look at them.
+    return (
+      <a className="cw-issue-card__link" href={`/cases/${caseId}/evidence`}>
+        Open your documents
+      </a>
+    );
+  }
+
   if (issue.affected_object_type === "TravelRecord") {
     // Case data owns the travel table. There is no per-trip route yet — the IA brief's
     // `/data/travel` is still deferred — so this lands on the page that owns the edit.

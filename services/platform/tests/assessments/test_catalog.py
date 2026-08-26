@@ -11,7 +11,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from app.assessments.domain import AssessmentResult
@@ -193,3 +193,57 @@ def test_the_activation_sweep_stales_a_result_the_retired_version_produced(
     # Currency moved; the conclusion did not (directive 4, ADR-0001).
     assert swept.conclusion == conclusion_before
     assert swept.rule_version_id == v1_id, "history keeps the version that produced it"
+
+
+def test_the_v2_1_sweep_closes_over_composition_edges(api: "object", db_session: Session) -> None:
+    """Migration `0024`'s statement, executed rather than transcribed.
+
+    Two things it must do, and the second is the obligation ADR-0022 recorded for every
+    future activation after `0022`'s own sweep omitted it: stale the retired version's
+    CURRENT results, **and** close over composition edges, because a requirement composing a
+    retired rule's conclusion otherwise stands current over an upstream that is not.
+
+    Nothing composes `residence.travel_consistency` today, so the closure selects nothing
+    extra — what this pins is that the statement carries the closure, is valid against the
+    real schema, and still stales what it must.
+    """
+    from app.seed.demo_case import seed_demo_case
+
+    sweep = _load_migration("0024_travel_consistency_v2_1")
+    assert "RECURSIVE" in sweep.SWEEP_SQL, "the closure is the point of this statement"
+
+    v2_id = db_session.execute(
+        select(RuleVersion.id)
+        .join(RequirementDefinition, RequirementDefinition.id == RuleVersion.requirement_id)
+        .where(
+            RequirementDefinition.requirement_key == "residence.travel_consistency",
+            RuleVersion.semantic_version == "2.0.0",
+        )
+    ).scalar_one()
+
+    case_id = seed_demo_case(db_session, user_id="user_a")
+    api("user_a").post(f"/api/v1/cases/{case_id}/assessments/recalculate")  # type: ignore[operator]
+    db_session.expire_all()
+
+    result = db_session.execute(
+        select(AssessmentResult)
+        .join(RequirementDefinition, RequirementDefinition.id == AssessmentResult.requirement_id)
+        .where(
+            RequirementDefinition.requirement_key == "residence.travel_consistency",
+            AssessmentResult.case_id == case_id,
+            AssessmentResult.currency == Currency.CURRENT.value,
+        )
+    ).scalar_one()
+    conclusion_before = result.conclusion
+    result.rule_version_id = v2_id
+    db_session.commit()
+
+    db_session.execute(text(sweep.SWEEP_SQL), {"now": datetime.now(UTC), "retired": v2_id})
+    db_session.commit()
+    db_session.expire_all()
+
+    swept = db_session.get(AssessmentResult, result.id)
+    assert swept is not None
+    assert swept.currency == Currency.STALE.value
+    assert swept.stale_reason_code == "RULE_VERSION_CHANGED"
+    assert swept.conclusion == conclusion_before, "currency moves, the conclusion does not"

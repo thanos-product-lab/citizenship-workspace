@@ -1281,8 +1281,72 @@ and **no** `OVERLAPPING_TRAVEL`; uploading a byte-identical copy of a seeded doc
 two `DUPLICATE_EVIDENCE` items naming each other, **without recalculating** — which is 4a's
 reconcile-on-upload fix paying for itself.
 
+### What the two reviews found
+
+Both reviewers independently found the same three defects, which is worth noting on its own —
+two different lenses landing on the same places.
+
+**A [PRODUCT] change shipped without a new rule version.** §7.8 is entirely [PRODUCT] and §12
+is explicit that such a change requires one. The slice changed what the evaluator emits and
+left `residence.travel_consistency` at 2.0.0, so two results would carry the same
+`rule_version_id` while produced by different logic — CLAUDE.md §9's "preserves its exact
+rule and input versions" true of the identifier and false of the substance, with
+`implementation_hash` unpopulated so nothing detects the drift. This is the argument
+ADR-0022 made for this exact rule one slice earlier, which I then failed to apply to my own
+change. Migration `0024` activates v2.1.0, retires v2.0.0, and sweeps — **this time closing
+over composition edges**, the obligation ADR-0022 recorded after `0022` omitted it. §12 now
+carries a version register, because nothing had forced the question.
+
+**The overlap suppression was record-scoped, not pair-scoped.** Subtracting the duplicated
+records wholesale erased genuine overlaps: two duplicated Greece trips and two duplicated
+Italy trips that overlap each other produced four duplicate items and *no* overlap item —
+on an `INCONSISTENT` case where every remaining item said "no figure changes either way" and
+was dismissible. A user could empty the queue of a case the rules call inconsistent, which is
+directive 7 failing in the surface whose contract is that everything in it is worth acting on.
+
+The fix moved the decision into the evaluator, which is where it belonged: "is this overlap
+explained by the duplication?" is a rules question, and the derivation docstring had just
+been amended to say that nothing there may re-decide what a rule already decided. The
+evaluator now keeps two sets — every intersecting pair drives the conclusion, and only the
+pairs duplication does not account for reach the limitation.
+
+**`_destination_key` implemented a different rule from the spec.** §7.8 says the label is the
+fallback "when *either*" record lacks a code; the code computed one canonical key per trip,
+so a pair where only one side carried a code never fell back and could never match. That is
+the likeliest duplicate in the product — import a history (no codes), re-enter a trip by hand
+(the form derives one).
+
+**The two reviewers disagreed on the remedy**, which was the most interesting moment of the
+review. Rules-conformance argued the canonical key is the better design because the spec's
+pairwise relation is not transitive — A(ES,"Spain") matches B(None,"Spain") by label and
+C(ES,"España") by code, while B and C match by neither — and recommended amending the spec
+toward the code. Trust-model invoked CLAUDE.md's precedence rule: the RFC wins.
+
+Both were right about their half. The resolution is the transitive *closure* of the spec's
+relation: it honours the RFC and is well-defined, because if A is the same trip as B and as
+C then all three are one trip. The seed now sets country codes too, so the fixture stops
+differing from what the product's own form produces.
+
+Also taken: the copy claimed more than the union argument supports — "no figure is affected
+either way" is false when a duplicate pair is split on trust, since deleting the CONFIRMED +
+EXACT copy of a CONFIRMED/ESTIMATED pair drops the trusted total to zero, and the sentence
+invited exactly that removal. And "nothing in your assessment depends on either copy" stopped
+being true at 4a, when coverage started reading whether documents exist. Narrowed both.
+
+An `Evidence`-typed issue also had no way through to the library — the card rendered no
+footer link at all, so a user was told two files match and given nowhere to compare them.
+
 _Known gaps carried forward:_
 
+- **A mixed-code pair is still possible via CSV import.** The country code is derived
+  client-side; the CSV importer takes it verbatim from an optional column and the schema
+  accepts any two-letter string, so `code="FR", label="Spain"` is persistable and would
+  compare equal to a real French trip. The detection's label fallback covers the common
+  case, and the root fix is to derive the code server-side rather than accept it from the
+  client — which needs the country list in Python, where it does not yet exist.
+- **Neither the spec's "normalised" nor `casefold()` does Unicode NFC normalisation**, so
+  "España" with a combining tilde will not match the precomposed form. The code matches the
+  spec exactly; the spec is silent.
 - **Cross-case duplicate detection is permanently out of scope**, now recorded in Domain §15
   as a disclosure boundary rather than an implementation note. A checksum is a content
   fingerprint, so widening the query would answer "does anyone else hold this exact

@@ -288,8 +288,8 @@ it should have its own eval fixture.
 
 Each rule below gives its key, inputs, computation, conclusion banding, summary
 codes, and citations. Rule versions in this document are `1.0.0` within rule set
-`2026.07.0`, with one exception: `residence.travel_consistency` is at **2.0.0** since
-M7 slice 4a — see §12.
+`2026.07.0`, with one exception: `residence.travel_consistency` is at **2.1.0** since
+M7 slice 4b — see §12.
 
 ---
 
@@ -689,8 +689,7 @@ duplicate goes.
 The suppression is scoped to the duplicate pair. Trips that overlap without being identical
 keep their `OVERLAPPING_TRAVEL` issue in the same case.
 
-**The `DUPLICATE_EVIDENCE` row names a duplicate *travel record*, not a duplicate
-document.** Two unlike detections had collected under one issue type: this one, where the
+**Why that row was renamed.** Two unlike detections had collected under one issue type: this one, where the
 user has entered the same trip twice, and Domain §15's checksum collision, where the user
 has uploaded the same file twice. They have different causes, different affected objects,
 and different remedies — merge two trips, versus delete a redundant upload. At M7 slice 4b
@@ -1053,13 +1052,29 @@ of every window boundary.
 This document defines rule set `2026.07.0`. Each requirement's `RuleVersion`
 carries `rule_set = 2026.07.0` and links to the guidance sections cited above.
 `semantic_version` is `1.0.0` for every requirement except
-`residence.travel_consistency`, which is at `2.0.0`.
+`residence.travel_consistency`, which is at `2.1.0`.
 
-**Why that one moved, and why the rule set did not.** §7.8's coverage detection is tagged
-**[PRODUCT]**, and the rule below says a [PRODUCT] change requires a new rule version for
-the affected requirement only — not a new rule set. No guidance changed; what changed is
-what this product chooses to notice. Migration `0022` therefore activates v2.0.0 inside
-`2026.07.0` and retires v1.0.0.
+| Version | Milestone | What changed |
+|---|---|---|
+| 1.0.0 | M3B | The rule as first specified |
+| 2.0.0 | M7 slice 4a | Declares `EVIDENCE_SUPPORT`; detects an unevidenced trip |
+| 2.1.0 | M7 slice 4b | Detects a duplicated travel record; scopes the overlap limitation |
+
+Keep this register current. It is the only place a reader can see, without reading
+migrations, whether the version a historical result names is the one they are reading about
+— and slice 4b shipped its [PRODUCT] change without a version until a review caught it,
+precisely because nothing forced the question.
+
+**Why those moved, and why the rule set did not.** §7.8 is entirely **[PRODUCT]**, and the
+rule below says a [PRODUCT] change requires a new rule version for the affected requirement
+only — not a new rule set. No guidance changed; what changed is what this product chooses to
+notice. Migrations `0022` and `0024` therefore activate inside `2026.07.0`.
+
+**A [PRODUCT] change without a new rule version is a defect, not an oversight.** Two results
+carrying the same `rule_version_id` but produced by different logic make CLAUDE.md §9's
+"every historical assessment preserves its exact rule and input versions" true of the
+identifier and false of the substance — and `implementation_hash` is unpopulated, so nothing
+detects the drift.
 
 Retiring a version is not a formality. Selective invalidation resolves dependencies against
 the *currently active* version, so a result produced by a retired one is a result whose

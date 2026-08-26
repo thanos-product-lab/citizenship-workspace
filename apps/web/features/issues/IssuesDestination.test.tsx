@@ -832,3 +832,36 @@ describe("dismissing more than one issue", () => {
     expect(link).toHaveAttribute("href", "/cases/c1/data");
   });
 });
+
+describe("where an issue points", () => {
+  it("gives a duplicate-document issue a way through to the library", async () => {
+    // Without an `Evidence` branch the card rendered no footer link: the user was told two
+    // of their files have the same contents and given nowhere to go and compare them.
+    queueReturns(
+      aQueue({
+        open_count: 1,
+        groups: [
+          {
+            action_group: "FOR_YOUR_AWARENESS",
+            issues: [
+              anIssue({
+                id: "i-dup",
+                issue_type: "DUPLICATE_EVIDENCE",
+                severity: "INFORMATION",
+                dismissibility: "DISMISSIBLE",
+                action_group: "FOR_YOUR_AWARENESS",
+                title: "Athens booking is already in your documents",
+                affected_object_type: "Evidence",
+                affected_object_id: "ev-1",
+              }),
+            ],
+          },
+        ],
+      }),
+    );
+    renderWithQuery(<IssuesDestination caseId={CASE} />);
+
+    const link = await screen.findByRole("link", { name: "Open your documents" });
+    expect(link).toHaveAttribute("href", `/cases/${CASE}/evidence`);
+  });
+});

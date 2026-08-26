@@ -101,15 +101,15 @@ def _trip(
     label: str = "",
 ) -> TripInput:
     return TripInput(
-        dep,
-        ret,
-        uuid.uuid4(),
-        record_id or uuid.uuid4(),
-        trusted,
-        confidence,
-        review_state,
-        country,
-        label,
+        departure_date=dep,
+        return_date=ret,
+        travel_record_version_id=uuid.uuid4(),
+        travel_record_id=record_id or uuid.uuid4(),
+        is_trusted=trusted,
+        destination_country_code=country,
+        destination_label=label,
+        date_confidence=confidence,
+        review_state=review_state,
     )
 
 
@@ -331,12 +331,13 @@ def test_two_identical_trips_are_reported_as_duplicates() -> None:
 
 
 def test_the_duplicate_detection_does_not_move_the_conclusion() -> None:
-    """§7.8: the detection adds a limitation and nothing else.
+    """§7.8: the detection adds a limitation and does not touch the banding.
 
-    Two identical week-long trips also *overlap* — their absent-date sets are the same set,
-    which intersects itself — so `OVERLAPPING_TRAVEL` still fires and still bands
-    INCONSISTENT. Both limitations are on the result; only the issue the user sees changes,
-    and that decision belongs to the derivation.
+    Two identical week-long trips do overlap — their absent-date sets are the same set,
+    which intersects itself — so the conclusion is still INCONSISTENT and the summary code
+    is still the overlap one. What changes is the *limitation*: the pair's overlap is fully
+    explained by their being duplicates, so `OVERLAPPING_TRAVEL` does not name them and the
+    queue gets one item per record rather than two.
     """
     result = _consistency(
         _trip(date(2024, 6, 5), date(2024, 7, 15), country="GR"),
@@ -346,7 +347,74 @@ def test_the_duplicate_detection_does_not_move_the_conclusion() -> None:
     assert result.conclusion == Conclusion.INCONSISTENT.value
     assert result.summary_code == "TRAVEL_RECORDS_OVERLAP"
     codes = {lim.code for lim in result.limitations}
-    assert {"DUPLICATE_TRAVEL_RECORD", "OVERLAPPING_TRAVEL"} <= codes
+    assert "DUPLICATE_TRAVEL_RECORD" in codes
+    assert "OVERLAPPING_TRAVEL" not in codes
+
+
+def test_an_overlap_between_two_duplicate_pairs_is_still_reported() -> None:
+    """The defect both reviews found, and the reason the exclusion moved into the rule.
+
+    Greece twice and Italy twice, where a Greece trip overlaps an Italy trip. Every record
+    is somebody's duplicate, so subtracting the duplicated *records* wholesale — which is
+    what the derivation used to do — left zero overlap items on an INCONSISTENT case whose
+    every remaining item said "no figure changes either way" and was dismissible. The user
+    could empty the queue of a case the rules call inconsistent.
+
+    The Greece/Italy overlap survives removing both duplicates, so it is a real finding.
+    """
+    greece = [_trip(date(2024, 6, 5), date(2024, 7, 15), country="GR") for _ in range(2)]
+    italy = [_trip(date(2024, 7, 1), date(2024, 8, 1), country="IT") for _ in range(2)]
+
+    result = _consistency(*greece, *italy)
+
+    overlap = next(lim for lim in result.limitations if lim.code == "OVERLAPPING_TRAVEL")
+    assert set(overlap.affected_input_ids) == {
+        str(t.travel_record_version_id) for t in [*greece, *italy]
+    }
+    duplicates = next(lim for lim in result.limitations if lim.code == "DUPLICATE_TRAVEL_RECORD")
+    assert len(duplicates.affected_input_ids) == 4
+
+
+def test_a_duplicate_that_also_overlaps_a_third_trip_reports_both() -> None:
+    """One record, two genuine problems: it is a copy of one trip and overlaps another."""
+    a = _trip(date(2024, 6, 5), date(2024, 7, 15), country="GR")
+    b = _trip(date(2024, 6, 5), date(2024, 7, 15), country="GR")
+    c = _trip(date(2024, 7, 1), date(2024, 8, 1), country="IT")
+
+    result = _consistency(a, b, c)
+
+    overlap = next(lim for lim in result.limitations if lim.code == "OVERLAPPING_TRAVEL")
+    assert str(c.travel_record_version_id) in overlap.affected_input_ids
+    assert str(a.travel_record_version_id) in overlap.affected_input_ids
+
+
+# --- the destination relation, and its transitive closure ---------------------------
+
+
+def test_a_coded_trip_matches_an_uncoded_one_with_the_same_label() -> None:
+    """§7.8: the label is the fallback "when *either* does not" have a code.
+
+    The likeliest duplicate in the product, and the one a per-trip canonical key missed:
+    import a history (no codes) and re-enter a trip by hand (the form derives one).
+    """
+    result = _consistency(
+        _trip(date(2024, 6, 5), date(2024, 7, 15), country="ES", label="Spain"),
+        _trip(date(2024, 6, 5), date(2024, 7, 15), country=None, label="Spain"),
+    )
+
+    assert len(_duplicate_ids(result)) == 2
+
+
+def test_the_grouping_closes_transitively() -> None:
+    """`_same_place` is not transitive on its own: A(ES,"Spain") matches B(None,"Spain") by
+    label and C(ES,"España") by code, while B and C match by neither. Closing the relation
+    is what makes "a group of duplicates" well-defined — if A is the same trip as B and as
+    C, all three are one trip."""
+    a = _trip(date(2024, 6, 5), date(2024, 7, 15), country="ES", label="Spain")
+    b = _trip(date(2024, 6, 5), date(2024, 7, 15), country=None, label="Spain")
+    c = _trip(date(2024, 6, 5), date(2024, 7, 15), country="ES", label="España")
+
+    assert len(_duplicate_ids(_consistency(a, b, c))) == 3
 
 
 def test_identical_zero_day_trips_are_duplicates_that_never_overlapped() -> None:
