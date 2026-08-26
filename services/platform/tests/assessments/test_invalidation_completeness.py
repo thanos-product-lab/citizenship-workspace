@@ -307,3 +307,88 @@ def test_a_date_move_that_flips_an_upstream_conclusion_stales_the_composite(
     assert "route.standard_section_6_1" in staled
 
     _assert_no_under_fire(before, after, staled, "application date across the 18th birthday")
+
+
+def test_attaching_a_document_stales_everything_it_moves(api: Api, db_session: Session) -> None:
+    """The oracle, applied to the evidence input kind.
+
+    Why this file rather than the provenance tests: those compare a rule's *emitted* link
+    kinds against its *declared* ones, so a rule that reads an input it neither declares
+    nor links passes both. Only differential behaviour catches that, which is what this
+    file does — and until now it mutated the application date and travel records only.
+
+    The hazard is newly real. `ResidenceAssessmentInputs.evidence_links` is handed to
+    **every** residence evaluator, so this is the first input on the shared object that
+    only one of them may legitimately read. If `_evaluate_total_absences` started counting
+    only evidenced trips and emitted no `EVIDENCE_LINK` spec, its declared kinds and its
+    emitted kinds would still agree, and an attach would move the absence total while the
+    result stayed CURRENT — ADR-0008's failure mode, invisible.
+    """
+    case_id = _case(api, "user_a")
+    item_id = _upload_document(api, case_id)
+    api("user_a").post(f"/api/v1/cases/{case_id}/assessments/recalculate")
+    before = _payloads(db_session, case_id)
+
+    record = api("user_a").get(f"/api/v1/cases/{case_id}/travel-records").json()[0]
+    api("user_a").post(
+        f"/api/v1/cases/{case_id}/travel-records/{record['id']}/evidence",
+        json={"evidence_item_id": item_id},
+    )
+    staled = _stale_keys(db_session, case_id)
+
+    api("user_a").post(f"/api/v1/cases/{case_id}/assessments/recalculate")
+    after = _payloads(db_session, case_id)
+
+    _assert_no_under_fire(before, after, staled, "document attached")
+
+
+def test_detaching_a_document_stales_everything_it_moves(api: Api, db_session: Session) -> None:
+    """The same oracle in the direction that matters most for the trust model: withdrawing
+    support must not leave a conclusion standing that was drawn while the support existed."""
+    case_id = _case(api, "user_a")
+    item_id = _upload_document(api, case_id)
+    record = api("user_a").get(f"/api/v1/cases/{case_id}/travel-records").json()[0]
+    path = f"/api/v1/cases/{case_id}/travel-records/{record['id']}/evidence"
+    api("user_a").post(path, json={"evidence_item_id": item_id})
+    api("user_a").post(f"/api/v1/cases/{case_id}/assessments/recalculate")
+    before = _payloads(db_session, case_id)
+
+    api("user_a").delete(f"{path}/{item_id}")
+    staled = _stale_keys(db_session, case_id)
+
+    api("user_a").post(f"/api/v1/cases/{case_id}/assessments/recalculate")
+    after = _payloads(db_session, case_id)
+
+    _assert_no_under_fire(before, after, staled, "document detached")
+
+
+def _upload_document(api: Api, case_id: str) -> str:
+    """One document in the case's library, through the real two-call upload path."""
+    from app.core.storage import InMemoryStorage, get_storage
+    from tests.evidence.conftest import fixture_bytes
+
+    content = fixture_bytes("travel-booking.pdf")
+    grant = (
+        api("user_a")
+        .post(
+            f"/api/v1/cases/{case_id}/evidence/uploads",
+            json={"media_type": "application/pdf", "declared_size_bytes": len(content)},
+        )
+        .json()
+    )
+    store = get_storage()
+    assert isinstance(store, InMemoryStorage)
+    store.put(str(grant["upload_fields"]["key"]), content)
+    return str(
+        api("user_a")
+        .post(
+            f"/api/v1/cases/{case_id}/evidence",
+            json={
+                "upload_token": grant["upload_token"],
+                "category": "TRAVEL_SUPPORT",
+                "display_name": "A booking",
+                "original_filename": "booking.pdf",
+            },
+        )
+        .json()["id"]
+    )

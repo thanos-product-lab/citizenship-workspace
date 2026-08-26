@@ -75,9 +75,40 @@ produced each result — remains assigned to M9, and this ADR does not discharge
   application services, or a boot-time sweep that would run on every deploy. Recorded here
   because it is a real divergence from an invariant this codebase otherwise holds
   absolutely, and whoever activates the next rule version inherits it.
-- A test asserts a v1-produced result is `STALE` after migration. Mutation: skip the sweep,
-  and it goes red — otherwise the sweep is invisible in a repository where every test
-  fixture is created after the migration has already run.
+- A test asserts a v1-produced result is `STALE` after migration, executing the migration's
+  own `SWEEP_SQL` rather than a transcription of it. That distinction is the whole value:
+  while the test held a copy, gutting the sweep left it green — a guard guarding nothing,
+  and this ADR asserting otherwise. Gutting `SWEEP_SQL` now turns it red.
+
+- **The sweep does no composition closure, and the obligation on future activations is
+  wider than "stale the retired version's results".** `invalidate_for_input_change` closes
+  over `rule_composition_edges` *before* marking, because a composite standing over a stale
+  upstream is under-firing. This sweep does not, and today nothing composes
+  `residence.travel_consistency`, so nothing is missed. `preparation.case_complete`
+  composes every result (RULES_SPEC §8) and has no evaluator yet — the day it gets one,
+  an activation that only sweeps its own requirement leaves the composite CURRENT over a
+  stale upstream.
+
+  The standing guard in `test_catalog.py` cannot catch that: a composite is produced by its
+  own ACTIVE version, so it is never "stranded" by the definition that test uses. **The
+  next activation must sweep the retired version's current results *and* close over
+  composition edges.**
+
+- **The sweep writes user-visible state with no domain event.** Currency changes on rows a
+  user is looking at, and `domain_events` and the audit trail say nothing; the only record
+  is `stale_reason_code` on the row itself. Defensible — a migration has no actor and no
+  request — but it is a genuine exception to "no business state without an event", and it
+  is the second exception this migration makes after the issue-queue one above.
+
+- **The sweep would silently no-op under a non-superuser migration role.**
+  `assessment_results` carries `FORCE ROW LEVEL SECURITY`, so the owner is subject to the
+  tenant policy; with no `app.user_id` set the predicate matches nothing and the UPDATE
+  affects zero rows *without error*. It works today only because the migration login role
+  is a superuser with `rolbypassrls`. ADR-0006 Option A proposes exactly the non-superuser
+  role that would break it, and CI runs migrations against a fresh database every time — so
+  the failure would appear there first, as a sweep that quietly did nothing. Whoever takes
+  ADR-0006 Option A must add `SET LOCAL row_security = off` to this sweep and to any future
+  one, which turns a silent no-op into a loud refusal.
 
 ## Alternatives rejected
 

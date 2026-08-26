@@ -111,7 +111,12 @@ class LimitationTargets:
     uncertain_in_window_records: frozenset[str]
     judged_records: frozenset[str]
     #: Records the consistency rule reported as having no document attached (§7.8, v2.0.0).
-    unevidenced_records: frozenset[str] = frozenset()
+    #:
+    #: No default, deliberately. An empty frozenset is exactly the value that suppresses
+    #: every coverage issue, so a caller that forgot this field would silently derive none
+    #: and nothing would fail — the same argument that made `TripInput.travel_record_id`
+    #: required.
+    unevidenced_records: frozenset[str]
 
 
 def derive(
@@ -121,7 +126,9 @@ def derive(
     travel: list[TravelSnapshot],
     targets: LimitationTargets,
     recalculation_failed: bool = False,
-    case_holds_evidence: bool = False,
+    # No default: `False` suppresses every coverage issue, so forgetting it would drop
+    # them silently rather than failing.
+    case_holds_evidence: bool,
 ) -> list[DesiredIssue]:
     """The complete desired open-issue set for a case.
 

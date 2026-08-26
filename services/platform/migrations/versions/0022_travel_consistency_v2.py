@@ -81,6 +81,24 @@ _DEPENDENCIES: list[tuple[str, str | None, str, bool]] = [
 ]
 
 
+#: The sweep itself, as a module constant so a test can execute *this* statement rather
+#: than a copy of it.
+#:
+#: ADR-0022 claims "skip the sweep and a test goes red". That was not true while the test
+#: held its own transcription of the UPDATE: the test passed against an empty migration,
+#: which is the shape of a guard that guards nothing. Exporting it makes the claim true.
+#:
+#: The same three columns `AssessmentResult.mark_stale` writes, and only those. Raw SQL
+#: rather than the ORM because a migration must not depend on the application model, which
+#: will drift away from this schema version.
+SWEEP_SQL = (
+    "UPDATE assessment_results "
+    "SET currency = 'STALE', stale_reason_code = 'RULE_VERSION_CHANGED', "
+    "    marked_stale_at = :now "
+    "WHERE rule_version_id = :v1 AND currency = 'CURRENT'"
+)
+
+
 def _dependency_id(kind: str) -> uuid.UUID:
     return uuid.uuid5(_NS, f"dependency:{_KEY}:{kind}")
 
@@ -159,18 +177,7 @@ def upgrade() -> None:
     # ADR-0022's sweep. Currency only — the conclusion each result reached under v1 stays
     # exactly as it was, and the result stays inspectable with its original rule version
     # and input links (directive 3).
-    bind.execute(
-        sa.text(
-            # The same three columns `AssessmentResult.mark_stale` writes, and only
-            # those. SQL rather than the ORM because a migration must not depend on the
-            # application model, which will drift away from this schema version.
-            "UPDATE assessment_results "
-            "SET currency = 'STALE', stale_reason_code = 'RULE_VERSION_CHANGED', "
-            "    marked_stale_at = :now "
-            "WHERE rule_version_id = :v1 AND currency = 'CURRENT'"
-        ),
-        {"now": now, "v1": _V1_ID},
-    )
+    bind.execute(sa.text(SWEEP_SQL), {"now": now, "v1": _V1_ID})
 
 
 def downgrade() -> None:

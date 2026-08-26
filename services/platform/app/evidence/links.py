@@ -205,8 +205,18 @@ def mark_support_unavailable(
     deletion command's transaction, and support becoming unavailable has to commit with
     the deletion or not at all.
 
-    Returns how many links were withdrawn, so the caller can skip invalidation when the
-    document supported nothing.
+    **It invalidates here rather than leaving that to the caller**, and the first draft got
+    this wrong in a way worth recording: it withdrew the links, emitted the events, and
+    returned a count "so the caller can skip invalidation when the document supported
+    nothing". That put the half that matters back at a call site — in a function whose
+    entire justification is that M8 must not have to remember a call site. A document
+    deleted with that version in place would have withdrawn its links and left every
+    conclusion that rested on them looking untouched, which is the exact defect this slice
+    exists to prevent, sitting one slice ahead of where it bites.
+
+    Nothing is invalidated when the document supported nothing: no link changed, so no
+    conclusion went out of date. The returned count is advisory — for logging and for the
+    caller's own reporting, never a signal that invalidation is still owed.
     """
     links = EvidenceLinkRepository.live_for_evidence_item(
         session, case_id=case_id, evidence_item_id=evidence_item_id
@@ -227,6 +237,71 @@ def mark_support_unavailable(
             target_id=link.travel_record_id,
         )
     # M8: FactEvidenceLink availability is withdrawn here too.
+    if links:
+        invalidate_for_input_change(
+            session,
+            uow,
+            case_id=case_id,
+            input_kind=DependencyInputKind.EVIDENCE_SUPPORT,
+            reason_code=StaleReason.EVIDENCE_SUPPORT_CHANGED,
+        )
+    return len(links)
+
+
+def withdraw_links_for_travel_record(
+    session: Session,
+    uow: UnitOfWork,
+    *,
+    case_id: uuid.UUID,
+    travel_record_id: uuid.UUID,
+    at: datetime,
+) -> int:
+    """Withdraw every link on a trip, because the trip is being removed.
+
+    Without this, removing an evidenced trip left its links `AVAILABLE`. The rule ignores
+    them — a removed record is not in `trips` — so no conclusion was wrong. What was wrong
+    was the provenance: `coverage_for_case` kept returning them, every later result
+    recorded an `EVIDENCE_LINK` for a trip the assessment does not contain, and the
+    provenance panel resolved it to "Document for <the removed trip>" marked still current.
+    A panel whose one job is saying what a conclusion rested on was asserting support from
+    a record that no longer exists.
+
+    `UNAVAILABLE`, not `DELETED`: the document is fine and still in the library. What
+    ended is the trip it was attached to.
+
+    Emits one `EvidenceDetachedFromTravelRecord` per link, on the caller's unit of work.
+
+    A first draft emitted nothing, reasoning that the removal's own `TravelRecordRemoved`
+    already said what happened and a second event per link would be noise. `UnitOfWork`
+    rejected it — "business state changed without an emitted domain event" — and the guard
+    was right: `domain_events` is the record of what happened to the case, and a link
+    ending is a thing that happened. Someone reconstructing why a conclusion changed needs
+    to see it, and `availability` alone does not say when or why.
+    """
+    links = [
+        link
+        for link in EvidenceLinkRepository.live_for_case(session, case_id=case_id)
+        if link.travel_record_id == travel_record_id
+    ]
+    for link in links:
+        link.withdraw(availability=LinkAvailability.UNAVAILABLE, at=at)
+        uow.emit(
+            EvidenceDetachedFromTravelRecord(
+                aggregate_id=travel_record_id,
+                case_id=case_id,
+                evidence_item_id=link.evidence_item_id,
+                link_id=link.id,
+                availability=LinkAvailability.UNAVAILABLE.value,
+            ),
+            case_id=case_id,
+            action="evidence.support_withdrawn_on_trip_removal",
+            target_type="TravelRecord",
+            target_id=travel_record_id,
+        )
+    # No `invalidate_for_input_change` here: the caller is the travel-record removal, which
+    # already stales every rule declaring TRAVEL_RECORD — a superset of the one rule
+    # declaring EVIDENCE_SUPPORT. Invalidating again would emit a second
+    # `AssessmentInvalidated` for one user action.
     return len(links)
 
 

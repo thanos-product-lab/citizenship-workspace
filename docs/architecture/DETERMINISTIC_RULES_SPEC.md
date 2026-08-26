@@ -1018,7 +1018,10 @@ what this product chooses to notice. Migration `0022` therefore activates v2.0.0
 Retiring a version is not a formality. Selective invalidation resolves dependencies against
 the *currently active* version, so a result produced by a retired one is a result whose
 declared dependencies nothing is reading. The activating migration stales every such result
-(ADR-0022); the same obligation falls on every future activation.
+(ADR-0022); the same obligation falls on every future activation, **and it extends to
+composition closure** — a requirement composing the retired rule's conclusion must be staled
+too, or it stands current over an upstream that is not. Nothing composes
+`residence.travel_consistency` today; `preparation.case_complete` will compose everything.
 
 A change to any **[GUIDANCE]** item requires a new rule set version and new rule
 versions for affected requirements. A change to any **[PRODUCT]** item requires a

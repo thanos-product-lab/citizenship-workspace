@@ -1119,8 +1119,66 @@ supplied the trip name when a screen reader reached the Actions cell, so a row r
 Athens booking from your trip to Spain" and then a bare "Remove" — and the *less* qualified
 label is the one that deletes the whole trip.
 
+### What the trust-model review found
+
+No violation of the prime directives: no fact is written, no assessment is mutated beyond
+the currency triple, conclusion and currency stay separate through the sweep, the evaluator
+reads exactly the three inputs v2 declares, and every link it reads becomes an
+`AssessmentInputLink`. Eleven findings around that, of which five were real defects.
+
+**The layer that catches an undeclared read never touched evidence.**
+`test_invalidation_completeness.py` mutated the application date and travel records only.
+That matters more than it sounds: `ResidenceAssessmentInputs.evidence_links` is handed to
+*every* residence evaluator, so this is the first input on the shared object that only one
+of them may legitimately read. A `residence.total_absences` that secretly counted only
+evidenced trips would pass the strict-provenance test — its declared and emitted kinds
+would still agree — and an attach would move the absence total with the result staying
+CURRENT. Verified by planting exactly that: the two new differential tests go red and the
+provenance tests stay green, which is the whole argument for this layer existing.
+
+**`mark_support_unavailable` withdrew links without invalidating.** It returned a count "so
+the caller can skip invalidation" — putting the half that matters back at a call site, in
+the one function whose entire justification is that M8 must not have to remember a call
+site. A document deleted in slice 5 would have withdrawn its links and left every
+conclusion that rested on them looking untouched. It now invalidates itself.
+
+**Removing a trip left its documents attached.** No conclusion was wrong — a removed record
+is invisible to the rule — but every later result recorded an `EVIDENCE_LINK` for a trip
+the assessment does not contain, and the provenance panel resolved it to "Document for
+&lt;the removed trip&gt;" marked still current. The surface whose one job is saying what a
+conclusion rested on was asserting support from a record that no longer exists.
+
+Fixing that ran into `UnitOfWork`'s guard, correctly. The first version withdrew links and
+committed without emitting, reasoning that `TravelRecordRemoved` already said what
+happened and a per-link event would be noise. "Business state changed without an emitted
+domain event" is the right answer: a link ending is a thing that happened, and
+`availability` alone says neither when nor why. The removal is now one transaction that
+withdraws, emits per link, emits the removal, invalidates and commits.
+
+**ADR-0022 claimed a mutation that did not exist.** "Skip the sweep and it goes red" was
+false while the test held its own transcription of the UPDATE — it passed against an empty
+migration. The statement is now a module constant the test imports, so gutting it breaks
+the test. Hoisting it is the one edit made to a shipped migration in this slice, and it is
+defensible precisely because the executed SQL is byte-identical; the citation correction,
+which *would* have changed effect, went into migration `0023` instead.
+
+**Two `derive` parameters defaulted to the suppressing value.** `unevidenced_records` and
+`case_holds_evidence` both defaulted to "suppress everything", so a caller that forgot
+either would derive no coverage issues and nothing would fail — the same argument that had
+already made `TripInput.travel_record_id` required. Both are now required.
+
 _Known gaps carried forward:_
 
+- **The queue lags the table between attaching and recalculating.** Attaching stales the
+  consistency result; issue derivation reads the *displayed* result, stale or current, so
+  "No document attached to your trip to Greece" stays open while the Documents column
+  already shows the document. This is ADR-0015 working as designed and is identical to the
+  overlap case — but it is newly *visible*, because both surfaces are one click apart and
+  attaching is cheap with immediate feedback. Accepted knowingly.
+- **The suppression gate will interact badly with slice 5.** `_case_holds_evidence` counts
+  active evidence items, so deleting the last document flips it false and reconciliation
+  closes *every* `MISSING_EVIDENCE` item at the moment every trip becomes unevidenced —
+  the queue goes quiet because the evidence went away. Belongs in slice 5's plan, not here.
 - **A borderline contrast case, accepted.** The muted inline "Remove" beside a document name
   measures 2.46:1 against the adjacent text, under the 3:1 that 1.4.1 asks for when colour
   distinguishes a control. Accepted because the column header and the button role supply

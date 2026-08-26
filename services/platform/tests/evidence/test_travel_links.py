@@ -393,3 +393,96 @@ def test_a_recalculation_records_the_links_it_read(api: Api, db_session: Session
     recorded = [link.input_version_id for link in links]
     stored = _links(db_session, case_id)
     assert recorded == [stored[0].id], "the link row itself is the input, not the document"
+
+
+def test_removing_a_trip_withdraws_the_documents_attached_to_it(
+    api: Api, db_session: Session
+) -> None:
+    """Otherwise the links stay AVAILABLE on a trip no rule can see.
+
+    No conclusion was wrong — a removed record is excluded from `trips`, so the rule never
+    counted it. What was wrong was the provenance: every later result recorded an
+    `EVIDENCE_LINK` for a trip the assessment does not contain, and the panel resolved it
+    to "Document for <the removed trip>" marked still current. The one surface whose job
+    is saying what a conclusion rested on was asserting support from a record that no
+    longer exists.
+
+    `UNAVAILABLE`, not `DELETED`: the document is fine and still in the library.
+    """
+    case_id, trip_id = _case_with_trip(api, "user_a")
+    item_id = _document(api, "user_a", case_id)
+    api("user_a").post(
+        f"/api/v1/cases/{case_id}/travel-records/{trip_id}/evidence",
+        json={"evidence_item_id": item_id},
+    )
+
+    api("user_a").delete(f"/api/v1/cases/{case_id}/travel-records/{trip_id}")
+
+    db_session.expire_all()
+    rows = _links(db_session, case_id)
+    assert len(rows) == 1, "the row is kept, as it is for any other withdrawal"
+    assert rows[0].availability is LinkAvailability.UNAVAILABLE
+    assert rows[0].unlinked_at is not None
+
+    # The document itself is untouched — it is still in the library, attachable elsewhere.
+    library = api("user_a").get(f"/api/v1/cases/{case_id}/evidence").json()
+    assert [item["id"] for item in library["items"]] == [item_id]
+
+
+def test_a_recalculation_after_removing_a_trip_records_no_link_for_it(
+    api: Api, db_session: Session
+) -> None:
+    """The consequence the previous test protects, asserted where it is visible."""
+    from app.assessments.domain import AssessmentInputLink, AssessmentResult
+    from app.requirements.models import RequirementDefinition
+
+    case_id, trip_id = _case_with_trip(api, "user_a")
+    item_id = _document(api, "user_a", case_id)
+    api("user_a").post(
+        f"/api/v1/cases/{case_id}/travel-records/{trip_id}/evidence",
+        json={"evidence_item_id": item_id},
+    )
+    api("user_a").delete(f"/api/v1/cases/{case_id}/travel-records/{trip_id}")
+    api("user_a").post(f"/api/v1/cases/{case_id}/assessments/recalculate")
+
+    db_session.expire_all()
+    links = db_session.execute(
+        select(AssessmentInputLink)
+        .join(AssessmentResult, AssessmentResult.id == AssessmentInputLink.assessment_result_id)
+        .join(RequirementDefinition, RequirementDefinition.id == AssessmentResult.requirement_id)
+        .where(
+            RequirementDefinition.requirement_key == "residence.travel_consistency",
+            AssessmentInputLink.input_kind == "EVIDENCE_LINK",
+            AssessmentResult.case_id == uuid.UUID(case_id),
+            AssessmentResult.currency == "CURRENT",
+        )
+    ).scalars()
+    assert list(links) == []
+
+
+def test_withdrawing_a_removed_trips_links_is_recorded_in_the_history(
+    api: Api, db_session: Session
+) -> None:
+    """`domain_events` is the record of what happened to the case, and a link ending is a
+    thing that happened. `availability` alone says neither when nor why, so someone
+    reconstructing a conclusion change would find a withdrawn link and no account of it."""
+    from app.shared.records import DomainEventRecord
+
+    case_id, trip_id = _case_with_trip(api, "user_a")
+    item_id = _document(api, "user_a", case_id)
+    api("user_a").post(
+        f"/api/v1/cases/{case_id}/travel-records/{trip_id}/evidence",
+        json={"evidence_item_id": item_id},
+    )
+    api("user_a").delete(f"/api/v1/cases/{case_id}/travel-records/{trip_id}")
+
+    db_session.expire_all()
+    detached = db_session.execute(
+        select(DomainEventRecord).where(
+            DomainEventRecord.event_type == "EvidenceDetachedFromTravelRecord"
+        )
+    ).scalars()
+    payloads = [event.payload for event in detached]
+    assert len(payloads) == 1
+    assert payloads[0]["availability"] == "UNAVAILABLE"
+    assert payloads[0]["travel_record_id"] == trip_id

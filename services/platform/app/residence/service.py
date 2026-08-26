@@ -23,6 +23,13 @@ from app.assessments.invalidation import StaleReason, invalidate_for_input_chang
 from app.auth.schemas import CurrentUser
 from app.cases import service as cases_service
 from app.cases.domain import ApplicationCase, LifecycleStatus
+
+# , not  importing evidence *service*: the link module reads the
+# travel repository, never this file, so the dependency runs one way only.
+# The link *module*, not the evidence service: it reads the travel repository and never
+# this file, so the dependency between the two modules runs one way only.
+from app.evidence import links
+from app.evidence.domain import utcnow
 from app.requirements.models import DependencyInputKind
 from app.residence.csv_import import ParsedImport, parse_import
 from app.residence.domain import (
@@ -295,14 +302,30 @@ def remove_travel_record(
     _check_record_revision(record, expected_revision)
     record.mark_removed()  # ACTIVE → REMOVED; raises if already removed (idempotency)
 
-    _emit_travel(
-        session,
-        user,
+    # This command builds its own unit of work rather than using `_emit_travel`, because
+    # it changes two aggregates: the record, and any evidence links attached to it. Both
+    # have to land in one transaction — a removal that committed without withdrawing the
+    # links would leave a removed trip holding live support, and the reverse order would
+    # withdraw support from a trip that still exists.
+    uow = UnitOfWork(session, actor_id=user.user_id)
+    links.withdraw_links_for_travel_record(
+        session, uow, case_id=case.id, travel_record_id=record.id, at=utcnow()
+    )
+    uow.emit(
+        TravelRecordRemoved(aggregate_id=record.id),
         case_id=case.id,
-        event=TravelRecordRemoved(aggregate_id=record.id),
         action="residence.travel_record_removed",
+        target_type="TravelRecord",
         target_id=record.id,
     )
+    invalidate_for_input_change(
+        session,
+        uow,
+        case_id=case.id,
+        input_kind=DependencyInputKind.TRAVEL_RECORD,
+        reason_code=StaleReason.TRAVEL_RECORD_CHANGED,
+    )
+    uow.commit()
     session.refresh(record)
     # The record keeps pointing at its last version so the tombstone stays inspectable.
     assert record.current_version_id is not None  # a removed record retains its final version

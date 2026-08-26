@@ -7,6 +7,9 @@ version that cites guidance, the full catalogue is the documented 15, and no rul
 is seeded for a key that has no evaluator yet.
 """
 
+from datetime import UTC, datetime
+from typing import Any
+
 import pytest
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -77,6 +80,23 @@ def test_in_scope_keys_have_active_rule_versions_that_cite_guidance(db_session: 
         if version.lifecycle_status == "ACTIVE":
             active_per_key[key] = active_per_key.get(key, 0) + 1
     assert active_per_key == dict.fromkeys(IN_SCOPE_REQUIREMENT_KEYS, 1)
+
+
+def _load_migration(revision: str) -> Any:
+    """Import a migration module by revision id.
+
+    Alembic's versions directory is not a package, so this goes through the file path
+    rather than an ordinary import.
+    """
+    import importlib.util
+    from pathlib import Path
+
+    path = Path(__file__).resolve().parents[2] / "migrations" / "versions" / f"{revision}.py"
+    spec = importlib.util.spec_from_file_location(revision, path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def test_no_result_produced_by_a_retired_rule_version_is_still_current(
@@ -158,15 +178,11 @@ def test_the_activation_sweep_stales_a_result_the_retired_version_produced(
     result.rule_version_id = v1_id
     db_session.commit()
 
-    db_session.execute(
-        text(
-            "UPDATE assessment_results "
-            "SET currency = 'STALE', stale_reason_code = 'RULE_VERSION_CHANGED', "
-            "    marked_stale_at = now() "
-            "WHERE rule_version_id = :v1 AND currency = 'CURRENT'"
-        ),
-        {"v1": v1_id},
-    )
+    # The migration's own statement, imported rather than transcribed. A copy passed
+    # against an empty migration — a guard guarding nothing — which is what ADR-0022
+    # claimed would go red. Deleting the sweep from `0022` now breaks this test.
+    sweep = _load_migration("0022_travel_consistency_v2")
+    db_session.execute(text(sweep.SWEEP_SQL), {"now": datetime.now(UTC), "v1": v1_id})
     db_session.commit()
     db_session.expire_all()
 

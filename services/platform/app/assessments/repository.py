@@ -79,10 +79,19 @@ class RequirementCatalogRepository:
         the version that produced the result being invalidated. If a rule's v2 drops a
         dependency its v1 declared, a change to that input resolves against v2, misses the
         requirement, and a v1-produced result stays CURRENT while an input it genuinely read
-        has moved. Not reachable today — every requirement has exactly one rule version and
-        nothing emits `RULE_VERSION_CHANGED` (Domain §41.1 lists it as a trigger; no path
-        exists). Closing it means joining dependencies to `AssessmentResult.rule_version_id`
-        instead, and belongs with the first rule-set migration (M9).
+        has moved.
+
+        **Reachable since M7 slice 4a.** This docstring previously said it was not —
+        "every requirement has exactly one rule version and nothing emits
+        `RULE_VERSION_CHANGED`" — and both clauses became false when
+        `residence.travel_consistency` v2.0.0 was activated and v1 retired. Left standing,
+        it told the next reader that a live hazard could not fire.
+
+        What keeps it closed today is ADR-0022: an activating migration stales every result
+        the outgoing version produced, so no result survives for this lookup to be wrong
+        about. That is an obligation on every future activation, not a property of the
+        query. Closing it properly means joining dependencies to
+        `AssessmentResult.rule_version_id` instead, and belongs with M9.
         """
         return [
             (requirement_key, dependency)
