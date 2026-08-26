@@ -19,6 +19,7 @@ declares. Nothing structural reveals that — only behaviour does, which is what
 `test_invalidation_completeness.py` is for.
 """
 
+import uuid
 from collections.abc import Callable
 
 import pytest
@@ -33,6 +34,7 @@ from app.requirements.models import (
     RequirementDefinition,
     RuleCompositionEdge,
     RuleDependencyDefinition,
+    RuleLifecycleStatus,
     RuleVersion,
 )
 from app.residence.domain import TravelRecordVersion
@@ -83,7 +85,69 @@ _DEPENDENCY_TO_LINK = {
     "ROUTE_PROFILE": "ROUTE_PROFILE_VERSION",
     "PROPOSED_APPLICATION_DATE": "APPLICATION_DATE_VERSION",
     "TRAVEL_RECORD": "TRAVEL_RECORD_VERSION",
+    # Not `_VERSION`: an evidence link has no version sequence, only availability
+    # (Domain §31.1).
+    "EVIDENCE_SUPPORT": "EVIDENCE_LINK",
 }
+
+
+def _active_rule_version(session: Session, requirement_id: uuid.UUID) -> RuleVersion:
+    """The one ACTIVE rule version for a requirement.
+
+    The filter is the whole point, and its absence was a silent hole. Until M7 slice 4a
+    every requirement had exactly one rule version, so an unfiltered `scalar()` was
+    harmless — then `residence.travel_consistency` v1 was retired and v2 activated, and
+    this guard started comparing results against **retired v1's** declarations. It went on
+    passing, because the fixture builds a case with no evidence, so the result carried no
+    `EVIDENCE_LINK` rows to disagree about. The one dependency this milestone added was
+    the one the guard had stopped checking.
+
+    Asserting exactly one row rather than taking the first: two ACTIVE versions would
+    double every declared dependency, and a guard that silently picked one of them would
+    be back where it started.
+    """
+    versions = list(
+        session.scalars(
+            select(RuleVersion).where(
+                RuleVersion.requirement_id == requirement_id,
+                RuleVersion.lifecycle_status == RuleLifecycleStatus.ACTIVE.value,
+            )
+        )
+    )
+    assert len(versions) == 1, f"expected exactly one active rule version, got {len(versions)}"
+    return versions[0]
+
+
+def _attach_a_document(api: Api, case_id: str, travel_record_id: str) -> None:
+    """Upload one document and attach it to a trip, through the real commands."""
+    from app.core.storage import InMemoryStorage, get_storage
+    from tests.evidence.conftest import fixture_bytes
+
+    content = fixture_bytes("travel-booking.pdf")
+    grant = (
+        api("user_a")
+        .post(
+            f"/api/v1/cases/{case_id}/evidence/uploads",
+            json={"media_type": "application/pdf", "declared_size_bytes": len(content)},
+        )
+        .json()
+    )
+    store = get_storage()
+    assert isinstance(store, InMemoryStorage)
+    store.put(str(grant["upload_fields"]["key"]), content)
+    item = api("user_a").post(
+        f"/api/v1/cases/{case_id}/evidence",
+        json={
+            "upload_token": grant["upload_token"],
+            "category": "TRAVEL_SUPPORT",
+            "display_name": "A booking",
+            "original_filename": "booking.pdf",
+        },
+    )
+    api("user_a").post(
+        f"/api/v1/cases/{case_id}/travel-records/{travel_record_id}/evidence",
+        json={"evidence_item_id": item.json()["id"]},
+    )
 
 
 def _case_with_date(api: Api, user: str) -> str:
@@ -106,10 +170,7 @@ def test_input_links_equal_declared_dependencies(api: Api, db_session: Session) 
             select(RequirementDefinition).where(RequirementDefinition.requirement_key == key)
         )
         assert definition is not None
-        rule_version = db_session.scalar(
-            select(RuleVersion).where(RuleVersion.requirement_id == definition.id)
-        )
-        assert rule_version is not None
+        rule_version = _active_rule_version(db_session, definition.id)
 
         declared = {
             (_DEPENDENCY_TO_LINK[dep.input_kind], dep.input_key)
@@ -147,17 +208,30 @@ def test_residence_links_cover_declared_kinds_and_every_active_trip(
     # link per active record — so the invariant is: link *kinds* equal declared *kinds*, and
     # the travel links are exactly the case's active travel-record versions.
     case_id = _case_with_date(api, "user_a")
+    trip_ids = []
     for departure, return_ in (("2023-06-01", "2023-07-02"), ("2024-02-01", "2024-03-01")):
-        api("user_a").post(
-            f"/api/v1/cases/{case_id}/travel-records",
-            json={
-                "destination_label": "Trip",
-                "departure_date": departure,
-                "return_date": return_,
-                "date_confidence": "EXACT",
-                "review_state": "CONFIRMED",
-            },
+        trip_ids.append(
+            str(
+                api("user_a")
+                .post(
+                    f"/api/v1/cases/{case_id}/travel-records",
+                    json={
+                        "destination_label": "Trip",
+                        "departure_date": departure,
+                        "return_date": return_,
+                        "date_confidence": "EXACT",
+                        "review_state": "CONFIRMED",
+                    },
+                )
+                .json()["id"]
+            )
         )
+    # And one attached document, so `residence.travel_consistency`'s EVIDENCE_SUPPORT
+    # dependency actually fans out to a link. A fixture with no evidence produces zero
+    # `EVIDENCE_LINK` rows, which is correct behaviour and leaves the strict kind-equality
+    # below with nothing to compare — the same reason this fixture has always created
+    # trips rather than asserting against an empty case.
+    _attach_a_document(api, case_id, trip_ids[0])
     api("user_a").post(f"/api/v1/cases/{case_id}/assessments/recalculate")
 
     active_travel_version_ids = {
@@ -171,10 +245,7 @@ def test_residence_links_cover_declared_kinds_and_every_active_trip(
             select(RequirementDefinition).where(RequirementDefinition.requirement_key == key)
         )
         assert definition is not None
-        rule_version = db_session.scalar(
-            select(RuleVersion).where(RuleVersion.requirement_id == definition.id)
-        )
-        assert rule_version is not None
+        rule_version = _active_rule_version(db_session, definition.id)
         declared_kinds = {
             _DEPENDENCY_TO_LINK[dep.input_kind]
             for dep in db_session.scalars(
@@ -239,10 +310,7 @@ def test_composition_edges_match_the_conclusions_the_composite_records(
         )
     )
     assert definition is not None
-    rule_version = db_session.scalar(
-        select(RuleVersion).where(RuleVersion.requirement_id == definition.id)
-    )
-    assert rule_version is not None
+    rule_version = _active_rule_version(db_session, definition.id)
 
     declared = {
         edge.upstream_requirement_key

@@ -73,9 +73,20 @@ logs:
 migrate:
     cd services/platform && uv run alembic upgrade head
 
+# Local MinIO credentials, matching what docker-compose gives the api and worker
+# containers. Recipes that run on the *host* need them too and do not get them from
+# compose — `just api` and `just seed` both reach object storage now that the seed uploads
+# documents, and without these boto3 fails with a bare `NoneType has no attribute
+# access_key` that says nothing about what is missing.
+#
+# Not secrets: these are MinIO's dev defaults, already in docker-compose.yml, and the
+# bucket only exists on a developer's machine. A deployment sets them from its own
+# environment and never reads this file.
+storage_env := "STORAGE_ENDPOINT_URL=http://localhost:9000 STORAGE_BUCKET=citizenship-evidence STORAGE_ACCESS_KEY=minioadmin STORAGE_SECRET_KEY=minioadmin"
+
 # Run the FastAPI app locally with reload (reads services/platform/.env).
 api:
-    cd services/platform && uv run uvicorn app.main:app --reload --port 8000
+    cd services/platform && {{storage_env}} uv run uvicorn app.main:app --reload --port 8000
 
 # Run the Next.js app against the local API.
 dev:
@@ -84,8 +95,12 @@ dev:
 # Load the canonical synthetic demo case (§13 of MVP RFC) via the real command path.
 # Pass a signed-in user id to seed it into an account you can open in the browser;
 # the default `demo-user` is what the CLI walkthroughs use.
+#
+# Needs MinIO up (`just up`) as well as Postgres: from M7 slice 4a the seed uploads eleven
+# travel documents through the real upload path, so eleven trips have evidence attached and
+# trip 6 (Greece) deliberately does not.
 seed user_id="demo-user":
-    cd services/platform && uv run python -m app.seed.demo_case {{user_id}}
+    cd services/platform && {{storage_env}} uv run python -m app.seed.demo_case {{user_id}}
 
 # Recalculate a case and print its requirement conclusions (dev walkthrough helper).
 recalc case_id user_id="demo-user":

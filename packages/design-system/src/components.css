@@ -681,6 +681,47 @@
   gap: var(--cw-space-4);
 }
 
+/* Support state (Domain §11.8). Deliberately unstyled as a status: no badge, no colour,
+   no glyph. A tick beside an attached document would read as "checked", and nothing has
+   read it — the link is the user's assertion, not a verdict (ADR-0021). */
+.cw-trips__documents {
+  color: var(--cw-text);
+}
+
+/* Block, not inline: the attached case puts its list above the Attach control because a
+   <ul> is block-level, so an inline "None attached" left the two run together as
+   "None attachedAttach". Matching the layouts keeps the control in the same place
+   whichever state the row is in. */
+.cw-trips__no-documents {
+  display: block;
+  margin-bottom: var(--cw-space-2);
+  color: var(--cw-text-subtle);
+}
+
+.cw-trips__document-list {
+  margin: 0 0 var(--cw-space-2);
+  padding: 0;
+  list-style: none;
+}
+
+.cw-trips__document-list li {
+  display: flex;
+  align-items: baseline;
+  gap: var(--cw-space-3);
+  /* A flex item's default `min-width: auto` refuses to shrink below its content's
+     min-content width, and a document name has no spaces to break at. The upload form
+     defaults the display name to the filename, so `Ryanair_booking_confirmation_ATH_
+     20220414` is the ordinary case rather than an exotic one — it pushed the page to
+     400px wide at a 320px viewport and carried the Remove control off-screen entirely.
+     The destination cell already needed exactly this treatment (see below). */
+  min-width: 0;
+}
+
+.cw-trips__document-list li > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .cw-trips__flag {
   display: block;
   margin-top: var(--cw-space-2);
@@ -749,6 +790,15 @@
   .cw-trips__actions {
     text-align: left;
     white-space: normal;
+  }
+
+  /* The documents cell is the only one that stacks a list *and* a control, so its rows
+     need the same finger-sized targets the actions cell gets. Without this the Remove
+     beside each document is a bare inline button at text height. */
+  .cw-trips__documents .cw-action {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
   }
 
   /* Roomier targets where the pointer is a finger. The 16px gap plus this height keeps

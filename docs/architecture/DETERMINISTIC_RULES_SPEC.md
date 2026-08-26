@@ -287,8 +287,9 @@ it should have its own eval fixture.
 ## 7. Requirement Rules
 
 Each rule below gives its key, inputs, computation, conclusion banding, summary
-codes, and citations. All rule versions in this document are `1.0.0` within rule
-set `2026.07.0`.
+codes, and citations. Rule versions in this document are `1.0.0` within rule set
+`2026.07.0`, with one exception: `residence.travel_consistency` is at **2.0.0** since
+M7 slice 4a — see §12.
 
 ---
 
@@ -590,6 +591,32 @@ Earlier drafts of this row named `FactEvidenceLink` specifically. That was wrong
 worth recording: `FactEvidenceLink` hangs off `FactVersion`, so a spec written that way
 made an M7 detection depend on an M8 entity, and the detection could not be built at all
 until facts existed — for no reason connected to what it actually measures.
+
+**"Confirmed trip" [PRODUCT], M7.** `review_state = CONFIRMED` on an ACTIVE record — and
+deliberately *not* the §6.1 trust gate, which additionally requires `EXACT` dates. §6.1
+gates what enters a **total**; this row asks whether the user has said the trip happened. A
+CONFIRMED trip with estimated dates is therefore excluded from trusted totals *and* asked
+for a document, which is coherent: they have told us they went.
+
+Spelled out because §6.1 defines a three-part gate two sections earlier and a reader will
+reasonably reach for it here.
+
+**Issue suppression [PRODUCT], M7.** The limitation is emitted whenever a confirmed trip
+has no available link. The **issue** is raised only once the case holds at least one active
+evidence item.
+
+This is the one place in §7.8 where a detection does not reach the queue one-for-one, so it
+is stated here rather than left in code. A case with twelve trips and nothing uploaded would
+otherwise open twelve identical items on the day this rule activates, burying whatever
+actually needs a decision. Before any document exists, "no documents have been provided" is
+one fact about the case rather than twelve problems with it — and the requirement detail
+says so, and the travel history shows every trip's support state, so the fact is not hidden.
+What is suppressed is its duplication into a queue whose value is that everything in it is
+worth acting on.
+
+The condition is *uploading*, not *attaching*. Keying on attachment would make the first
+attach open items for every remaining trip, which reads as being punished for progress.
+Because uploading stales nothing, the upload command reconciles the queue explicitly.
 
 **Coverage is not window-scoped**, unlike the `CONFLICTING` and `{ESTIMATED, UNKNOWN}`
 detections below. A trip wholly outside the qualifying period still appears in the user's
@@ -978,8 +1005,20 @@ of every window boundary.
 ## 12. Rule Set Versioning
 
 This document defines rule set `2026.07.0`. Each requirement's `RuleVersion`
-carries `semantic_version = 1.0.0`, `rule_set = 2026.07.0`, and links to the
-guidance sections cited above.
+carries `rule_set = 2026.07.0` and links to the guidance sections cited above.
+`semantic_version` is `1.0.0` for every requirement except
+`residence.travel_consistency`, which is at `2.0.0`.
+
+**Why that one moved, and why the rule set did not.** §7.8's coverage detection is tagged
+**[PRODUCT]**, and the rule below says a [PRODUCT] change requires a new rule version for
+the affected requirement only — not a new rule set. No guidance changed; what changed is
+what this product chooses to notice. Migration `0022` therefore activates v2.0.0 inside
+`2026.07.0` and retires v1.0.0.
+
+Retiring a version is not a formality. Selective invalidation resolves dependencies against
+the *currently active* version, so a result produced by a retired one is a result whose
+declared dependencies nothing is reading. The activating migration stales every such result
+(ADR-0022); the same obligation falls on every future activation.
 
 A change to any **[GUIDANCE]** item requires a new rule set version and new rule
 versions for affected requirements. A change to any **[PRODUCT]** item requires a

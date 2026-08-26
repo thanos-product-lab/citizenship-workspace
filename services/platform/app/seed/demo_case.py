@@ -158,10 +158,14 @@ def _upload_bytes(storage: StorageAdapter, grant: UploadGrant, content: bytes) -
     if isinstance(storage, InMemoryStorage):
         storage.put(str(grant.upload_fields["key"]), content)
         return
+    # Every signed field, then the file last — exactly what the browser client does
+    # (`useUploadEvidence.ts`). A presigned POST policy signs the field set, so dropping
+    # one (`Content-Type` looked redundant beside the file's own type) makes the store
+    # reject the whole request with a bare 403 that names nothing.
     response = httpx.post(
         grant.upload_url,
-        data={k: v for k, v in grant.upload_fields.items() if k != "Content-Type"},
-        files={"file": (grant.upload_fields["key"], content, grant.media_type)},
+        data=dict(grant.upload_fields),
+        files={"file": (str(grant.upload_fields["key"]), content, grant.media_type)},
         timeout=30.0,
     )
     response.raise_for_status()

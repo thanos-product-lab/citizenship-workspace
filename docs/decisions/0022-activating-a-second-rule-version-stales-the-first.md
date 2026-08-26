@@ -57,6 +57,24 @@ produced each result — remains assigned to M9, and this ADR does not discharge
   currency mark, and no assessment row is rewritten — directive 3 holds.
 - The sweep is data-touching migration, so it is bounded and idempotent: it matches on
   `rule_version_id` and `currency = CURRENT`, so re-running changes nothing.
+- **The issue queue does not follow the sweep, and there is a window where the two
+  disagree.** `invalidate_for_input_change` reconciles the queue in the same unit of work
+  precisely so "a stale result and the issue announcing it must never disagree" holds at
+  every call site. A migration is not one of those call sites: it runs with no request, no
+  actor and no `UnitOfWork`, and reaching into `issues_service` from Alembic would make a
+  schema migration depend on application services that will have moved on by the time
+  anyone replays it.
+
+  So after this migration deploys, a case with a travel-consistency result reads `STALE`
+  while its queue shows no `STALE_ASSESSMENT` item for it, until the next write that
+  reconciles — any assessment recalculation, or any input change. The requirement itself is
+  honest throughout: it carries `RULE_VERSION_CHANGED` and its own stale notice. What is
+  missing for that window is the queue's copy of the same fact.
+
+  Accepted rather than fixed, because the alternatives are worse: a migration that imports
+  application services, or a boot-time sweep that would run on every deploy. Recorded here
+  because it is a real divergence from an invariant this codebase otherwise holds
+  absolutely, and whoever activates the next rule version inherits it.
 - A test asserts a v1-produced result is `STALE` after migration. Mutation: skip the sweep,
   and it goes red — otherwise the sweep is invisible in a repository where every test
   fixture is created after the migration has already run.

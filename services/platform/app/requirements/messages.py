@@ -85,6 +85,17 @@ def _int(p: Parameters, key: str) -> int | None:
     return value if isinstance(value, int) else None
 
 
+def _unevidenced_clause(count: int | None) -> str:
+    """ "One confirmed trip has …" / "Four confirmed trips have …".
+
+    A missing count degrades to "Some", which is vague but never wrong — the same
+    discipline the absence summaries use when a figure is absent.
+    """
+    if count == 1:
+        return "One confirmed trip has no document attached"
+    return f"{count if count is not None else 'Some'} confirmed trips have no document attached"
+
+
 # --- summary codes ----------------------------------------------------------
 
 
@@ -311,9 +322,13 @@ SUMMARY_TEMPLATES: dict[str, _Template] = {
     # Says the records are consistent *first*. The unevidenced trips are a separate,
     # weaker fact, and leading with them would read as though something were wrong with
     # the travel history — which is precisely what this rule has just found is not so.
+    # Branches on the count because the canonical demo case has exactly one such trip, and
+    # "Some confirmed trips" for a single Greece booking is a small lie in the one sentence
+    # the requirement card leads with.
     "TRAVEL_RECORDS_UNEVIDENCED": lambda p: (
-        "Your travel records are internally consistent. Some confirmed trips have no "
-        "document attached, which does not affect any total."
+        "Your travel records are internally consistent. "
+        + _unevidenced_clause(_int(p, "unevidenced_count"))
+        + ", which does not affect any total."
     ),
 }
 

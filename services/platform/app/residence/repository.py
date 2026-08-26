@@ -98,7 +98,13 @@ class TravelRecordRepository:
                 TravelRecord.case_id == case_id,
                 TravelRecord._lifecycle_status == TravelLifecycleStatus.ACTIVE.value,
             )
-            .order_by(TravelRecordVersion.departure_date)
+            # The id is a tiebreak, not decoration. Two trips departing the same day have
+            # no defined relative order without it, and Postgres may return them
+            # differently after an unrelated update or a plan change. That order reaches
+            # the evaluator's `affected_input_ids` and its `TRAVEL_RECORD_VERSION`
+            # provenance rows, so two assessments over identical inputs would differ —
+            # the "diff where nothing changed" this codebase works to avoid.
+            .order_by(TravelRecordVersion.departure_date, TravelRecordVersion.id)
         )
         return [(record, version) for record, version in session.execute(stmt)]
 

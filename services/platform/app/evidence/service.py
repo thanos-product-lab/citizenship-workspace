@@ -49,6 +49,7 @@ from app.evidence.domain import (
     utcnow,
 )
 from app.evidence.repository import EvidenceRepository
+from app.issues import service as issues_service
 from app.shared.errors import (
     CaseNotActive,
     EvidenceNotFound,
@@ -230,6 +231,19 @@ def record_upload(
         # Safe metadata only (Domain §38.1): no filename, no key, no content.
         safe_metadata={"category": item.category, "media_type": file.media_type},
     )
+    # Uploading changes the *desired issue set* even though it stales nothing.
+    #
+    # `MISSING_EVIDENCE` is suppressed until the case holds a document (see
+    # `issues.derivation._missing_evidence_issues`). Without this call the gate flipped
+    # true with nothing to notice, so the coverage items first appeared at the next
+    # invalidating write — which is the first *attach*. That is precisely the behaviour
+    # the gate was written to avoid: the user attaches one booking and is handed an issue
+    # for every trip they have not got to yet, which reads as being punished for progress.
+    #
+    # Not `invalidate_for_input_change`: no conclusion has gone out of date. A document
+    # arriving in the library changes no input any rule reads — only whether the queue is
+    # ready to name the gaps. Staling results here would be over-firing.
+    issues_service.reconcile(session, uow, case_id=case.id)
     uow.commit()
     return item, file
 

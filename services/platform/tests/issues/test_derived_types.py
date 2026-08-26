@@ -589,6 +589,32 @@ def test_the_other_trips_appear_once_the_first_document_is_uploaded(api: Api) ->
     assert len(issues) == 3
 
 
+def test_the_gaps_appear_when_the_document_is_uploaded_not_when_one_is_attached(
+    api: Api,
+) -> None:
+    """The gate's timing, which its own docstring got wrong until a review caught it.
+
+    Uploading stales nothing, so it fired no invalidation and therefore no reconciliation:
+    the gate flipped true with nothing to notice, and the coverage items first appeared at
+    the next invalidating write — the first *attach*. That is exactly the behaviour the
+    gate exists to avoid. A user attaches one booking and is handed an issue for every
+    trip they have not got to yet, which reads as being punished for progress.
+
+    `record_upload` now reconciles. It does not invalidate: a document arriving in the
+    library changes no input any rule reads.
+    """
+    case_id = _case(api)
+    for month in (5, 7):
+        _trip(api, case_id, f"2023-0{month}-01", f"2023-0{month}-10", label=f"Trip {month}")
+    _recalc(api, case_id)
+    assert _of_type(_queue(api, case_id), "MISSING_EVIDENCE") == []
+
+    # Uploading alone — nothing attached anywhere — must surface both gaps.
+    _upload(api, case_id)
+
+    assert len(_of_type(_queue(api, case_id), "MISSING_EVIDENCE")) == 2
+
+
 def test_an_unevidenced_trip_is_information_the_user_may_set_aside(api: Api) -> None:
     """SYNTHETIC_DEMO_CASE §10: INFORMATION, dismissible. A trip with no booking is not a
     defect — people take trips they have no paperwork for, and no figure moves either

@@ -992,3 +992,151 @@ _Known gaps carried forward:_
   the bound once will exhaust it again, and auto-retrying is three more chances to occupy a
   worker. The user can still ask for it deliberately, which is a decision to revisit if an
   honest slow document ever hits it.
+
+## M7 slice 4a — evidence coverage: the trip link and the unevidenced trip
+
+A document can now support a trip, and the assessment notices. Attaching a booking to a
+travel record stales `residence.travel_consistency` and nothing else; a confirmed trip with
+no document attached reports itself in the requirement detail and, once the case holds any
+document at all, in the issue queue. The canonical case shows exactly two standing issues:
+`NEAR_THRESHOLD` on the absence total, and one `MISSING_EVIDENCE` on trip 6 (Greece).
+
+**Three specification divergences were settled before any code**, because each was a place
+where the RFCs described a world M8 will build and M7 had to live in now.
+
+The load-bearing one: RULES_SPEC §7.8 defined an unevidenced trip as one with no
+`FactEvidenceLink`. That table hangs off `FactVersion`, so the spec made an M7 detection
+depend on an M8 entity for no reason connected to what it measures. `EvidenceTravelLink`
+(Domain §11.9) now joins `FactEvidenceLink` rather than waiting for it, and §7.8 asks about
+"any available evidence link" so M8 widens the graph instead of rewriting the rule.
+
+**The link points at the travel record, not the version** (ADR-0021). Editing a trip's dates
+creates a new version; a version-scoped link would drop every attachment on every date
+correction, and the rule would then report a newly unevidenced trip as though the user had
+detached something. This is the opposite choice to `FactEvidenceLink`, and the difference is
+not an inconsistency: a fact's *value* is the thing being evidenced, so a changed value
+genuinely needs re-evidencing, while a trip's identity survives a date correction.
+
+**A link is an assertion, not a verification.** Nothing reads an attached document to decide
+whether it actually supports the trip. Matching a booking's dates against the trip's would
+have been deterministic and would have looked like a check — a guess dressed as one, and a
+support column that read as verification would be false reassurance of exactly the kind
+directive 7 exists to prevent. `EvidenceLinkInput` carries two ids and nothing else, so the
+narrow shape is the enforcement rather than a convention.
+
+**The evidence fan-out is one requirement, deliberately.** Attaching a document must not
+stale `residence.total_absences`: a user who deletes a booking has not changed how many days
+they were absent, only how well supported their account of it is. Both directions are
+tested, at the unit level and end to end.
+
+**The `MISSING_EVIDENCE` suppression gate is a judgement call**, so it is stated rather than
+buried. A case with twelve trips and nothing uploaded would have opened twelve identical
+items, burying the one issue that needs a decision. The limitation is emitted either way and
+the travel history shows every trip's support state, so nothing is hidden — what is
+suppressed is the duplication of that into a queue whose value is that everything in it is
+actionable. The gate turns on *uploading*, not *attaching*: keying on attachment would make
+the first attach open issues for every other trip, which reads as being punished for
+progress.
+
+**ADR-0022: the first second rule version made ADR-0014's gap reachable.** Invalidation
+resolves dependencies against the *currently active* rule version, so a v1-produced result
+left CURRENT is one whose declared dependencies nobody is reading. v2 only adds a dependency,
+so the hazard would not have fired this time — relying on that would be relying on an
+accident of one change. The activation migration stales every result v1 produced, narrowing
+the gap by construction; the proper fix (joining dependencies to
+`AssessmentResult.rule_version_id`) stays at M9.
+
+### Gate evidence — slice 4a
+
+| # | Mutation | Result |
+|---|---|---|
+| 1 | `ALTER TABLE evidence_travel_links DISABLE ROW LEVEL SECURITY` | 3 red in the RLS matrix |
+| 2 | attach stales via `TRAVEL_RECORD` instead of `EVIDENCE_SUPPORT` | 2 red — the totals restale too |
+| 3 | count every trip as evidenced | 4 red |
+| 4 | drop the `EVIDENCE_LINK` provenance links | 2 red |
+| 5 | drop the confirmed-only filter | 1 red |
+| 6 | remove the `MISSING_EVIDENCE` suppression gate | 6 red |
+| 7 | make the issue non-dismissible | 1 red |
+| 8 | offer in-flight documents for attaching | 1 red |
+| 9 | strip the per-document accessible names | 2 red |
+| 10 | make a failed detach silent again | 1 red |
+| 11 | freeze the notice sequence counter | 1 red |
+| 12 | unbind the attach error from the select | 1 red |
+
+`just lint`, `just typecheck`, **720 backend tests**, 303 frontend, `just test-rules` green,
+zero API-client drift, migrations 0021–0022 applied.
+
+Verified in Chrome against real MinIO, Postgres and Redis: eleven trips show their document,
+Greece shows "None attached", attaching announces and returns focus to the heading, and
+**detaching stales `residence.travel_consistency` alone while the three absence figures stay
+CURRENT** — conclusion `SUPPORTED`, currency `STALE`, the two axes visibly separate. The
+stale sentence reads "The documents attached to your travel records changed after this was
+worked out." Recalculating reopens the Greece issue.
+
+### Two things the tests could not have found
+
+**The seed's upload was broken against real MinIO.** `_upload_bytes` posts to the presigned
+URL as a browser does, but dropped `Content-Type` from the signed field set as redundant
+beside the file's own type. A presigned POST policy signs the field set, so the store
+rejected everything with a bare 403. Invisible to the suite because the in-memory adapter
+takes the other branch — only `just seed` against MinIO exercises the httpx path.
+
+**`just seed` and `just api` had no storage credentials.** Compose supplies them to the
+containers; the host recipes got nothing, and boto3 fails with `NoneType has no attribute
+access_key`, which names nothing. Both recipes now carry the MinIO dev defaults.
+
+### What the accessibility review found, and what it says about jsdom
+
+Five gate failures, and the instructive thing is that four of them were invisible to the
+test suite because jsdom does not model what a browser does.
+
+- **A failed detach was completely silent.** The response's `error` was never destructured,
+  so a screen-reader user pressed Remove, heard nothing, and the document was still there —
+  indistinguishable from a dead button. The attach path already reported its refusals, so
+  the asymmetry was an oversight rather than a design.
+- **`disabled` on the focused submit button drops focus to `<body>`.** The success path
+  recovered by chance, because closing the dialog re-focused the trigger; the *refusal*
+  path did not, leaving the user outside the dialog and outside its Tab trap with an alert
+  they could not reach. `globals.css` already wrote this rule down — "`aria-disabled` is
+  used instead of `disabled` so focus is not dropped mid-operation" — and this dialog broke
+  it. jsdom does not implement the behaviour, which is exactly why the suite was green.
+- **The attach refusal was a floated banner, not bound to the select it was about.**
+  Announced once and then gone: a user returning to the combo box heard only the options
+  again, with nothing saying which choice had been refused.
+- **A realistic document name broke reflow.** The upload form defaults the display name to
+  the filename, so `Ryanair_booking_confirmation_ATH_20220414` is the ordinary case. A flex
+  item's default `min-width: auto` refuses to shrink below its content's min-content width
+  and the name has no spaces to break at — at a 320px viewport the page went to 400px wide
+  and carried the Remove control off-screen entirely. The destination cell had needed
+  exactly this treatment already.
+- **Two identical notices in a row announced once.** Setting the same string twice is a
+  React state bail-out: no re-render, no DOM mutation, nothing announced. Attaching an
+  outbound and a return booking to one trip is the ordinary flow, and it was the second
+  that went silent.
+
+Also taken: the destination is now a `<th scope="row">`. Without a row header nothing
+supplied the trip name when a screen reader reached the Actions cell, so a row read "Remove
+Athens booking from your trip to Spain" and then a bare "Remove" — and the *less* qualified
+label is the one that deletes the whole trip.
+
+_Known gaps carried forward:_
+
+- **A borderline contrast case, accepted.** The muted inline "Remove" beside a document name
+  measures 2.46:1 against the adjacent text, under the 3:1 that 1.4.1 asks for when colour
+  distinguishes a control. Accepted because the column header and the button role supply
+  context that a link in running prose would not, and left recorded rather than fixed
+  silently.
+- **The test suite races the compose worker.** Beat relays every unpublished outbox row it
+  finds, including ones tests write, so `docker compose up` + `just test-be` means a live
+  worker processing test fixtures. It surfaced as `evidence_processing_runs: 0 -> 11`
+  during a loop of read-only date simulations. A session-scoped sentinel now fails with a
+  message naming the fix. The first version of that guard was useless — it checked at
+  session end, but every test truncates `outbox_events`, so it read "not published" from a
+  row that no longer existed.
+- **320px reflow is now verified for this column**, by measuring the real stylesheet in a
+  320px probe container rather than by resizing the window, which Chrome will not do below
+  606px. The row fits, the name wraps, and the Remove control lands at 320px rather than the
+  400px the review measured. The rest of the page is still unverified at that width.
+- **`DUPLICATE_TRAVEL_RECORD` and `DUPLICATE_EVIDENCE` are 4b.** §7.8 and the Domain enum
+  now distinguish a duplicate travel *record* from a duplicate *document*; neither
+  detection is built.

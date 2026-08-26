@@ -665,6 +665,7 @@ def _evaluate_travel_consistency(inputs: ResidenceAssessmentInputs) -> Evaluated
         t.travel_record_version_id: absent_dates(t.departure_date, t.return_date) for t in trips
     }
     limitations: list[Limitation] = []
+    summary_parameters: dict[str, object] = {}
 
     def _in_window(trip: TripInput) -> bool:
         # "Inside the qualifying period" (RULES_SPEC §7.8) is read as: the trip has at least
@@ -739,7 +740,13 @@ def _evaluate_travel_consistency(inputs: ResidenceAssessmentInputs) -> Evaluated
             Limitation(
                 "MISSING_TRAVEL_EVIDENCE",
                 LimitationSeverity.INFORMATION,
-                affected_input_ids=tuple(str(t.travel_record_version_id) for t in unevidenced),
+                # Sorted, like `OVERLAPPING_TRAVEL` above. Trip order is stable now that the
+                # repository tiebreaks on id, but sorting here means this limitation does
+                # not silently depend on that.
+                affected_input_ids=tuple(
+                    sorted(str(t.travel_record_version_id) for t in unevidenced)
+                ),
+                message_parameters={"unevidenced_count": len(unevidenced)},
             )
         )
 
@@ -773,6 +780,7 @@ def _evaluate_travel_consistency(inputs: ResidenceAssessmentInputs) -> Evaluated
         # its verdict for that would be reporting a document-management state as a defect
         # in the travel history.
         conclusion, code = Conclusion.SUPPORTED, "TRAVEL_RECORDS_UNEVIDENCED"
+        summary_parameters = {"unevidenced_count": len(unevidenced)}
     else:
         conclusion, code = Conclusion.SUPPORTED, "TRAVEL_RECORDS_CONSISTENT"
 
@@ -780,6 +788,7 @@ def _evaluate_travel_consistency(inputs: ResidenceAssessmentInputs) -> Evaluated
         requirement_key=KEY_TRAVEL_CONSISTENCY,
         conclusion=conclusion.value,
         summary_code=code,
+        summary_parameters=summary_parameters,
         input_links=(
             _app_date_link(inputs),
             *_travel_links(inputs.trips),
