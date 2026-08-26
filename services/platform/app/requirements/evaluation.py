@@ -391,6 +391,11 @@ class TripInput:
     #: `is_trusted`, which additionally requires EXACT dates: §7.8's unevidenced detection
     #: is about *confirmed* trips, and a confirmed trip with estimated dates is confirmed.
     review_state: str = "CONFIRMED"
+    #: Both destination fields, for §7.8's duplicate detection. Neither alone is enough:
+    #: the code is normalised but nullable, the label is always present but unnormalised.
+    #: See `_destination_key`.
+    destination_country_code: str | None = None
+    destination_label: str = ""
 
 
 @dataclass(frozen=True)
@@ -421,6 +426,24 @@ class ResidenceAssessmentInputs:
 
 def _app_date_link(inputs: ResidenceAssessmentInputs) -> InputLinkSpec:
     return InputLinkSpec(LinkInputKind.APPLICATION_DATE_VERSION, inputs.application_date_version_id)
+
+
+def _destination_key(trip: TripInput) -> str:
+    """How two trips are judged to name the same place (§7.8).
+
+    The country code where the trip has one, the normalised label where it does not — and
+    the two spaces are kept apart by a prefix, so an unmapped label that happens to read
+    like a country code cannot collide with the real thing.
+
+    Neither field alone works. The code is nullable, derived from the label and set only
+    for known countries, so codes alone would never detect a duplicate among free-text
+    destinations — which are exactly the entries a slip is most likely to duplicate. The
+    label alone would read "Spain" and "España" as different trips when the product already
+    knows they are one country.
+    """
+    if trip.destination_country_code:
+        return f"code:{trip.destination_country_code.upper()}"
+    return f"label:{' '.join(trip.destination_label.split()).casefold()}"
 
 
 def _evidence_links(links: tuple["EvidenceLinkInput", ...]) -> tuple[InputLinkSpec, ...]:
@@ -718,6 +741,28 @@ def _evaluate_travel_consistency(inputs: ResidenceAssessmentInputs) -> Evaluated
                 LimitationSeverity.CAUTION,
                 message_parameters={"physical_presence_date": anchor.isoformat()},
                 affected_input_ids=tuple(str(t.travel_record_version_id) for t in boundary),
+            )
+        )
+
+    # Duplicate records (§7.8, from slice 4b). Identical dates *and* destination.
+    #
+    # Deliberately does not touch the banding below. A trip recorded twice contributes the
+    # days it would have contributed once — totals are the cardinality of a union (§5.2) —
+    # so there is no figure to correct. What a duplicate changes is which issue the user is
+    # shown, and that decision lives in `issues.derivation`.
+    by_identity: dict[tuple[date, date, str], list[TripInput]] = {}
+    for trip in trips:
+        key = (trip.departure_date, trip.return_date, _destination_key(trip))
+        by_identity.setdefault(key, []).append(trip)
+    duplicated = [t for group in by_identity.values() if len(group) > 1 for t in group]
+    if duplicated:
+        limitations.append(
+            Limitation(
+                "DUPLICATE_TRAVEL_RECORD",
+                LimitationSeverity.INFORMATION,
+                affected_input_ids=tuple(
+                    sorted(str(t.travel_record_version_id) for t in duplicated)
+                ),
             )
         )
 

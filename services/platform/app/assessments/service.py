@@ -655,6 +655,8 @@ def _gather_trips(session: Session, case_id: uuid.UUID) -> tuple[TripInput, ...]
             is_trusted=counts_toward_trusted_total(record, version),
             date_confidence=version.date_confidence,
             review_state=version.review_state,
+            destination_country_code=version.destination_country_code,
+            destination_label=version.destination_label,
         )
         for record, version in records
     )

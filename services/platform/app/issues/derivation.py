@@ -34,6 +34,7 @@ LIMITATION_OVERLAPPING = "OVERLAPPING_TRAVEL"
 LIMITATION_UNCERTAIN = "UNCERTAIN_TRAVEL_DATE"
 LIMITATION_NARROW_MARGIN = "STATUS_PERIOD_NARROW_MARGIN"
 LIMITATION_MISSING_EVIDENCE = "MISSING_TRAVEL_EVIDENCE"
+LIMITATION_DUPLICATE_RECORD = "DUPLICATE_TRAVEL_RECORD"
 
 #: Conclusions the prototype declines to assess on its own (UI/UX §10.2). Stopping is a
 #: successful outcome, not a failure (CLAUDE.md §2.7), so these are surfaced as issues
@@ -110,6 +111,11 @@ class LimitationTargets:
     overlapping_records: frozenset[str]
     uncertain_in_window_records: frozenset[str]
     judged_records: frozenset[str]
+    #: Records the consistency rule reported as being the same trip entered twice (§7.8).
+    #: These *also* appear in `overlapping_records` for any trip of non-zero length, since
+    #: identical dates intersect — the suppression below is what keeps one problem from
+    #: producing two items.
+    duplicate_records: frozenset[str]
     #: Records the consistency rule reported as having no document attached (§7.8, v2.0.0).
     #:
     #: No default, deliberately. An empty frozenset is exactly the value that suppresses
@@ -251,9 +257,37 @@ def _travel_issues(
     by_record = {trip.record_id: trip for trip in travel}
     issues: list[DesiredIssue] = []
 
+    # Duplicates first, and the overlap list is filtered by them below. §7.8: a duplicate
+    # supersedes the overlap it causes, because "these two trips are the same trip" points
+    # at a different fix — remove a row, rather than correct a date. Showing both would ask
+    # the user to repair an overlap that resolves itself the moment the duplicate goes.
+    for record_id in sorted(targets.duplicate_records):
+        trip = by_record.get(record_id)
+        if trip is None:
+            continue
+        issues.append(
+            DesiredIssue(
+                issue_type=IssueType.DUPLICATE_TRAVEL_RECORD,
+                # No figure is wrong: totals are the cardinality of a union, so the second
+                # copy contributes nothing. And two identical trips may be two real trips
+                # the user took on the same dates to the same place — unlikely, not
+                # impossible, and the product cannot tell. It proposes; §11.8 forbids it
+                # merging anything on its own.
+                severity=IssueSeverity.INFORMATION,
+                dismissibility=Dismissibility.DISMISSIBLE,
+                title_code="ISSUE_DUPLICATE_TRAVEL_RECORD",
+                affected_object_type=AFFECTED_TRAVEL_RECORD,
+                affected_object_id=trip.record_id,
+                message_parameters={"destination": trip.label},
+            )
+        )
+
     # One issue per overlapping record, not one per pair: the user fixes an overlap by
     # editing a record, and a pair has no single affected object to name (§36.1).
-    for record_id in sorted(targets.overlapping_records):
+    #
+    # Scoped to the pair, not the case: `overlapping_records - duplicate_records` leaves a
+    # trip that overlaps something *other* than its duplicate still reporting the overlap.
+    for record_id in sorted(targets.overlapping_records - targets.duplicate_records):
         trip = by_record.get(record_id)
         if trip is None:
             continue

@@ -97,9 +97,19 @@ def _trip(
     trusted: bool = True,
     record_id: uuid.UUID | None = None,
     review_state: str = "CONFIRMED",
+    country: str | None = None,
+    label: str = "",
 ) -> TripInput:
     return TripInput(
-        dep, ret, uuid.uuid4(), record_id or uuid.uuid4(), trusted, confidence, review_state
+        dep,
+        ret,
+        uuid.uuid4(),
+        record_id or uuid.uuid4(),
+        trusted,
+        confidence,
+        review_state,
+        country,
+        label,
     )
 
 
@@ -296,3 +306,146 @@ def test_evaluating_twice_over_the_same_inputs_gives_the_same_answer() -> None:
     assert [s.input_version_id for s in first.input_links] == [
         s.input_version_id for s in second.input_links
     ]
+
+
+# --- duplicate records (§7.8, slice 4b) ---------------------------------------------
+
+
+def _duplicate_ids(result: EvaluatedResult) -> tuple[str, ...]:
+    limitation = next(
+        (lim for lim in result.limitations if lim.code == "DUPLICATE_TRAVEL_RECORD"), None
+    )
+    return limitation.affected_input_ids if limitation else ()
+
+
+def test_two_identical_trips_are_reported_as_duplicates() -> None:
+    a = _trip(date(2024, 6, 5), date(2024, 7, 15), country="GR")
+    b = _trip(date(2024, 6, 5), date(2024, 7, 15), country="GR")
+
+    result = _consistency(a, b)
+
+    assert set(_duplicate_ids(result)) == {
+        str(a.travel_record_version_id),
+        str(b.travel_record_version_id),
+    }
+
+
+def test_the_duplicate_detection_does_not_move_the_conclusion() -> None:
+    """§7.8: the detection adds a limitation and nothing else.
+
+    Two identical week-long trips also *overlap* — their absent-date sets are the same set,
+    which intersects itself — so `OVERLAPPING_TRAVEL` still fires and still bands
+    INCONSISTENT. Both limitations are on the result; only the issue the user sees changes,
+    and that decision belongs to the derivation.
+    """
+    result = _consistency(
+        _trip(date(2024, 6, 5), date(2024, 7, 15), country="GR"),
+        _trip(date(2024, 6, 5), date(2024, 7, 15), country="GR"),
+    )
+
+    assert result.conclusion == Conclusion.INCONSISTENT.value
+    assert result.summary_code == "TRAVEL_RECORDS_OVERLAP"
+    codes = {lim.code for lim in result.limitations}
+    assert {"DUPLICATE_TRAVEL_RECORD", "OVERLAPPING_TRAVEL"} <= codes
+
+
+def test_identical_zero_day_trips_are_duplicates_that_never_overlapped() -> None:
+    """The case the overlap detection cannot see at all.
+
+    Depart *D*, return *D + 1* gives an empty absent-date set (§5.2, both endpoints
+    excluded), and empty sets do not intersect. These trips have never overlapped, so their
+    conclusion must stay exactly what the other detections gave it — banding them
+    INCONSISTENT would downgrade a verdict on records that distort no figure.
+    """
+    result = _consistency(
+        _trip(date(2024, 6, 5), date(2024, 6, 6), country="GR"),
+        _trip(date(2024, 6, 5), date(2024, 6, 6), country="GR"),
+    )
+
+    assert result.conclusion == Conclusion.SUPPORTED.value
+    codes = {lim.code for lim in result.limitations}
+    assert "DUPLICATE_TRAVEL_RECORD" in codes
+    assert "OVERLAPPING_TRAVEL" not in codes
+
+
+def test_the_same_dates_to_a_different_place_are_not_duplicates() -> None:
+    result = _consistency(
+        _trip(date(2024, 6, 5), date(2024, 7, 15), country="GR"),
+        _trip(date(2024, 6, 5), date(2024, 7, 15), country="FR"),
+    )
+
+    assert _duplicate_ids(result) == ()
+    # They still overlap, which is the honest reading: the user cannot have been in two
+    # countries at once, and that is a conflict rather than a duplicate.
+    assert result.summary_code == "TRAVEL_RECORDS_OVERLAP"
+
+
+def test_the_same_place_on_different_dates_is_not_a_duplicate() -> None:
+    result = _consistency(
+        _trip(date(2024, 6, 5), date(2024, 7, 15), country="GR"),
+        _trip(date(2025, 6, 5), date(2025, 7, 15), country="GR"),
+    )
+
+    assert _duplicate_ids(result) == ()
+
+
+def test_destination_matching_prefers_the_country_code() -> None:
+    """ "Spain" and "España" are one country, and the product already knows it — the code is
+    derived from the label at entry."""
+    result = _consistency(
+        _trip(date(2024, 6, 5), date(2024, 7, 15), country="ES", label="Spain"),
+        _trip(date(2024, 6, 5), date(2024, 7, 15), country="ES", label="España"),
+    )
+
+    assert len(_duplicate_ids(result)) == 2
+
+
+def test_destination_matching_falls_back_to_the_normalised_label() -> None:
+    """Free-text destinations have no country code, and they are exactly the entries a slip
+    is most likely to duplicate. Comparing codes alone would never detect these."""
+    result = _consistency(
+        _trip(date(2024, 6, 5), date(2024, 7, 15), label="Mum's house"),
+        _trip(date(2024, 6, 5), date(2024, 7, 15), label="  mum's HOUSE "),
+    )
+
+    assert len(_duplicate_ids(result)) == 2
+
+
+def test_two_different_unmapped_places_are_not_duplicates() -> None:
+    result = _consistency(
+        _trip(date(2024, 6, 5), date(2024, 7, 15), label="Conference"),
+        _trip(date(2024, 6, 5), date(2024, 7, 15), label="Mum's house"),
+    )
+
+    assert _duplicate_ids(result) == ()
+
+
+def test_an_unmapped_label_cannot_collide_with_a_country_code() -> None:
+    """The two comparison spaces are prefixed apart. Without that, a free-text destination
+    that happens to read like an ISO code would match a real one."""
+    result = _consistency(
+        _trip(date(2024, 6, 5), date(2024, 7, 15), country="GR"),
+        _trip(date(2024, 6, 5), date(2024, 7, 15), label="GR"),
+    )
+
+    assert _duplicate_ids(result) == ()
+
+
+def test_three_identical_trips_all_name_each_other() -> None:
+    trips = [_trip(date(2024, 6, 5), date(2024, 7, 15), country="GR") for _ in range(3)]
+
+    result = _consistency(*trips)
+
+    assert len(_duplicate_ids(result)) == 3
+
+
+def test_the_duplicate_limitation_is_ordered_deterministically() -> None:
+    """Sorted, like the other multi-record limitations: two runs over the same inputs must
+    produce byte-identical output, or comparing assessments shows a diff where nothing
+    changed."""
+    trips = [_trip(date(2024, 6, 5), date(2024, 7, 15), country="GR") for _ in range(3)]
+
+    first = _duplicate_ids(_consistency(*trips))
+    second = _duplicate_ids(_consistency(*trips))
+
+    assert first == second == tuple(sorted(first))

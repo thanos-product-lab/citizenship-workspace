@@ -30,6 +30,7 @@ from app.assessments.domain import AssessmentRunStatus
 from app.assessments.repository import AssessmentRepository
 from app.evidence.repository import EvidenceRepository
 from app.issues.derivation import (
+    LIMITATION_DUPLICATE_RECORD,
     LIMITATION_MISSING_EVIDENCE,
     LIMITATION_OVERLAPPING,
     LIMITATION_UNCERTAIN,
@@ -324,6 +325,7 @@ def _limitation_targets(
         uncertain_in_window_records=_records(LIMITATION_UNCERTAIN),
         judged_records=frozenset(judged),
         unevidenced_records=_records(LIMITATION_MISSING_EVIDENCE),
+        duplicate_records=_records(LIMITATION_DUPLICATE_RECORD),
     )
 
 

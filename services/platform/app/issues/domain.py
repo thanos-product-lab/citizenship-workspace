@@ -43,6 +43,10 @@ class IssueType(StrEnum):
     STALE_ASSESSMENT = "STALE_ASSESSMENT"
     UNSUPPORTED_COMPLEXITY = "UNSUPPORTED_COMPLEXITY"
     PROCESSING_FAILURE = "PROCESSING_FAILURE"
+    #: The same *trip* entered twice (RULES_SPEC §7.8). Distinct from `DUPLICATE_EVIDENCE`
+    #: below, which is the same *file* uploaded twice — different cause, different affected
+    #: object, different remedy (Domain §36.2).
+    DUPLICATE_TRAVEL_RECORD = "DUPLICATE_TRAVEL_RECORD"
     DUPLICATE_EVIDENCE = "DUPLICATE_EVIDENCE"
     SOURCE_UNAVAILABLE = "SOURCE_UNAVAILABLE"
 

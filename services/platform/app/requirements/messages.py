@@ -386,6 +386,13 @@ LIMITATION_TEMPLATES: dict[str, _Template] = {
     # It also does not tell them to attach one. A trip with no booking is not a defect —
     # people take trips they have no paperwork for — so this states the fact and leaves
     # the decision with them.
+    # Says what was found, not what to do about it. Two identical rows are almost always a
+    # slip, and "almost always" is not "always" — the product cannot tell a mis-entry from
+    # two real trips on the same dates, so it reports and leaves the judgement.
+    "DUPLICATE_TRAVEL_RECORD": lambda p: (
+        "This trip has the same dates and destination as another one. Your absence totals "
+        "count these days once, so no figure is affected either way."
+    ),
     "MISSING_TRAVEL_EVIDENCE": lambda p: (
         "No document is attached to this trip. That does not affect your absence "
         "totals, which are worked out from the dates you entered."
@@ -508,6 +515,12 @@ ISSUE_TITLE_TEMPLATES: dict[str, _Template] = {
     "ISSUE_MISSING_TRAVEL_EVIDENCE": lambda p: (
         f"No document attached to your trip to {p.get('destination', 'this destination')}"
     ),
+    "ISSUE_DUPLICATE_TRAVEL_RECORD": lambda p: (
+        f"Your trip to {p.get('destination', 'this destination')} is recorded twice"
+    ),
+    "ISSUE_DUPLICATE_EVIDENCE": lambda p: (
+        f"{p.get('display_name', 'This document')} is already in your documents"
+    ),
     "ISSUE_RECALCULATION_FAILED": lambda p: "We could not recheck your conclusions",
 }
 
@@ -554,6 +567,21 @@ ISSUE_BODY_TEMPLATES: dict[str, _Template] = {
         "change any figure. A booking or ticket is the kind of thing that supports a trip "
         "if you are asked about it later."
     ),
+    # The reassurance about the total comes first and is unconditional, because a user
+    # seeing "recorded twice" will assume their days have been counted twice. They have
+    # not: absence totals are a union of dates, so a duplicate adds nothing.
+    "ISSUE_DUPLICATE_TRAVEL_RECORD": lambda p: (
+        "Days outside the UK are counted once even when a trip appears twice, so your "
+        "totals are unaffected. If one of these was entered by mistake, removing it will "
+        "tidy your travel history."
+    ),
+    # "the same contents", not "the same document": what matched is a checksum, and two
+    # files with identical bytes may well have been uploaded deliberately under different
+    # categories. The sentence must not assert a mistake the product cannot see.
+    "ISSUE_DUPLICATE_EVIDENCE": lambda p: (
+        f"This file has the same contents as {p.get('other_name', 'another document')} in "
+        "your documents. Nothing in your assessment depends on either copy."
+    ),
     "ISSUE_RECALCULATION_FAILED": lambda p: (
         "The last attempt to recheck your conclusions did not finish. Nothing was changed: "
         "the figures on your case are still the ones worked out before your last edit."
@@ -591,6 +619,10 @@ ISSUE_IMPACT_TEMPLATES: dict[str, _Template] = {
     "ISSUE_UNCERTAIN_DATE_OUTSIDE": lambda p: (
         "No figure changes either way. You can set this aside."
     ),
+    "ISSUE_DUPLICATE_TRAVEL_RECORD": lambda p: (
+        "No figure changes either way. You can remove one or set this aside."
+    ),
+    "ISSUE_DUPLICATE_EVIDENCE": lambda p: "No figure changes either way. You can set this aside.",
     # Says plainly that setting it aside is fine, like the out-of-window uncertain date.
     # Anything stronger would be advice about what the Home Office will ask for, which
     # this product does not give (CLAUDE.md §1).

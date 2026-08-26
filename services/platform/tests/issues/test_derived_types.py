@@ -689,3 +689,104 @@ def test_the_issue_never_tells_the_user_their_totals_are_affected(api: Api) -> N
     issue = _of_type(_queue(api, case_id), "MISSING_EVIDENCE")[0]
     assert "does not change any figure" in issue["body"]
     assert "set this aside" in issue["impact"]
+
+
+# --- DUPLICATE_TRAVEL_RECORD -------------------------------------------------
+
+
+def test_a_trip_recorded_twice_is_reported_as_a_duplicate_not_an_overlap(api: Api) -> None:
+    """§7.8's precedence rule, which is the whole point of the detection.
+
+    Identical trips already overlapped — their absent-date sets are the same set — so this
+    pair was reported as `OVERLAPPING_TRAVEL` before slice 4b. That is the less accurate
+    word for it and points at the wrong fix: correct a date, when what the user needs to do
+    is remove a row.
+    """
+    case_id = _case(api)
+    _trip(api, case_id, "2024-06-05", "2024-07-15", label="Greece")
+    _trip(api, case_id, "2024-06-05", "2024-07-15", label="Greece")
+    _recalc(api, case_id)
+
+    queue = _queue(api, case_id)
+    duplicates = _of_type(queue, "DUPLICATE_TRAVEL_RECORD")
+    assert len(duplicates) == 2, "one per record, as overlaps are"
+    assert _of_type(queue, "OVERLAPPING_TRAVEL") == []
+    assert all("Greece" in issue["title"] for issue in duplicates)
+
+
+def test_the_duplicate_issue_is_information_the_user_may_set_aside(api: Api) -> None:
+    """No figure is wrong — totals are a union, so the second copy adds nothing — and two
+    identical rows may conceivably be two real trips. The product proposes; §11.8 forbids
+    it merging anything on its own."""
+    case_id = _case(api)
+    _trip(api, case_id, "2024-06-05", "2024-07-15", label="Greece")
+    _trip(api, case_id, "2024-06-05", "2024-07-15", label="Greece")
+    _recalc(api, case_id)
+
+    issue = _of_type(_queue(api, case_id), "DUPLICATE_TRAVEL_RECORD")[0]
+    assert issue["severity"] == "INFORMATION"
+    assert issue["dismissibility"] == "DISMISSIBLE"
+    assert "counted once" in issue["body"]
+
+
+def test_a_genuine_overlap_still_reports_as_an_overlap(api: Api) -> None:
+    """The suppression is scoped to the duplicate pair, not to the case. A trip overlapping
+    something *other* than its own duplicate must keep saying so."""
+    case_id = _case(api)
+    _trip(api, case_id, "2024-06-05", "2024-07-15", label="Greece")
+    _trip(api, case_id, "2024-06-05", "2024-07-15", label="Greece")
+    _trip(api, case_id, "2024-07-01", "2024-08-01", label="Italy")
+    _recalc(api, case_id)
+
+    queue = _queue(api, case_id)
+    assert len(_of_type(queue, "DUPLICATE_TRAVEL_RECORD")) == 2
+    overlaps = _of_type(queue, "OVERLAPPING_TRAVEL")
+    assert len(overlaps) == 1, "only Italy, which overlaps without being a duplicate"
+    assert "Italy" in overlaps[0]["title"]
+
+
+def test_removing_one_copy_clears_both_duplicate_issues(api: Api) -> None:
+    """The cause goes away, so both items do — reconciliation resolves what the derivation
+    stops naming. And the overlap does not reappear in its place, because there is nothing
+    left to overlap."""
+    case_id = _case(api)
+    _trip(api, case_id, "2024-06-05", "2024-07-15", label="Greece")
+    second = _trip(api, case_id, "2024-06-05", "2024-07-15", label="Greece")
+    _recalc(api, case_id)
+    assert len(_of_type(_queue(api, case_id), "DUPLICATE_TRAVEL_RECORD")) == 2
+
+    api("user_a").delete(f"/api/v1/cases/{case_id}/travel-records/{second}")
+    _recalc(api, case_id)
+
+    queue = _queue(api, case_id)
+    assert _of_type(queue, "DUPLICATE_TRAVEL_RECORD") == []
+    assert _of_type(queue, "OVERLAPPING_TRAVEL") == []
+
+
+def test_dismissing_one_duplicate_leaves_the_other_open(api: Api) -> None:
+    """Each record is its own cause with its own deduplication key. Setting aside the item
+    on one row must not silently clear the other, which the user has not looked at."""
+    case_id = _case(api)
+    _trip(api, case_id, "2024-06-05", "2024-07-15", label="Greece")
+    _trip(api, case_id, "2024-06-05", "2024-07-15", label="Greece")
+    _recalc(api, case_id)
+
+    first = _of_type(_queue(api, case_id), "DUPLICATE_TRAVEL_RECORD")[0]
+    api("user_a").post(f"/api/v1/cases/{case_id}/issues/{first['id']}/dismiss", json={})
+
+    remaining = _of_type(_queue(api, case_id), "DUPLICATE_TRAVEL_RECORD")
+    assert len(remaining) == 1
+    assert remaining[0]["id"] != first["id"]
+
+
+def test_identical_zero_day_trips_are_caught_though_they_never_overlapped(api: Api) -> None:
+    """Depart D, return D+1 gives an empty absent-date set, and empty sets do not intersect.
+    This pair was invisible to every detection before slice 4b."""
+    case_id = _case(api)
+    _trip(api, case_id, "2024-06-05", "2024-06-06", label="Greece")
+    _trip(api, case_id, "2024-06-05", "2024-06-06", label="Greece")
+    _recalc(api, case_id)
+
+    queue = _queue(api, case_id)
+    assert len(_of_type(queue, "DUPLICATE_TRAVEL_RECORD")) == 2
+    assert _of_type(queue, "OVERLAPPING_TRAVEL") == []
