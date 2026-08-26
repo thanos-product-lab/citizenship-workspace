@@ -28,7 +28,9 @@ from sqlalchemy.orm import Session
 
 from app.assessments.domain import AssessmentRunStatus
 from app.assessments.repository import AssessmentRepository
+from app.evidence.repository import EvidenceRepository
 from app.issues.derivation import (
+    LIMITATION_MISSING_EVIDENCE,
     LIMITATION_OVERLAPPING,
     LIMITATION_UNCERTAIN,
     DesiredIssue,
@@ -93,6 +95,7 @@ def reconcile(
         travel=_travel_snapshots(session, case_id),
         targets=_limitation_targets(session, case_id, requirements),
         recalculation_failed=_recalculation_failed(session, case_id),
+        case_holds_evidence=_case_holds_evidence(session, case_id),
     )
     desired_by_key = {issue.deduplication_key: issue for issue in desired}
 
@@ -320,7 +323,23 @@ def _limitation_targets(
         overlapping_records=_records(LIMITATION_OVERLAPPING),
         uncertain_in_window_records=_records(LIMITATION_UNCERTAIN),
         judged_records=frozenset(judged),
+        unevidenced_records=_records(LIMITATION_MISSING_EVIDENCE),
     )
+
+
+def _case_holds_evidence(session: Session, case_id: uuid.UUID) -> bool:
+    """Whether the user has uploaded anything at all.
+
+    The one fact the `MISSING_EVIDENCE` suppression gate turns on — see
+    `derivation._missing_evidence_issues` for why it exists.
+
+    Deliberately "holds a document", not "has attached a document to something". Once a
+    user has uploaded one file they are evidencing the case, and the trips they have not
+    got to yet are exactly the gaps worth listing. Keying on *attachment* instead would
+    make the first attach open issues for all eleven other trips, which reads as being
+    punished for making progress.
+    """
+    return EvidenceRepository.case_holds_evidence(session, case_id=case_id)
 
 
 def _reshape(issue: Issue, wanted: DesiredIssue) -> bool:

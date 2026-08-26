@@ -507,3 +507,159 @@ def test_the_narrow_margin_issue_names_the_inputs_that_move_it(api: Api) -> None
     text = f"{issues[0]['body']} {issues[0]['impact']}"
     assert "travel records" not in text
     assert "grant date" in text
+
+
+# --- MISSING_EVIDENCE --------------------------------------------------------
+
+
+def _upload(api: Api, case_id: str, *, user: str = "user_a", name: str = "A booking") -> str:
+    """Put one real document in the case, through the two-call upload path."""
+    from app.core.storage import InMemoryStorage, get_storage
+    from tests.evidence.conftest import fixture_bytes
+
+    content = fixture_bytes("travel-booking.pdf")
+    grant = (
+        api(user)
+        .post(
+            f"/api/v1/cases/{case_id}/evidence/uploads",
+            json={"media_type": "application/pdf", "declared_size_bytes": len(content)},
+        )
+        .json()
+    )
+    store = get_storage()
+    assert isinstance(store, InMemoryStorage)
+    store.put(str(grant["upload_fields"]["key"]), content)
+    return str(
+        api(user)
+        .post(
+            f"/api/v1/cases/{case_id}/evidence",
+            json={
+                "upload_token": grant["upload_token"],
+                "category": "TRAVEL_SUPPORT",
+                "display_name": name,
+                "original_filename": "booking.pdf",
+            },
+        )
+        .json()["id"]
+    )
+
+
+def _attach(api: Api, case_id: str, trip_id: str, item_id: str, *, user: str = "user_a") -> None:
+    api(user).post(
+        f"/api/v1/cases/{case_id}/travel-records/{trip_id}/evidence",
+        json={"evidence_item_id": item_id},
+    )
+
+
+def test_a_case_with_no_documents_at_all_raises_no_evidence_issues(api: Api) -> None:
+    """The suppression gate, and the reason it exists.
+
+    Twelve trips and nothing uploaded would otherwise open twelve identical items, burying
+    the one issue that needs a decision. Before the user has uploaded anything, "no
+    documents have been provided" is one fact about the case rather than twelve problems
+    with it.
+
+    Nothing is hidden: the limitation is still on the requirement, and the travel history
+    shows each trip's support state in its own column. What is suppressed is the
+    *duplication of that into a queue* whose value is that everything in it is actionable.
+    """
+    case_id = _case(api)
+    for month in (5, 6, 7):
+        _trip(api, case_id, f"2023-0{month}-01", f"2023-0{month}-10", label=f"Trip {month}")
+    _recalc(api, case_id)
+
+    assert _of_type(_queue(api, case_id), "MISSING_EVIDENCE") == []
+
+
+def test_the_other_trips_appear_once_the_first_document_is_uploaded(api: Api) -> None:
+    """The other side of the gate. Once a document exists the user is evidencing the case,
+    and the trips they have not got to yet are exactly the gaps worth listing.
+
+    Note the gate turns on *uploading*, not on *attaching*: this document is attached to
+    nothing, and all three trips are listed. Keying on attachment would make the first
+    attach open issues for every other trip, which reads as being punished for progress.
+    """
+    case_id = _case(api)
+    for month in (5, 6, 7):
+        _trip(api, case_id, f"2023-0{month}-01", f"2023-0{month}-10", label=f"Trip {month}")
+    _upload(api, case_id)
+    _recalc(api, case_id)
+
+    issues = _of_type(_queue(api, case_id), "MISSING_EVIDENCE")
+    assert len(issues) == 3
+
+
+def test_an_unevidenced_trip_is_information_the_user_may_set_aside(api: Api) -> None:
+    """SYNTHETIC_DEMO_CASE §10: INFORMATION, dismissible. A trip with no booking is not a
+    defect — people take trips they have no paperwork for, and no figure moves either
+    way."""
+    case_id = _case(api)
+    _trip(api, case_id, "2023-05-01", "2023-05-10", label="Greece")
+    _upload(api, case_id)
+    _recalc(api, case_id)
+
+    issue = _of_type(_queue(api, case_id), "MISSING_EVIDENCE")[0]
+    assert issue["severity"] == "INFORMATION"
+    assert issue["dismissibility"] == "DISMISSIBLE"
+    assert "Greece" in issue["title"]
+
+
+def test_attaching_a_document_clears_that_trips_issue_and_no_other(api: Api) -> None:
+    """The cause goes away, so the issue does — and only for the trip that got the
+    document. Reconciliation resolves what the derivation stops naming."""
+    case_id = _case(api)
+    greece = _trip(api, case_id, "2023-05-01", "2023-05-10", label="Greece")
+    _trip(api, case_id, "2023-07-01", "2023-07-10", label="Italy")
+    item_id = _upload(api, case_id)
+    _recalc(api, case_id)
+    assert len(_of_type(_queue(api, case_id), "MISSING_EVIDENCE")) == 2
+
+    _attach(api, case_id, greece, item_id)
+    _recalc(api, case_id)
+
+    remaining = _of_type(_queue(api, case_id), "MISSING_EVIDENCE")
+    assert len(remaining) == 1
+    assert "Italy" in remaining[0]["title"]
+
+
+def test_detaching_the_document_brings_the_issue_back(api: Api) -> None:
+    """The same cause returns, so the same row reopens rather than a second one opening —
+    the deduplication key is the trip, which does not change."""
+    case_id = _case(api)
+    greece = _trip(api, case_id, "2023-05-01", "2023-05-10", label="Greece")
+    item_id = _upload(api, case_id)
+    _attach(api, case_id, greece, item_id)
+    _recalc(api, case_id)
+    assert _of_type(_queue(api, case_id), "MISSING_EVIDENCE") == []
+
+    api("user_a").delete(f"/api/v1/cases/{case_id}/travel-records/{greece}/evidence/{item_id}")
+    _recalc(api, case_id)
+
+    reopened = _of_type(_queue(api, case_id), "MISSING_EVIDENCE")
+    assert len(reopened) == 1
+    assert "Greece" in reopened[0]["title"]
+
+
+def test_an_unconfirmed_trip_is_never_asked_for_a_document(api: Api) -> None:
+    """§7.8 says *confirmed* trip. A record the user is still deciding about should not be
+    generating paperwork requests."""
+    case_id = _case(api)
+    _trip(api, case_id, "2023-05-01", "2023-05-10", label="Maybe", review="DRAFT")
+    _upload(api, case_id)
+    _recalc(api, case_id)
+
+    assert _of_type(_queue(api, case_id), "MISSING_EVIDENCE") == []
+
+
+def test_the_issue_never_tells_the_user_their_totals_are_affected(api: Api) -> None:
+    """The copy carries the load here. Nothing has read the attached document and no
+    figure depends on one, so the body must not imply the totals are provisional until
+    paperwork arrives — that would be false, and false in the reassuring direction."""
+    case_id = _case(api)
+    _trip(api, case_id, "2023-05-01", "2023-05-10", label="Greece")
+    _upload(api, case_id)
+    _recalc(api, case_id)
+
+    issue = _of_type(_queue(api, case_id), "MISSING_EVIDENCE")[0]
+    assert "does not change any figure" in issue["body"]
+    assert "set this aside" in issue["impact"]

@@ -70,6 +70,23 @@ class EvidenceRepository:
         return [(item, file) for item, file in session.execute(stmt).all()]
 
     @staticmethod
+    def case_holds_evidence(session: Session, *, case_id: uuid.UUID) -> bool:
+        """Whether the case holds at least one live document.
+
+        Its own query rather than `bool(list_uploaded_for_case(...))`: the caller only
+        needs to know *whether*, and materialising every item and file row to test a list
+        for emptiness gets more expensive with every document the user adds.
+
+        Counts items, not attachments. The question is "has this user started providing
+        documents", which is what the `MISSING_EVIDENCE` suppression gate turns on.
+        """
+        stmt = select(EvidenceItem.id).where(
+            EvidenceItem.case_id == case_id,
+            EvidenceItem._lifecycle_status == EvidenceLifecycleStatus.ACTIVE.value,
+        )
+        return session.execute(stmt.limit(1)).first() is not None
+
+    @staticmethod
     def get_current_file(session: Session, *, evidence_item_id: uuid.UUID) -> EvidenceFile | None:
         stmt = (
             select(EvidenceFile)

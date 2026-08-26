@@ -8,6 +8,8 @@ that could silently drift from the migrations.
 
 import os
 import secrets
+import time
+import uuid
 from collections.abc import Callable, Iterator
 
 # Storage defaults to the in-process fake for the suite at large, so tests that are
@@ -50,6 +52,66 @@ def _schema() -> Iterator[None]:
     from alembic.config import Config
 
     command.upgrade(Config("alembic.ini"), "head")
+    yield
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _no_live_relay(_schema: None) -> Iterator[None]:
+    """Fail if something outside this suite is publishing our outbox rows.
+
+    `docker compose up` runs a worker and a beat pointed at the same local Postgres the
+    tests use. Beat relays every unpublished `outbox_events` row it finds — including the
+    ones tests write — so a live worker silently processes test fixtures mid-run. What it
+    looks like from inside the suite is a row count changing between two assertions with
+    no code path between them that could have changed it: `test_simulation`'s "simulating
+    changes nothing about the case" failed on `evidence_processing_runs: 0 -> 11` while
+    the only thing running was a loop of read-only date simulations.
+
+    That cost a real diagnosis, and it gets worse rather than better: the canonical seed
+    now uploads eleven documents, so every test touching it hands a live relay eleven
+    tasks.
+
+    **Checked at session start, not at the end**, and the first attempt got that wrong.
+    Every test truncates `outbox_events` in teardown, so a sentinel planted at the start
+    is gone long before the end and the check read "not published" from a row that no
+    longer existed — a guard that always passed. Here it is planted and read before the
+    first test runs, which costs one short wait per session and is the only window in
+    which the row survives.
+
+    Nothing in-process relays it: the relay is called explicitly in
+    `tests/shared/test_outbox.py` against rows it creates itself, and those run later.
+    """
+    # Beat's relay schedule is one second, so this is comfortably more than one pass.
+    grace_seconds = 2.5
+
+    sentinel = uuid.uuid4()
+    with get_sessionmaker()() as session:
+        session.execute(
+            text(
+                "INSERT INTO outbox_events "
+                "(id, aggregate_type, aggregate_id, event_type, payload, created_at) "
+                "VALUES (:id, 'TestSentinel', :id, 'TestSentinel', '{}'::jsonb, now())"
+            ),
+            {"id": sentinel},
+        )
+        session.commit()
+
+    time.sleep(grace_seconds)
+
+    with get_sessionmaker()() as session:
+        published = session.execute(
+            text("SELECT published_at FROM outbox_events WHERE id = :id"),
+            {"id": sentinel},
+        ).scalar_one_or_none()
+        session.execute(text("DELETE FROM outbox_events WHERE id = :id"), {"id": sentinel})
+        session.commit()
+
+    if published is not None:
+        pytest.fail(
+            "an outbox row was relayed by something outside this suite, so a live worker "
+            "is processing test fixtures. Results from this session cannot be trusted. "
+            "Run `docker compose stop worker beat` and try again."
+        )
     yield
 
 

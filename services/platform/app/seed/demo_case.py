@@ -13,6 +13,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import date
 
+import httpx
 from sqlalchemy.orm import Session
 
 from app.applicants import service as applicants_service
@@ -20,8 +21,19 @@ from app.applicants.domain import StatusType
 from app.applicants.schemas import RouteProfileDraftInput
 from app.auth.schemas import CurrentUser
 from app.cases import service as cases_service
+from app.cases.domain import ApplicationCase
+from app.core.storage import InMemoryStorage, StorageAdapter, get_storage
+from app.evidence import links
+from app.evidence import service as evidence_service
+from app.evidence.domain import EvidenceCategory
+from app.evidence.service import UploadGrant
 from app.residence import service as residence_service
-from app.residence.domain import DateConfidence, TravelRecordFields, TravelReviewState
+from app.residence.domain import (
+    DateConfidence,
+    TravelRecord,
+    TravelRecordFields,
+    TravelReviewState,
+)
 
 DEMO_CASE_TITLE = "Amara Okonkwo — demo"
 DEMO_APPLICATION_DATE = date(2027, 4, 15)
@@ -62,6 +74,32 @@ DEMO_TRIPS: tuple[DemoTrip, ...] = (
 # Zero-based index of trip 11 in DEMO_TRIPS, for the stale-transition demo.
 TRIP_11_INDEX = 10
 
+# Zero-based index of trip 6 (Greece), the one trip deliberately left with no document
+# attached (SYNTHETIC_DEMO_CASE §10). Named because the fixture's meaning now depends on
+# it: a hole in otherwise complete coverage, rather than an artefact of an empty library.
+TRIP_6_INDEX = 5
+
+#: A minimal, valid, single-page PDF. Generated here rather than read from a fixture file
+#: so the seed has no dependency on the test tree and nothing binary is committed
+#: (CLAUDE.md §2.9 — every value in it is visible in reviewable source).
+#:
+#: Deliberately not a *convincing* booking. The seed's job is to make coverage real — a
+#: document exists and is attached — and nothing in M7 reads it. Inventing plausible
+#: reference numbers here would put fake-looking personal data in the repository for no
+#: gain.
+_SEED_PDF = (
+    b"%PDF-1.4\n"
+    b"1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n"
+    b"2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\n"
+    b"3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 200 200]/Contents 4 0 R"
+    b"/Resources<</Font<</F1 5 0 R>>>>>>endobj\n"
+    b"4 0 obj<</Length 52>>stream\n"
+    b"BT /F1 12 Tf 20 100 Td (Synthetic travel document) Tj ET\n"
+    b"endstream endobj\n"
+    b"5 0 obj<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>endobj\n"
+    b"trailer<</Root 1 0 R>>"
+)
+
 
 def seed_demo_case(session: Session, *, user_id: str) -> uuid.UUID:
     """Create the canonical case and return its id: confirm the supported route, select the
@@ -83,7 +121,7 @@ def seed_demo_case(session: Session, *, user_id: str) -> uuid.UUID:
         application_date=DEMO_APPLICATION_DATE,
         expected_revision=None,
     )
-    for trip in DEMO_TRIPS:
+    records = [
         residence_service.add_travel_record(
             session,
             case=case,
@@ -95,8 +133,91 @@ def seed_demo_case(session: Session, *, user_id: str) -> uuid.UUID:
                 date_confidence=DateConfidence.EXACT,
                 review_state=TravelReviewState.CONFIRMED,
             ),
-        )
+        ).record
+        for trip in DEMO_TRIPS
+    ]
+    _attach_travel_documents(session, case=case, user=user, records=records)
     return case.id
+
+
+def _upload_bytes(storage: StorageAdapter, grant: UploadGrant, content: bytes) -> None:
+    """Put the bytes where the grant says, as a client would.
+
+    Against a real store that means POSTing to the presigned URL — the same request a
+    browser makes, so `just seed` exercises the actual upload path against MinIO rather
+    than a shortcut around it. The alternative was adding `put` to `StorageAdapter`, which
+    would have given the API process a direct server-side write path to the bucket and
+    invited someone to route real uploads through it later. The architecture says bytes go
+    client-to-store and never through the web process (ADR-0018), and a protocol method
+    exists to be used.
+
+    The in-memory fake has no HTTP endpoint — its "URL" is `memory://` — so it gets the
+    direct path. Narrowed by type, so this branch cannot silently take over for a real
+    store whose presign happened to fail.
+    """
+    if isinstance(storage, InMemoryStorage):
+        storage.put(str(grant.upload_fields["key"]), content)
+        return
+    response = httpx.post(
+        grant.upload_url,
+        data={k: v for k, v in grant.upload_fields.items() if k != "Content-Type"},
+        files={"file": (grant.upload_fields["key"], content, grant.media_type)},
+        timeout=30.0,
+    )
+    response.raise_for_status()
+
+
+def _attach_travel_documents(
+    session: Session,
+    *,
+    case: ApplicationCase,
+    user: CurrentUser,
+    records: list[TravelRecord],
+) -> None:
+    """Give every trip but Greece a document, so the case shows one `MISSING_EVIDENCE`.
+
+    Through the real upload and attach commands, not by inserting rows. The seed is what
+    the demo is driven from, and a seed that wrote link rows directly could produce a
+    state the product cannot actually reach — which is the one thing a demo fixture must
+    never do.
+
+    Works without MinIO. `get_storage()` returns whatever the settings configure, which is
+    `InMemoryStorage` under the default test settings, so
+    `tests/assessments/test_canonical_case.py` still needs only Postgres.
+
+    The documents stay in `UPLOADED`: no worker runs here, so nothing reads them. That is
+    the honest state and it is enough — attaching does not require a document to have been
+    read, because a link is the user's assertion rather than a machine's verdict
+    (ADR-0021).
+    """
+    storage = get_storage()
+    for index, record in enumerate(records):
+        if index == TRIP_6_INDEX:
+            continue
+        grant = evidence_service.start_upload(
+            storage,
+            case=case,
+            media_type="application/pdf",
+            declared_size_bytes=len(_SEED_PDF),
+        )
+        _upload_bytes(storage, grant, _SEED_PDF)
+        item, _file = evidence_service.record_upload(
+            session,
+            storage,
+            case=case,
+            user=user,
+            token=grant.upload_token,
+            category=EvidenceCategory.TRAVEL_SUPPORT,
+            display_name=f"{DEMO_TRIPS[index].destination_label} travel document",
+            original_filename=f"{DEMO_TRIPS[index].destination_label.lower()}-travel.pdf",
+        )
+        links.attach_to_travel_record(
+            session,
+            case=case,
+            user=user,
+            travel_record_id=record.id,
+            evidence_item_id=item.id,
+        )
 
 
 def _run() -> None:

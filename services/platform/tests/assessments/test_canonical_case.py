@@ -113,3 +113,79 @@ def test_canonical_stale_transition_moves_439_to_440(api: Api, db_session: Sessi
     currencies = [row["currency"] for row in after["history"]]
     assert currencies.count("CURRENT") == 1  # never two current for one requirement
     assert currencies.count("SUPERSEDED") == 1  # the 439 predecessor is retired, not orphaned
+
+
+def test_the_canonical_case_shows_exactly_two_standing_issues(
+    api: Api, db_session: Session
+) -> None:
+    """SYNTHETIC_DEMO_CASE §10's oracle, from M7 slice 4a.
+
+    `NEAR_THRESHOLD` on the absence total, and one `MISSING_EVIDENCE` on trip 6 (Greece).
+    The seed attaches a document to the other eleven trips, so the bare one is a
+    deliberate hole in otherwise complete coverage rather than an artefact of an empty
+    library — which is what the suppression gate would produce if coverage were simply
+    absent.
+
+    Two, not one: the M6 oracle was one standing issue, and this test exists so that
+    number is stated somewhere a change has to walk past.
+    """
+    case_id = str(seed_demo_case(db_session, user_id="user_a"))
+    api("user_a").post(f"/api/v1/cases/{case_id}/assessments/recalculate")
+
+    queue = api("user_a").get(f"/api/v1/cases/{case_id}/issues").json()
+    issues = [issue for group in queue["groups"] for issue in group["issues"]]
+
+    by_type = sorted(issue["issue_type"] for issue in issues)
+    assert by_type == ["MISSING_EVIDENCE", "NEAR_THRESHOLD"]
+
+    missing = next(i for i in issues if i["issue_type"] == "MISSING_EVIDENCE")
+    assert "Greece" in missing["title"], "the one trip the seed leaves without a document"
+    assert missing["severity"] == "INFORMATION"
+    assert missing["dismissibility"] == "DISMISSIBLE"
+
+
+def test_editing_a_trip_does_not_disturb_which_trips_have_documents(
+    api: Api, db_session: Session
+) -> None:
+    """The reason trip 6 was chosen for the coverage hole rather than trip 11.
+
+    Editing trip 11's dates drives the stale-transition demo. Because an evidence link
+    points at the travel *record* and not at a version (ADR-0021), that edit leaves every
+    attachment where it was — so the `MISSING_EVIDENCE` item sits untouched beside four
+    `STALE_ASSESSMENT` items that clear themselves, and the contrast the demo exists for
+    stays legible.
+
+    A version-scoped link would instead have detached trip 11's document on edit, opening
+    a second coverage issue mid-demo for a document the user never touched.
+    """
+    case_id = str(seed_demo_case(db_session, user_id="user_a"))
+    api("user_a").post(f"/api/v1/cases/{case_id}/assessments/recalculate")
+
+    trips = api("user_a").get(f"/api/v1/cases/{case_id}/travel-records").json()
+    trip_11 = next(t for t in trips if t["departure_date"] == "2026-05-04")
+    assert trip_11["supporting_evidence_item_ids"], "trip 11 starts with a document"
+
+    api("user_a").patch(
+        f"/api/v1/cases/{case_id}/travel-records/{trip_11['id']}",
+        json={
+            "destination_label": "Italy",
+            "departure_date": "2026-05-04",
+            "return_date": "2026-05-11",
+            "date_confidence": "EXACT",
+            "review_state": "CONFIRMED",
+        },
+    )
+    api("user_a").post(f"/api/v1/cases/{case_id}/assessments/recalculate")
+
+    after = api("user_a").get(f"/api/v1/cases/{case_id}/travel-records").json()
+    edited = next(t for t in after if t["id"] == trip_11["id"])
+    assert edited["supporting_evidence_item_ids"] == trip_11["supporting_evidence_item_ids"]
+
+    queue = api("user_a").get(f"/api/v1/cases/{case_id}/issues").json()
+    missing = [
+        i
+        for group in queue["groups"]
+        for i in group["issues"]
+        if i["issue_type"] == "MISSING_EVIDENCE"
+    ]
+    assert len(missing) == 1, "still only Greece"

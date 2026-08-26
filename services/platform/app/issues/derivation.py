@@ -33,6 +33,7 @@ AFFECTED_CASE = "Case"
 LIMITATION_OVERLAPPING = "OVERLAPPING_TRAVEL"
 LIMITATION_UNCERTAIN = "UNCERTAIN_TRAVEL_DATE"
 LIMITATION_NARROW_MARGIN = "STATUS_PERIOD_NARROW_MARGIN"
+LIMITATION_MISSING_EVIDENCE = "MISSING_TRAVEL_EVIDENCE"
 
 #: Conclusions the prototype declines to assess on its own (UI/UX §10.2). Stopping is a
 #: successful outcome, not a failure (CLAUDE.md §2.7), so these are surfaced as issues
@@ -109,6 +110,8 @@ class LimitationTargets:
     overlapping_records: frozenset[str]
     uncertain_in_window_records: frozenset[str]
     judged_records: frozenset[str]
+    #: Records the consistency rule reported as having no document attached (§7.8, v2.0.0).
+    unevidenced_records: frozenset[str] = frozenset()
 
 
 def derive(
@@ -118,6 +121,7 @@ def derive(
     travel: list[TravelSnapshot],
     targets: LimitationTargets,
     recalculation_failed: bool = False,
+    case_holds_evidence: bool = False,
 ) -> list[DesiredIssue]:
     """The complete desired open-issue set for a case.
 
@@ -129,7 +133,7 @@ def derive(
         issues.append(_processing_failure(case_id))
     for requirement in requirements:
         issues.extend(_requirement_issues(requirement))
-    issues.extend(_travel_issues(travel, targets))
+    issues.extend(_travel_issues(travel, targets, case_holds_evidence=case_holds_evidence))
     return issues
 
 
@@ -234,7 +238,9 @@ def _requirement_issues(requirement: RequirementSnapshot) -> list[DesiredIssue]:
     return issues
 
 
-def _travel_issues(travel: list[TravelSnapshot], targets: LimitationTargets) -> list[DesiredIssue]:
+def _travel_issues(
+    travel: list[TravelSnapshot], targets: LimitationTargets, *, case_holds_evidence: bool
+) -> list[DesiredIssue]:
     by_record = {trip.record_id: trip for trip in travel}
     issues: list[DesiredIssue] = []
 
@@ -288,4 +294,58 @@ def _travel_issues(travel: list[TravelSnapshot], targets: LimitationTargets) -> 
             )
         )
 
+    issues.extend(_missing_evidence_issues(travel, targets, case_holds_evidence))
+    return issues
+
+
+def _missing_evidence_issues(
+    travel: list[TravelSnapshot], targets: LimitationTargets, case_holds_evidence: bool
+) -> list[DesiredIssue]:
+    """One item per confirmed trip with no document attached (§7.8) — **once the case
+    holds at least one document**.
+
+    That gate is a judgement, so it is stated rather than buried. A case with twelve trips
+    and nothing uploaded would otherwise open twelve `MISSING_EVIDENCE` items the moment
+    this rule activates, burying the `NEAR_THRESHOLD` item that actually needs a decision
+    under a wall of identical notices. Before the user has uploaded anything, the honest
+    reading is "no documents have been provided" — one fact about the case, not twelve
+    problems with it.
+
+    **Nothing is hidden by the gate.** The limitation is emitted either way, so the
+    requirement detail always says which trips have no document, and the travel history
+    shows every trip's support state in its own column. What the gate suppresses is the
+    *duplication of that into a queue* whose value is that everything in it is worth
+    acting on. Once one document exists, the user is evidencing the case and the gaps
+    become actionable — so they appear.
+
+    INFORMATION and dismissible, per SYNTHETIC_DEMO_CASE §10. A trip with no booking is
+    not a defect: people take trips they have no paperwork for, and no figure moves either
+    way. This is the second dismissible-by-design issue in the product, beside
+    out-of-window `UNCERTAIN_TRAVEL_DATE`.
+    """
+    if not case_holds_evidence:
+        return []
+    by_record = {trip.record_id: trip for trip in travel}
+    issues: list[DesiredIssue] = []
+    # Sorted for a deterministic queue order: reconciliation compares sets, but the audit
+    # log records the opened keys in the order they are returned.
+    for record_id in sorted(targets.unevidenced_records):
+        trip = by_record.get(record_id)
+        if trip is None:
+            # Named by the limitation but no longer an active record — removed since the
+            # assessment ran. Skipped rather than reported: the user has already dealt
+            # with the trip, and asking them to evidence a trip they deleted is worse
+            # than saying nothing.
+            continue
+        issues.append(
+            DesiredIssue(
+                issue_type=IssueType.MISSING_EVIDENCE,
+                severity=IssueSeverity.INFORMATION,
+                dismissibility=Dismissibility.DISMISSIBLE,
+                title_code="ISSUE_MISSING_TRAVEL_EVIDENCE",
+                affected_object_type=AFFECTED_TRAVEL_RECORD,
+                affected_object_id=trip.record_id,
+                message_parameters={"destination": trip.label},
+            )
+        )
     return issues

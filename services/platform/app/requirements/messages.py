@@ -487,6 +487,12 @@ ISSUE_TITLE_TEMPLATES: dict[str, _Template] = {
     "ISSUE_UNCERTAIN_DATE_OUTSIDE": lambda p: (
         f"Your trip to {p.get('destination', 'this destination')} has uncertain dates"
     ),
+    # Names the trip and stops. Not "Attach a document to ..." — a title in the
+    # imperative reads as an instruction, and the product does not know that this user
+    # has a document for this trip, or that they need one.
+    "ISSUE_MISSING_TRAVEL_EVIDENCE": lambda p: (
+        f"No document attached to your trip to {p.get('destination', 'this destination')}"
+    ),
     "ISSUE_RECALCULATION_FAILED": lambda p: "We could not recheck your conclusions",
 }
 
@@ -524,6 +530,15 @@ ISSUE_BODY_TEMPLATES: dict[str, _Template] = {
     # on screen are fine. The one thing this sentence must establish is that the numbers
     # the user is looking at did not move — the failure changed nothing, which is both
     # reassuring about the data and *not* reassuring about the conclusions.
+    # Two jobs, in this order: say the totals are unaffected, then say what a document
+    # would be *for*. Getting that backwards would imply the figures are provisional
+    # until documents arrive, which is false — they are worked out from the dates the
+    # user entered, and nothing here has read any document (ADR-0021).
+    "ISSUE_MISSING_TRAVEL_EVIDENCE": lambda p: (
+        "Your absence totals are worked out from the dates you entered, so this does not "
+        "change any figure. A booking or ticket is the kind of thing that supports a trip "
+        "if you are asked about it later."
+    ),
     "ISSUE_RECALCULATION_FAILED": lambda p: (
         "The last attempt to recheck your conclusions did not finish. Nothing was changed: "
         "the figures on your case are still the ones worked out before your last edit."
@@ -560,6 +575,12 @@ ISSUE_IMPACT_TEMPLATES: dict[str, _Template] = {
     ),
     "ISSUE_UNCERTAIN_DATE_OUTSIDE": lambda p: (
         "No figure changes either way. You can set this aside."
+    ),
+    # Says plainly that setting it aside is fine, like the out-of-window uncertain date.
+    # Anything stronger would be advice about what the Home Office will ask for, which
+    # this product does not give (CLAUDE.md §1).
+    "ISSUE_MISSING_TRAVEL_EVIDENCE": lambda p: (
+        "Nothing in your assessment depends on this. You can attach a document or set this aside."
     ),
     # Points at the same consequence a stale conclusion has, because that is exactly the
     # state the case is left in — the failure is why it is still in it.
