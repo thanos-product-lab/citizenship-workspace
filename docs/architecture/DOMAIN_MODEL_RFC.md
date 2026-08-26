@@ -994,6 +994,15 @@ EvidenceFile
 - `storage_key` is never treated as authorisation.
 - A checksum is unique within one evidence item version sequence where practical.
 - Duplicate checksum detection creates a possible-duplicate issue.
+- **Duplicate detection compares checksums within a single case, always.** This is a
+  disclosure boundary, not an implementation convenience. A checksum is a content
+  fingerprint, so comparing across cases would answer the question "does anyone else hold
+  this exact document?" — about another user, to a user who never asked. Nothing in the
+  product may make that comparison, and widening the query is the specific way it would
+  happen by accident.
+- The issue names a *possible* duplicate and never merges or removes anything (§11.8 says
+  the same of duplicate travel records). Two copies of one file may be deliberate; the
+  product has no way to know, and the detection proposes rather than concludes.
 - Deleted file content cannot be served through an old signed URL.
 - Sensitive file names must not appear in logs.
 
@@ -2053,9 +2062,21 @@ NEAR_THRESHOLD
 STALE_ASSESSMENT
 UNSUPPORTED_COMPLEXITY
 PROCESSING_FAILURE
+DUPLICATE_TRAVEL_RECORD
 DUPLICATE_EVIDENCE
 SOURCE_UNAVAILABLE
 ```
+
+`DUPLICATE_TRAVEL_RECORD` (M7 slice 4b) separates two detections that had collected under one
+name. This one is the user having entered the same *trip* twice — identical dates and
+destination, DETERMINISTIC_RULES_SPEC §7.8. `DUPLICATE_EVIDENCE` is the user having uploaded
+the same *file* twice — a checksum collision, §15 below.
+
+They are not variants of one problem. The causes differ, the affected object differs
+(`TravelRecord` against `EvidenceItem`), and so does the remedy: remove a redundant row of
+travel history, or remove a redundant upload. One type would have forced the title and
+next-action codes — which are meant to be stable public identifiers — to branch on the
+affected object type in order to say either thing truthfully.
 
 ### 36.3 Severity
 

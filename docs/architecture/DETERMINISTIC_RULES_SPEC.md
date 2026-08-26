@@ -578,7 +578,7 @@ Summary codes: `TRAVEL_RECORDS_CONSISTENT`, `TRAVEL_RECORDS_OVERLAP`,
 `TRAVEL_RECORDS_UNCERTAIN`, `TRAVEL_RECORDS_UNEVIDENCED`. Detection limitation codes:
 `CONFLICTING_SOURCE_DATES`, `OVERLAPPING_TRAVEL`, `UNCERTAIN_TRAVEL_DATE`,
 `NEAR_STANDARD_THRESHOLD` (boundary-critical), `TRAVEL_OUTSIDE_WINDOW` (`INFORMATION`),
-`MISSING_TRAVEL_EVIDENCE` (`INFORMATION`).
+`MISSING_TRAVEL_EVIDENCE` (`INFORMATION`), `DUPLICATE_TRAVEL_RECORD` (`INFORMATION`).
 
 **"Available evidence link" [PRODUCT], M7.** Deliberately not the name of a table. A trip
 is evidenced when *some* link of `availability = AVAILABLE` points at it. At M7 that means
@@ -625,7 +625,9 @@ state would make the history's support column silently incomplete. What is windo
 whether a *questionable date* can distort a total, which is a different question.
 
 **M3B scope note [PRODUCT].** At M3B this rule detects conflicts (`CONFLICTING` confidence),
-overlaps (intersecting absent-date sets, which also catches identical-date duplicates),
+overlaps (intersecting absent-date sets, which at the time was also how identical-date
+duplicates surfaced — superseded at M7 slice 4b by the dedicated detection above, which
+takes precedence in the queue for the pairs it names),
 uncertain dates, boundary-critical trips, and out-of-window trips. "Inside the qualifying
 period" is read as *the trip has at least one absent day within the window*; a trip wholly
 outside the window is informational only. Both `CONFLICTING` and `{ESTIMATED, UNKNOWN}`
@@ -642,6 +644,50 @@ and M4 shipped without either. Current status:
 - `MISSING_EVIDENCE` (unevidenced trip) — **M7 slice 4a**, against `EvidenceTravelLink`.
 - Duplicate travel records (identical dates *and* destination) — **M7 slice 4b**, and see
   the note below on the issue type it raises.
+
+**"Identical dates and destination" [PRODUCT], M7 slice 4b.** Dates are compared exactly.
+Destination is compared as `destination_country_code` when *both* records have one, and as
+the case- and whitespace-normalised `destination_label` when either does not.
+
+Neither field alone is enough. The code is normalised but nullable — it is derived from the
+label and is only set for labels that name a known country — so comparing codes alone would
+never detect a duplicate among free-text destinations like "Conference" or "Mum's house",
+which are exactly the entries a slip is most likely to duplicate. The label alone would read
+"Spain" and "España" as different trips when the product already knows they are one country.
+Preferring the code where it exists and falling back to the label where it does not gets both.
+
+Lifecycle is not part of the comparison because the rule only ever sees active records; a
+removed trip is excluded before it reaches the evaluator.
+
+**Duplicate detection does not change the conclusion [PRODUCT], M7 slice 4b.** It adds its
+limitation and nothing else; the conclusion table above is untouched by it.
+
+This follows from what a duplicate actually does to the figures, which is nothing: absence
+totals are the cardinality of a *union* (§5.2), so a trip recorded twice contributes exactly
+the days it would have contributed once. Two consequences, and the second is the reason the
+rule is written this way rather than giving duplicates a band of their own:
+
+- Two identical trips of any length also **overlap** — their absent-date sets are the same
+  set, which intersects itself — so the existing `OVERLAPPING_TRAVEL` limitation still fires
+  and still bands `INCONSISTENT`. Nothing about the verdict moves.
+- Two identical **zero-day** trips (depart *D*, return *D + 1*) have *empty* absent sets,
+  which do not intersect. They have never overlapped and still do not, so their conclusion
+  stays whatever the other detections gave it — usually `SUPPORTED`. Banding duplicates as
+  `INCONSISTENT` in their own right would have downgraded a verdict on records that distort
+  no figure at all, which is the opposite of what a data-quality rule is for.
+
+What changes is which issue the user is shown: see the issue-precedence note below.
+
+**Issue precedence: a duplicate supersedes the overlap it causes [PRODUCT], M7 slice 4b.**
+For a pair the duplicate detection names, the queue raises `DUPLICATE_TRAVEL_RECORD` and
+**not** `OVERLAPPING_TRAVEL`. Both limitations exist on the result — the overlap is real, and
+it is what drives the conclusion — but "these two trips are the same trip" is the more
+specific diagnosis and points at a different fix: remove a row, rather than correct a date.
+Showing both would ask the user to repair an overlap that resolves itself the moment the
+duplicate goes.
+
+The suppression is scoped to the duplicate pair. Trips that overlap without being identical
+keep their `OVERLAPPING_TRAVEL` issue in the same case.
 
 **The `DUPLICATE_EVIDENCE` row names a duplicate *travel record*, not a duplicate
 document.** Two unlike detections had collected under one issue type: this one, where the
