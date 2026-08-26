@@ -22,8 +22,6 @@ harness was built to end. Two guards, because each is blind to what the other ca
 
 import os
 import pathlib
-import subprocess
-import sys
 from collections.abc import Iterator
 
 import pytest
@@ -82,25 +80,6 @@ def minio_storage(minio_settings: Settings) -> Iterator[S3Storage]:
 
 #: Where `scripts/make_fixtures.py` writes the synthetic documents.
 FIXTURES = pathlib.Path(__file__).resolve().parent.parent / "fixtures" / "documents"
-
-
-@pytest.fixture(scope="session", autouse=True)
-def _generated_fixtures() -> None:
-    """Generate the synthetic documents if they are absent.
-
-    They are gitignored — the generator is the reviewable artefact, not the binaries — so
-    a fresh clone has none. Building them is cheaper and far more honest than skipping:
-    a suite that quietly stopped exercising extraction on a fresh clone would be a suite
-    that reported green about a pipeline it never ran.
-    """
-    if (FIXTURES / "travel-booking.pdf").exists():
-        return
-    subprocess.run(
-        [sys.executable, "-m", "scripts.make_fixtures"],
-        cwd=pathlib.Path(__file__).resolve().parent.parent.parent,
-        check=True,
-        capture_output=True,
-    )
 
 
 def fixture_bytes(name: str) -> bytes:

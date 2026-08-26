@@ -7,7 +7,10 @@ that could silently drift from the migrations.
 """
 
 import os
+import pathlib
 import secrets
+import subprocess
+import sys
 import time
 import uuid
 from collections.abc import Callable, Iterator
@@ -45,6 +48,11 @@ from app.shared.tenant import APP_ROLE, clear_tenant, set_tenant
 # exactly how `rule_composition_edges` first appeared to be broken.
 _REFERENCE_TABLES = frozenset(CATALOG_TABLES)
 
+#: Where `scripts.make_fixtures` writes the synthetic documents. Declared here rather than
+#: imported from `tests/evidence/conftest.py`, so the generator does not depend on the
+#: package it used to live in.
+FIXTURE_DOCUMENTS = pathlib.Path(__file__).resolve().parent / "fixtures" / "documents"
+
 
 @pytest.fixture(scope="session")
 def _schema() -> Iterator[None]:
@@ -53,6 +61,35 @@ def _schema() -> Iterator[None]:
 
     command.upgrade(Config("alembic.ini"), "head")
     yield
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _generated_fixtures() -> None:
+    """Generate the synthetic documents if they are absent.
+
+    They are gitignored — the generator is the reviewable artefact, not the binaries — so a
+    fresh clone has none. Building them is cheaper and far more honest than skipping: a
+    suite that quietly stopped exercising extraction on a fresh clone would report green
+    about a pipeline it never ran.
+
+    **In the root conftest, not `tests/evidence/`'s**, and the move was not tidying. An
+    autouse session fixture only applies to tests in its own package, so while it lived
+    beside the evidence tests it fired only when they ran — and pytest collects
+    `tests/assessments/` first. The moment slice 4a's provenance and invalidation tests
+    started needing a real document, they read a file nothing had generated yet.
+
+    It stayed green locally for days, because the files were already on disk from earlier
+    runs. It failed on the first CI run against a clean checkout, which is the only place
+    the ordering was ever visible.
+    """
+    if (FIXTURE_DOCUMENTS / "travel-booking.pdf").exists():
+        return
+    subprocess.run(
+        [sys.executable, "-m", "scripts.make_fixtures"],
+        cwd=pathlib.Path(__file__).resolve().parent.parent,
+        check=True,
+        capture_output=True,
+    )
 
 
 @pytest.fixture(scope="session", autouse=True)
