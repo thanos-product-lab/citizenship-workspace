@@ -51,6 +51,10 @@ HANDLERS: dict[str, str] = {
     # The same consumer. A retry differs from an upload only in that its outbox row is
     # new — which is precisely what stops the idempotency key short-circuiting it.
     "EvidenceProcessingRequested": "worker.evidence.validate",
+    # The relay's second consumer, and the point of it being a relay: dispatch, tenant
+    # acquisition and the at-least-once contract were all built for validation, and
+    # deletion reuses every part without new plumbing.
+    "EvidenceDeleted": "worker.evidence.purge",
 }
 
 #: Event types with no consumer, and never a mistake. Each is a fact worth recording in
@@ -83,9 +87,12 @@ NO_CONSUMER: frozenset[str] = frozenset(
         "AssessmentInvalidated",
         "IssuesReconciled",
         "IssueDismissed",
-        # Deletion: the purge consumer arrives with evidence deletion in slice 5. Until
-        # then this is honestly undone rather than dispatched into a handler that would
-        # do nothing.
+        # *Case* deletion (Domain §51.2), which is not evidence deletion and does not
+        # share its consumer. Its eight steps — cancelling tasks, deleting every
+        # case-scoped record, retaining a non-identifying audit — are M11 per the roadmap.
+        # An earlier note here said this consumer "arrives with evidence deletion in slice
+        # 5", which was wrong about the milestone and would have had someone wire a
+        # document purge to a case-wide one.
         "CaseDeletionRequested",
     }
 )

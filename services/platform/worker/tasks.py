@@ -22,8 +22,8 @@ from celery import Task
 from celery.exceptions import SoftTimeLimitExceeded
 from sqlalchemy.orm import Session
 
-from app.core.storage import get_storage
-from app.evidence import processing
+from app.core.storage import StorageError, get_storage
+from app.evidence import processing, purge
 from app.evidence.domain import ProcessingFailureCode
 from app.shared import outbox
 from app.shared.db import get_sessionmaker
@@ -236,3 +236,58 @@ def validate_evidence(
         "failure_code": outcome.failure_code.value if outcome.failure_code else None,
         "already_done": outcome.already_done,
     }
+
+
+@tenant_scoped
+@celery_app.task(bind=True, name="worker.evidence.purge", max_retries=MAX_RETRIES)
+def purge_evidence(
+    self: Task,
+    *,
+    outbox_event_id: str,
+    aggregate_id: str,
+    trace_id: str | None = None,
+    **_: Any,
+) -> dict[str, object]:
+    """Destroy a deleted document's content (§51.1 steps 3 and 7).
+
+    The relay's **second** consumer, which is the point of it being a relay: the dispatch
+    machinery, the tenant acquisition and the at-least-once contract were all built for
+    validation, and this reuses every part of them without a line of new plumbing.
+
+    No idempotency key, unlike `validate_evidence`. There is no run row to short-circuit
+    and nothing to create twice: object deletion is idempotent in S3 by design, and the
+    tombstone is a set of clears that a second pass finds already done. `purge_evidence`
+    reads the lifecycle state and returns early on the redelivery.
+    """
+    evidence_item_id = uuid.UUID(aggregate_id)
+    structlog.contextvars.bind_contextvars(trace_id=trace_id)
+
+    try:
+        with case_task(evidence_item_id) as ctx:
+            outcome = purge.purge_evidence(
+                ctx.session,
+                get_storage(),
+                evidence_item_id=evidence_item_id,
+                trace_id=trace_id,
+            )
+    except EvidenceNoLongerPresent:
+        # The row is a tombstone rather than a deletion, so this means the *case* went
+        # while the purge was queued. Case deletion removes the objects itself (§51.2), so
+        # there is nothing left to do and nothing to report.
+        return {"purged": False, "reason": "evidence_absent"}
+    except CaseNoLongerWritable:
+        # Same reasoning: the case is being deleted, and its own purge owns the bytes now.
+        return {"purged": False, "reason": "case_deleting"}
+    except StorageError as exc:
+        # Transient by assumption — an unreachable store, not a refused delete. The item
+        # stays DELETION_PENDING, which is the honest incomplete state: unreachable
+        # document, nothing depending on it, bytes still present. Retrying is safe because
+        # deleting an absent key is a no-op.
+        _log.warning(
+            "evidence.purge_deferred",
+            evidence_item_id=aggregate_id,
+            trace_id=trace_id,
+        )
+        raise self.retry(exc=exc, countdown=_BACKOFF_BASE ** (self.request.retries + 1)) from exc
+
+    return {"purged": outcome.purged, "reason": outcome.reason}

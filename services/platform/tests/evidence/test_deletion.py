@@ -14,13 +14,14 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.storage import InMemoryStorage, get_storage
+from app.core.storage import InMemoryStorage, StorageAdapter, get_storage
 from app.evidence.domain import (
     EvidenceItem,
     EvidenceLifecycleStatus,
     EvidenceTravelLink,
     LinkAvailability,
 )
+from app.evidence.purge import PurgeOutcome, purge_evidence
 from tests.evidence.conftest import fixture_bytes as _fixture
 from tests.security.conftest import SUPPORTED_ANSWERS
 
@@ -268,3 +269,152 @@ def test_the_transitions_refuse_out_of_order() -> None:
     item.mark_deleted(at=at)
     assert item.lifecycle_status.value == EvidenceLifecycleStatus.DELETED.value
     assert item.deleted_at == at
+
+
+# --- the purge ----------------------------------------------------------------------
+#
+# The storage *security* property — that a URL signed before the deletion 404s afterwards —
+# is not asserted here. It lives in `test_storage_minio.py`, where slice 1 built it in
+# anticipation of exactly this slice, and it must: §7.2's rule is that the in-memory fake
+# asserts behaviour only and may never carry a security claim.
+#
+# So the division is deliberate. These tests hold "the purge deletes the object it should
+# and records what it should", against the fake. That one holds "and nothing can reach a
+# deleted object", against a real store. Neither is sufficient alone.
+
+
+def _purge(evidence_item_id: uuid.UUID, *, storage: StorageAdapter | None = None) -> PurgeOutcome:
+    """Run the purge on its own session, as the worker does.
+
+    Not on `db_session`, for the reason `test_processing.py` records: sync endpoints run in
+    a threadpool, so the TestClient mutates the shared session from another thread, and a
+    versioned aggregate updated from both produces intermittent `StaleDataError`.
+    """
+    from app.shared.db import get_sessionmaker
+    from app.shared.tenant import set_tenant
+
+    with get_sessionmaker()() as session:
+        set_tenant(session, "user_a")
+        return purge_evidence(
+            session,
+            storage or get_storage(),
+            evidence_item_id=evidence_item_id,
+        )
+
+
+def _store() -> InMemoryStorage:
+    store = get_storage()
+    assert isinstance(store, InMemoryStorage)
+    return store
+
+
+def test_the_purge_destroys_the_object_and_leaves_a_tombstone(
+    api: Api, db_session: Session
+) -> None:
+    """§51.1 steps 3 and 7."""
+    from app.evidence.domain import EvidenceFile, EvidenceFileText
+
+    case_id, _ = _case_with_trip(api, "user_a")
+    item_id = _document(api, "user_a", case_id, name="Amara's Athens booking")
+    db_session.expire_all()
+    file = db_session.execute(
+        select(EvidenceFile).where(EvidenceFile.evidence_item_id == uuid.UUID(item_id))
+    ).scalar_one()
+    key = file.storage_key
+    assert _store().head(key) is not None
+
+    api("user_a").delete(f"/api/v1/cases/{case_id}/evidence/{item_id}")
+    outcome = _purge(uuid.UUID(item_id))
+
+    assert outcome.purged is True
+    assert _store().head(key) is None, "the bytes are gone"
+
+    db_session.expire_all()
+    item = db_session.get(EvidenceItem, uuid.UUID(item_id))
+    assert item is not None
+    assert item.lifecycle_status.value == EvidenceLifecycleStatus.DELETED.value
+    assert item.display_name == ""
+    db_session.refresh(file)
+    assert file.original_filename is None
+    assert file.checksum == "", "a content fingerprint is exactly what a deletion removes"
+    assert file.deleted_at is not None
+    # The key survives: it identifies nothing the row does not already carry, and it is
+    # what lets an operator re-check the object if a purge is ever suspected of failing.
+    assert file.storage_key == key
+    assert (
+        db_session.execute(
+            select(EvidenceFileText).where(EvidenceFileText.evidence_file_id == file.id)
+        ).scalar_one_or_none()
+        is None
+    ), "there is no minimal non-sensitive version of a document's text"
+
+
+def test_a_redelivered_purge_changes_nothing(api: Api, db_session: Session) -> None:
+    """The relay is at-least-once, so the second pass is expected rather than exceptional.
+
+    It must not raise, and it must not try to re-read a name or a checksum to decide what
+    to do — on the second pass those are gone.
+    """
+    case_id, _ = _case_with_trip(api, "user_a")
+    item_id = _document(api, "user_a", case_id)
+    api("user_a").delete(f"/api/v1/cases/{case_id}/evidence/{item_id}")
+    _purge(uuid.UUID(item_id))
+
+    again = _purge(uuid.UUID(item_id))
+
+    assert again.purged is False
+    assert again.reason == "already_purged"
+
+
+def test_the_purge_refuses_a_document_nobody_asked_to_delete(api: Api, db_session: Session) -> None:
+    """The guard that matters most in this module.
+
+    Destroying the content of a document a user can still reach would be the worst bug
+    this code could have, so the only state it will act on is the one the delete command
+    produces. It returns rather than raising: retrying cannot make an unrequested deletion
+    correct.
+    """
+    from app.evidence.domain import EvidenceFile
+
+    case_id, _ = _case_with_trip(api, "user_a")
+    item_id = _document(api, "user_a", case_id)
+    db_session.expire_all()
+    key = (
+        db_session.execute(
+            select(EvidenceFile).where(EvidenceFile.evidence_item_id == uuid.UUID(item_id))
+        )
+        .scalar_one()
+        .storage_key
+    )
+
+    outcome = _purge(uuid.UUID(item_id))
+
+    assert outcome.purged is False
+    assert outcome.reason == "not_pending"
+    assert _store().head(key) is not None, "the bytes are untouched"
+    assert api("user_a").get(f"/api/v1/cases/{case_id}/evidence/{item_id}").status_code == 200
+
+
+def test_an_unreachable_store_leaves_the_document_pending_not_deleted(
+    api: Api, db_session: Session
+) -> None:
+    """The honest incomplete state: access blocked, nothing depending on it, bytes still
+    present. Marking DELETED here would be recording a destruction that did not happen."""
+    from app.core.storage import StorageError
+
+    case_id, _ = _case_with_trip(api, "user_a")
+    item_id = _document(api, "user_a", case_id)
+    api("user_a").delete(f"/api/v1/cases/{case_id}/evidence/{item_id}")
+
+    class Unreachable(InMemoryStorage):
+        def delete(self, key: str) -> None:
+            raise StorageError("connection reset")
+
+    with pytest.raises(StorageError):
+        _purge(uuid.UUID(item_id), storage=Unreachable())
+
+    db_session.expire_all()
+    item = db_session.get(EvidenceItem, uuid.UUID(item_id))
+    assert item is not None
+    assert item.lifecycle_status.value == EvidenceLifecycleStatus.DELETION_PENDING.value
+    assert item.display_name != "", "the tombstone is not written until the bytes are gone"
