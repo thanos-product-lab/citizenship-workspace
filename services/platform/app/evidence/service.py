@@ -36,10 +36,11 @@ from app.auth.schemas import CurrentUser
 from app.cases.domain import ApplicationCase, LifecycleStatus
 from app.core.config import get_settings
 from app.core.storage import StorageAdapter, build_key
-from app.evidence import upload_token
+from app.evidence import links, upload_token
 from app.evidence.domain import (
     USER_RETRYABLE_FAILURE_CODES,
     EvidenceCategory,
+    EvidenceDeleted,
     EvidenceFile,
     EvidenceItem,
     EvidenceProcessingRequested,
@@ -400,3 +401,70 @@ def request_reprocessing(
     item.updated_at = utcnow()
     uow.commit()
     return item, file
+
+
+def delete_evidence(
+    session: Session,
+    *,
+    case: ApplicationCase,
+    user: CurrentUser,
+    evidence_item_id: uuid.UUID,
+) -> EvidenceItem:
+    """Delete a document: four of §51.1's seven steps, in one transaction.
+
+    Steps 1, 4, 5 and 6 — block access, withdraw support links, stale what depended on
+    them, reconcile the issue queue — all commit together or not at all. Step 3 (destroy
+    the bytes) and step 7 (the tombstone) are the purge task's, dispatched from the event
+    this emits.
+
+    **The split is deliberate, and the ordering within it more so.** Everything the user
+    can observe happens before the response returns: the document leaves the library, the
+    travel-consistency verdict goes STALE, the coverage issue reopens. Only the
+    irreversible half is deferred.
+
+    If the purge never runs, the case is honest but incomplete — the document is
+    unreachable, nothing depends on it, and the bytes are still in the bucket. That is
+    recoverable, and an operator can find the object because the tombstone keeps the
+    storage key. The reverse order would leave a live, readable document whose content had
+    already been destroyed, which is not.
+
+    Step 2 ("revoke or expire signed URLs") cannot be done: presigned URLs are not
+    revocable, which ADR-0018 recorded rather than pretended otherwise. What this command
+    does is stop *new* ones being issued — `get_active_for_case` excludes non-ACTIVE items,
+    so `…/content` 404s from here — and the purge then removes the object, after which any
+    URL still in flight 404s too. The window is the presign TTL, and purging sooner is what
+    shortens it.
+    """
+    _require_active_case(case)
+    item, file = get_evidence(session, case=case, evidence_item_id=evidence_item_id)
+
+    at = utcnow()
+    # Raises `IllegalTransition` → 409 on a second call, so a double-click cannot dispatch
+    # a second purge for bytes the first one already destroyed.
+    item.request_deletion(at=at)
+
+    uow = UnitOfWork(session, actor_id=user.user_id)
+    # Step 4, and steps 5 and 6 inside it: `mark_support_unavailable` withdraws every link
+    # and invalidates on `EVIDENCE_SUPPORT`, whose invalidation reconciles the queue. This
+    # is that function's first caller — it was written in 4a with no call site precisely so
+    # that this one would find it rather than reinvent it, and so M8 adds
+    # `FactEvidenceLink` inside it rather than here.
+    links.mark_support_unavailable(session, uow, case_id=case.id, evidence_item_id=item.id, at=at)
+    uow.emit(
+        EvidenceDeleted(
+            aggregate_id=item.id,
+            case_id=case.id,
+            evidence_file_id=file.id,
+            category=item.category,
+        ),
+        case_id=case.id,
+        action="evidence.deleted",
+        target_type="EvidenceItem",
+        target_id=item.id,
+        # Category only. The display name and filename are the things a tombstone exists to
+        # remove, and an audit row naming them would preserve them for good.
+        safe_metadata={"category": item.category},
+    )
+    uow.commit()
+    session.refresh(item)
+    return item

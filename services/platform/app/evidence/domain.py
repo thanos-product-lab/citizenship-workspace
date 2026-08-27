@@ -149,6 +149,40 @@ class EvidenceItem(Base):
     def is_active(self) -> bool:
         return self.lifecycle_status is EvidenceLifecycleStatus.ACTIVE
 
+    def request_deletion(self, *, at: datetime) -> None:
+        """ACTIVE → DELETION_PENDING (§51.1 step 1, "block further access").
+
+        The guard is defence in depth, not the live protection, and it is worth being
+        precise about which is which: every route reaches an item through
+        `get_active_for_case`, which excludes non-ACTIVE rows, so a second delete gets a
+        404 long before this raise is reached. Mutating the guard away turns no test red
+        through HTTP — only the aggregate test does that. It stays because the day a caller
+        reaches the aggregate by another path, "already deleting" must not silently start a
+        second purge for bytes the first one is already destroying.
+
+        `deleted_at` is *not* set here. The item is not deleted yet; its bytes are still in
+        the bucket and the purge may yet fail. Stamping it now would make every read that
+        filters on `deleted_at` lie for as long as the purge takes.
+        """
+        if self.lifecycle_status is not EvidenceLifecycleStatus.ACTIVE:
+            raise IllegalTransition(f"evidence item is already {self._lifecycle_status}")
+        self._lifecycle_status = EvidenceLifecycleStatus.DELETION_PENDING.value
+        self.updated_at = at
+
+    def mark_deleted(self, *, at: datetime) -> None:
+        """DELETION_PENDING → DELETED, once the bytes are actually gone (§51.1 step 3).
+
+        Only from DELETION_PENDING, so this cannot be reached without the command that
+        blocks access having run first. The purge must never be the thing that makes a
+        document unreachable: a purge can fail, and a failed purge would then leave a
+        readable document whose content had already been destroyed.
+        """
+        if self.lifecycle_status is not EvidenceLifecycleStatus.DELETION_PENDING:
+            raise IllegalTransition(f"cannot delete an item that is {self._lifecycle_status}")
+        self._lifecycle_status = EvidenceLifecycleStatus.DELETED.value
+        self.deleted_at = at
+        self.updated_at = at
+
     def point_at_file(self, *, file_id: uuid.UUID, at: datetime) -> None:
         """Make a file version the item's current one.
 
@@ -393,6 +427,38 @@ class EvidenceProcessingRequested(DomainEvent):
             "evidence_item_id": str(self.aggregate_id),
             "evidence_file_id": str(self.evidence_file_id),
             "previous_status": self.previous_status,
+        }
+
+
+@dataclass(frozen=True)
+class EvidenceDeleted(DomainEvent):
+    """A user asked for a document to be destroyed (§51.1).
+
+    Carries `evidence_file_id` but **not the storage key**, which a first draft put here so
+    the purge consumer would need no lookup. The rule above this section forbids it in as
+    many words — "no filename, no storage key" — and the reasoning holds: `domain_events`
+    is immutable, so a key written here outlives the tombstone that exists to remove
+    exactly this kind of trace, and it would sit in a table the relay reads with no tenant
+    at all.
+
+    The purge reads the key from `evidence_files` instead. That is safe because the
+    tombstone is applied *by* the purge, after the object is gone — the key is still there
+    when it is needed, and cleared only once it is not.
+    """
+
+    aggregate_type: ClassVar[str] = "EvidenceItem"
+    event_type: ClassVar[str] = "EvidenceDeleted"
+
+    case_id: uuid.UUID
+    evidence_file_id: uuid.UUID
+    category: str
+
+    def payload(self) -> dict[str, Any]:
+        return {
+            "case_id": str(self.case_id),
+            "evidence_item_id": str(self.aggregate_id),
+            "evidence_file_id": str(self.evidence_file_id),
+            "category": self.category,
         }
 
 

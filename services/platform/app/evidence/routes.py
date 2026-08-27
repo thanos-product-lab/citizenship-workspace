@@ -97,6 +97,26 @@ def retry_processing(
     return EvidenceResponse.from_domain(item, file, run, text)
 
 
+@router.delete("/{evidence_item_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_evidence(
+    evidence_item_id: uuid.UUID,
+    case: Annotated[ApplicationCase, Depends(require_case_access)],
+    session: Annotated[Session, Depends(get_tenant_session)],
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+) -> None:
+    """Delete a document (§51.1).
+
+    204 rather than the deleted item, and the choice is not stylistic. Returning the row
+    would hand the client a document it has just been told no longer exists, with a
+    `processing_status` and a display name still on it — an object the very next `GET`
+    404s. The client removes the row it already has; there is nothing to render.
+
+    A second call is a 409 from the aggregate, not a silent success: the first deletion
+    dispatched a purge, and answering 204 again would imply a second one is safe.
+    """
+    service.delete_evidence(session, case=case, user=user, evidence_item_id=evidence_item_id)
+
+
 @router.get("", response_model=EvidenceLibraryResponse)
 def list_evidence(
     case: Annotated[ApplicationCase, Depends(require_case_access)],

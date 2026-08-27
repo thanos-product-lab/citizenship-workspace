@@ -3612,6 +3612,56 @@
       }
     },
     "/api/v1/cases/{case_id}/evidence/{evidence_item_id}": {
+      "delete": {
+        "description": "Delete a document (\u00a751.1).\n\n204 rather than the deleted item, and the choice is not stylistic. Returning the row\nwould hand the client a document it has just been told no longer exists, with a\n`processing_status` and a display name still on it \u2014 an object the very next `GET`\n404s. The client removes the row it already has; there is nothing to render.\n\nA second call is a 409 from the aggregate, not a silent success: the first deletion\ndispatched a purge, and answering 204 again would imply a second one is safe.",
+        "operationId": "delete_evidence_api_v1_cases__case_id__evidence__evidence_item_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "evidence_item_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Evidence Item Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Case Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete Evidence",
+        "tags": [
+          "evidence"
+        ]
+      },
       "get": {
         "operationId": "get_evidence_api_v1_cases__case_id__evidence__evidence_item_id__get",
         "parameters": [

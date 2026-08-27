@@ -168,7 +168,19 @@ export interface paths {
         get: operations["get_evidence_api_v1_cases__case_id__evidence__evidence_item_id__get"];
         put?: never;
         post?: never;
-        delete?: never;
+        /**
+         * Delete Evidence
+         * @description Delete a document (§51.1).
+         *
+         *     204 rather than the deleted item, and the choice is not stylistic. Returning the row
+         *     would hand the client a document it has just been told no longer exists, with a
+         *     `processing_status` and a display name still on it — an object the very next `GET`
+         *     404s. The client removes the row it already has; there is nothing to render.
+         *
+         *     A second call is a 409 from the aggregate, not a silent success: the first deletion
+         *     dispatched a purge, and answering 204 again would imply a second one is safe.
+         */
+        delete: operations["delete_evidence_api_v1_cases__case_id__evidence__evidence_item_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -2226,6 +2238,36 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["EvidenceResponse"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_evidence_api_v1_cases__case_id__evidence__evidence_item_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                evidence_item_id: string;
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
