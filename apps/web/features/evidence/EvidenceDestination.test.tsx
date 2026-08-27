@@ -7,7 +7,8 @@ import { renderWithQuery } from "@/test/render";
 
 const get = vi.fn();
 const post = vi.fn();
-const client = { GET: get, POST: post, PUT: vi.fn(), PATCH: vi.fn(), DELETE: vi.fn() };
+const del = vi.fn();
+const client = { GET: get, POST: post, PUT: vi.fn(), PATCH: vi.fn(), DELETE: del };
 vi.mock("@/lib/api", () => ({ useApiClient: () => client }));
 
 import { EvidenceDestination } from "./EvidenceDestination";
@@ -57,6 +58,7 @@ function aLibrary(items: unknown[] = []) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  del.mockResolvedValue({ data: undefined, error: undefined });
   get.mockResolvedValue({ data: aLibrary() });
 });
 
@@ -633,5 +635,79 @@ describe("what the screen says out loud", () => {
     await screen.findByTestId("evidence-empty");
     const live = container.querySelector('[aria-live="polite"]');
     expect(live?.textContent).not.toMatch(/nothing has read/i);
+  });
+});
+
+describe("deleting a document", () => {
+  it("asks first, and says what deletion does beyond this screen", async () => {
+    // The one irreversible action in the library. The dialog has to carry three facts the
+    // user cannot get anywhere else: the contents are destroyed, it cannot be undone, and
+    // the consequence reaches the assessment — a trip loses its document and the
+    // travel-records check needs working out again.
+    get.mockResolvedValue({ data: aLibrary([anItem()]) });
+    renderWithQuery(<EvidenceDestination caseId={CASE_ID} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /Delete Athens booking/ }));
+
+    const dialog = within(screen.getByRole("dialog"));
+    expect(dialog.getByText(/contents destroyed|contents/)).toBeTruthy();
+    expect(dialog.getByText(/cannot be undone/)).toBeTruthy();
+    expect(dialog.getByText(/no document attached/)).toBeTruthy();
+    expect(del).not.toHaveBeenCalled();
+  });
+
+  it("deletes on confirmation and announces it", async () => {
+    get.mockResolvedValue({ data: aLibrary([anItem()]) });
+    del.mockResolvedValue({ data: undefined, error: undefined });
+    renderWithQuery(<EvidenceDestination caseId={CASE_ID} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /Delete Athens booking/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Delete document" }));
+
+    await waitFor(() => expect(screen.getByText("Athens booking deleted.")).toBeTruthy());
+    expect(del).toHaveBeenCalledWith(
+      "/api/v1/cases/{case_id}/evidence/{evidence_item_id}",
+      { params: { path: { case_id: CASE_ID, evidence_item_id: "ev-1" } } },
+    );
+  });
+
+  it("returns focus to the delete button when the dialog is cancelled", async () => {
+    get.mockResolvedValue({ data: aLibrary([anItem()]) });
+    renderWithQuery(<EvidenceDestination caseId={CASE_ID} />);
+
+    const trigger = await screen.findByRole("button", { name: /Delete Athens booking/ });
+    trigger.focus();
+    fireEvent.click(trigger);
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: /Cancel/ }));
+
+    await waitFor(() => expect(trigger).toHaveFocus());
+    expect(del).not.toHaveBeenCalled();
+  });
+
+  it("reports a failed deletion rather than leaving the row to look deleted", async () => {
+    // The dialog unmounts either way, so without this the user sees the document still
+    // listed and nothing saying why — indistinguishable from a control that did nothing.
+    get.mockResolvedValue({ data: aLibrary([anItem()]) });
+    del.mockResolvedValue({ data: undefined, error: { message: "nope" }, response: { status: 500 } });
+    renderWithQuery(<EvidenceDestination caseId={CASE_ID} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /Delete Athens booking/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Delete document" }));
+
+    await waitFor(() =>
+      expect(screen.getByText(/could not be deleted/)).toBeTruthy(),
+    );
+  });
+
+  it("names which document each delete control belongs to", async () => {
+    // A column of bare "Delete" controls is indistinguishable heard in sequence, and this
+    // is the one action here that cannot be undone.
+    get.mockResolvedValue({
+      data: aLibrary([anItem(), anItem({ id: "ev-2", display_name: "Return flight" })]),
+    });
+    renderWithQuery(<EvidenceDestination caseId={CASE_ID} />);
+
+    expect(await screen.findByRole("button", { name: /Delete Athens booking/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Delete Return flight/ })).toBeTruthy();
   });
 });

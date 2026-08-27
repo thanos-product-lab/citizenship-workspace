@@ -155,9 +155,11 @@ def derive(
     travel: list[TravelSnapshot],
     targets: LimitationTargets,
     recalculation_failed: bool = False,
-    # No default: an empty list suppresses every coverage issue, so forgetting it would
-    # drop them silently rather than failing.
+    # No defaults: an empty list and `False` are each precisely the value that suppresses
+    # every coverage issue, so a forgotten argument would drop them silently rather than
+    # fail.
     evidence: list[EvidenceSnapshot],
+    has_ever_held_evidence: bool,
 ) -> list[DesiredIssue]:
     """The complete desired open-issue set for a case.
 
@@ -169,7 +171,7 @@ def derive(
         issues.append(_processing_failure(case_id))
     for requirement in requirements:
         issues.extend(_requirement_issues(requirement))
-    issues.extend(_travel_issues(travel, targets, case_holds_evidence=bool(evidence)))
+    issues.extend(_travel_issues(travel, targets, case_holds_evidence=has_ever_held_evidence))
     issues.extend(_duplicate_evidence_issues(evidence))
     return issues
 
@@ -417,8 +419,8 @@ def _travel_issues(
 def _missing_evidence_issues(
     travel: list[TravelSnapshot], targets: LimitationTargets, case_holds_evidence: bool
 ) -> list[DesiredIssue]:
-    """One item per confirmed trip with no document attached (§7.8) — **once the case
-    holds at least one document**.
+    """One item per confirmed trip with no document attached (§7.8) — **once the case has
+    held at least one document**.
 
     That gate is a judgement, so it is stated rather than buried. A case with twelve trips
     and nothing uploaded would otherwise open twelve `MISSING_EVIDENCE` items the moment

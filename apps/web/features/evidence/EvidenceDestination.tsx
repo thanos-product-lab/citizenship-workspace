@@ -1,6 +1,7 @@
 "use client";
 
 import { type JSX, useEffect, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 
 import {
   EvidenceState,
@@ -18,6 +19,9 @@ import {
 } from "./library";
 import { UploadDocument } from "./UploadDocument";
 import { useEvidence } from "./useEvidence";
+import { ConfirmDialog } from "@/features/timeline/ConfirmDialog";
+
+import { useDeleteEvidence } from "./useDeleteEvidence";
 import { useRetryProcessing, type RetryRefusal } from "./useRetryProcessing";
 
 /**
@@ -57,6 +61,12 @@ export function EvidenceDestination({ caseId }: { caseId: string }): JSX.Element
   // they just acted on, where sending them to the page heading would not.
   const [returnFocusToRow, setReturnFocusToRow] = useState<string | null>(null);
   const retry = useRetryProcessing(caseId);
+  const remove = useDeleteEvidence(caseId);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const deletingItem =
+    deletingId && data?.items
+      ? ((data.items as EvidenceItem[]).find((i) => i.id === deletingId) ?? null)
+      : null;
 
   useEffect(() => {
     if (!returnFocusToRow || retry.isPending) return;
@@ -196,6 +206,7 @@ export function EvidenceDestination({ caseId }: { caseId: string }): JSX.Element
               // outcome is reported nowhere. Blocking all of them while any one is
               // pending is the same answer the issue queue reached for Dismiss.
               anyRetryPending={retry.isPending}
+              onDelete={(id) => setDeletingId(id)}
               onRetry={(id) => {
                 setRetryingId(id);
                 setAnnouncement("Reading that document again.");
@@ -211,6 +222,43 @@ export function EvidenceDestination({ caseId }: { caseId: string }): JSX.Element
           )}
         </>
       ) : null}
+      <ConfirmDialog
+        open={deletingItem !== null}
+        title="Delete this document?"
+        description={
+          deletingItem
+            ? `${deletingItem.display_name} will be removed from this case and its contents ` +
+              "destroyed. This cannot be undone. Any trip it supports will show as having " +
+              "no document attached, and the travel-records check will need working out again."
+            : ""
+        }
+        confirmLabel="Delete document"
+        busy={remove.isPending}
+        onConfirm={() => {
+          if (!deletingId) return;
+          const id = deletingId;
+          const name = deletingItem?.display_name ?? "That document";
+          remove.mutate(id, {
+            onSuccess: () => {
+              flushSync(() => setDeletingId(null));
+              setAnnouncement(`${name} deleted.`);
+              headingRef.current?.focus();
+            },
+            onError: () => {
+              flushSync(() => setDeletingId(null));
+              setAnnouncement(`${name} could not be deleted. Try again.`);
+              headingRef.current?.focus();
+            },
+          });
+        }}
+        onCancel={() => {
+          // Focus back to the control that opened it — the dialog owns focus while open,
+          // and only the parent knows which row was pressed.
+          const id = deletingId;
+          flushSync(() => setDeletingId(null));
+          document.getElementById(`delete-${id}`)?.focus();
+        }}
+      />
     </section>
   );
 }
@@ -291,11 +339,13 @@ function describeText(item: EvidenceItem): string {
 
 function EvidenceTable({
   items,
+  onDelete,
   onRetry,
   retryingId,
   anyRetryPending,
 }: {
   items: EvidenceItem[];
+  onDelete: (id: string) => void;
   onRetry: (id: string) => void;
   retryingId: string | null;
   anyRetryPending: boolean;
@@ -330,6 +380,9 @@ function EvidenceTable({
             </th>
             <th role="columnheader" scope="col">
               Added
+            </th>
+            <th role="columnheader" scope="col">
+              <span className="cw-visually-hidden">Actions</span>
             </th>
           </tr>
         </thead>
@@ -414,6 +467,20 @@ function EvidenceTable({
               </td>
               <td role="cell">{describeText(item)}</td>
               <td role="cell">{formatDate(item.uploaded_at)}</td>
+              <td role="cell">
+                <button
+                  type="button"
+                  id={`delete-${item.id}`}
+                  style={linkButtonStyle}
+                  onClick={() => onDelete(item.id)}
+                >
+                  <span aria-hidden="true">Delete</span>
+                  {/* Named, because a column of bare "Delete" controls is indistinguishable
+                      heard in sequence — and this is the one action in the library that
+                      cannot be undone. */}
+                  <span className="cw-visually-hidden">Delete {item.display_name}</span>
+                </button>
+              </td>
             </tr>
           ))}
         </tbody>

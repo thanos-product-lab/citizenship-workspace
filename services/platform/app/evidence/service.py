@@ -449,7 +449,24 @@ def delete_evidence(
     # is that function's first caller — it was written in 4a with no call site precisely so
     # that this one would find it rather than reinvent it, and so M8 adds
     # `FactEvidenceLink` inside it rather than here.
-    links.mark_support_unavailable(session, uow, case_id=case.id, evidence_item_id=item.id, at=at)
+    withdrawn = links.mark_support_unavailable(
+        session, uow, case_id=case.id, evidence_item_id=item.id, at=at
+    )
+    if not withdrawn:
+        # The document supported nothing, so no conclusion went out of date and
+        # `mark_support_unavailable` correctly invalidated nothing — which also meant it
+        # reconciled nothing, because reconciliation rides on invalidation.
+        #
+        # The queue still moved, though. Deleting a document changes the *desired* issue
+        # set even when it stales no result: any `DUPLICATE_EVIDENCE` item naming it is
+        # gone, and the coverage gate reads whether the case has ever held one. Without
+        # this, the queue kept naming a duplicate of a document that no longer exists until
+        # some unrelated edit happened to reconcile.
+        #
+        # Exactly the reasoning behind `record_upload`'s own reconcile, and found the same
+        # way: a mutation that failed to turn a test red, because the test was reading a
+        # queue nothing had re-derived.
+        issues_service.reconcile(session, uow, case_id=case.id)
     uow.emit(
         EvidenceDeleted(
             aggregate_id=item.id,

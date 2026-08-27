@@ -418,3 +418,37 @@ def test_an_unreachable_store_leaves_the_document_pending_not_deleted(
     assert item is not None
     assert item.lifecycle_status.value == EvidenceLifecycleStatus.DELETION_PENDING.value
     assert item.display_name != "", "the tombstone is not written until the bytes are gone"
+
+
+def test_deleting_an_unattached_document_still_reconciles_the_queue(
+    api: Api, db_session: Session
+) -> None:
+    """A document supporting nothing stales no conclusion — but it still moves the queue.
+
+    `mark_support_unavailable` withdraws no links, so it invalidates nothing, so nothing
+    reconciles: reconciliation rides on invalidation. The desired issue set changed anyway,
+    because any `DUPLICATE_EVIDENCE` item naming the document is now about something that
+    does not exist.
+
+    Found by a mutation that failed to turn a test red — the test was reading a queue
+    nothing had re-derived, and passed for the wrong reason. Same shape as the fix
+    `record_upload` needed in 4a.
+    """
+    case_id, _ = _case_with_trip(api, "user_a")
+    first = _document(api, "user_a", case_id, name="One")
+    _document(api, "user_a", case_id, name="Two")
+
+    def duplicates() -> list[dict[str, object]]:
+        queue = api("user_a").get(f"/api/v1/cases/{case_id}/issues").json()
+        return [
+            issue
+            for group in queue["groups"]
+            for issue in group["issues"]
+            if issue["issue_type"] == "DUPLICATE_EVIDENCE"
+        ]
+
+    assert len(duplicates()) == 2, "identical bytes, so both copies are flagged"
+
+    api("user_a").delete(f"/api/v1/cases/{case_id}/evidence/{first}")
+
+    assert duplicates() == [], "one copy left, so nothing duplicates anything"

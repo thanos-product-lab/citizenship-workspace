@@ -105,6 +105,23 @@ class EvidenceRepository:
         return [(row[0], row[1], row[2]) for row in session.execute(stmt)]
 
     @staticmethod
+    def case_has_ever_held_evidence(session: Session, *, case_id: uuid.UUID) -> bool:
+        """Whether this case has ever had a document, tombstones included.
+
+        A narrower question than `fingerprints_for_case`, and the difference is the whole
+        reason it exists. Deletion leaves the row behind as a tombstone (§51.1 step 7), so
+        "has ever held" is answerable with no new state — and without it, deleting the last
+        document would close every `MISSING_EVIDENCE` item at the exact moment every trip
+        became unevidenced. The queue would fall silent because the evidence went away,
+        which is the reassuring-at-the-wrong-moment shape directive 7 exists to prevent.
+
+        A case that never uploaded anything still has no rows, so it keeps the quiet queue
+        the gate was built for.
+        """
+        stmt = select(EvidenceItem.id).where(EvidenceItem.case_id == case_id).limit(1)
+        return session.execute(stmt).first() is not None
+
+    @staticmethod
     def get_current_file(session: Session, *, evidence_item_id: uuid.UUID) -> EvidenceFile | None:
         stmt = (
             select(EvidenceFile)

@@ -913,3 +913,40 @@ def test_a_deleted_document_stops_being_a_duplicate(api: Api, db_session: Sessio
     _upload(api, case_id, name="Unrelated", content=b"%PDF-1.4 entirely different bytes")
 
     assert _of_type(_queue(api, case_id), "DUPLICATE_EVIDENCE") == []
+
+
+def test_deleting_the_last_document_reveals_the_gaps_rather_than_hiding_them(
+    api: Api,
+) -> None:
+    """The interaction slice 4b recorded for slice 5's plan, now closed.
+
+    The coverage gate suppressed `MISSING_EVIDENCE` until the case held a document. Read as
+    "holds", deleting the only document flipped it false and reconciliation closed every
+    coverage item — at the exact moment every trip became unevidenced. The queue would fall
+    silent *because* the evidence went away, which is reassurance produced by loss.
+
+    Read as "has ever held", tombstones answer it. A case that never uploaded anything still
+    has no rows and keeps its quiet queue; a case that had one and deleted it sees its gaps.
+    """
+    case_id = _case(api)
+    _trip(api, case_id, "2023-05-01", "2023-05-10", label="Greece")
+    _trip(api, case_id, "2023-07-01", "2023-07-10", label="Italy")
+    item_id = _upload(api, case_id, name="A booking")
+    _recalc(api, case_id)
+    assert len(_of_type(_queue(api, case_id), "MISSING_EVIDENCE")) == 2
+
+    api("user_a").delete(f"/api/v1/cases/{case_id}/evidence/{item_id}")
+
+    still_open = _of_type(_queue(api, case_id), "MISSING_EVIDENCE")
+    assert len(still_open) == 2, "both trips are still unevidenced, and more so than before"
+
+
+def test_a_case_that_never_held_a_document_keeps_its_quiet_queue(api: Api) -> None:
+    """The other side, unchanged: the gate exists so twelve trips and no uploads do not
+    open twelve identical items burying the one that needs a decision."""
+    case_id = _case(api)
+    for month in (5, 6, 7):
+        _trip(api, case_id, f"2023-0{month}-01", f"2023-0{month}-10", label=f"Trip {month}")
+    _recalc(api, case_id)
+
+    assert _of_type(_queue(api, case_id), "MISSING_EVIDENCE") == []

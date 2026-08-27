@@ -98,6 +98,9 @@ def reconcile(
         targets=_limitation_targets(session, case_id, requirements),
         recalculation_failed=_recalculation_failed(session, case_id),
         evidence=_evidence_snapshots(session, case_id),
+        has_ever_held_evidence=EvidenceRepository.case_has_ever_held_evidence(
+            session, case_id=case_id
+        ),
     )
     desired_by_key = {issue.deduplication_key: issue for issue in desired}
 
@@ -331,16 +334,16 @@ def _limitation_targets(
 
 
 def _evidence_snapshots(session: Session, case_id: uuid.UUID) -> list[EvidenceSnapshot]:
-    """The case's live documents, for duplicate detection and for the coverage gate.
+    """The case's **live** documents, for duplicate detection.
 
-    One read serving both, which is the point: the gate turns on whether the case holds any
-    document, and deriving that from this list (`bool(evidence)`) rather than from a
-    separate count means the two cannot disagree about what "holds a document" means.
+    Live only: a tombstone has no checksum left to compare, and a deleted document cannot
+    duplicate anything.
 
-    "Holds a document", not "has attached one to something". Once a user has uploaded a
-    file they are evidencing the case, and the trips they have not got to yet are exactly
-    the gaps worth listing. Keying the gate on *attachment* would make the first attach open
-    issues for every other trip, which reads as being punished for progress.
+    This no longer serves the coverage gate. It did, as `bool(evidence)` — one read serving
+    both — until deletion arrived and showed the two questions were never the same one. The
+    gate asks whether the user has *ever* provided a document, which tombstones answer;
+    duplicate detection asks which documents are here *now*. Collapsing them made deleting
+    the last document close every coverage item.
     """
     return [
         EvidenceSnapshot(item_id=str(item_id), display_name=display_name, checksum=checksum)
