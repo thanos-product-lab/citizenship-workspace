@@ -62,10 +62,19 @@ whose credentials can create buckets is an application whose credentials can cre
    uv run celery -A worker.celery_app.celery_app worker --beat --loglevel info
    ```
    Give it `DATABASE_URL`, `REDIS_URL` (same references) and the storage variables
-   from the section below. No domain / health check needed. **Clear its Pre-Deploy
-   Command** (Settings → Deploy) so the worker does not also run migrations — the API's
-   pre-deploy owns them (see below), and two services running `alembic upgrade head` at
-   once can race on a migration-bearing deploy.
+   from the section below. It needs no domain, and **no Clerk or upload-token variables**:
+   it never verifies a token or signs one.
+
+   Two things to clear under **Settings → Deploy**, both because `railway.json` sits at
+   the repo root and every service built from this repo reads it:
+
+   - **Pre-Deploy Command** — otherwise the worker also runs `alembic upgrade head`, and
+     two services racing that on a migration-bearing deploy is how you get a half-applied
+     schema.
+   - **Healthcheck Path** — `railway.json` sets `/health/ready` for the API. A Celery
+     worker serves no HTTP at all, so the check can never pass; Railway marks the deploy
+     unhealthy and restarts it, and the symptom is a worker that looks like it is crashing
+     when it is only unreachable in a way it was never meant to be reachable.
 
    > **`--beat` is not optional, and its absence is silent.** The scheduler is what runs
    > the outbox relay, and the relay is what turns a written event into work: without it
