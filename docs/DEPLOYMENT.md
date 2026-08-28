@@ -168,16 +168,23 @@ whose credentials can create buckets is an application whose credentials can cre
    from the section below. It needs no domain, and **no Clerk or upload-token variables**:
    it never verifies a token or signs one.
 
-   Two things to clear under **Settings → Deploy**, both because `railway.json` sits at
-   the repo root and every service built from this repo reads it:
+   Then **Settings → Config-as-code**, set the path to **`railway.worker.json`**.
 
-   - **Pre-Deploy Command** — otherwise the worker also runs `alembic upgrade head`, and
-     two services racing that on a migration-bearing deploy is how you get a half-applied
-     schema.
-   - **Healthcheck Path** — `railway.json` sets `/health/ready` for the API. A Celery
-     worker serves no HTTP at all, so the check can never pass; Railway marks the deploy
-     unhealthy and restarts it, and the symptom is a worker that looks like it is crashing
-     when it is only unreachable in a way it was never meant to be reachable.
+   That file exists because `railway.json` is the *API's* config and every service built
+   from this repo reads it by default — including two settings a worker must not have:
+
+   - `preDeployCommand: alembic upgrade head`, which would have the worker race the API
+     on migrations. Two services running that at once on a migration-bearing deploy is
+     how you get a half-applied schema.
+   - `healthcheckPath: /health/ready`. A Celery worker serves no HTTP at all, so the check
+     can never pass; Railway marks the deploy unhealthy and restarts it, and the symptom
+     is a worker that looks like it is crashing when it is only failing a question it was
+     never meant to be asked.
+
+   Clearing those two fields in the dashboard is **not** reliably enough: config-as-code
+   takes precedence over dashboard settings for the keys it defines, so the file would put
+   them back. A second file is also the version-controlled answer — the difference between
+   the two services is visible in the repo rather than living in one person's console.
 
    > **`--beat` is not optional, and its absence is silent.** The scheduler is what runs
    > the outbox relay, and the relay is what turns a written event into work: without it
