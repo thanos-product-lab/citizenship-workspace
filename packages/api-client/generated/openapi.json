@@ -3613,7 +3613,7 @@
     },
     "/api/v1/cases/{case_id}/evidence/{evidence_item_id}": {
       "delete": {
-        "description": "Delete a document (\u00a751.1).\n\n204 rather than the deleted item, and the choice is not stylistic. Returning the row\nwould hand the client a document it has just been told no longer exists, with a\n`processing_status` and a display name still on it \u2014 an object the very next `GET`\n404s. The client removes the row it already has; there is nothing to render.\n\nA second call is a 409 from the aggregate, not a silent success: the first deletion\ndispatched a purge, and answering 204 again would imply a second one is safe.",
+        "description": "Delete a document (\u00a751.1).\n\n204 rather than the deleted item, and the choice is not stylistic. Returning the row\nwould hand the client a document it has just been told no longer exists, with a\n`processing_status` and a display name still on it \u2014 an object the very next `GET`\n404s. The client removes the row it already has; there is nothing to render.\n\nA second call is a **404**, not a silent success. `request_deletion` does raise\n`IllegalTransition` on a repeat, but the lookup gets there first: `get_active_for_case`\nexcludes non-ACTIVE rows, so the item is already unfindable by the time the aggregate\ncould object. The 409 is real and unreachable through HTTP, which is why the aggregate\nguard is tested directly rather than through this route.\n\n404 is also the better answer of the two. The resource is gone \u2014 that is exactly what\nthe first call accomplished \u2014 and it is what every other read of this item now returns.",
         "operationId": "delete_evidence_api_v1_cases__case_id__evidence__evidence_item_id__delete",
         "parameters": [
           {
