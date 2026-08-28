@@ -944,6 +944,25 @@ DELETION_PENDING
 DELETED
 ```
 
+The only two transitions, both guarded on the aggregate rather than settable as columns:
+
+```text
+ACTIVE            --request_deletion()-->  DELETION_PENDING
+DELETION_PENDING  --mark_deleted()------>  DELETED
+```
+
+`request_deletion` is the synchronous command (§51.1 steps 1, 4, 5, 6): it blocks access,
+withdraws support links, stales dependent assessments and reconciles the issue queue, all
+in one transaction. `mark_deleted` is written by the **purge** alone, after the bytes are
+destroyed — so an item is never `DELETED` while its content is still in the store.
+
+Both raise `IllegalTransition` when the current state is wrong, which makes a repeated
+command safe. Note that a second `DELETE` over HTTP returns **404, not 409**: reads exclude
+non-`ACTIVE` rows, so the lookup fails before the aggregate can object. The guard is real
+and unreachable through the API, and is therefore tested directly against the aggregate.
+
+There is no path back. Deletion is terminal (§52); there is no undelete and no recycle bin.
+
 ### 14.4 Processing Status
 
 ```text
@@ -968,6 +987,14 @@ UNSUPPORTED
 - Processing runs always target an exact file version.
 - Evidence deletion marks dependent support links unavailable and invalidates affected assessments.
 - The raw file may be removed while a minimal non-sensitive tombstone remains for audit.
+- An item is `DELETED` only after its content is destroyed; a failed purge leaves it
+  `DELETION_PENDING` — unreachable, depended upon by nothing, bytes still present. That
+  state is incomplete rather than wrong, and is the one a purge may safely retry from.
+- **A case being deleted does not cancel a document's purge.** Destroying content is what
+  the terminal case state is for, so the purge proceeds; the tenant is still established
+  from the database, and the purge still refuses any item that is not `DELETION_PENDING`.
+- The tombstone clears the document's name wherever it was copied, not only on the item —
+  see ADR-0023 for the field-by-field decision and why `storage_key` is retained.
 
 ---
 

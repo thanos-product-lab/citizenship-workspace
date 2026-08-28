@@ -1357,3 +1357,122 @@ _Known gaps carried forward:_
   duplicate items; removing a *document* is slice 5. Until then the only way to clear a
   `DUPLICATE_EVIDENCE` item is to set it aside, which is why dismissible is the right call
   and would have been even without §15's word "possible".
+
+## M7 slice 5 — deletion, and what it invalidates
+
+The milestone's last owed capability, and the one that proves the other four. A document
+that is stored privately, read deterministically, attached to a trip and read by a rule
+still could not go away. Deleting one and leaving the conclusion looking untouched is the
+exact failure this codebase exists to prevent.
+
+The shape that mattered was the **split between synchronous and asynchronous**. Everything
+a user can observe — the document leaving the library, the verdict going stale, the
+coverage issue reopening — happens before the response returns, in one transaction. Only
+the irreversible part is deferred. If the purge never runs the case is honest but
+incomplete: unreachable document, nothing depending on it, bytes still in the bucket. The
+reverse order would leave a live document whose content had already gone.
+
+Two things built in earlier slices finally got their caller. `links.mark_support_unavailable`
+was written in 4a, corrected after the trust review, and had none until now. The outbox
+relay got its **second** consumer, which is what demonstrates it is a mechanism rather than
+a bespoke pipeline for validation — dispatch, tenant acquisition and the at-least-once
+contract were all built for extraction and deletion reused every part without new plumbing.
+
+### Verified in production, not just locally
+
+The whole chain was driven against the deployed environment through a browser: S3 accepted
+the upload (204), the relay dispatched (`dispatched=1, declined=13`), extraction read the
+object, attach returned 200, delete returned 204, and the object answered `NoSuchKey` five
+seconds later from a URL that had returned 200 immediately before. `residence.travel_consistency`
+read **SUPPORTED / STALE** while `total_absences`, `final_year_absences` and
+`qualifying_period` all stayed CURRENT — conclusion and currency held apart, and selective
+invalidation not over-firing, both observed rather than asserted.
+
+### What the reviewers found that the tests did not
+
+Both reviewers independently found the same two violations, and the trust-model review
+reproduced both by running them.
+
+**A case deletion permanently cancelled a pending purge.** The task returned early on
+`CaseNoLongerWritable` on the stated grounds that "the case is being deleted, and its own
+purge owns the bytes now" — deferring to a consumer that *the same commit* documents as not
+existing, since `CaseDeletionRequested` is in `NO_CONSUMER` until M11. The work was not
+handed over, it was dropped: object in the bucket, name, filename, checksum and the entire
+extracted text still in Postgres, with no log line and no retry. Ordinary rather than
+exotic — any lag between deleting a document and deleting the case, which is exactly what a
+slow or restarting worker produces.
+
+**The purged document's name survived in the issue queue.** `DUPLICATE_EVIDENCE`
+denormalises `display_name` into `message_parameters`, and the twin carries it as
+`other_name`; resolving an issue writes only status and `resolved_at`. So the tombstone
+blanked the column and left the name in two resolved rows. `_tombstone`'s own docstring
+supplies the argument against this, and the argument does not stop at a table boundary.
+
+### The sixth test that passed for the wrong reason — mine
+
+The first version of the case-deletion regression test **passed with the defect restored**.
+It called `purge_evidence` directly, so it never went through `case_task`, which is where
+the gate lives. It now drives the real Celery task, and the mutation turns it red.
+
+Five earlier instances this milestone were in code I was reviewing; this one I wrote. The
+lesson is not "write better tests" but that the mutation is the only thing that
+distinguishes a guard from a comment — running it is not optional, and it is cheapest
+immediately after writing the test.
+
+### Two CI failures from running a subset of the documented checks
+
+`mypy app worker` instead of bare `uv run mypy` (91 files instead of 161, missing the
+tests), and skipping `just api-client` because a route docstring reads like a comment. It
+is not: **a FastAPI route docstring is the OpenAPI `description`**, so correcting the
+409/404 contradiction changed the generated TypeScript. The drift check caught it, which is
+the check working — it cannot distinguish "only prose changed" from "a response type
+changed", and should not try.
+
+### An incident the product should have made loud
+
+The deployed worker ran for **fifteen minutes reporting Online** while retrying
+`redis://localhost:6379/0` — the default in `config.py`, in force because `REDIS_URL` never
+reached the process. Uploads were accepted and would never be processed; documents sat at
+`UPLOADED`; nothing in the system could say why.
+
+Two guards now, failing at different moments on purpose.
+`broker_connection_retry_on_startup = False` is the primary: a worker has no health
+endpoint, so "alive" is its entire status signal, and retrying forever spends it on a lie.
+Dying lets the restart policy crash-loop the service, visibly, and it needs no variable to
+be set correctly in order to fire. `check_backing_services` gives the *named* error but is
+strictly second, because it only fires when `ENVIRONMENT` is set — and a deployment that
+lost `REDIS_URL` may well have lost that too.
+
+The second guard also had to be saved from itself: `urlsplit` raises `ValueError` **with
+the netloc inlined**, password included, when the host or credentials contain a character
+that changes under NFKC. Uncaught, the guard whose comment forbids echoing a URL would have
+printed one into a crash trace.
+
+_Known gaps carried forward:_
+
+- **The duplicate twin is matched by name, not by id.** `other_name` is all the issue row
+  holds; the sibling was never recorded as an identifier. The structural fix is
+  `other_item_id` with names resolved at render time. Recorded in ADR-0023.
+- **`test_invalidation_completeness.py` was not extended to evidence.** No live violation —
+  `_evaluate_travel_consistency` is the only evaluator touching `inputs.evidence_links` and
+  the dependency is declared — but the guard has a hole exactly where this milestone put
+  the new dependency: add an `inputs.evidence_links` read to `_evaluate_absence_total`
+  today and the whole suite stays green. This is the layer that catches an undeclared read,
+  which is the subtlest bug this system can have.
+- **The delete command's transaction boundary has no test.** Traced and believed correct —
+  one `UnitOfWork`, one commit — but the "same transaction" invariant is asserted by
+  reading, not by a forced failure.
+- **"Deletion cannot outrun processing" is untested, and the plan's stated mechanism was
+  wrong.** The plan claimed `case_task` raises `EvidenceNoLongerPresent` for a deleted item;
+  it does not, because `evidence_owner()` has no lifecycle filter. Text still cannot outlive
+  a purge, but only because `EvidenceItem` carries `version_id_col` — incidental to this
+  slice and asserted nowhere.
+- **No RLS-level test on the delete command or the purge.** Both run on the superuser
+  connection where policies are inert, so ownership is proven and defence in depth is not.
+- **A permanently failed purge is recorded only in a log.** `evidence.purge_abandoned` at
+  `error` with the retained `storage_key`; no issue opens, because the item is already
+  invisible to the user. Deliberate, but it means destruction can quietly not complete.
+- **Concurrent deletes surface as a 500.** Two simultaneous `DELETE`s both pass
+  `request_deletion`; the loser's commit raises `StaleDataError`. Data is safe — the purge
+  is idempotent and the link withdrawal writes the same value — but the case row is not
+  locked the way `links._require_active_case` locks for this class of reason.

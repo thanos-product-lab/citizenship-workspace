@@ -545,13 +545,17 @@ lifecycles · support availability · processing domain states.
 ## Platform Scope
 
 Private object storage · presigned upload/download · size and media validation ·
-checksum · PyMuPDF native text extraction · derived previews · Celery worker ·
+checksum · PyMuPDF native text extraction · Celery worker ·
 SSE progress with polling fallback · transactional outbox.
 
 ## Frontend Scope
 
-Evidence library · upload experience · processing states · document preview ·
+Evidence library · upload experience · processing states ·
 retry · delete · unsupported state · review queue placeholder.
+
+**Derived previews and document preview moved to M8** (ADR-0024): preview is the left half
+of the §9.4 review split view, and it has nothing to be checked against until claims exist.
+Server-side derived images are a separate decision and are *not* thereby approved for M8.
 
 ## Acceptance Criteria
 
@@ -596,6 +600,12 @@ conflict candidates.
 Per-request model timeout · per-run retry cap · daily spend ceiling with hard
 stop · cost recorded per `model_run` · dev-environment budget alert.
 
+## Frontend Scope
+
+Split-view review screen (UI/UX §9.4) · **document preview**, moved here from M7 by
+ADR-0024 · extracted-field review with confirm / correct / reject · claim provenance back
+to the document.
+
 ## User Journey
 
 Upload → analysis → split-view review → inspect proposed fields → confirm /
@@ -605,6 +615,8 @@ correct / reject → confirmed facts update → assessments go stale and recalcu
 ## Acceptance Criteria
 
 - Structured outputs validate against versioned schemas; unknown fields rejected.
+- **The preview renders the exact file version a claim was extracted from.** A preview of
+  a superseded version beside a claim from another is a provenance defect wearing a UI.
 - Invalid output creates no claim.
 - **Unconfirmed claims never influence trusted assessments.**
 - Correcting preserves the original proposal.
