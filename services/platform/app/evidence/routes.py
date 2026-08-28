@@ -111,8 +111,14 @@ def delete_evidence(
     `processing_status` and a display name still on it — an object the very next `GET`
     404s. The client removes the row it already has; there is nothing to render.
 
-    A second call is a 409 from the aggregate, not a silent success: the first deletion
-    dispatched a purge, and answering 204 again would imply a second one is safe.
+    A second call is a **404**, not a silent success. `request_deletion` does raise
+    `IllegalTransition` on a repeat, but the lookup gets there first: `get_active_for_case`
+    excludes non-ACTIVE rows, so the item is already unfindable by the time the aggregate
+    could object. The 409 is real and unreachable through HTTP, which is why the aggregate
+    guard is tested directly rather than through this route.
+
+    404 is also the better answer of the two. The resource is gone — that is exactly what
+    the first call accomplished — and it is what every other read of this item now returns.
     """
     service.delete_evidence(session, case=case, user=user, evidence_item_id=evidence_item_id)
 

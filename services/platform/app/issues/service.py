@@ -24,6 +24,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.assessments.domain import AssessmentRunStatus
@@ -48,6 +49,7 @@ from app.issues.domain import (
     IssueSeverity,
     IssuesReconciled,
     IssueStatus,
+    IssueType,
     ResolutionType,
 )
 from app.issues.repository import IssueRepository
@@ -378,3 +380,59 @@ _SEVERITY_RANK = {
     IssueSeverity.ACTION_REQUIRED.value: 2,
     IssueSeverity.BLOCKING.value: 3,
 }
+
+
+def forget_evidence_names(
+    session: Session, *, case_id: uuid.UUID, evidence_item_id: uuid.UUID, display_name: str
+) -> int:
+    """Clear a purged document's name from the issues that copied it.
+
+    The tombstone blanks `display_name` on `evidence_items` because it is the user's own
+    words for their document (§51.1 step 7). That argument does not stop at a table
+    boundary, and `DUPLICATE_EVIDENCE` is the one issue type that denormalises the name
+    into `message_parameters` — so before this, deleting a document left its name sitting
+    in two resolved rows: its own, and the surviving twin's, as `other_name`.
+
+    The twin is matched **by name rather than by id**, because `other_name` is all the
+    row holds — the sibling was never recorded as an identifier. That is the same design
+    flaw seen from the other side, and the structural fix is to store `other_item_id` and
+    resolve names at render time, the way `_resolve_evidence_link` already refuses to
+    carry a name into provenance. Recorded as a known gap rather than done here: it
+    changes the shape of a rendered issue, which is a wider change than a purge should
+    make.
+
+    Scoped to one case. A name is not a fingerprint, but matching it across cases would
+    still be reaching into another user's rows to answer a question nobody asked — the
+    same boundary Domain §15 draws for checksums.
+
+    Returns the number of issues amended, so the caller can log it and a test can tell
+    "cleared nothing" from "found nothing to clear".
+    """
+    if not display_name:
+        return 0
+
+    amended = 0
+    issues = session.execute(
+        select(Issue).where(
+            Issue.case_id == case_id,
+            Issue.issue_type == IssueType.DUPLICATE_EVIDENCE.value,
+        )
+    ).scalars()
+
+    for issue in issues:
+        parameters = dict(issue.message_parameters or {})
+        names = {
+            key for key in ("display_name", "other_name") if parameters.get(key) == display_name
+        }
+        # The item's own row is cleared whatever its parameters say, so a renamed document
+        # cannot leave a stale copy of an older name behind.
+        if str(issue.affected_object_id) == str(evidence_item_id):
+            names |= {"display_name", "other_name"} & parameters.keys()
+        if not names:
+            continue
+        for key in names:
+            parameters[key] = ""
+        issue.message_parameters = parameters
+        amended += 1
+
+    return amended

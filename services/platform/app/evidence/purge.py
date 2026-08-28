@@ -39,6 +39,7 @@ from app.evidence.domain import (
     EvidenceLifecycleStatus,
     utcnow,
 )
+from app.issues import service as issues_service
 
 _log = structlog.get_logger()
 
@@ -135,7 +136,21 @@ def _tombstone(
       is precisely the question a deletion is meant to stop answering.
     - the extracted text row, deleted outright. There is no minimal non-sensitive version
       of a document's text; the text *is* the document.
+    - the same name where `issues` copied it. `DUPLICATE_EVIDENCE` denormalises
+      `display_name` and `other_name` into `message_parameters`, and resolving an issue
+      leaves those untouched — so clearing the column alone left the user's words for a
+      destroyed document in two resolved rows. Cleared through a seam in `issues` rather
+      than by reaching into its table from here.
     """
+    # Before the name is blanked below: the twin's row holds it as a string, so this is
+    # the last point at which it can be matched.
+    issues_service.forget_evidence_names(
+        session,
+        case_id=item.case_id,
+        evidence_item_id=item.id,
+        display_name=item.display_name,
+    )
+
     item.display_name = ""
     item.updated_at = at
     for file in files:

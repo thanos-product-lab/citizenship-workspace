@@ -19,7 +19,7 @@ from typing import Any
 
 import structlog
 from celery import Task
-from celery.exceptions import SoftTimeLimitExceeded
+from celery.exceptions import MaxRetriesExceededError, SoftTimeLimitExceeded
 from sqlalchemy.orm import Session
 
 from app.core.storage import StorageError, get_storage
@@ -263,7 +263,11 @@ def purge_evidence(
     structlog.contextvars.bind_contextvars(trace_id=trace_id)
 
     try:
-        with case_task(evidence_item_id) as ctx:
+        # `allow_terminal_case`: destroying content is what a deleted case is *for*, so a
+        # case deletion must not cancel a purge the user already asked for. This branch
+        # previously deferred to a case-deletion consumer that `NO_CONSUMER` documents as
+        # M11 — the bytes were not handed over, they were abandoned, with no log line.
+        with case_task(evidence_item_id, allow_terminal_case=True) as ctx:
             outcome = purge.purge_evidence(
                 ctx.session,
                 get_storage(),
@@ -271,13 +275,10 @@ def purge_evidence(
                 trace_id=trace_id,
             )
     except EvidenceNoLongerPresent:
-        # The row is a tombstone rather than a deletion, so this means the *case* went
-        # while the purge was queued. Case deletion removes the objects itself (§51.2), so
-        # there is nothing left to do and nothing to report.
+        # The row is gone outright rather than tombstoned, so there is no storage key left
+        # to act on and nothing to report. Distinct from the case being deleted, which is
+        # now purged normally above.
         return {"purged": False, "reason": "evidence_absent"}
-    except CaseNoLongerWritable:
-        # Same reasoning: the case is being deleted, and its own purge owns the bytes now.
-        return {"purged": False, "reason": "case_deleting"}
     except StorageError as exc:
         # Transient by assumption — an unreachable store, not a refused delete. The item
         # stays DELETION_PENDING, which is the honest incomplete state: unreachable
@@ -288,6 +289,27 @@ def purge_evidence(
             evidence_item_id=aggregate_id,
             trace_id=trace_id,
         )
-        raise self.retry(exc=exc, countdown=_BACKOFF_BASE ** (self.request.retries + 1)) from exc
+        try:
+            raise self.retry(
+                exc=exc, countdown=_BACKOFF_BASE ** (self.request.retries + 1)
+            ) from exc
+        except MaxRetriesExceededError:
+            # The interesting moment is the last one, exactly as it is for validation.
+            # Past here nothing retries and the user cannot see the item at all — it is
+            # already unreachable — so this line is the *only* record that content the
+            # user asked to destroy is still in the bucket. `storage_key` is retained on
+            # the tombstone for precisely this: an operator can act on this log.
+            _log.error(
+                "evidence.purge_abandoned",
+                evidence_item_id=aggregate_id,
+                retries=self.request.retries,
+                trace_id=trace_id,
+            )
+            raise
+    finally:
+        # Unbind, or a prefork child stamps this trace_id on whatever task it picks up
+        # next — `relay_outbox` binds nothing, so one case's id would be attached to
+        # another case's log lines. `validate_evidence` does the same for the same reason.
+        structlog.contextvars.unbind_contextvars("trace_id")
 
     return {"purged": outcome.purged, "reason": outcome.reason}

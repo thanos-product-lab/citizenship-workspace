@@ -124,6 +124,7 @@ def case_task(
     evidence_item_id: uuid.UUID,
     *,
     sessions: sessionmaker[Session] | None = None,
+    allow_terminal_case: bool = False,
 ) -> Iterator[TaskContext]:
     """Open a session, establish the tenant from the database, and yield it.
 
@@ -135,11 +136,25 @@ def case_task(
     environment actually uses, where RLS is inert. The security suite has a non-superuser
     login role precisely so a forgotten tenant fails closed — and a wrapper that cannot be
     pointed at it is a wrapper whose tenant nobody can test. Production passes nothing.
+
+    `allow_terminal_case` exists for **destruction only**, and there is exactly one caller.
+
+    The terminal-case gate stops a task adding to or amending a case the user has asked to
+    be rid of — extraction writing new text, a run recording a status. Destroying content
+    is not that: it is the thing the terminal state is *for*, and refusing it means a
+    document the user deleted keeps its bytes because they then deleted the case too.
+    Refusing here was deferring to a case-deletion consumer that does not exist —
+    `CaseDeletionRequested` is in `NO_CONSUMER` until M11 — so the work was not handed
+    over, it was dropped.
+
+    The permission is narrow on purpose. It grants no general write: `purge_evidence`
+    still refuses any item that is not `DELETION_PENDING`, so this cannot become a way to
+    destroy live evidence on a case that happens to be closing.
     """
     factory = sessions or get_sessionmaker()
     with factory() as session:
         owner, case_id, lifecycle = resolve_evidence_owner(session, evidence_item_id)
-        if lifecycle in {state.value for state in TERMINAL_CASE_STATES}:
+        if not allow_terminal_case and lifecycle in {state.value for state in TERMINAL_CASE_STATES}:
             raise CaseNoLongerWritable(case_id, lifecycle)
 
         set_tenant(session, owner)

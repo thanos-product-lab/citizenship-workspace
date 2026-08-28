@@ -452,3 +452,97 @@ def test_deleting_an_unattached_document_still_reconciles_the_queue(
     api("user_a").delete(f"/api/v1/cases/{case_id}/evidence/{first}")
 
     assert duplicates() == [], "one copy left, so nothing duplicates anything"
+
+
+# --- the reviewers' two violations --------------------------------------------------
+
+
+def test_deleting_the_case_does_not_cancel_a_pending_purge(api: Api, db_session: Session) -> None:
+    """The user asked twice. Both times must be honoured.
+
+    `purge_evidence`'s `CaseNoLongerWritable` branch used to return early, on the stated
+    grounds that "the case is being deleted, and its own purge owns the bytes now". No
+    such owner exists: `CaseDeletionRequested` is in `NO_CONSUMER` until M11, so the work
+    was not handed over — it was dropped, with no log line and no retry. The object stayed
+    in the bucket, and so did the display name, the filename, the checksum and the whole
+    extracted text.
+
+    The window is ordinary rather than exotic: any lag between deleting a document and
+    deleting the case, which is exactly what a slow or restarting worker produces.
+    """
+    from app.evidence.domain import EvidenceFile
+
+    case_id, _ = _case_with_trip(api, "user_a")
+    item_id = _document(api, "user_a", case_id)
+    db_session.expire_all()
+    key = (
+        db_session.execute(
+            select(EvidenceFile).where(EvidenceFile.evidence_item_id == uuid.UUID(item_id))
+        )
+        .scalar_one()
+        .storage_key
+    )
+
+    api("user_a").delete(f"/api/v1/cases/{case_id}/evidence/{item_id}")
+    # The case goes before the relay dispatched the purge.
+    assert api("user_a").delete(f"/api/v1/cases/{case_id}").status_code in (200, 204)
+
+    # Through the **task**, not `purge_evidence` directly. The gate is in `case_task`, so
+    # a test that calls the pipeline function bypasses the very thing it is checking —
+    # which this one did on its first draft, and passed with the defect restored.
+    from worker.tasks import purge_evidence as purge_task
+
+    result = purge_task.apply(
+        kwargs={"outbox_event_id": str(uuid.uuid4()), "aggregate_id": item_id}
+    ).get()
+
+    assert result["purged"] is True, "a deleted case must not cancel a deletion"
+    assert _store().head(key) is None, "the bytes are gone"
+
+    db_session.expire_all()
+    item = db_session.get(EvidenceItem, uuid.UUID(item_id))
+    assert item is not None
+    assert item.lifecycle_status.value == EvidenceLifecycleStatus.DELETED.value
+    assert item.display_name == ""
+
+
+def test_the_purged_document_name_does_not_survive_in_the_issue_queue(
+    api: Api, db_session: Session
+) -> None:
+    """The tombstone's argument does not stop at a table boundary.
+
+    `display_name` is cleared from `evidence_items` because it is the user's own words for
+    their document. `DUPLICATE_EVIDENCE` copies that string into `message_parameters` —
+    twice, since the surviving twin carries it as `other_name` — and resolving an issue
+    touches only status and `resolved_at`. So the name outlived the document it named.
+    """
+    from app.issues.domain import Issue, IssueType
+
+    case_id, _ = _case_with_trip(api, "user_a")
+    first = _document(api, "user_a", case_id, name="Amara Athens booking")
+    # A name that is not a substring of the first, or the assertions below pass by accident.
+    second = _document(api, "user_a", case_id, name="Second upload")
+
+    api("user_a").delete(f"/api/v1/cases/{case_id}/evidence/{first}")
+    _purge(uuid.UUID(first))
+
+    db_session.expire_all()
+    parameters = [
+        issue.message_parameters
+        for issue in db_session.execute(
+            select(Issue).where(
+                Issue.case_id == uuid.UUID(case_id),
+                Issue.issue_type == IssueType.DUPLICATE_EVIDENCE.value,
+            )
+        ).scalars()
+    ]
+
+    assert parameters, "the duplicate issues must exist for this to be testing anything"
+    for row in parameters:
+        assert row.get("display_name") != "Amara Athens booking"
+        assert row.get("other_name") != "Amara Athens booking"
+
+    # The surviving document keeps its own name: this clears what was destroyed, not the
+    # queue's ability to name what is still there.
+    survivor = api("user_a").get(f"/api/v1/cases/{case_id}/evidence/{second}").json()
+    assert survivor["display_name"] == "Second upload"
