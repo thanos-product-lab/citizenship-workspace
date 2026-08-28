@@ -95,6 +95,25 @@ def get_settings() -> Settings:
     return Settings()
 
 
+def _loopback_host(url: str) -> bool:
+    """Whether `url` points at this container, without ever re-raising the URL.
+
+    `urlsplit` is not total. CPython validates the netloc under NFKC and raises
+    `ValueError` **with the netloc inlined in the message** — password included — for any
+    host or credential containing a character that changes under that normalisation. An
+    uncaught parse here would therefore print a connection string into a crash trace on a
+    platform log, which is precisely what the guard below refuses to do deliberately. A
+    URL that cannot be parsed is a misconfiguration to name by variable like any other,
+    not one to quote.
+    """
+    try:
+        return (urlsplit(url).hostname or "") in _LOOPBACK_HOSTS
+    except ValueError:
+        # Unparseable, so its host is unknowable — treat it as configured and let the
+        # driver fail on it. Reporting it as loopback would name the wrong fault.
+        return False
+
+
 def check_backing_services() -> None:
     """Refuse to boot pointed at a Postgres or Redis that is this container.
 
@@ -129,7 +148,7 @@ def check_backing_services() -> None:
             ("DATABASE_URL", settings.database_url),
             ("REDIS_URL", settings.redis_url),
         )
-        if (urlsplit(url).hostname or "") in _LOOPBACK_HOSTS
+        if _loopback_host(url)
     ]
     if not misconfigured:
         return

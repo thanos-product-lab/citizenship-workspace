@@ -182,3 +182,33 @@ def test_the_worker_dies_rather_than_retrying_an_unreachable_broker() -> None:
     # vanishes mid-life is a transient dependency, and every consumer is idempotent so
     # picking back up is safe.
     assert celery_app.conf.broker_connection_retry is True
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        # NFKC-fragile characters in the password and in the host. `urlsplit` raises
+        # `ValueError` on both, with the netloc — password included — in the message.
+        "postgresql://citizenship:s℀cret@db.internal:5432/app",
+        "postgresql://citizenship:pw@db℀.internal:5432/app",
+    ],
+)
+def test_an_unparseable_url_never_reaches_the_traceback(
+    url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The guard must not become the leak it exists to avoid.
+
+    `urlsplit` validates the netloc under NFKC and raises with the netloc inlined. Left
+    uncaught, a password containing one such character would be printed into a crash
+    trace on a platform log — a worse disclosure than the misconfiguration the guard was
+    written to report, and from the same line.
+    """
+    _settings(monkeypatch, environment="production", database_url=url, redis_url=_REMOTE_REDIS)
+
+    # Either outcome is acceptable; quoting the URL is not. The point is that nothing
+    # propagates out of here carrying the credential.
+    try:
+        check_backing_services()
+    except RuntimeError as exc:
+        assert "cret" not in str(exc)
+        assert url not in str(exc)
