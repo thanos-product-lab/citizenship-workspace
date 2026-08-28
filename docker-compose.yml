@@ -74,7 +74,26 @@ services:
     build:
       context: .
       dockerfile: infra/docker/platform.Dockerfile
-    command: uv run celery -A worker.celery_app.celery_app worker --loglevel info
+    # `--beat` runs the scheduler inside the worker rather than as a second service.
+    #
+    # The separate `beat` container this replaces was justified by a hazard that does
+    # not exist: "two schedulers means every tick fires twice, and the relay would
+    # dispatch each outbox row to two tasks". The first half is true and harmless; the
+    # second is false. `claim_unpublished` takes its batch `FOR UPDATE SKIP LOCKED`, so
+    # two concurrent relays claim *different* rows and no row is dispatched twice. The
+    # cost of an extra tick is an extra empty query.
+    #
+    # The real constraint is narrower and worth stating: **do not scale this service
+    # past one replica while `--beat` is on.** Not because dispatch would double, but
+    # because every replica would carry its own scheduler, and a deployment that wants
+    # more than one worker should split beat back out rather than multiply it.
+    #
+    # Local now matches the deployed shape, which is the other half of the point. The
+    # scheduler was missing from Railway entirely, so on the deployed environment the
+    # relay never ran: uploads sat in UPLOADED forever and deleted documents were never
+    # purged, both silently. Two services locally and one deployed is exactly how that
+    # goes unnoticed.
+    command: uv run celery -A worker.celery_app.celery_app worker --beat --loglevel info
     # A hard ceiling under Celery's own child-recycling limit, so a document that
     # allocates faster than the recycler can react takes the container down rather than
     # the host. PyMuPDF is a C parser on attacker-controlled input and malware scanning
@@ -94,25 +113,6 @@ services:
       redis:
         condition: service_healthy
       minio:
-        condition: service_healthy
-
-  # Celery beat, which runs the outbox relay. A separate service from the worker because
-  # beat must be a *single* process: two schedulers means every tick fires twice, and the
-  # relay would dispatch each outbox row to two tasks. Idempotency makes that survivable
-  # rather than correct, and there is no reason to lean on it.
-  beat:
-    build:
-      context: .
-      dockerfile: infra/docker/platform.Dockerfile
-    command: uv run celery -A worker.celery_app.celery_app beat --loglevel info
-    environment:
-      ENVIRONMENT: docker
-      DATABASE_URL: postgresql+psycopg://citizenship:citizenship@postgres:5432/citizenship
-      REDIS_URL: redis://redis:6379/0
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
         condition: service_healthy
 
 volumes:

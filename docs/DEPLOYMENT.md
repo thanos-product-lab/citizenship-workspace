@@ -1,6 +1,6 @@
 # Deployment
 
-**Web → Vercel. API + Celery worker + Postgres + Redis → Railway.** Both deploy
+**Web → Vercel. API + Celery worker (with its scheduler) + Postgres + Redis → Railway.** Both deploy
 automatically from `main` (no custom CD). See ADR-0003. Object storage (S3) is
 added in M7. Public demos use synthetic data only.
 
@@ -59,13 +59,29 @@ whose credentials can create buckets is an application whose credentials can cre
 4. **Worker service** — New service from the **same repo**; under
    **Settings → Deploy → Start Command** set:
    ```
-   uv run celery -A worker.celery_app.celery_app worker --loglevel info
+   uv run celery -A worker.celery_app.celery_app worker --beat --loglevel info
    ```
-   Give it `DATABASE_URL` and `REDIS_URL` (same references). No domain / health
-   check needed. **Clear its Pre-Deploy Command** (Settings → Deploy) so the worker
-   does not also run migrations — the API's pre-deploy owns them (see below), and two
-   services running `alembic upgrade head` at once can race on a migration-bearing
-   deploy.
+   Give it `DATABASE_URL`, `REDIS_URL` (same references) and the storage variables
+   from the section below. No domain / health check needed. **Clear its Pre-Deploy
+   Command** (Settings → Deploy) so the worker does not also run migrations — the API's
+   pre-deploy owns them (see below), and two services running `alembic upgrade head` at
+   once can race on a migration-bearing deploy.
+
+   > **`--beat` is not optional, and its absence is silent.** The scheduler is what runs
+   > the outbox relay, and the relay is what turns a written event into work: without it
+   > an uploaded document stays in `UPLOADED` for ever and a deleted one's bytes are never
+   > purged. The API still returns 204 and the row still disappears, so nothing on screen
+   > says anything is wrong.
+   >
+   > This deployment had no scheduler at all until M7 slice 5 — `docker-compose.yml` ran a
+   > separate `beat` container that these instructions never mentioned, so local worked and
+   > deployed did not. Compose now runs the same one-service shape for that reason.
+   >
+   > **Keep this service at one replica while `--beat` is on.** Each replica would carry
+   > its own scheduler. That is *not* the disaster it sounds like — `claim_unpublished`
+   > takes its batch `FOR UPDATE SKIP LOCKED`, so two relays claim different rows and no
+   > row is ever dispatched twice — but a deployment that genuinely needs several workers
+   > should split beat back into its own single-replica service rather than multiply it.
 5. **Migrations run automatically.** `railway.json` sets the API's
    `deploy.preDeployCommand` to `uv run alembic upgrade head`, so every API deploy
    applies pending migrations (in the built image, with `DATABASE_URL`) *before* the

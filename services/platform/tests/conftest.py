@@ -96,7 +96,8 @@ def _generated_fixtures() -> None:
 def _no_live_relay(_schema: None) -> Iterator[None]:
     """Fail if something outside this suite is publishing our outbox rows.
 
-    `docker compose up` runs a worker and a beat pointed at the same local Postgres the
+    `docker compose up` runs a worker — which carries its own scheduler — pointed at the
+    same local Postgres the
     tests use. Beat relays every unpublished `outbox_events` row it finds — including the
     ones tests write — so a live worker silently processes test fixtures mid-run. What it
     looks like from inside the suite is a row count changing between two assertions with
@@ -147,7 +148,7 @@ def _no_live_relay(_schema: None) -> Iterator[None]:
         pytest.fail(
             "an outbox row was relayed by something outside this suite, so a live worker "
             "is processing test fixtures. Results from this session cannot be trusted. "
-            "Run `docker compose stop worker beat` and try again."
+            "Run `docker compose stop worker` and try again."
         )
     yield
 
