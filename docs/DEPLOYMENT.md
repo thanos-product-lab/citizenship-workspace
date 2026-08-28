@@ -146,8 +146,39 @@ bucket can create a public one).
 ```
 
 Then `STORAGE_REGION` = the bucket's region, and a **CORS configuration** on the bucket
-allowing `POST` from the Vercel origin — the browser uploads straight to S3, so without it
-every upload dies at preflight while the API logs stay clean.
+(S3 → bucket → Permissions → Cross-origin resource sharing):
+
+```json
+[
+  {
+    "AllowedHeaders": ["*"],
+    "AllowedMethods": ["POST", "GET"],
+    "AllowedOrigins": ["https://citizenship-workspace-web.vercel.app"],
+    "ExposeHeaders": ["ETag"]
+  }
+]
+```
+
+**This is not optional and its absence is invisible server-side.** The browser uploads
+straight to S3, so without it every upload dies at preflight while the API logs stay
+perfectly clean — presigning succeeded, and the API never learns the upload was refused.
+Confirmed on this deployment: the same request with `mode: "no-cors"` reaches S3 and
+returns an opaque response, while the ordinary request throws `Failed to fetch`. That pair
+is how you tell a CORS refusal from a broken endpoint.
+
+## Deployed URLs
+
+| | |
+|---|---|
+| Web (Vercel) | `https://citizenship-workspace-web.vercel.app` |
+| API (Railway) | `https://citizenship-workspace-production.up.railway.app` |
+
+Recorded here rather than only in repository secrets because neither is a secret — they are
+public addresses, and the API requires a bearer token for everything except `/health/*`.
+Keeping them only in `SMOKE_BASE_URL` / `SMOKE_API_URL` means the one place they are
+written down is the one place you cannot read them from. Both also appear as
+`NEXT_PUBLIC_API_BASE_URL` (Vercel) and `CORS_ALLOW_ORIGINS` (Railway); if either moves,
+all four need updating together.
 
 **If you do use R2 later:** endpoint is `https://<account-id>.r2.cloudflarestorage.com`;
 region must be `auto` (anything else fails as `SignatureDoesNotMatch`, which says nothing
