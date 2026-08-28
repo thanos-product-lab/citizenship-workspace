@@ -234,3 +234,74 @@ just recalc <case-id> <your-user-id>    # -> 439, presence NOT_CURRENTLY_SATISFI
 The figures must agree with the M3B terminal captures and the M4 screens above: 439, 17,
 and 2027-04-25. The post-move figures — 429 at 25 April, 434 at 20 April — are recorded in
 `SYNTHETIC_DEMO_CASE.md` §8 and asserted in `tests/assessments/test_simulation.py`.
+
+## M7 — Evidence Foundation
+
+Both captured in Chrome against the local stack, on a synthetic case with one trip to
+Greece and one attached document. The M7 story is what happens when a document that
+*mattered* goes away, so both assets are deletions.
+
+### Slice 5 — deletion, and what it invalidates
+
+`m7/m7-slice5-delete-and-stale.gif` — the chain the milestone exists to demonstrate.
+
+The confirmation dialog names the document and states the consequence **before** the
+action: contents destroyed, cannot be undone, the trip it supports will show as having no
+document, and the travel-records check will need working out again. That is four sentences
+because deletion is the one irreversible thing in the product.
+
+On confirmation the whole case responds at once, in the same transaction: the phase chip
+moves from *Building your case* to *Resolving issues*, the stale banner appears, and Issues
+goes 0 → 1 — before the bytes are destroyed, which happens asynchronously afterwards.
+
+**The frame that carries the milestone is the requirements list.** *Travel record
+consistency* shows **Supported** and **Stale** side by side, with the reason named — "The
+documents attached to your travel records changed after this was worked out. This is the
+conclusion from before that change; it has not been rechecked." Directly above it, *Total
+absences* (39 days) and *Final-year absences* (0 days) are still **Supported** with no stale
+marker at all.
+
+Two invariants in one image:
+
+- **Conclusion and currency are separate** (directive 4, ADR-0001). The conclusion was not
+  rewritten into something false, and the currency does not pretend nothing happened.
+- **Selective invalidation does not over-fire** (ADR-0014). Deleting a document reached
+  exactly the one rule that declares a dependency on evidence support. The absence totals
+  are computed from dates the user entered, and no document was ever load-bearing for them.
+
+Recheck then closes the loop: the stale issue moves to Settled, and the coverage gap the
+deletion created opens as "No document attached to your trip to Greece" — information, not
+an action, because *nothing in the assessment depends on it*. That the queue says so in as
+many words is the honesty the milestone is for.
+
+### Slice 5 — the failure path
+
+`m7/m7-slice5-failed-deletion.gif` — the API stopped mid-deletion, per the gate's rule that
+a walkthrough must deliberately break one thing.
+
+Captured because it was **broken until the accessibility review found it**, and it is the
+state nobody looks at. The failure was announced only into a visually-hidden live region, so
+a sighted user saw the dialog close, the row still listed, and nothing saying why — a user
+believing an irreversible action had succeeded when it had not. The jsdom test asserting
+`getByText(/could not be deleted/)` passed against the hidden node, satisfied by exactly the
+state its own comment called broken.
+
+What the capture now shows: a visible alert naming the document, saying the row is still
+listed and **nothing about the case has changed**. Not in the recording, because focus is
+invisible to a screen capture: focus returns to the Delete control that failed, not to the
+section heading — the row still exists on this path, so throwing the user to the top of the
+section would make them tab past the upload form and the whole table to retry.
+
+### Not captured, and why
+
+The **deletion announcement** is the finding this walkthrough produced and it cannot be
+screenshotted: the live region held "Athens booking deleted." for **38 milliseconds** before
+the refetched document count overwrote it with "No documents yet.". Measured with a
+`MutationObserver` in Chrome, fixed, and re-measured — the sequence is now a single message.
+The regression test records the whole sequence rather than the final text, because the final
+text was correct even while the bug was live.
+
+The **purge** has no UI by design — the object is gone and the row is a tombstone, so there
+is nothing to show. It is verified in `tests/evidence/test_storage_minio.py` against real
+MinIO, and was verified against real S3 in production: a presigned URL returning 200
+immediately before the deletion answered `NoSuchKey` five seconds after.
