@@ -4,6 +4,12 @@ import { useEffect, useRef } from "react";
 import type { ReactNode, RefObject } from "react";
 
 // Everything focusable inside the panel — used for the initial focus and the focus trap.
+//
+// `[disabled]` is filtered because a natively disabled control is genuinely unfocusable.
+// `[aria-disabled]` deliberately is **not**: a button marked that way stays focusable and
+// stays in the trap, which is exactly why this codebase prefers it for a busy state. A
+// selector that excluded it would reintroduce the bug by the back door — the button would
+// keep focus but drop out of the Tab cycle.
 const FOCUSABLE =
   'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
@@ -22,6 +28,7 @@ const FOCUSABLE =
  */
 export function Dialog({
   open,
+  role = "dialog",
   labelledBy,
   describedBy,
   onDismiss,
@@ -31,6 +38,12 @@ export function Dialog({
   children,
 }: {
   open: boolean;
+  /**
+   * `alertdialog` for a modal whose purpose is to state a consequence before an
+   * irreversible action — the ARIA APG role, and the one that makes announcing the
+   * description expected rather than merely likely.
+   */
+  role?: "dialog" | "alertdialog";
   labelledBy: string;
   describedBy?: string | undefined;
   onDismiss: () => void;
@@ -93,7 +106,7 @@ export function Dialog({
     >
       <div
         ref={panelRef}
-        role="dialog"
+        role={role}
         aria-modal="true"
         aria-labelledby={labelledBy}
         {...(describedBy ? { "aria-describedby": describedBy } : {})}

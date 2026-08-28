@@ -220,7 +220,7 @@ describe("TravelHistory", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: /^remove$/i }));
     // A modal opens, naming the trip and asking to confirm.
-    const dialog = screen.getByRole("dialog");
+    const dialog = screen.getByRole("alertdialog");
     expect(within(dialog).getByText(/Spain \(14 Apr 2022 to 26 Apr 2022\)/)).toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole("button", { name: /remove trip/i }));
 
@@ -237,7 +237,7 @@ describe("TravelHistory", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: /^remove$/i }));
     // Focus lands on Cancel (the safe default), never the destructive action.
-    const dialog = screen.getByRole("dialog");
+    const dialog = screen.getByRole("alertdialog");
     expect(within(dialog).getByRole("button", { name: /cancel/i })).toHaveFocus();
     fireEvent.click(within(dialog).getByRole("button", { name: /cancel/i }));
     // Cancelling closes the dialog and returns focus to the Remove button.

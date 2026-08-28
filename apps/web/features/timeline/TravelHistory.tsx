@@ -9,10 +9,10 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useApiClient } from "@/lib/api";
 import { assessmentTouched } from "@/lib/queries";
 
-import { ConfirmDialog } from "./ConfirmDialog";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { countryCodeFor } from "./countries";
 import { CsvImport } from "./CsvImport";
-import { Dialog } from "./Dialog";
+import { Dialog } from "@/components/Dialog";
 import { TravelRecordForm } from "./TravelRecordForm";
 import type { TravelFormValues } from "./TravelRecordForm";
 import {

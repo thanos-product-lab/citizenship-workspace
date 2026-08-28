@@ -649,7 +649,7 @@ describe("deleting a document", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: /Delete Athens booking/ }));
 
-    const dialog = within(screen.getByRole("dialog"));
+    const dialog = within(screen.getByRole("alertdialog"));
     expect(dialog.getByText(/contents destroyed|contents/)).toBeTruthy();
     expect(dialog.getByText(/cannot be undone/)).toBeTruthy();
     expect(dialog.getByText(/no document attached/)).toBeTruthy();
@@ -678,7 +678,7 @@ describe("deleting a document", () => {
     const trigger = await screen.findByRole("button", { name: /Delete Athens booking/ });
     trigger.focus();
     fireEvent.click(trigger);
-    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: /Cancel/ }));
+    fireEvent.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: /Cancel/ }));
 
     await waitFor(() => expect(trigger).toHaveFocus());
     expect(del).not.toHaveBeenCalled();
@@ -694,9 +694,81 @@ describe("deleting a document", () => {
     fireEvent.click(await screen.findByRole("button", { name: /Delete Athens booking/ }));
     fireEvent.click(screen.getByRole("button", { name: "Delete document" }));
 
+    // `role="alert"`, not merely present-in-the-DOM. The previous assertion was
+    // `getByText(/could not be deleted/)`, which passed against the visually-hidden live
+    // region — satisfied by exactly the state the comment above calls broken, because
+    // jsdom applies no visibility semantics. A sighted user saw nothing.
     await waitFor(() =>
-      expect(screen.getByText(/could not be deleted/)).toBeTruthy(),
+      expect(screen.getByRole("alert").textContent).toMatch(/could not be deleted/),
     );
+  });
+
+  it("returns focus to the delete control that failed, not to the heading", async () => {
+    // The row still exists on the error path — unlike on success — so sending the user to
+    // the top of the section makes them Tab past the upload form and the whole table to
+    // retry the thing they just attempted.
+    get.mockResolvedValue({ data: aLibrary([anItem()]) });
+    del.mockResolvedValue({ data: undefined, error: { message: "nope" }, response: { status: 500 } });
+    renderWithQuery(<EvidenceDestination caseId={CASE_ID} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /Delete Athens booking/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Delete document" }));
+
+    await waitFor(() => expect(screen.getByRole("alert")).toBeTruthy());
+    expect(document.activeElement).toBe(
+      screen.getByRole("button", { name: /Delete Athens booking/ }),
+    );
+  });
+
+  it("keeps both dialog buttons focusable while the deletion is in flight", async () => {
+    // `aria-disabled`, never `disabled`. Disabling the focused button blurs it to <body>,
+    // which is outside the panel — so the Tab trap and Escape both stop working, and the
+    // user's focus sits behind the backdrop with no indicator (WCAG 2.4.11). jsdom does
+    // not model that blur, so this asserts the attribute the rule turns on rather than the
+    // symptom it produces.
+    get.mockResolvedValue({ data: aLibrary([anItem()]) });
+    del.mockReturnValue(new Promise(() => {}));
+    renderWithQuery(<EvidenceDestination caseId={CASE_ID} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /Delete Athens booking/ }));
+    const confirm = screen.getByRole("button", { name: "Delete document" });
+    fireEvent.click(confirm);
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Deleting…" })).toBeTruthy(),
+    );
+    const busy = screen.getByRole("button", { name: "Deleting…" });
+    const cancel = screen.getByRole("button", { name: "Cancel" });
+    expect(busy.hasAttribute("disabled")).toBe(false);
+    expect(busy.getAttribute("aria-disabled")).toBe("true");
+    expect(cancel.getAttribute("aria-disabled")).toBe("true");
+  });
+
+  it("does not let Cancel pretend to stop a deletion already in flight", async () => {
+    // Cancel used to stay live and cancel nothing: the request continued and the document
+    // vanished anyway, having told the user they had stopped it.
+    get.mockResolvedValue({ data: aLibrary([anItem()]) });
+    del.mockReturnValue(new Promise(() => {}));
+    renderWithQuery(<EvidenceDestination caseId={CASE_ID} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /Delete Athens booking/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Delete document" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Deleting…" })).toBeTruthy());
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+
+    expect(screen.queryByRole("alertdialog")).not.toBeNull();
+  });
+
+  it("names the document in the dialog title, not only in the description", async () => {
+    // A screen reader announcing the accessible name without the description would
+    // otherwise ask for confirmation of an irreversible action on an unnamed target.
+    get.mockResolvedValue({ data: aLibrary([anItem()]) });
+    renderWithQuery(<EvidenceDestination caseId={CASE_ID} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /Delete Athens booking/ }));
+
+    expect(screen.getByRole("alertdialog", { name: /Athens booking/ })).toBeTruthy();
   });
 
   it("names which document each delete control belongs to", async () => {

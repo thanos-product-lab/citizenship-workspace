@@ -19,7 +19,7 @@ import {
 } from "./library";
 import { UploadDocument } from "./UploadDocument";
 import { useEvidence } from "./useEvidence";
-import { ConfirmDialog } from "@/features/timeline/ConfirmDialog";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 
 import { useDeleteEvidence } from "./useDeleteEvidence";
 import { useRetryProcessing, type RetryRefusal } from "./useRetryProcessing";
@@ -63,6 +63,10 @@ export function EvidenceDestination({ caseId }: { caseId: string }): JSX.Element
   const retry = useRetryProcessing(caseId);
   const remove = useDeleteEvidence(caseId);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  // Rendered visibly, not only announced. `remove.isError` is not enough on its own: the
+  // message has to name *which* document failed, and the mutation state is shared by
+  // every row's control.
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const deletingItem =
     deletingId && data?.items
       ? ((data.items as EvidenceItem[]).find((i) => i.id === deletingId) ?? null)
@@ -141,6 +145,13 @@ export function EvidenceDestination({ caseId }: { caseId: string }): JSX.Element
       <div aria-live="polite" className="cw-visually-hidden">
         {announcement}
       </div>
+
+      {deleteError ? (
+        <p role="alert" style={{ margin: "0 0 var(--cw-space-4)", ...errorTextStyle }}>
+          {deleteError} The document is still listed below and nothing about your case has
+          changed.
+        </p>
+      ) : null}
 
       {status === "pending" ? (
         <p role="status" style={{ color: "var(--cw-text-muted)" }}>
@@ -224,7 +235,13 @@ export function EvidenceDestination({ caseId }: { caseId: string }): JSX.Element
       ) : null}
       <ConfirmDialog
         open={deletingItem !== null}
-        title="Delete this document?"
+        // The document is named in the *title*, not only in the description. A screen
+        // reader that announces a dialog's accessible name without its description — a
+        // verbosity setting, or returning to the dialog after focus has moved — would
+        // otherwise ask the user to confirm an irreversible action on an unnamed target.
+        title={
+          deletingItem ? `Delete ${deletingItem.display_name}?` : "Delete this document?"
+        }
         description={
           deletingItem
             ? `${deletingItem.display_name} will be removed from this case and its contents ` +
@@ -233,11 +250,13 @@ export function EvidenceDestination({ caseId }: { caseId: string }): JSX.Element
             : ""
         }
         confirmLabel="Delete document"
+        busyLabel="Deleting…"
         busy={remove.isPending}
         onConfirm={() => {
           if (!deletingId) return;
           const id = deletingId;
           const name = deletingItem?.display_name ?? "That document";
+          setDeleteError(null);
           remove.mutate(id, {
             onSuccess: () => {
               flushSync(() => setDeletingId(null));
@@ -245,9 +264,20 @@ export function EvidenceDestination({ caseId }: { caseId: string }): JSX.Element
               headingRef.current?.focus();
             },
             onError: () => {
-              flushSync(() => setDeletingId(null));
-              setAnnouncement(`${name} could not be deleted. Try again.`);
-              headingRef.current?.focus();
+              // A failed deletion used to be announced only into the visually-hidden live
+              // region, so a sighted user saw the dialog close, the row still there, and
+              // nothing saying why — believing an irreversible action had succeeded when
+              // it had not. The failed upload next door has had a visible `role="alert"`
+              // all along; the higher-stakes action had a hidden one.
+              flushSync(() => {
+                setDeletingId(null);
+                setDeleteError(`${name} could not be deleted. Try again.`);
+              });
+              // Back to the control that failed, not to the section heading. The row still
+              // exists on this path — unlike on success — so throwing the user to the top
+              // of the section would make them Tab past the upload form and the whole
+              // table to retry the thing they just attempted.
+              document.getElementById(`delete-${id}`)?.focus();
             },
           });
         }}
@@ -467,10 +497,15 @@ function EvidenceTable({
               </td>
               <td role="cell">{describeText(item)}</td>
               <td role="cell">{formatDate(item.uploaded_at)}</td>
-              <td role="cell">
+              {/* `cw-trips__actions` / `cw-action` give this a 44px target under the
+                  narrow-width rules in components.css — the same treatment the *reversible*
+                  "Remove" beside each document already gets. A bare inline button at text
+                  height is a poor target for the one irreversible control in the product. */}
+              <td role="cell" className="cw-trips__actions">
                 <button
                   type="button"
                   id={`delete-${item.id}`}
+                  className="cw-action"
                   style={linkButtonStyle}
                   onClick={() => onDelete(item.id)}
                 >
