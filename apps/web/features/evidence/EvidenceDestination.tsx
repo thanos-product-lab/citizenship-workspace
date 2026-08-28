@@ -25,6 +25,16 @@ import { useDeleteEvidence } from "./useDeleteEvidence";
 import { useRetryProcessing, type RetryRefusal } from "./useRetryProcessing";
 
 /**
+ * How long to wait after moving focus before writing an outcome into the live region.
+ *
+ * Long enough that the focus announcement has claimed its turn, short enough that the
+ * outcome still reads as a response to what the user just did. Not tuned against a
+ * specific screen reader — the ordering is what matters, and any positive delay puts the
+ * region change after the focus event rather than in the same tick as it.
+ */
+const ANNOUNCE_AFTER_FOCUS_MS = 150;
+
+/**
  * The Evidence destination: the documents this case holds, and what has been done to them.
  *
  * Three decisions worth stating.
@@ -88,18 +98,51 @@ export function EvidenceDestination({ caseId }: { caseId: string }): JSX.Element
     }
   }, [returnFocus, status, isFetching]);
 
-  // Announce the library's shape once it settles. `role="status"` mounted with its text
-  // already in it does not announce reliably, so both the loaded and the empty case are
-  // routed through the live region that is always mounted below.
+  // Announce the library's shape when it *first* settles. `role="status"` mounted with its
+  // text already in it does not announce reliably, so both the loaded and the empty case
+  // are routed through the live region that is always mounted below.
+  //
+  // **First settle only, and that is the whole point.** Firing on every count change meant
+  // this effect clobbered the outcome of whatever caused the change. Measured in Chrome:
+  // deleting the only document put "Athens booking deleted." in the region and replaced it
+  // with "No documents yet." **38 milliseconds later**, when the refetch landed. No screen
+  // reader announces a polite message overwritten that fast, so the user was never told
+  // the deletion happened at all.
+  //
+  // Every later change is the consequence of an action that announces its own, better
+  // outcome — "X uploaded…", "X deleted.", "X: no text found". A count is what you say
+  // when you have nothing more specific; here there always is something more specific.
+  //
+  // jsdom could not catch this: the test's GET mock returns the same library every time,
+  // so the row never disappears and `itemCount` never changes.
   const itemCount = data?.items.length;
+  const announcedShapeRef = useRef(false);
   useEffect(() => {
     if (status !== "success" || itemCount === undefined) return;
+    if (announcedShapeRef.current) return;
+    announcedShapeRef.current = true;
     setAnnouncement(
       itemCount === 0
         ? "No documents yet."
         : `${itemCount} document${itemCount === 1 ? "" : "s"}.`,
     );
   }, [status, itemCount]);
+
+  // Announce *after* the focus move, not with it.
+  //
+  // A focus event commonly pre-empts a pending polite queue: set the region and move focus
+  // in the same tick and the user hears "Evidence, heading level 2" instead of the outcome.
+  // Moving focus first and letting the region change land afterwards gives the outcome its
+  // own turn.
+  //
+  // Note this half is **not covered by a test**, and cannot be here: jsdom has no
+  // assistive technology, so nothing in it can observe a focus event pre-empting a polite
+  // queue. Removing the delay leaves the suite green. It is kept because the ordering is
+  // free and the failure it avoids is invisible from this side — the sort of thing the
+  // accessibility gate exists to insist on rather than prove.
+  const announceAfterFocusMove = (message: string) => {
+    window.setTimeout(() => setAnnouncement(message), ANNOUNCE_AFTER_FOCUS_MS);
+  };
 
   // Announce a document *finishing*, once each.
   //
@@ -260,8 +303,8 @@ export function EvidenceDestination({ caseId }: { caseId: string }): JSX.Element
           remove.mutate(id, {
             onSuccess: () => {
               flushSync(() => setDeletingId(null));
-              setAnnouncement(`${name} deleted.`);
               headingRef.current?.focus();
+              announceAfterFocusMove(`${name} deleted.`);
             },
             onError: () => {
               // A failed deletion used to be announced only into the visually-hidden live

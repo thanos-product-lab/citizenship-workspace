@@ -771,6 +771,45 @@ describe("deleting a document", () => {
     expect(screen.getByRole("alertdialog", { name: /Athens booking/ })).toBeTruthy();
   });
 
+  it("does not let the refetched library count overwrite the deletion outcome", async () => {
+    // The defect this was written for was found in Chrome, not here: the region held
+    // "Athens booking deleted." for **38 milliseconds** before the refetch landed and the
+    // count effect replaced it with "No documents yet.". A polite message overwritten that
+    // fast is never announced, so the user was told nothing at all.
+    //
+    // The old tests could not see it because their GET mock returned the same one-item
+    // library forever, so the row never disappeared and the count never changed. This one
+    // makes the library actually empty on the second read, which is what really happens.
+    get
+      .mockResolvedValueOnce({ data: aLibrary([anItem()]) })
+      .mockResolvedValue({ data: aLibrary([]) });
+    del.mockResolvedValue({ data: undefined, error: undefined, response: { status: 204 } });
+    renderWithQuery(<EvidenceDestination caseId={CASE_ID} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /Delete Athens booking/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Delete document" }));
+
+    // Record every value the region takes, not just the final one. Asserting the end
+    // state is not enough: the announcement is deliberately deferred past the focus move,
+    // so it lands last either way and a final-state assertion stays green with the count
+    // effect firing. What the user loses is a *message in the middle*, so the sequence is
+    // the thing to assert. Checked by mutation — dropping the guard turns this red.
+    const region = document.querySelector('[aria-live="polite"]')!;
+    const seen: string[] = [];
+    const observer = new MutationObserver(() => {
+      const text = region.textContent?.trim() ?? "";
+      if (text && seen.at(-1) !== text) seen.push(text);
+    });
+    observer.observe(region, { childList: true, subtree: true, characterData: true });
+
+    await waitFor(() => expect(region.textContent).toMatch(/Athens booking deleted/));
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    observer.disconnect();
+
+    expect(seen.some((text) => /Athens booking deleted/.test(text))).toBe(true);
+    expect(seen.filter((text) => /No documents yet/.test(text))).toEqual([]);
+  });
+
   it("names which document each delete control belongs to", async () => {
     // A column of bare "Delete" controls is indistinguishable heard in sequence, and this
     // is the one action here that cannot be undone.
