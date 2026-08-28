@@ -55,6 +55,17 @@ def minio_settings() -> Settings:
         storage_bucket=os.environ.get("STORAGE_BUCKET", "citizenship-evidence-test"),
         storage_access_key=os.environ.get("STORAGE_ACCESS_KEY", "minioadmin"),
         storage_secret_key=os.environ.get("STORAGE_SECRET_KEY", "minioadmin"),
+        # Read from the environment like the rest, so this suite can be pointed at any
+        # S3-compatible provider and not only MinIO. That is the point of it: these are
+        # the assertions that decide whether a store is usable — a private bucket, an
+        # expiring URL, a size limit the store itself enforces, a deleted object that
+        # stays deleted — so running them against a candidate provider answers "will this
+        # work" with the same code that guards the real thing.
+        #
+        # Region matters here in a way it does not locally. MinIO ignores it; Cloudflare
+        # R2 requires `auto` and rejects the signature otherwise, which surfaces as an
+        # opaque `SignatureDoesNotMatch` rather than anything about regions.
+        storage_region=os.environ.get("STORAGE_REGION", "us-east-1"),
     )
 
 

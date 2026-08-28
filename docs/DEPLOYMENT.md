@@ -53,6 +53,46 @@ API and the worker:
    - `STORAGE_ACCESS_KEY` / `STORAGE_SECRET_KEY`
    - `STORAGE_REGION` if the provider needs one
 
+**Create the bucket yourself.** `ensure_bucket()` runs only under
+`ENVIRONMENT=local`/`docker`, deliberately: an application whose credentials can create a
+bucket can create a *public* one. Scope the credentials to object read/write on that one
+bucket, not to bucket administration.
+
+### Check a provider before wiring it up
+
+The upload path signs a **POST policy** (`generate_presigned_post`), not a presigned PUT,
+because the policy is what carries `content-length-range` — that is how the size limit
+becomes something the *store* refuses rather than something the API notices afterwards
+(§18). S3 POST Object is less universally implemented than PUT, so a provider can be
+"S3-compatible" and still not serve this path.
+
+Rather than find out through a broken upload, point the storage suite at the candidate.
+It asserts exactly the properties that decide whether a store is usable — private bucket,
+expiring URL, store-enforced size ceiling, deleted object staying deleted — with the same
+code that guards the real thing:
+
+```bash
+cd services/platform
+CW_EXPECT_MINIO=1 \
+STORAGE_ENDPOINT_URL=https://<account-id>.r2.cloudflarestorage.com \
+STORAGE_BUCKET=<your-bucket> \
+STORAGE_ACCESS_KEY=<token-id> STORAGE_SECRET_KEY=<token-secret> \
+STORAGE_REGION=auto \
+uv run pytest tests/evidence/test_storage_minio.py -q
+```
+
+Seven passes means the provider serves every operation this product needs. A failure in
+`test_an_upload_cannot_declare_a_different_content_type_than_the_one_signed` or
+`test_an_oversized_body_is_refused_by_the_store_and_nothing_is_written` means POST policies
+are not honoured — use a provider that does, rather than weakening the upload path.
+
+**R2 specifics.** Endpoint is `https://<account-id>.r2.cloudflarestorage.com`; region must
+be `auto` (anything else fails as `SignatureDoesNotMatch`, which says nothing about
+regions). Buckets are private by default — do not attach a public development URL or a
+custom domain. Browser uploads go directly to the bucket, so add a **CORS policy**
+allowing `POST` from the Vercel origin, or every upload fails preflight while the API logs
+look perfectly healthy.
+
 The bucket must be **private**, and the application does not create it: an application
 whose credentials can create buckets is an application whose credentials can create a
 *public* one. `ensure_bucket()` runs only under `ENVIRONMENT=local`/`docker`.
