@@ -29,8 +29,28 @@ _LOOPBACK_REDIS = "redis://localhost:6379/0"
 _LOOPBACK_DB = "postgresql+psycopg://citizenship:citizenship@localhost:5432/citizenship"
 
 
-def _settings(monkeypatch: pytest.MonkeyPatch, **overrides: str) -> None:
-    monkeypatch.setattr("app.core.config.get_settings", lambda: Settings(**overrides))
+#: Hosts that are not this container, for the cases that must *not* raise.
+_REMOTE_REDIS = "redis://cache.internal:6379/0"
+_REMOTE_DB = "postgresql+psycopg://u@db.internal:5432/app"
+
+
+def _settings(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    environment: str,
+    redis_url: str = _LOOPBACK_REDIS,
+    database_url: str = _LOOPBACK_DB,
+) -> None:
+    """Install a `Settings` the guard will read.
+
+    Spelled out as three named parameters rather than `**overrides`, because `Settings`
+    has fields that are not strings (`storage_backend` is a `Literal`, `max_upload_bytes`
+    an `int`) and a `**kwargs: str` cannot type-check against them.
+    """
+    monkeypatch.setattr(
+        "app.core.config.get_settings",
+        lambda: Settings(environment=environment, redis_url=redis_url, database_url=database_url),
+    )
 
 
 @pytest.mark.parametrize("environment", _DEPLOYED)
@@ -52,21 +72,26 @@ def test_a_deployed_environment_refuses_to_boot_against_its_own_container(
 
 
 @pytest.mark.parametrize(
-    ("variable", "overrides"),
+    ("variable", "redis_url", "database_url"),
     [
-        ("REDIS_URL", {"database_url": "postgresql+psycopg://u@db.internal:5432/app"}),
-        ("DATABASE_URL", {"redis_url": "redis://cache.internal:6379/0"}),
+        ("REDIS_URL", _LOOPBACK_REDIS, _REMOTE_DB),
+        ("DATABASE_URL", _REMOTE_REDIS, _LOOPBACK_DB),
     ],
 )
 def test_one_misconfigured_url_is_reported_without_the_other(
-    variable: str, overrides: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    variable: str, redis_url: str, database_url: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Half-configured is the common case and the confusing one.
 
     Naming both variables when only one is wrong sends whoever reads it to check
     something that is already correct.
     """
-    _settings(monkeypatch, environment="production", **overrides)
+    _settings(
+        monkeypatch,
+        environment="production",
+        redis_url=redis_url,
+        database_url=database_url,
+    )
 
     with pytest.raises(RuntimeError) as raised:
         check_backing_services()
@@ -118,7 +143,13 @@ def test_loopback_is_recognised_however_it_is_spelled(
     Catching only the literal string would make the guard a check on one spelling of the
     mistake rather than on the mistake.
     """
-    _settings(monkeypatch, environment="production", redis_url=f"redis://{host}:6379/0")
+    _settings(
+        monkeypatch,
+        environment="production",
+        redis_url=f"redis://{host}:6379/0",
+        # Correct, so the raise can only be about the host spelling under test.
+        database_url=_REMOTE_DB,
+    )
 
     with pytest.raises(RuntimeError, match="REDIS_URL"):
         check_backing_services()
