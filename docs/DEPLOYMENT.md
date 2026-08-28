@@ -44,9 +44,9 @@ MinIO — so on a deployed instance the API boots and the Evidence destination l
 nothing, but any upload fails. Reads of existing rows are unaffected; nothing touches
 storage until an upload or a content URL is requested.
 
-To make it work, provision a private bucket anywhere S3-compatible (Cloudflare R2, AWS
-S3, Backblaze B2, or a MinIO service in the same Railway project) and set on **both** the
-API and the worker:
+To make it work, provision a private bucket on an S3-compatible provider **that
+implements POST Object** (see the compatibility note below — this rules out Cloudflare R2)
+and set on **both** the API and the worker:
 
    - `STORAGE_ENDPOINT_URL` (omit for real AWS S3)
    - `STORAGE_BUCKET`
@@ -86,12 +86,41 @@ Seven passes means the provider serves every operation this product needs. A fai
 `test_an_oversized_body_is_refused_by_the_store_and_nothing_is_written` means POST policies
 are not honoured — use a provider that does, rather than weakening the upload path.
 
-**R2 specifics.** Endpoint is `https://<account-id>.r2.cloudflarestorage.com`; region must
-be `auto` (anything else fails as `SignatureDoesNotMatch`, which says nothing about
-regions). Buckets are private by default — do not attach a public development URL or a
-custom domain. Browser uploads go directly to the bucket, so add a **CORS policy**
-allowing `POST` from the Vercel origin, or every upload fails preflight while the API logs
-look perfectly healthy.
+### Cloudflare R2 does not work — measured, 2026-08-28
+
+R2 answers a presigned POST with **`501 Not Implemented`**. Not a signature problem, not a
+permissions problem: the request authenticates and R2 replies that it does not implement
+the operation. All seven storage tests fail, because every one of them uploads first.
+
+Everything else about R2 is fine, which is what makes this worth recording rather than
+just avoiding. Verified against a live bucket:
+
+| Operation | Result |
+|---|---|
+| `head_bucket` with an Object Read & Write token | OK |
+| Presigned **PUT** upload | 200 |
+| Presigned GET | 200 |
+| `delete_object` | OK |
+| Presigned **POST** upload | **501** |
+
+So R2 becomes available the day the upload path moves from a signed POST policy to a
+signed PUT — which is a real option, not a workaround, but it is a change to the control
+that bounds upload size and belongs in its own slice with its own ADR. A presigned PUT can
+sign `Content-Length`, so the store still refuses a body that does not match what was
+authorised; what changes is that the ceiling is enforced against the client's *declared*
+size (already refused above `max_upload_bytes` at presign) rather than by a range condition
+in a policy. Equivalent in effect, different in shape, and not something to swap in
+mid-milestone to save a few pounds a month.
+
+Until then, use a provider that implements POST Object. **Verify before wiring**, with the
+command above — that is what it is for.
+
+**If you do use R2 later:** endpoint is `https://<account-id>.r2.cloudflarestorage.com`;
+region must be `auto` (anything else fails as `SignatureDoesNotMatch`, which says nothing
+about regions). Buckets are private by default — do not attach a public development URL or
+a custom domain. Browser uploads go directly to the bucket, so a **CORS policy** allowing
+the upload verb from the Vercel origin is required, or every upload fails preflight while
+the API logs look perfectly healthy.
 
 The bucket must be **private**, and the application does not create it: an application
 whose credentials can create buckets is an application whose credentials can create a
