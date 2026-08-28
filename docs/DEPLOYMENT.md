@@ -120,7 +120,12 @@ mid-milestone to save a few pounds a month.
 Until then, use a provider that implements POST Object. **Verify before wiring**, with the
 command above — that is what it is for.
 
-### AWS S3
+### AWS S3 — verified 2026-08-28
+
+All seven storage tests pass against a live bucket in `eu-west-2`: private bucket,
+expiring URL, content-type bound by the signature, store-enforced size ceiling, zero-byte
+body refused, deleted object unreachable through an old URL, download disposition
+preserved. POST Object is implemented, so the upload path works unchanged.
 
 A bucket with **Block all public access** left on (the default), plus an IAM user whose
 policy covers exactly the four operations this product performs — and no more. `ListBucket`
