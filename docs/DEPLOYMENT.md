@@ -195,9 +195,26 @@ whose credentials can create buckets is an application whose credentials can cre
    ```
    uv run celery -A worker.celery_app.celery_app worker --beat --loglevel info
    ```
-   Give it `DATABASE_URL`, `REDIS_URL` (same references) and the storage variables
-   from the section below. It needs no domain, and **no Clerk or upload-token variables**:
-   it never verifies a token or signs one.
+   Give it `DATABASE_URL`, `REDIS_URL` (same references), `ENVIRONMENT=production` and
+   the storage variables from the section below. It needs no domain, and **no Clerk or
+   upload-token variables**: it never verifies a token or signs one.
+
+   **Set the variables before the first deploy, and confirm the running deployment has
+   them** — not just the dashboard. Railway injects variables at deploy time, so a
+   variable added afterwards is absent from the container until something redeploys. The
+   check, from the service's **Console** tab, prints presence and no values:
+
+   ```sh
+   python -c "import os; print({k: k in os.environ for k in ['REDIS_URL','DATABASE_URL']})"
+   ```
+
+   This is not hypothetical bookkeeping. On the first M7 worker deploy the variables were
+   listed in the dashboard and absent from the process; the worker fell back to
+   `redis://localhost:6379/0`, retried for fifteen minutes, and reported **Online** the
+   entire time while uploaded documents sat at `UPLOADED`. Two guards now make that loud
+   rather than silent (`check_backing_services`, and `broker_connection_retry_on_startup`
+   in `worker/celery_app.py`) — but `ENVIRONMENT` is what lets the first of them tell you
+   *which* variable is missing, so it is worth setting for that alone.
 
    Then **Settings → Config-as-code**, set the path to **`railway.worker.json`**.
 

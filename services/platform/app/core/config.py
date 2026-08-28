@@ -2,9 +2,19 @@
 
 from functools import lru_cache
 from typing import Literal
+from urllib.parse import urlsplit
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+#: Environments where a localhost backing service is the arrangement rather than a
+#: defect. Shared with `check_upload_secret`, which draws the same line for the same
+#: reason: what is a convenience on one machine is a fault on a platform.
+LOCAL_ENVIRONMENTS = frozenset({"local", "docker", "test"})
+
+#: Hosts that resolve to the container itself. A backing service here means the URL was
+#: never supplied and the default below is what is in force.
+_LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1", "0.0.0.0"})
 
 
 class Settings(BaseSettings):
@@ -83,3 +93,54 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
+
+
+def check_backing_services() -> None:
+    """Refuse to boot pointed at a Postgres or Redis that is this container.
+
+    The defaults above are deliberate conveniences: a developer clones the repo, runs
+    `just up`, and nothing needs configuring. Deployed, the same defaults are the worst
+    possible failure, because they are *plausible*. A Celery worker whose broker never
+    arrives does not crash — it retries, politely, forever, reporting itself healthy the
+    whole time. That is not hypothetical: the worker ran for fifteen minutes against
+    `redis://localhost:6379/0` while the API accepted uploads that could never be
+    processed, and nothing in the system could say so. Documents sat at UPLOADED and the
+    only place the truth existed was a log nobody had reason to open.
+
+    So a loopback host outside local development is treated as a missing variable rather
+    than a deliberate choice, which it always is: nothing deploys its own database inside
+    the application container.
+
+    **This guard is the second line, not the first.** It can only fire when `ENVIRONMENT`
+    is itself set, and an environment that forgot `REDIS_URL` can equally have forgotten
+    `ENVIRONMENT` — in which case this reads `local` and stays quiet, which is exactly the
+    silence it exists to break. The guard that does not depend on getting any variable
+    right is `broker_connection_retry_on_startup = False` in `worker/celery_app.py`: an
+    unreachable broker kills the process whatever the environment claims to be. This one
+    adds the *named* failure when the platform is configured enough to say so.
+    """
+    settings = get_settings()
+    if settings.environment in LOCAL_ENVIRONMENTS:
+        return
+
+    misconfigured = [
+        name
+        for name, url in (
+            ("DATABASE_URL", settings.database_url),
+            ("REDIS_URL", settings.redis_url),
+        )
+        if (urlsplit(url).hostname or "") in _LOOPBACK_HOSTS
+    ]
+    if not misconfigured:
+        return
+
+    # Name the variables and the environment, never the URLs: a connection string carries
+    # a password, and a boot failure is one of the most widely-read log lines there is.
+    raise RuntimeError(
+        f"{', '.join(misconfigured)} still resolve(s) to this container outside local "
+        f"development, which means the variable never reached the process. Observed "
+        f"ENVIRONMENT={settings.environment!r}. On a platform this is usually a "
+        f"reference that did not resolve, a variable set on the wrong service, or a "
+        f"deployment that predates it — check that the running deployment has it, not "
+        f"just the dashboard."
+    )

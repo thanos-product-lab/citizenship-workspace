@@ -35,7 +35,7 @@ from hashlib import sha256
 
 import structlog
 
-from app.core.config import get_settings
+from app.core.config import LOCAL_ENVIRONMENTS, get_settings
 from app.shared.errors import InvalidUploadGrant
 
 _log = structlog.get_logger()
@@ -69,10 +69,6 @@ def _secret() -> bytes:
     return configured.encode() if configured else _FALLBACK_SECRET
 
 
-#: Where a per-process fallback key is a reasonable convenience rather than a defect.
-_FALLBACK_ENVIRONMENTS = frozenset({"local", "docker", "test"})
-
-
 def check_upload_secret() -> None:
     """Refuse to boot without a signing key anywhere it matters.
 
@@ -88,7 +84,7 @@ def check_upload_secret() -> None:
                 f"UPLOAD_TOKEN_SECRET must be at least {_MIN_SECRET_LENGTH} characters"
             )
         return
-    if settings.environment not in _FALLBACK_ENVIRONMENTS:
+    if settings.environment not in LOCAL_ENVIRONMENTS:
         # Name what was actually observed. A bare "must be set" cannot distinguish
         # "never set it" from "set it on the wrong service", "set it as a shared
         # variable the service does not reference", or "set it and did not redeploy" —

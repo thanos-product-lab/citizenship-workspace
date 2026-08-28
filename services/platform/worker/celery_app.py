@@ -13,14 +13,21 @@ Three configuration choices carry weight:
   says nothing useful.
 - **Beat runs the outbox relay.** The alternative — calling `.delay()` after the command
   commits — reintroduces exactly the lost-job window the outbox exists to close.
+- **A worker that cannot reach its broker at startup dies.** See below; this is the one
+  setting here that exists because of a production incident rather than a design choice.
 """
 
 from celery import Celery
 from celery.schedules import crontab  # noqa: F401  (kept for the M8 spend-report task)
 from celery.signals import beat_init, worker_init, worker_process_init
 
-from app.core.config import get_settings
+from app.core.config import check_backing_services, get_settings
 from app.core.logging import configure_logging
+
+# The worker's equivalent of `check_upload_secret` in `create_app`: fail at import, with
+# the message at the top of a short traceback, rather than inside a retry loop. A worker
+# has no health check for a platform to poll — nothing else would ever notice.
+check_backing_services()
 
 settings = get_settings()
 
@@ -35,6 +42,25 @@ celery_app.conf.task_track_started = True
 celery_app.conf.task_acks_late = True
 celery_app.conf.task_reject_on_worker_lost = True
 celery_app.conf.worker_prefetch_multiplier = 1
+
+# A broker that is not there at boot is a configuration error, not a slow dependency.
+#
+# Celery's default is to retry startup forever, which is the right instinct for a blip
+# and precisely wrong for a misconfiguration: the process stays alive, the platform
+# reports it healthy, and the only evidence is a log line repeating every 32 seconds. A
+# worker has nothing else to report with — no health endpoint, no readiness probe — so
+# "alive" is the whole of its status signal, and retrying forever spends it on a lie.
+#
+# Dying instead lets the platform's restart policy do the work it is for: the service
+# crash-loops, which is visible on the canvas without opening anything. Unlike
+# `check_backing_services`, this needs no environment variable to be right in order to
+# fire, which is why it is the primary guard and that one is the second.
+#
+# Runtime reconnection is left alone (`broker_connection_retry` stays on). A broker that
+# vanishes mid-life *is* a transient dependency, and the tasks are idempotent precisely
+# so reconnecting is safe. The distinction is startup versus steady state, not whether
+# Redis is allowed to hiccup.
+celery_app.conf.broker_connection_retry_on_startup = False
 
 # Nothing may hold a slot indefinitely. boto3 alone defaults to 60s connect and 60s read
 # with three attempts, so a single hung ranged GET can occupy the one prefetch slot for

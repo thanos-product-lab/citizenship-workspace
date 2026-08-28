@@ -15,7 +15,7 @@ from app.assessments.routes import (
     requirements_router,
 )
 from app.cases.routes import router as cases_router
-from app.core.config import Settings, get_settings
+from app.core.config import Settings, check_backing_services, get_settings
 from app.core.db import connection_is_superuser
 from app.core.logging import configure_logging
 from app.core.middleware import TraceIdMiddleware
@@ -95,6 +95,10 @@ def create_app() -> FastAPI:
     # before the health check ever has something to poll — which is what "fail closed"
     # should have looked like the first time.
     check_upload_secret()
+    # Same reasoning, same place: a Postgres URL that never arrived is a boot failure,
+    # not a request-time one. The API would otherwise pass its health check and 500 on
+    # every query, which reads as a database outage rather than a missing variable.
+    check_backing_services()
 
     app = FastAPI(title="Citizenship Platform", version="0.1.0", lifespan=lifespan)
     origins = [o.strip() for o in settings.cors_allow_origins.split(",") if o.strip()]
