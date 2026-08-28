@@ -48,7 +48,12 @@ To make it work, provision a private bucket on an S3-compatible provider **that
 implements POST Object** (see the compatibility note below — this rules out Cloudflare R2)
 and set on **both** the API and the worker:
 
-   - `STORAGE_ENDPOINT_URL` (omit for real AWS S3)
+   - `STORAGE_ENDPOINT_URL` — for real AWS S3 set it **explicitly** to
+     `https://s3.<region>.amazonaws.com`. "Omit it" is wrong and the failure is quiet:
+     the setting defaults to `http://localhost:9000`, so an *unset* variable points a
+     deployed service at a MinIO that is not there. (An explicitly *empty* value also
+     works — `S3Storage` maps `""` to `None` and boto3 then picks the regional endpoint —
+     but empty-means-default is easy to misread in a config file, so name it.)
    - `STORAGE_BUCKET`
    - `STORAGE_ACCESS_KEY` / `STORAGE_SECRET_KEY`
    - `STORAGE_REGION` if the provider needs one
@@ -114,6 +119,30 @@ mid-milestone to save a few pounds a month.
 
 Until then, use a provider that implements POST Object. **Verify before wiring**, with the
 command above — that is what it is for.
+
+### AWS S3
+
+A bucket with **Block all public access** left on (the default), plus an IAM user whose
+policy covers exactly the four operations this product performs — and no more. `ListBucket`
+is there for `head_bucket`; with it granted, `ensure_bucket` never reaches `CreateBucket`,
+which is the permission deliberately withheld (§ above: credentials that can create a
+bucket can create a public one).
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    { "Effect": "Allow", "Action": ["s3:ListBucket"],
+      "Resource": "arn:aws:s3:::YOUR-BUCKET" },
+    { "Effect": "Allow", "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"],
+      "Resource": "arn:aws:s3:::YOUR-BUCKET/*" }
+  ]
+}
+```
+
+Then `STORAGE_REGION` = the bucket's region, and a **CORS configuration** on the bucket
+allowing `POST` from the Vercel origin — the browser uploads straight to S3, so without it
+every upload dies at preflight while the API logs stay clean.
 
 **If you do use R2 later:** endpoint is `https://<account-id>.r2.cloudflarestorage.com`;
 region must be `auto` (anything else fails as `SignatureDoesNotMatch`, which says nothing
