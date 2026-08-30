@@ -36,16 +36,15 @@ from app.residence.domain import (
     TravelReviewState,
 )
 from app.residence.timeline import TimelineProjection
+from app.shared.dates import MAX_ENTERED_DATE, MIN_ENTERED_DATE
 
-#: A sane calendar range for an application date, shared by the save and the preview.
-#: Not a domain rule — the rules spec has nothing to say about how far ahead someone may
-#: plan — but `qualifying_window` subtracts five years, so a date before year six raises
-#: `ValueError: year -4 is out of range` from the stdlib and surfaces as a 500. A simulator
-#: is a free-text date field whose whole purpose is trying values, which makes that
-#: reachable by typing. Bounded here so the answer is a 422 naming the field, and bounded
-#: identically on both endpoints so a date the preview accepts is a date the save accepts.
-MIN_APPLICATION_DATE = date(1900, 1, 1)
-MAX_APPLICATION_DATE = date(2100, 12, 31)
+#: Kept as names because the save and the preview must bound the application date
+#: *identically* — a date the preview accepts has to be one the save accepts — and because
+#: `MIN_APPLICATION_DATE` reads better at the two call sites than the general name does.
+#: They are the shared calendar range; see `app/shared/dates.py` for why it exists, which
+#: is no longer only about this field.
+MIN_APPLICATION_DATE = MIN_ENTERED_DATE
+MAX_APPLICATION_DATE = MAX_ENTERED_DATE
 
 
 class SelectApplicationDateInput(BaseModel):
@@ -87,8 +86,12 @@ class TravelRecordInput(BaseModel):
     it — but can be downgraded to make an uncertain record visibly distinct."""
 
     destination_label: str = Field(min_length=1, max_length=DESTINATION_LABEL_MAX_LENGTH)
-    departure_date: date
-    return_date: date
+    # Bounded for the same reason the application date is: these are typed, and a trip in
+    # year 24 is a slip rather than a trip. Without this the record persists and its
+    # absence arithmetic runs against a qualifying window it can never intersect, so the
+    # figure is silently right about a journey nobody took.
+    departure_date: date = Field(ge=MIN_ENTERED_DATE, le=MAX_ENTERED_DATE)
+    return_date: date = Field(ge=MIN_ENTERED_DATE, le=MAX_ENTERED_DATE)
     date_confidence: DateConfidence = DateConfidence.EXACT
     review_state: TravelReviewState = TravelReviewState.CONFIRMED
     destination_country_code: str | None = Field(default=None, min_length=2, max_length=2)

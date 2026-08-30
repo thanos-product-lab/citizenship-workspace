@@ -1476,3 +1476,48 @@ _Known gaps carried forward:_
   `request_deletion`; the loser's commit raises `StaleDataError`. Data is safe — the purge
   is idempotent and the link withdrawal writes the same value — but the case row is not
   locked the way `links._require_active_case` locks for this class of reason.
+
+### The gate walkthrough found what 793 tests could not
+
+Driving the M7 gate by hand produced a defect no test in the suite would ever have caught.
+A route profile was saved carrying `date_of_birth = 0995-12-11` and `status_granted_on =
+0024-09-11` — a year typed into a native date field that took the digits it was given — and
+the product assessed it without hesitation:
+
+```
+route.adult_applicant:  SUPPORTED   (applicant aged 1031)
+status.holding_period:  SUPPORTED   (settled status held for two millennia)
+```
+
+Nothing was broken. Every rule did exactly what it was told with the numbers it was given,
+and the answer was worthless. This is **directive 7 inverted**: the most confident possible
+answer, derived from a typo, is the purest false reassurance the product can produce.
+
+The only bound on those fields was `_not_in_future`, which admits every date back to year
+one. Travel records had no bound at all.
+
+**The fix is validation, not a rule.** The codebase had already decided this class of
+question once: `MIN_APPLICATION_DATE` existed with a comment saying in as many words *"Not
+a domain rule"*. That is now `app/shared/dates.py`, applied to every user-entered date —
+the two profile fields, both travel dates, the CSV importer, and the application date it
+came from.
+
+Three judgements worth keeping:
+
+- **Reject rather than escalate.** `REQUIRES_JUDGEMENT` is for a case that is genuinely
+  hard. Using a real escalation state to absorb a mistyped year would put it to work hiding
+  a data-entry slip, and the user — who can fix a typo instantly — would never be told.
+- **Sanity, not plausibility.** 1900 admits an applicant who would be 126. Narrowing it to
+  something demographically believable would move a domain judgement into schema
+  validation, where the rules spec cannot see it and no rule version covers it. A 2019 date
+  of birth is still accepted and still assessed, and `route.adult_applicant` is what says
+  the applicant is seven.
+- **One range, not four.** Two paths write travel records; a date the form refuses must not
+  be one the CSV importer accepts.
+
+No client regeneration: JSON Schema has no date-range keyword, so a `ge`/`le` on a `date`
+is invisible to the generated types. The constraint is real and server-side only, which is
+the right place for it but worth knowing when reading the client.
+
+Four mutations, all red: dropping the profile bounds (2 red), the travel bounds, the CSV
+range check, and turning `ge` into `gt` to catch an off-by-one on the one date nobody tries.

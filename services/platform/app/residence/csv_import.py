@@ -23,6 +23,7 @@ from app.residence.domain import (
     TravelRecordFields,
     TravelReviewState,
 )
+from app.shared.dates import MAX_ENTERED_DATE, MIN_ENTERED_DATE
 from app.shared.errors import CsvImportMalformed
 
 REQUIRED_HEADERS = ("destination_label", "departure_date", "return_date", "date_confidence")
@@ -162,10 +163,24 @@ def _parse_date(value: str | None, field: str, errors: list[RowError]) -> date |
         errors.append(RowError(field, "DATE_REQUIRED", f"{field} is required"))
         return None
     try:
-        return datetime.strptime(text, "%Y-%m-%d").date()
+        parsed = datetime.strptime(text, "%Y-%m-%d").date()
     except ValueError:
         errors.append(RowError(field, "DATE_INVALID_FORMAT", "expected YYYY-MM-DD"))
         return None
+    # The same calendar bound the typed form applies. A row is a *diagnostic* here rather
+    # than a 422 — the importer reports every bad row at once instead of failing the file
+    # on the first — but the range has to match, or a date the form refuses could be
+    # imported from a spreadsheet and the two paths would disagree about what a date is.
+    if not MIN_ENTERED_DATE <= parsed <= MAX_ENTERED_DATE:
+        errors.append(
+            RowError(
+                field,
+                "DATE_OUT_OF_RANGE",
+                f"expected a date between {MIN_ENTERED_DATE.year} and {MAX_ENTERED_DATE.year}",
+            )
+        )
+        return None
+    return parsed
 
 
 def _parse_confidence(value: str | None, errors: list[RowError]) -> DateConfidence | None:

@@ -9,15 +9,22 @@ completeness and support rules are enforced at CONFIRM (a later slice), not here
 import uuid
 from datetime import date, datetime
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 from app.applicants.domain import RouteProfile, RouteProfileVersion, StatusType
+from app.shared.dates import MAX_ENTERED_DATE, MIN_ENTERED_DATE
 
 
 class RouteProfileDraftInput(BaseModel):
-    date_of_birth: date | None = None
+    # `ge`/`le` as well as the not-in-future check below, because "not in the future" was
+    # the *only* bound and it admits every date back to year one. A profile carrying
+    # `date_of_birth = 0995-12-11` was assessed without hesitation — `route.adult_applicant`
+    # concluded SUPPORTED for an applicant 1031 years old — and `status_granted_on =
+    # 0024-09-11` gave a holding period of two millennia. Every rule was correct; the
+    # answer was worthless. See `app/shared/dates.py`.
+    date_of_birth: date | None = Field(default=None, ge=MIN_ENTERED_DATE, le=MAX_ENTERED_DATE)
     status_type: StatusType | None = None
-    status_granted_on: date | None = None
+    status_granted_on: date | None = Field(default=None, ge=MIN_ENTERED_DATE, le=MAX_ENTERED_DATE)
     married_to_british_citizen: bool | None = None
     may_already_be_british: bool | None = None
     # Optional optimistic-concurrency token; required once a draft exists (see service).
