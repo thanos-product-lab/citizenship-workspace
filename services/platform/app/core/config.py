@@ -49,6 +49,12 @@ class Settings(BaseSettings):
     # property (SECURITY_AND_PRIVACY_THREAT_MODEL §12).
     storage_backend: Literal["s3", "memory"] = "s3"
     storage_endpoint_url: str = "http://localhost:9000"
+    # The address the *browser* reaches the store at, when it differs from the one the
+    # server uses. Unset means they are the same, which is the deployed case and the one
+    # to keep: a second endpoint is a second thing that can be wrong. Local compose sets
+    # it because the API reaches MinIO over the docker network at `minio:9000`, which
+    # does not resolve on the host.
+    storage_public_endpoint_url: str = ""
     storage_bucket: str = "citizenship-evidence"
     storage_access_key: str = ""
     storage_secret_key: str = ""

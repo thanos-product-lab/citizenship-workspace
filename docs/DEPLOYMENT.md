@@ -291,3 +291,26 @@ whose credentials can create buckets is an application whose credentials can cre
 
 The smoke checks the web app is reachable and gates unauthenticated users to
 sign-in, and that the API health endpoint is live.
+
+### Local development: the browser and the API reach MinIO at different addresses
+
+`docker-compose.yml` sets two storage endpoints for the API, and both are needed:
+
+```yaml
+STORAGE_ENDPOINT_URL:        http://minio:9000      # the API, over the docker network
+STORAGE_PUBLIC_ENDPOINT_URL: http://localhost:9000  # the browser, from the host
+```
+
+Without the second, every presigned URL names `minio:9000` — a hostname that resolves
+inside the compose network and nowhere else — so uploads from the browser fail with the
+generic "That document was not uploaded", while the API logs a presign that succeeded and
+the tests stay green because they upload server-side.
+
+`STORAGE_PUBLIC_ENDPOINT_URL` is **unset in deployment and should stay that way**: the API
+and the browser both reach real S3 at the same address, and a second endpoint is a second
+thing that can be wrong.
+
+It is a second boto3 client rather than a string rewrite because a presigned **GET** signs
+the host as part of SigV4 — a URL whose host is edited afterwards is an invalid one. The
+address has to be right at signing time.
+

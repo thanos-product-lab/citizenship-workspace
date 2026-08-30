@@ -57,6 +57,11 @@ services:
       DATABASE_URL: postgresql+psycopg://citizenship:citizenship@postgres:5432/citizenship
       REDIS_URL: redis://redis:6379/0
       STORAGE_ENDPOINT_URL: http://minio:9000
+      # The address the browser reaches MinIO at. The API uses `minio:9000` over the
+      # docker network; that hostname does not resolve on the host, so a URL signed
+      # against it names somewhere the browser cannot go. Only the API signs URLs for
+      # a browser, so only the API needs this.
+      STORAGE_PUBLIC_ENDPOINT_URL: http://localhost:9000
       STORAGE_BUCKET: citizenship-evidence
       STORAGE_ACCESS_KEY: minioadmin
       STORAGE_SECRET_KEY: minioadmin

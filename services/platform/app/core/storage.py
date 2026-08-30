@@ -151,6 +151,33 @@ class S3Storage:
             region_name=settings.storage_region,
             config=Config(signature_version="s3v4", retries={"max_attempts": 3}),
         )
+        # A second client, used *only* to sign URLs the browser will follow.
+        #
+        # The server and the browser do not always reach the store at the same address.
+        # In local compose the API talks to `http://minio:9000` over the docker network,
+        # a hostname that does not resolve on the developer's machine — so every URL
+        # signed for the browser named a host it could not reach, and the upload failed
+        # with a bare "That document was not uploaded". Nothing was wrong with the
+        # signature, the policy, or the store.
+        #
+        # Rewriting the host afterwards is not an option: a presigned **GET** signs the
+        # host as part of SigV4, so a rewritten URL is an invalid one. The address has to
+        # be correct at signing time, which is why this is a second client rather than a
+        # string replacement.
+        #
+        # Deployed, `storage_public_endpoint_url` is unset and this *is* `_client` — the
+        # API and the browser both reach real S3 at the same address, and there is no
+        # second endpoint to get wrong.
+        self._signing_client = self._client
+        if settings.storage_public_endpoint_url:
+            self._signing_client = boto3.client(
+                "s3",
+                endpoint_url=settings.storage_public_endpoint_url,
+                aws_access_key_id=settings.storage_access_key or None,
+                aws_secret_access_key=settings.storage_secret_key or None,
+                region_name=settings.storage_region,
+                config=Config(signature_version="s3v4", retries={"max_attempts": 3}),
+            )
 
     @property
     def bucket(self) -> str:
@@ -184,7 +211,7 @@ class S3Storage:
         and nothing is written — which is what makes "the size limit" a control rather
         than a check that runs after the damage.
         """
-        signed = self._client.generate_presigned_post(
+        signed = self._signing_client.generate_presigned_post(
             Bucket=self._bucket,
             Key=key,
             Fields={"Content-Type": media_type},
@@ -207,7 +234,9 @@ class S3Storage:
         if download_filename is not None:
             params["ResponseContentDisposition"] = content_disposition(download_filename)
         return str(
-            self._client.generate_presigned_url("get_object", Params=params, ExpiresIn=ttl_seconds)
+            self._signing_client.generate_presigned_url(
+                "get_object", Params=params, ExpiresIn=ttl_seconds
+            )
         )
 
     def head(self, key: str) -> StoredObject | None:
