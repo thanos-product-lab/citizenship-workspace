@@ -17,6 +17,7 @@ right where escalating would be wrong.
 from datetime import date
 
 import pytest
+from httpx import Response
 
 from app.shared.dates import MAX_ENTERED_DATE, MIN_ENTERED_DATE
 from tests.conftest import Api
@@ -39,7 +40,7 @@ def _case(api: Api, user: str = "user_a", *, active: bool = False) -> str:
     return case_id
 
 
-def _profile(api: Api, user: str, case_id: str, **overrides: object) -> object:
+def _profile(api: Api, user: str, case_id: str, **overrides: object) -> Response:
     body = {
         "date_of_birth": "1990-04-12",
         "status_type": "ILR",
@@ -48,7 +49,8 @@ def _profile(api: Api, user: str, case_id: str, **overrides: object) -> object:
         "may_already_be_british": False,
     }
     body.update(overrides)
-    return api(user).put(f"/api/v1/cases/{case_id}/route-profile", json=body)
+    response: Response = api(user).put(f"/api/v1/cases/{case_id}/route-profile", json=body)
+    return response
 
 
 @pytest.mark.parametrize(
