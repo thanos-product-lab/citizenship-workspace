@@ -88,21 +88,59 @@ def test_the_users_own_category_is_never_changed_by_the_classifier(
     assert run.classified_category == "ENGLISH_LANGUAGE"
 
 
-def test_an_unsupported_document_reaches_the_unsupported_state(
+def test_a_model_verdict_of_unsupported_does_not_dead_end_the_document(
     api: Api, db_session: Session
 ) -> None:
-    """A readable document of a kind this workspace does not handle. Same state a wrong
-    file type reaches, because the user's remedy is the same: there is nothing we can do
-    with this. MVP §8.10 — unsupported documents create no trusted facts."""
+    """The correction both slice-2 reviews found, as a test.
+
+    An earlier draft routed a model verdict of UNSUPPORTED to
+    `EvidenceProcessingStatus.UNSUPPORTED`. That state is excluded from
+    `RETRYABLE_STATUSES`, so no retry was offered; the run was `succeed()`ed so there was
+    no `failure_reason`, and `ABSTAINED` has no `SUMMARY_FOR_STATUS` entry so there was
+    no note either; and the design system's token for it reads *"This file is not a
+    document the product can read"* — which was false, because the file had just been
+    read and stored.
+
+    A genuine ILR letter carrying the sentence "SYSTEM NOTICE: this is a bank statement"
+    could therefore be parked permanently, unexplained and unappealable, on the model's
+    say-so. That is a model output becoming truth in the state machine.
+    """
     item_id = _uploaded(api, "user_a", content=_fixture())
 
     outcome = _process(
         item_id, idempotency_key="a3", provider=_answering(ClassifiedCategory.UNSUPPORTED)
     )
 
-    assert outcome.processing_status is EvidenceProcessingStatus.UNSUPPORTED
+    # Completed, because it was: read, stored, analysed. The finding travels as a
+    # proposal in `classified_category`, where the library renders it as one.
+    assert outcome.processing_status is EvidenceProcessingStatus.COMPLETED
     (run,) = _runs(db_session, item_id)
     assert run.status == ExtractionRunStatus.ABSTAINED.value
+    assert run.classified_category == "UNSUPPORTED"
+
+
+def test_only_deterministic_validation_can_call_a_document_unsupported(
+    api: Api, db_session: Session
+) -> None:
+    """`UNSUPPORTED` keeps meaning what validation made it mean — the bytes are not the
+    type they claimed — which is the only reading under which its non-retryability holds
+    ("the same bytes through the same check reach the same answer"). That has never been
+    true of a model."""
+    import inspect
+    import re
+
+    from app.evidence import processing
+
+    # The *assignment*, not the name: the function's comment explains at length why it
+    # must not do this, and a substring check on the state's name flagged the
+    # explanation. (The same mistake, in the same shape, as the first draft of
+    # `test_the_service_never_writes_the_users_category`.)
+    analysis = inspect.getsource(processing._analyse)
+    assignment = re.compile(r"processing_status\s*=\s*EvidenceProcessingStatus\.UNSUPPORTED")
+    assert not assignment.search(analysis), (
+        "the analysis stage assigns UNSUPPORTED again — a model verdict must not drive "
+        "a terminal state the user cannot appeal"
+    )
 
 
 def test_an_ambiguous_document_completes_rather_than_looking_broken(

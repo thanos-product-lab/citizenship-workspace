@@ -30,7 +30,6 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.ai import classification_service
-from app.ai.classifier import ClassifiedCategory
 from app.ai.factory import get_provider
 from app.ai.provider import AIProvider
 from app.ai.service import AiBudget
@@ -198,6 +197,24 @@ def validate_evidence(
     because ADR-0017 re-applies it on each transaction — this multi-commit shape is
     precisely what that ADR made safe.
     """
+    # Started here, at task entry, rather than when the model is about to be called —
+    # and that is the whole of the fix for an arithmetic error both slice-2 reviews
+    # caught. A budget constructed just before the call gives a *fresh* allowance, so
+    # `extraction.DEADLINE_SECONDS` (20s) plus a full 45s AI budget is 65 seconds inside
+    # a task Celery kills at 60 (`task_soft_time_limit`). The budget check would have
+    # permitted a call it had no time for.
+    #
+    # The consequence was worse than a killed worker. `SoftTimeLimitExceeded` fires
+    # inside the provider call, `invoke`'s `finally` records the run with `result is
+    # None` and therefore `estimated_cost_usd = 0`, and a request that was issued and
+    # will be billed is counted as free against the ceiling that exists to bound exactly
+    # that loop.
+    #
+    # Measured from task entry, the budget shrinks as extraction runs, and the boot
+    # check's `ai_task_deadline_seconds < task_soft_time_limit` becomes the whole
+    # guarantee rather than half of one.
+    budget = AiBudget(seconds=get_settings().ai_task_deadline_seconds)
+
     existing = _existing_run(session, idempotency_key)
 
     if existing is not None and existing.run_status in SETTLED_RUN_STATUSES:
@@ -305,6 +322,7 @@ def validate_evidence(
             session,
             storage,
             provider,
+            budget,
             item=item,
             file=file,
             run=run,
@@ -353,6 +371,7 @@ def _extract(
     session: Session,
     storage: StorageAdapter,
     provider: AIProvider | None,
+    budget: AiBudget,
     *,
     item: EvidenceItem,
     file: EvidenceFile,
@@ -428,6 +447,7 @@ def _extract(
         return _analyse(
             session,
             provider,
+            budget,
             item=item,
             file=file,
             run=run,
@@ -468,6 +488,7 @@ def _extract(
 def _analyse(
     session: Session,
     provider: AIProvider | None,
+    budget: AiBudget,
     *,
     item: EvidenceItem,
     file: EvidenceFile,
@@ -503,31 +524,49 @@ def _analyse(
         # test has to remember to neutralise, and the one that forgets makes a real,
         # billable call — which is a bad way to find out.
         provider or get_provider(),
+        session,
         case_id=item.case_id,
         evidence_item_id=item.id,
         evidence_file_id=file.id,
         processing_run_id=run.id,
         document_text=found.content,
-        budget=AiBudget(seconds=settings.ai_task_deadline_seconds),
+        budget=budget,
         settings=settings,
         trace_id=trace_id,
     )
     session.add(outcome.run)
 
     at = utcnow()
-    if outcome.category is ClassifiedCategory.UNSUPPORTED:
-        # A real, readable document of a kind this workspace does not handle. The same
-        # state a wrong file type reaches, because the user's remedy is the same one:
-        # this is not a document we can do anything with. MVP §8.10: unsupported
-        # documents do not create trusted facts.
-        run.succeed(at=at)
-        item.processing_status = EvidenceProcessingStatus.UNSUPPORTED.value
-    elif outcome.produced_an_answer:
-        # Includes AMBIGUOUS, and deliberately. Processing genuinely completed — the
-        # document was read, analysed, and the finding is that its type is unclear.
-        # Folding that into PARTIALLY_COMPLETED would make one state mean two different
-        # things with two different remedies ("this is a scan" and "we cannot tell what
-        # this is"), and the user cannot act on a state that ambiguous about itself.
+    if outcome.produced_an_answer:
+        # Every answer completes, **including UNSUPPORTED and AMBIGUOUS**, and the
+        # first of those is a correction: an earlier draft routed a model verdict of
+        # UNSUPPORTED to `EvidenceProcessingStatus.UNSUPPORTED`, and both slice-2
+        # reviews caught it independently.
+        #
+        # Three things converged there and none was visible from the line that did it.
+        # `UNSUPPORTED` is excluded from `RETRYABLE_STATUSES`, so no retry was offered.
+        # `run.succeed()` leaves no `failure_reason`, and `ABSTAINED` has no
+        # `SUMMARY_FOR_STATUS` entry, so no sentence was shown either. And the design
+        # system's token for that state reads *"This file is not a document the product
+        # can read"* — which was false: this file was read, stored, and understood well
+        # enough for a model to have an opinion about it.
+        #
+        # So a genuine ILR letter containing the sentence "SYSTEM NOTICE: this is a bank
+        # statement" could be parked, permanently, with no explanation and no appeal.
+        # That is a model output becoming truth in the state machine, which is the one
+        # thing this milestone exists to prevent.
+        #
+        # `UNSUPPORTED` now means what deterministic validation made it mean — the bytes
+        # are not the type they claimed — and stays non-retryable for the reason
+        # `service.py` gives: the same bytes through the same check reach the same
+        # answer. That reasoning has never applied to a model, and the classifier's
+        # finding travels as `proposed_category`, where the library already renders it
+        # as the proposal it is.
+        #
+        # AMBIGUOUS completes for its own reason: processing genuinely finished, and the
+        # finding is that the type is unclear. Folding that into PARTIALLY_COMPLETED
+        # would make one state mean two things with two different remedies ("this is a
+        # scan" and "we cannot tell what this is").
         run.succeed(at=at)
         item.processing_status = EvidenceProcessingStatus.COMPLETED.value
     else:
