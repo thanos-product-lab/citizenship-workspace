@@ -51,6 +51,7 @@ CASE_SCOPED_TABLES: tuple[str, ...] = (
     "evidence_processing_runs",
     "evidence_file_texts",
     "evidence_travel_links",
+    "extraction_runs",
 )
 
 SUPPORTED_ANSWERS = {
@@ -156,6 +157,9 @@ def _upload_document(api: Api, user: str, case_id: str, session: Session) -> str
     #
     # The pipeline is exercised properly in `tests/evidence/test_processing.py` and end
     # to end against the real worker. Here, two inserts are the honest arrangement.
+    from app.ai.classifier import ClassifiedCategory
+    from app.ai.domain import Capability
+    from app.ai.extraction_run import ExtractionRun, ExtractionRunStatus
     from app.evidence.domain import (
         PIPELINE_VERSION,
         EvidenceFileText,
@@ -168,16 +172,18 @@ def _upload_document(api: Api, user: str, case_id: str, session: Session) -> str
         {"i": uuid.UUID(item["id"])},
     ).scalar_one()
 
-    session.add(
-        EvidenceProcessingRun(
-            evidence_item_id=uuid.UUID(item["id"]),
-            evidence_file_id=file_id,
-            status=ProcessingRunStatus.SUCCEEDED.value,
-            pipeline_version=PIPELINE_VERSION,
-            completed_at=datetime.now(UTC),
-            idempotency_key=f"seed-{item['id']}",
-        )
+    processing_run = EvidenceProcessingRun(
+        evidence_item_id=uuid.UUID(item["id"]),
+        evidence_file_id=file_id,
+        status=ProcessingRunStatus.SUCCEEDED.value,
+        pipeline_version=PIPELINE_VERSION,
+        completed_at=datetime.now(UTC),
+        idempotency_key=f"seed-{item['id']}",
     )
+    session.add(processing_run)
+    # Flushed before the extraction run references it: `id` is assigned by the ORM's
+    # default at flush, so a `SELECT` for it beforehand finds nothing.
+    session.flush()
     session.add(
         EvidenceFileText(
             evidence_file_id=file_id,
@@ -186,6 +192,24 @@ def _upload_document(api: Api, user: str, case_id: str, session: Session) -> str
             character_count=17,
             content="synthetic content",
             pipeline_version=PIPELINE_VERSION,
+        )
+    )
+    # The classifier's run, inserted for the same reason and with no model call: a
+    # `ClassifiedCategory` on a row is what makes the table non-empty, and asking a
+    # provider for one would make this suite depend on a network and a budget to answer
+    # a question about row visibility.
+    session.add(
+        ExtractionRun.record(
+            case_id=uuid.UUID(case_id),
+            evidence_item_id=uuid.UUID(item["id"]),
+            evidence_file_id=file_id,
+            processing_run_id=processing_run.id,
+            capability=Capability.DOCUMENT_CLASSIFIER.value,
+            status=ExtractionRunStatus.SUCCEEDED,
+            input_text="synthetic content",
+            classified_category=ClassifiedCategory.TRAVEL_SUPPORT.value,
+            classification_confidence=0.97,
+            classification_reasoning="synthetic",
         )
     )
     session.commit()

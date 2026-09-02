@@ -16,6 +16,8 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.ai.classifier import ClassificationOutput, ClassifiedCategory
+from app.ai.fake import FakeProvider, succeeded
 from app.core.storage import InMemoryStorage, StorageError, get_storage
 from app.evidence import processing
 from app.evidence.domain import (
@@ -54,7 +56,12 @@ def _text_for(session: Session, evidence_item_id: uuid.UUID) -> EvidenceFileText
 
 
 def _uploaded(
-    api: Api, user: str, *, content: bytes | None = None, media_type: str = "application/pdf"
+    api: Api,
+    user: str,
+    *,
+    content: bytes | None = None,
+    media_type: str = "application/pdf",
+    original_filename: str = "doc.pdf",
 ) -> uuid.UUID:
     # A *real* PDF by default. `b"%PDF-1.7 ..."` passes the magic-byte check and is not a
     # document — fine while validation was all that ran, and a corrupt file the moment a
@@ -82,12 +89,35 @@ def _uploaded(
                 "upload_token": grant["upload_token"],
                 "category": "TRAVEL_SUPPORT",
                 "display_name": "A document",
-                "original_filename": "doc.pdf",
+                "original_filename": original_filename,
             },
         )
         .json()
     )
     return uuid.UUID(item["id"])
+
+
+def classifying(category: str = "TRAVEL_SUPPORT", *, calls: int = 1) -> FakeProvider:
+    """A provider that answers the classifier deterministically.
+
+    Every test in this file that reaches a document's text now also reaches the
+    classifier, and none of them are *about* classification — they are about validating
+    bytes, reading text, and the states that follow. Scripting the answer keeps them
+    asking their own question.
+
+    The provider is passed in rather than reached for, so a test that forgets is a test
+    that fails loudly on an unscripted call instead of quietly making a real one.
+    """
+    return FakeProvider(
+        responses=[
+            succeeded(
+                ClassificationOutput(
+                    category=ClassifiedCategory(category), confidence=0.94, reasoning="a reason"
+                )
+            )
+            for _ in range(calls)
+        ]
+    )
 
 
 def _process(
@@ -96,6 +126,7 @@ def _process(
     idempotency_key: str,
     storage: object | None = None,
     evidence_file_id: uuid.UUID | None = None,
+    provider: FakeProvider | None = None,
 ) -> processing.ProcessingOutcome:
     """Run the pipeline on its own session, as the worker does.
 
@@ -120,6 +151,7 @@ def _process(
         return processing.validate_evidence(
             session,
             storage or _get_storage(),  # type: ignore[arg-type]
+            provider if provider is not None else classifying(),
             evidence_item_id=evidence_item_id,
             idempotency_key=idempotency_key,
             trace_id=None,

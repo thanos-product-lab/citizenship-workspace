@@ -40,10 +40,16 @@ def clear_ledger() -> Iterator[None]:
 
     `TRUNCATE` as the table owner, not `DELETE`: migration 0025 revokes DELETE on both
     tables from `app_rls`, because a ledger the request role can erase is not a ledger.
+
+    `extraction_runs` is named alongside them rather than relying on `CASCADE`, because
+    it references `model_runs` (ADR-0025) and Postgres refuses to truncate a table
+    something points at. Listing it is a sentence about what this fixture wipes;
+    `CASCADE` would be a standing instruction to wipe whatever happens to point at the
+    ledger next, which in a later slice could be a table a test meant to keep.
     """
     yield
     with get_sessionmaker()() as session:
-        session.execute(text("TRUNCATE TABLE model_runs, ai_daily_spend"))
+        session.execute(text("TRUNCATE TABLE extraction_runs, model_runs, ai_daily_spend"))
         session.commit()
 
 
