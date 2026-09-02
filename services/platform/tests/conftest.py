@@ -24,6 +24,17 @@ from collections.abc import Callable, Iterator
 # which builds its own `S3Storage` against a real MinIO and never reads this.
 os.environ.setdefault("STORAGE_BACKEND", "memory")
 
+# The AI provider defaults to the fake for the whole suite, for a sharper reason than
+# storage's: a test that reaches a *real* provider spends money and needs a network, and
+# the failure is silent — it passes, slowly, and bills someone. `.env` carries a working
+# key in local development, so without this line the first test to run the evidence
+# pipeline would have made live calls.
+#
+# The fake asserts behaviour only. Whether a real key works is answered by
+# `/health/ai-probe` and the deployed smoke, which is the only place that question can
+# honestly be asked.
+os.environ.setdefault("AI_PROVIDER", "fake")
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import Engine, create_engine, event, text
