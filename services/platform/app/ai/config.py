@@ -79,6 +79,17 @@ class CapabilityConfig:
 #: looks its config up rather than accepting one, so there is no way to call a
 #: provider with an unregistered capability and an ad-hoc model.
 REGISTRY: dict[Capability, CapabilityConfig] = {
+    Capability.DOCUMENT_CLASSIFIER: CapabilityConfig(
+        capability=Capability.DOCUMENT_CLASSIFIER,
+        # 100% classification accuracy over 18 spike calls, including the
+        # misleading-filename and injection documents, at ~$0.0001 per call
+        # (AI_SPIKE_FINDINGS §2). Model selection proper belongs to the eval harness
+        # with a representative corpus (AI_EVALUATION_PLAN §22), not to a registry
+        # edit — this is the baseline, not a claim that nothing better exists.
+        model="gpt-4o-mini",
+        prompt_version=PromptVersion.CLASSIFY_DOCUMENT_V1,
+        schema_version="classifier.v1",
+    ),
     Capability.PROVIDER_PROBE: CapabilityConfig(
         capability=Capability.PROVIDER_PROBE,
         # The cheapest capable model: this call exists to prove the wiring, and

@@ -72,6 +72,7 @@ class PromptVersion(StrEnum):
     here and a file beside it; there is no third way to obtain a prompt."""
 
     PROVIDER_PROBE_V1 = "provider_probe.v1"
+    CLASSIFY_DOCUMENT_V1 = "classify_document.v1"
 
 
 def _load(version: PromptVersion) -> str:
