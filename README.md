@@ -63,11 +63,24 @@ uv run ruff check . && uv run mypy . && uv run pytest
 
 ## Authentication & environment
 
-Auth uses [Clerk](https://clerk.com): the web app signs the user in and sends the
-session JWT as a bearer token, and the API verifies it against Clerk's JWKS.
-Create a Clerk application, then add the keys (all gitignored):
+Two environment files, both gitignored, each read by exactly one thing.
 
-`apps/web/.env.local`
+**`services/platform/.env`** — the API and the worker. Start from the committed
+template, which documents every variable and why it exists:
+
+```
+cp services/platform/.env.example services/platform/.env
+```
+
+The template lives beside the file it describes because `Settings(env_file=".env")`
+resolves relative to the working directory, and both processes run from
+`services/platform`. A `.env` anywhere else is read by nothing.
+
+Nothing in it is required for local development: the API boots without secrets, and
+`check_backing_services`, `check_upload_secret` and `check_ai_configuration` only
+refuse to start when `ENVIRONMENT` is not local. Set what you need.
+
+**`apps/web/.env.local`** — the Next.js app.
 
 ```
 NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_...
@@ -75,7 +88,11 @@ CLERK_SECRET_KEY=sk_test_...
 NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
 ```
 
-`services/platform/.env`
+### Auth
+
+Auth uses [Clerk](https://clerk.com): the web app signs the user in and sends the
+session JWT as a bearer token, and the API verifies it against Clerk's JWKS. Create a
+Clerk application, then add to `services/platform/.env`:
 
 ```
 CLERK_ISSUER=https://<your-instance>.clerk.accounts.dev
@@ -86,6 +103,21 @@ CLERK_AUTHORIZED_PARTIES=http://localhost:3000
 The API derives the JWKS URL from the issuer. With the API up (`just up`) and
 `just dev` running the web app, open http://localhost:3000, sign in, and the
 shell shows your account from `/api/v1/me`.
+
+### AI provider
+
+Only needed once you are working on M8 (document AI). Without a key the API still
+boots and serves; document extraction is what fails.
+
+```
+OPENAI_API_KEY=sk-...
+```
+
+`AI_DAILY_SPEND_CEILING_USD` is a hard stop, deployment-wide, resetting at 00:00 UTC.
+It defaults to a low number on purpose — it exists to bound a loop, not ordinary use.
+See `services/platform/.env.example` for the rest, and
+[`docs/evaluations/AI_SPIKE_FINDINGS.md`](docs/evaluations/AI_SPIKE_FINDINGS.md) §4
+for where the timeout and deadline values come from.
 
 ## Deployment
 
