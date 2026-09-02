@@ -33,7 +33,12 @@ os.environ.setdefault("STORAGE_BACKEND", "memory")
 # The fake asserts behaviour only. Whether a real key works is answered by
 # `/health/ai-probe` and the deployed smoke, which is the only place that question can
 # honestly be asked.
-os.environ.setdefault("AI_PROVIDER", "fake")
+# Assigned, not `setdefault`. A developer who exported AI_PROVIDER=openai while poking at
+# the live probe would otherwise get live billable calls from the entire suite, silently —
+# which is the exact failure this line exists to prevent, one shell away from happening.
+# The escape hatch is explicit and has to be asked for by name.
+if os.environ.get("ALLOW_LIVE_AI_IN_TESTS") != "1":
+    os.environ["AI_PROVIDER"] = "fake"
 
 import pytest
 from fastapi.testclient import TestClient
@@ -287,6 +292,20 @@ def _rls_login_role(_schema: None) -> Iterator[str]:
                 f"CREATE ROLE {RLS_TEST_ROLE} LOGIN NOSUPERUSER "
                 f"PASSWORD '{RLS_TEST_PASSWORD}'; END IF; END $$;"
             )
+        )
+        # Set the password unconditionally, and this line exists because its absence cost
+        # an hour. The create is `IF NOT EXISTS` while the password is generated per
+        # session — so a run that is *killed* before the session teardown drops the role
+        # leaves it behind carrying the previous password, and every subsequent run then
+        # skips the create and authenticates with a password the role does not have.
+        #
+        # The result is fifteen tests failing on `password authentication failed`, in
+        # files that have nothing to do with whatever was being worked on, until somebody
+        # thinks to drop a role by hand. One interrupted run should not poison the next
+        # ten, and `ALTER ROLE` makes the fixture idempotent over its own credential
+        # rather than only over the role's existence.
+        session.execute(
+            text(f"ALTER ROLE {RLS_TEST_ROLE} LOGIN NOSUPERUSER PASSWORD '{RLS_TEST_PASSWORD}'")
         )
         session.execute(text(f"GRANT USAGE ON SCHEMA public TO {RLS_TEST_ROLE}"))
         session.execute(
