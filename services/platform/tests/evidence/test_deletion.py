@@ -546,3 +546,60 @@ def test_the_purged_document_name_does_not_survive_in_the_issue_queue(
     # queue's ability to name what is still there.
     survivor = api("user_a").get(f"/api/v1/cases/{case_id}/evidence/{second}").json()
     assert survivor["display_name"] == "Second upload"
+
+
+def test_deletion_leaves_no_fingerprint_of_the_analysed_document(
+    api: Api, db_session: Session
+) -> None:
+    """`purge.py` already clears `checksum` because it is a content fingerprint — anyone
+    with database access could hash a document they suspect and confirm it was uploaded
+    here, which is the question deletion exists to stop answering.
+
+    `extraction_runs.input_hash` is that same fingerprint over the same document, one
+    table over, and `classification_reasoning` is model prose the classifier prompt
+    explicitly permits to quote from the document. Slice 2 added both and did not extend
+    the purge; both slice-2 reviews caught it independently.
+    """
+    from app.ai.classifier import ClassificationOutput, ClassifiedCategory
+    from app.ai.extraction_run import ExtractionRun
+    from app.ai.fake import FakeProvider, succeeded
+    from tests.evidence.test_processing import _process
+
+    case_id, _ = _case_with_trip(api, "user_a")
+    item_id = uuid.UUID(_document(api, "user_a", case_id))
+    _process(
+        item_id,
+        idempotency_key="purge-1",
+        provider=FakeProvider(
+            responses=[
+                succeeded(
+                    ClassificationOutput(
+                        category=ClassifiedCategory.TRAVEL_SUPPORT,
+                        confidence=0.95,
+                        reasoning="Skyline Airways booking confirmation for Amara Okonkwo",
+                    )
+                )
+            ]
+        ),
+    )
+
+    def _run() -> ExtractionRun:
+        db_session.expire_all()
+        return db_session.execute(
+            select(ExtractionRun).where(ExtractionRun.evidence_item_id == item_id)
+        ).scalar_one()
+
+    before = _run()
+    assert before.input_hash and before.classification_reasoning
+
+    api("user_a").delete(f"/api/v1/cases/{case_id}/evidence/{item_id}")
+    _purge(item_id)
+
+    after = _run()
+    assert after.input_hash == "", "a content fingerprint survived deletion"
+    assert after.classification_reasoning is None, "model prose about the document survived"
+    # What identifies nothing stays, so the spend ledger still joins to a run that says
+    # an analysis happened. Erasing it would make a deleted document indistinguishable
+    # from one that was never analysed — a different claim than deletion should make.
+    assert after.classified_category == "TRAVEL_SUPPORT"
+    assert after.model_run_id is not None

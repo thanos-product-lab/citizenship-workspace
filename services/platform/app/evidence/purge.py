@@ -31,6 +31,7 @@ import structlog
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.ai.extraction_run import ExtractionRun
 from app.core.storage import StorageAdapter, StorageError
 from app.evidence.domain import (
     EvidenceFile,
@@ -136,6 +137,13 @@ def _tombstone(
       is precisely the question a deletion is meant to stop answering.
     - the extracted text row, deleted outright. There is no minimal non-sensitive version
       of a document's text; the text *is* the document.
+    - `extraction_runs.input_hash` — the same argument as `checksum`, one table over.
+      It is SHA-256 over the first 6,000 characters of the extracted text, so anyone with
+      database access could hash a document they suspect and confirm it was uploaded
+      here. Added in M8 slice 2 and missed by that slice; caught by both reviews.
+    - `extraction_runs.classification_reasoning` — model-authored prose *about* the
+      document, which the classifier prompt explicitly permits to quote from it. A
+      fragment of a destroyed document is still a fragment of it.
     - the same name where `issues` copied it. `DUPLICATE_EVIDENCE` denormalises
       `display_name` and `other_name` into `message_parameters`, and resolving an issue
       leaves those untouched — so clearing the column alone left the user's words for a
@@ -157,6 +165,21 @@ def _tombstone(
         file.original_filename = None
         file.checksum = ""
         file.deleted_at = at
+    for run in session.execute(
+        select(ExtractionRun).where(ExtractionRun.evidence_item_id == item.id)
+    ).scalars():
+        # Cleared, not deleted. What remains — capability, status, timestamps, the
+        # `model_run_id` and the category — identifies no document and no person, and
+        # keeping it means the spend ledger's rows still join to something that says an
+        # analysis happened. Erasing the runs outright would make a deleted document look
+        # like one that was never analysed, a different claim than deletion should make.
+        #
+        # `classified_category` stays for a second reason: `ck_extraction_runs_category_
+        # matches_status` ties its presence to the run's status, so nulling it on a
+        # settled run would violate the constraint. Six enum values are not a fingerprint,
+        # and the constraint is right to insist a settled run says what it concluded.
+        run.input_hash = ""
+        run.classification_reasoning = None
     for text in session.execute(
         select(EvidenceFileText).where(
             EvidenceFileText.evidence_file_id.in_([file.id for file in files])
