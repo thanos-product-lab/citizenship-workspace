@@ -16,10 +16,18 @@ model was wrong" will eventually tell you the second when it means the first.
 Run with `just eval`.
 """
 
+import argparse
 import json
 import pathlib
 import sys
+import uuid
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    # Imported for typing only: `graders` imports `Fixture` from here, so a runtime
+    # import in either direction would be a cycle.
+    from evals.graders import Report
 
 EVALS_DIR = pathlib.Path(__file__).parent
 MANIFEST_DIR = EVALS_DIR / "manifests"
@@ -150,7 +158,68 @@ def check_manifests(fixtures: list[Fixture]) -> ManifestProblems:
     return problems
 
 
+def run_classifier(fixtures: list[Fixture]) -> "Report":
+    """Run the real DocumentClassifier over the classifier fixtures.
+
+    Uses the product's own pipeline stage — `extraction.extract` for the text and
+    `classification_service.classify` for the call — rather than a parallel
+    implementation. A harness that assembles its own prompt and its own call measures a
+    system nobody ships.
+    """
+    from app.ai.classification_service import classify
+    from app.ai.factory import get_provider
+    from app.ai.service import AiBudget
+    from app.core.config import get_settings
+    from app.evidence import extraction
+    from evals.graders import Report, Verdict, grade_classification
+
+    settings = get_settings()
+    results = []
+    for fixture in fixtures:
+        text = extraction.extract(fixture.document_path.read_bytes()).content
+        outcome = classify(
+            get_provider(),
+            case_id=_EVAL_ID,
+            evidence_item_id=_EVAL_ID,
+            evidence_file_id=_EVAL_ID,
+            processing_run_id=_EVAL_ID,
+            document_text=text,
+            budget=AiBudget(seconds=settings.ai_task_deadline_seconds),
+            settings=settings,
+        )
+        output: dict[str, object] | None = (
+            {
+                "category": outcome.run.classified_category,
+                "confidence": outcome.run.classification_confidence,
+                "reasoning": outcome.run.classification_reasoning or "",
+            }
+            if outcome.produced_an_answer
+            else None
+        )
+        result = grade_classification(fixture, output)
+        marker = {Verdict.PASS: "ok  ", Verdict.FAIL: "FAIL", Verdict.UNMEASURED: "----"}[
+            result.verdict
+        ]
+        print(f"  {marker} {fixture.id:44s} {result.detail}")
+        results.append(result)
+    return Report(results)
+
+
+#: The ids an eval run writes onto its `ExtractionRun`s. The runs are constructed but
+#: never persisted here — the harness grades output, it does not seed a case — so these
+#: name nothing and satisfy the dataclass rather than pointing at real rows.
+_EVAL_ID = uuid.UUID("00000000-0000-0000-0000-00000000e7a1")
+
+
 def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--run",
+        action="store_true",
+        help="make real model calls and grade the results (costs money)",
+    )
+    args = parser.parse_args()
+
     fixtures = load_fixtures()
     problems = check_manifests(fixtures)
 
@@ -178,13 +247,29 @@ def main() -> int:
 
     print("\nmanifests are coherent: every document exists, ids are unique, no")
     print("expectation contradicts a must_not_extract entry.")
+
+    if not args.run:
+        print()
+        print("Nothing was graded and no model was called. Pass --run to make real")
+        print("calls; it costs money, which is why it is not the default.")
+        return 0
+
+    classifier_fixtures = [f for f in fixtures if f.capability == "DocumentClassifier"]
+    print(f"\nDocumentClassifier — {len(classifier_fixtures)} fixtures")
+    report = run_classifier(classifier_fixtures)
+
     print()
-    print("No capability runner is registered yet, so nothing was graded and no model")
-    print("was called. Runners and deterministic graders land with the capabilities")
-    print("they grade (AI_EVALUATION_PLAN.md §41 Phase 2) — writing a grader before the")
-    print("thing it grades is a guess, and a harness that reports a score it did not")
-    print("measure is the failure mode this project exists to avoid.")
-    return 0
+    print(f"passed {report.passed}  failed {report.failed}  unmeasured {report.unmeasured}")
+    if report.unmeasured:
+        # Never folded into a percentage. A run that could not measure its fixtures has
+        # not shown they pass, and 94% of what did run is a number that hides that.
+        print("  UNMEASURED fixtures mean no model output was produced — not a low score,")
+        print("  an absent one. The suite does not pass with any fixture unmeasured.")
+    for failure in report.high_risk_failures:
+        print(f"  HIGH-RISK FAILURE  {failure.fixture.id}: {failure.detail}")
+    print()
+    print("gate:", "PASS" if report.gate_passed else "FAIL")
+    return 0 if report.gate_passed else 1
 
 
 if __name__ == "__main__":
