@@ -99,6 +99,15 @@ class Settings(BaseSettings):
     # is a hard stop with a user-visible reason, never a silent skip.
     ai_daily_spend_ceiling_usd: float = 5.0
 
+    # Capability invocations one case may make per rolling 24 hours. The deployment-wide
+    # ceiling above bounds the *bill*; this bounds one case's share of it, which is a
+    # different control. Without it, a retry loop on a single document is 3 billable
+    # requests every 30 seconds — ~8,600 a day — and the first tenant to run one
+    # exhausts the shared ceiling, putting every other user's documents into
+    # REFUSED_NO_BUDGET until midnight. Generous against real use: the canonical demo
+    # case has twelve documents.
+    ai_case_daily_call_limit: int = 200
+
     # Shared secret for `POST /health/ai-probe`, which makes a real (tiny) model call
     # so the deployed smoke can tell a working key from a well-formed one. Unset
     # disables the endpoint entirely — an unauthenticated route that spends money is

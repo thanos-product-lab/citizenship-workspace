@@ -7,8 +7,9 @@ a way to rewrite what the system used to think about a document.
 """
 
 import uuid
+from datetime import datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.ai.domain import Capability
@@ -16,6 +17,25 @@ from app.ai.extraction_run import ExtractionRun
 
 
 class ExtractionRunRepository:
+    @staticmethod
+    def calls_today(session: Session, *, case_id: uuid.UUID, at: datetime) -> int:
+        """How many capability invocations this case has made in the last 24 hours.
+
+        Counts *every* run including the refusals, which is deliberate: a loop that keeps
+        being refused is still a loop, and a counter that only saw the successful calls
+        would reset itself the moment the quota started working.
+        """
+        return int(
+            session.execute(
+                select(func.count())
+                .select_from(ExtractionRun)
+                .where(
+                    ExtractionRun.case_id == case_id,
+                    ExtractionRun.started_at > at - timedelta(days=1),
+                )
+            ).scalar_one()
+        )
+
     @staticmethod
     def latest_classification(
         session: Session, *, evidence_item_id: uuid.UUID

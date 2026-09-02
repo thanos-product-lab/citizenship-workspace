@@ -23,11 +23,13 @@ from dataclasses import dataclass
 
 import structlog
 from pydantic import ValidationError
+from sqlalchemy.orm import Session
 
 from app.ai.classifier import MAX_INPUT_CHARACTERS, ClassificationOutput, ClassifiedCategory
-from app.ai.domain import Capability
+from app.ai.domain import Capability, utcnow
 from app.ai.extraction_run import SUMMARY_FOR_STATUS, ExtractionRun, ExtractionRunStatus
 from app.ai.provider import AIProvider, DocumentText
+from app.ai.repository import ExtractionRunRepository
 from app.ai.service import AiBudget, AiDeadlineExceeded, invoke
 from app.ai.spend import SpendCeilingReached
 from app.core.config import Settings
@@ -65,6 +67,7 @@ def _truncate(text: str) -> str:
 
 def classify(
     provider: AIProvider,
+    session: Session,
     *,
     case_id: uuid.UUID,
     evidence_item_id: uuid.UUID,
@@ -77,6 +80,9 @@ def classify(
 ) -> ClassificationOutcome:
     """Classify one document. Returns an outcome for every path; raises for none."""
     sent = _truncate(document_text)
+    # Captured before anything is attempted, so the run's own timestamps bracket the work
+    # rather than being read off the transaction that records it.
+    started_at = utcnow()
 
     def _run(
         status: ExtractionRunStatus,
@@ -92,10 +98,30 @@ def classify(
             capability=Capability.DOCUMENT_CLASSIFIER.value,
             status=status,
             input_text=sent,
+            started_at=started_at,
             model_run_id=model_run_id,
             classified_category=output.category.value if output else None,
             classification_confidence=output.confidence if output else None,
             classification_reasoning=output.reasoning if output else None,
+        )
+
+    used = ExtractionRunRepository.calls_today(session, case_id=case_id, at=started_at)
+    if used >= settings.ai_case_daily_call_limit:
+        # Checked before the deadline and the ceiling, because it is the cheapest of the
+        # three and the only one whose cause is this case's own behaviour. Told apart
+        # from the deployment ceiling deliberately: "you have had your share" and "nobody
+        # gets any more" are different sentences, and giving a user the second when the
+        # first is true blames the system for their own loop.
+        _log.warning(
+            "ai.classification_refused_quota",
+            evidence_item_id=str(evidence_item_id),
+            calls_today=used,
+            limit=settings.ai_case_daily_call_limit,
+        )
+        return ClassificationOutcome(
+            run=_run(ExtractionRunStatus.REFUSED_QUOTA),
+            category=None,
+            user_summary=SUMMARY_FOR_STATUS[ExtractionRunStatus.REFUSED_QUOTA],
         )
 
     try:

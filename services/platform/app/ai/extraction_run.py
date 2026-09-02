@@ -27,7 +27,7 @@ import uuid
 from datetime import datetime
 from enum import StrEnum
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, func
+from sqlalchemy import DateTime, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.ai.domain import utcnow
@@ -56,6 +56,11 @@ class ExtractionRunStatus(StrEnum):
     REFUSED_NO_BUDGET = "REFUSED_NO_BUDGET"
     #: The task ran out of its AI budget before this call could start.
     REFUSED_NO_TIME = "REFUSED_NO_TIME"
+    #: This case has analysed as many documents today as it is allowed to. Distinct from
+    #: `REFUSED_NO_BUDGET`, which is the *deployment* running out: one is "you have had
+    #: your share", the other is "nobody gets any more", and telling a user the second
+    #: when the first is true would be blaming the system for their own retry loop.
+    REFUSED_QUOTA = "REFUSED_QUOTA"
 
 
 #: Statuses in which the capability produced a usable answer.
@@ -82,6 +87,10 @@ SUMMARY_FOR_STATUS: dict[ExtractionRunStatus, str] = {
     ExtractionRunStatus.FAILED: (
         "Your document was read and stored, but automatic analysis did not complete. "
         "You can retry it."
+    ),
+    ExtractionRunStatus.REFUSED_QUOTA: (
+        "This case has reached its daily limit for automatic document analysis. Your "
+        "document was read and stored, and analysis can be retried tomorrow."
     ),
 }
 
@@ -137,7 +146,16 @@ class ExtractionRun(Base):
     #: reaches a screen.
     classification_reasoning: Mapped[str | None] = mapped_column(String(300))
 
-    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    #: Set in Python, not by `func.now()`.
+    #:
+    #: Postgres evaluates `now()` as the *transaction* timestamp, and this row's
+    #: transaction begins at the commit **after** the provider call — while
+    #: `completed_at` is captured before it. Every row therefore claimed to have started
+    #: after it finished, and since this column orders `latest_classification`, the
+    #: newest run was decided by a clock reading the wrong moment. Two runs written in
+    #: one transaction (slice 3a: classify, then extract) would also have tied exactly,
+    #: making `.limit(1)` a coin toss.
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     @classmethod
@@ -151,6 +169,7 @@ class ExtractionRun(Base):
         capability: str,
         status: ExtractionRunStatus,
         input_text: str,
+        started_at: datetime,
         model_run_id: uuid.UUID | None = None,
         classified_category: str | None = None,
         classification_confidence: float | None = None,
@@ -173,5 +192,6 @@ class ExtractionRun(Base):
             classified_category=classified_category,
             classification_confidence=classification_confidence,
             classification_reasoning=classification_reasoning,
+            started_at=started_at,
             completed_at=utcnow(),
         )
