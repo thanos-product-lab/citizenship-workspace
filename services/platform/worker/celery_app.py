@@ -21,6 +21,7 @@ from celery import Celery
 from celery.schedules import crontab  # noqa: F401  (kept for the M8 spend-report task)
 from celery.signals import beat_init, worker_init, worker_process_init
 
+from app.ai.boot import check_ai_configuration
 from app.core.config import check_backing_services, get_settings
 from app.core.logging import configure_logging
 
@@ -28,6 +29,10 @@ from app.core.logging import configure_logging
 # the message at the top of a short traceback, rather than inside a retry loop. A worker
 # has no health check for a platform to poll — nothing else would ever notice.
 check_backing_services()
+# The worker is where every real model call lives from M8 slice 2 onward, so the
+# guard has to run here too. It was only wired into `create_app`, which meant a
+# worker deployed with no key — or with AI_PROVIDER=fake — booted perfectly clean.
+check_ai_configuration()
 
 settings = get_settings()
 

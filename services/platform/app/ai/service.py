@@ -15,8 +15,11 @@ like what it is.
    A per-request timeout bounds one call; Celery kills the task, and M8 makes two
    calls per document.
 3. **The `ModelRun` record.** Architecture §20's every-invocation rule, written on
-   every path including the refused, the timed out, and the never-dialled — a ledger
-   with a hole where the failures were is not a ledger.
+   every path that reached the provider *and* on the ceiling refusal — a ledger with
+   a hole where the failures were is not a ledger. The one deliberate exception is
+   `AiDeadlineExceeded`: nothing was invoked, so there is no invocation to record,
+   and "this document did not get processed" belongs on the case-scoped
+   `ExtractionRun` (slice 2) rather than in a table of model calls.
 
 **The ledger runs in its own session, in short transactions of its own.** Three
 reasons, and the third is the one that makes it necessary rather than tidy:
@@ -108,13 +111,19 @@ class AiBudget:
 
 
 @dataclass(frozen=True)
-class Invocation:
+class Invocation[T: BaseModel]:
     """What `invoke` produced: the parsed output if there is one, and the id of the
     `ModelRun` that recorded it. Callers store the id for provenance; slice 2's
-    `ExtractionRun` references it."""
+    `ExtractionRun` references it.
+
+    Generic over the capability's output type, so `parsed` is the caller's own model
+    and not a bare `BaseModel` it has to cast. That matters more than convenience:
+    plan §2's whole argument is that the claim path should be guarded by a type error
+    rather than by an assertion someone can delete, and a `cast` at an extractor's
+    entry point is where that erosion starts."""
 
     status: ModelRunStatus
-    parsed: BaseModel | None
+    parsed: T | None
     model_run_id: uuid.UUID
     latency_ms: int
     attempts: int
@@ -138,24 +147,27 @@ def _ledger(sessionmaker: LedgerSession | None) -> Iterator[Session]:
         session.close()
 
 
-def invoke(
+def invoke[T: BaseModel](
     provider: AIProvider,
     *,
     capability: Capability,
     document: DocumentText,
-    output_schema: type[BaseModel],
+    output_schema: type[T],
     budget: AiBudget,
     trace_id: str | None = None,
     settings: Settings | None = None,
     sessionmaker: LedgerSession | None = None,
-) -> Invocation:
+) -> Invocation[T]:
     """Make one capability call, bounded and accounted for.
 
     Takes no caller session, by design — see the module docstring. Raises
     `SpendCeilingReached` and `AiDeadlineExceeded` rather than returning them as a
     status, because both are conditions the caller's work must stop for rather than
-    results to inspect, and a status can be ignored. Both still write a `ModelRun`,
-    so a refusal to dial is as visible in the record as a failure after dialling.
+    results to inspect, and a status can be ignored.
+
+    `SpendCeilingReached` writes a `ModelRun` before raising and carries its id, so a
+    refusal to dial is as visible in the record as a failure after dialling.
+    `AiDeadlineExceeded` deliberately does not — see the module docstring.
     """
     settings = settings or get_settings()
     capability_config = config_for(capability)
@@ -170,7 +182,13 @@ def invoke(
             prompt_version=capability_config.prompt_version.value,
             schema_version=capability_config.schema_version,
             status=status,
-            trace_id=trace_id,
+            # Truncated, not trusted. `TraceIdMiddleware` accepts an unvalidated
+            # caller-supplied `x-request-id`, and the column is String(64): an
+            # over-long header would raise a DataError on the *post-call* ledger
+            # write, which — before the `finally` below existed — was a way to make a
+            # call that never reached the ledger. A caller-controlled string must not
+            # be able to break the accounting for a call that already happened.
+            trace_id=trace_id[:64] if trace_id else None,
             **kwargs,  # type: ignore[arg-type]
         )
 
@@ -201,34 +219,48 @@ def invoke(
             session.commit()
             raise
 
-    result: ProviderResult = provider.generate_structured(
-        capability=capability,
-        system=system,
-        document=document,
-        output_schema=output_schema,
-        config=model_config,
-    )
-
-    cost = model_config.cost_usd(
-        input_tokens=result.input_tokens, output_tokens=result.output_tokens
-    )
-
-    # Transaction two: what did it cost, and how did it end.
-    with _ledger(sessionmaker) as session:
-        run = _run(
-            result.status,
-            latency_ms=result.latency_ms,
-            input_tokens=result.input_tokens,
-            output_tokens=result.output_tokens,
-            estimated_cost_usd=cost,
-            attempts=result.attempts,
-            output_hash=result.output_hash,
-            failure_class=result.failure_class,
+    # From here the money may already be spent, so every exit records. Before this
+    # `finally` existed, anything raising between the call and the ledger write — a
+    # malformed response, Celery's hard limit, a pod eviction — lost the cost
+    # permanently, and the retry then spent it again. A ledger that under-counts
+    # exactly the failing loop it exists to bound is worse than no ledger, because it
+    # reports a number that looks reassuring.
+    result: ProviderResult[T] | None = None
+    try:
+        result = provider.generate_structured(
+            capability=capability,
+            system=system,
+            document=document,
+            output_schema=output_schema,
+            config=model_config,
         )
-        session.add(run)
-        session.flush()
-        run_id = run.id
-        total = record(session, at=utcnow(), cost_usd=cost)
+    finally:
+        cost = (
+            model_config.cost_usd(
+                input_tokens=result.input_tokens, output_tokens=result.output_tokens
+            )
+            if result
+            else 0.0
+        )
+        # Transaction two: what did it cost, and how did it end. On the exception
+        # path the token counts are unknown, so the cost recorded is zero and the row
+        # says `UNRECORDED_FAILURE` rather than pretending the call was free — the
+        # `calls` counter still moves, so the gap is visible in the ledger.
+        with _ledger(sessionmaker) as session:
+            run = _run(
+                result.status if result else ModelRunStatus.FAILED,
+                latency_ms=result.latency_ms if result else 0,
+                input_tokens=result.input_tokens if result else 0,
+                output_tokens=result.output_tokens if result else 0,
+                estimated_cost_usd=cost,
+                attempts=result.attempts if result else 1,
+                output_hash=result.output_hash if result else None,
+                failure_class=result.failure_class if result else "UnrecordedProviderFailure",
+            )
+            session.add(run)
+            session.flush()
+            run_id = run.id
+            total = record(session, at=utcnow(), cost_usd=cost)
 
     _log.info(
         "ai.invoked",

@@ -68,6 +68,21 @@ class ManifestProblems:
 
 _RISKS = {"HIGH", "MEDIUM", "LOW"}
 
+#: Every key a manifest row may carry. `document_type` is descriptive metadata the
+#: loader does not model; it is listed so it is accepted deliberately rather than
+#: dropped silently.
+_KNOWN_KEYS = {
+    "id",
+    "capability",
+    "document",
+    "document_type",
+    "tags",
+    "expected",
+    "must_not_extract",
+    "risk",
+    "notes",
+}
+
 
 def load_fixtures() -> list[Fixture]:
     fixtures: list[Fixture] = []
@@ -81,6 +96,17 @@ def load_fixtures() -> list[Fixture]:
                 raise RuntimeError(
                     f"{manifest.name}:{line_number} is not valid JSON: {exc}"
                 ) from None
+            unknown = set(row) - _KNOWN_KEYS
+            if unknown:
+                # Silently ignoring an unrecognised key means a typo in
+                # `must_not_extract` deletes that fixture's prohibition and the suite
+                # reports a pass. For the injection fixtures that is a zero-tolerance
+                # gate quietly switching itself off.
+                raise RuntimeError(
+                    f"{manifest.name}:{line_number} has unknown key(s) {sorted(unknown)}. "
+                    f"Known keys: {sorted(_KNOWN_KEYS)}. A misspelled key is silently "
+                    "dropped, which turns a prohibition into a pass."
+                )
             fixtures.append(
                 Fixture(
                     id=row["id"],

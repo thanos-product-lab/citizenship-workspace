@@ -3,7 +3,9 @@
 - ``/health/live``      — the process is up. No dependencies touched.
 - ``/health/ready``     — dependencies (Postgres, Redis) are reachable, and the AI
   provider is *configured*. Returns 503 when any check fails.
-- ``/health/ai-probe``  — makes one real model call. Secret-gated, off by default.
+- ``/health/ai-probe``  — makes one real model call. Secret-gated, off by default,
+  and excluded from the OpenAPI schema: the 404 hides whether it is *enabled*, which
+  a published route listing would give away for free.
 
 **Readiness reports AI configuration, not AI reachability**, and the distinction is
 deliberate. A live model call on every readiness probe would bill the account for
@@ -72,7 +74,7 @@ def ready(response: Response) -> ReadyResponse:
     return ReadyResponse(status="ready" if ok else "not_ready", checks=checks)
 
 
-@router.post("/health/ai-probe", response_model=ProbeResponse)
+@router.post("/health/ai-probe", response_model=ProbeResponse, include_in_schema=False)
 def ai_probe(
     settings: Annotated[Settings, Depends(get_settings)],
     x_probe_secret: Annotated[str, Header()] = "",
@@ -90,9 +92,15 @@ def ai_probe(
         # money-spending route that is on unless configured off is the wrong way
         # round, and 404 rather than 403 avoids advertising that it exists.
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
-    # Constant-time: the comparison is against a secret, and `==` on strings leaks
-    # its length and prefix through timing.
-    if not secrets.compare_digest(x_probe_secret, settings.ai_probe_secret):
+    # Compared as *bytes*, constant-time. `==` on strings leaks length and prefix
+    # through timing, and `compare_digest` on `str` raises TypeError for non-ASCII —
+    # which Starlette will hand it, because it decodes headers as latin-1. One 0xFF
+    # byte in the header was therefore an unauthenticated 500, and worse than noise:
+    # a disabled probe 404s *before* this line, so the 500 told an anonymous caller
+    # that AI_PROBE_SECRET is set, which is exactly what the 404-not-403 above hides.
+    if not secrets.compare_digest(
+        x_probe_secret.encode("latin-1", "ignore"), settings.ai_probe_secret.encode()
+    ):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="probe_secret_invalid")
 
     try:

@@ -53,7 +53,19 @@ class CapabilityConfig:
         capability, and one place to change them is what makes the task-deadline
         arithmetic in `service.py` checkable.
         """
-        input_price, output_price = _PRICES.get(self.model, (0.0, 0.0))
+        if self.model not in _PRICES:
+            # Raise rather than default to zero. `_PRICES.get(model, (0.0, 0.0))`
+            # made every call by an unpriced model cost nothing, so the ledger never
+            # rose and the daily ceiling could never be reached — a fail-open in the
+            # one control that bounds the bill, triggered by the ordinary act of
+            # registering a capability with a new model.
+            raise RuntimeError(
+                f"{self.capability.value} is registered with model {self.model!r}, which has "
+                "no entry in _PRICES. A model with no price computes a cost of zero, and a "
+                "spend ceiling that reads a ledger of zeroes is not a ceiling. Add the price "
+                "(and verify it against the provider's current list) before using the model."
+            )
+        input_price, output_price = _PRICES[self.model]
         return ModelConfig(
             model=self.model,
             timeout_seconds=settings.ai_request_timeout_seconds,

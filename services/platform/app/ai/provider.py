@@ -22,6 +22,13 @@ something that does not exist in the request.
 which picks it from the classifier's closed enum — a separate, schema-constrained
 call. Architecture §23.4's "change output schemas".
 
+**Celery's own deadline is never swallowed.** `SoftTimeLimitExceeded` derives from
+`Exception`, so the broad handler below caught it, classified it as an ordinary
+failure and *continued* — issuing up to two more real, billable calls after the task
+had been told to stop, then dying to the hard limit before any of them could be
+recorded. `evidence/extraction.py:106` documents the identical bug from M7; this is
+the same mistake in a new module, found by review rather than by a test.
+
 **A terminal failure is not retried.** The spike's first live run hit
 `insufficient_quota` and this adapter's ancestor retried it three times, turning a
 1.8s named failure into a 5.4s anonymous one (AI_SPIKE_FINDINGS §5). No retry adds
@@ -40,6 +47,7 @@ from dataclasses import dataclass
 from typing import Protocol
 
 import structlog
+from celery.exceptions import SoftTimeLimitExceeded
 from pydantic import BaseModel
 
 from app.ai.domain import Capability, ModelRunStatus
@@ -67,6 +75,10 @@ class ModelConfig:
     timeout_seconds: float
     max_attempts: int
     temperature: float = 0.0
+    #: Hard cap on one response, so the per-call cost has a stated bound rather than
+    #: an inherited one. Generous against what extraction actually returns (the M8
+    #: spike's largest output was ~120 tokens) and small enough to bound a runaway.
+    max_output_tokens: int = 4096
     #: USD per million tokens, input and output. Carried on the config rather than
     #: looked up globally so that a `ModelRun`'s cost is computed from the same
     #: object that chose the model — a price table that can drift from the model it
@@ -82,12 +94,16 @@ class ModelConfig:
 
 
 @dataclass(frozen=True)
-class ProviderResult:
+class ProviderResult[T: BaseModel]:
     """What one invocation produced. Always a verdict: `status` is never absent, and
-    `parsed` is populated if and only if `status is SUCCEEDED`."""
+    `parsed` is populated if and only if `status is SUCCEEDED`.
+
+    Generic over the capability's schema so the type survives all the way out to the
+    caller. Without it `invoke` has to cast, and a cast in the one function every
+    model call passes through is a cast on the claim path."""
 
     status: ModelRunStatus
-    parsed: BaseModel | None
+    parsed: T | None
     latency_ms: int
     input_tokens: int
     output_tokens: int
@@ -97,17 +113,34 @@ class ProviderResult:
     #: can quote the request body, and the request body is the document.
     failure_class: str | None
 
+    def __post_init__(self) -> None:
+        # Enforced rather than documented. A `SUCCEEDED` with nothing in hand would
+        # make `Invocation.succeeded` true with no output, and an extractor could
+        # reasonably read that as "the model found no journeys" — absence reported as
+        # a negative finding, which is directive 7's failure mode exactly.
+        if (self.status is ModelRunStatus.SUCCEEDED) != (self.parsed is not None):
+            raise ValueError(
+                f"ProviderResult inconsistent: status={self.status.value} with "
+                f"parsed={'set' if self.parsed is not None else 'None'}. Output is "
+                "present if and only if the call succeeded."
+            )
+
 
 class AIProvider(Protocol):
-    def generate_structured(
+    #: Recorded on every `ModelRun` as provenance. Declared here rather than read
+    #: with `getattr(..., "unknown")`, so a provider that forgets it is a type error
+    #: instead of a run silently attributed to nobody.
+    name: str
+
+    def generate_structured[T: BaseModel](
         self,
         *,
         capability: Capability,
         system: SystemPrompt,
         document: DocumentText,
-        output_schema: type[BaseModel],
+        output_schema: type[T],
         config: ModelConfig,
-    ) -> ProviderResult: ...
+    ) -> ProviderResult[T]: ...
 
 
 #: Provider conditions no retry can resolve. Matched against the exception's string
@@ -140,15 +173,15 @@ class OpenAIProvider:
     def __init__(self, client: object) -> None:
         self._client = client
 
-    def generate_structured(
+    def generate_structured[T: BaseModel](
         self,
         *,
         capability: Capability,
         system: SystemPrompt,
         document: DocumentText,
-        output_schema: type[BaseModel],
+        output_schema: type[T],
         config: ModelConfig,
-    ) -> ProviderResult:
+    ) -> ProviderResult[T]:
         started = time.monotonic()
         input_tokens = output_tokens = 0
         status = ModelRunStatus.FAILED
@@ -160,6 +193,11 @@ class OpenAIProvider:
                     model=config.model,
                     temperature=config.temperature,
                     timeout=config.timeout_seconds,
+                    # An explicit ceiling on one response. Without it the per-call cost
+                    # bound in `spend.py` leans on undocumented provider defaults, and
+                    # "bounded by concurrency x cost-per-call" is only as true as a
+                    # number nobody has written down.
+                    max_completion_tokens=config.max_output_tokens,
                     messages=[
                         # The instruction. Built from a version key; no document
                         # content can reach this string (see prompts.py).
@@ -169,6 +207,13 @@ class OpenAIProvider:
                     ],
                     response_format=output_schema,
                 )
+            except SoftTimeLimitExceeded:
+                # Must pass through, for the reason `evidence/extraction.py` records:
+                # it derives from `Exception`, so the handler below classified Celery's
+                # own deadline as a retryable provider fault and carried on calling —
+                # spending money after being told to stop, and dying to the hard limit
+                # before the ledger could record any of it.
+                raise
             except Exception as exc:
                 failure_class = type(exc).__name__
                 terminal = _is_terminal(exc)
@@ -197,7 +242,16 @@ class OpenAIProvider:
             usage = completion.usage
             input_tokens += getattr(usage, "prompt_tokens", 0) or 0
             output_tokens += getattr(usage, "completion_tokens", 0) or 0
-            message = completion.choices[0].message
+            try:
+                message = completion.choices[0].message
+            except (IndexError, AttributeError) as exc:
+                # A response whose shape is not what the SDK contract promises. This
+                # used to raise straight out of the adapter, past the ledger, so the
+                # call was billed and never recorded. It is a malformed response like
+                # any other: retry within the cap, accept nothing.
+                status = ModelRunStatus.INVALID_OUTPUT
+                failure_class = type(exc).__name__
+                continue
 
             if getattr(message, "refusal", None):
                 # A refusal is a verdict, not an error: the provider understood and
@@ -245,16 +299,16 @@ class OpenAIProvider:
         )
 
 
-def _result(
+def _result[T: BaseModel](
     status: ModelRunStatus,
-    parsed: BaseModel | None,
+    parsed: T | None,
     started: float,
     input_tokens: int,
     output_tokens: int,
     attempts: int,
     failure_class: str | None,
     output_hash: str | None = None,
-) -> ProviderResult:
+) -> ProviderResult[T]:
     return ProviderResult(
         status=status,
         parsed=parsed,

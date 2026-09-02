@@ -12,9 +12,14 @@ produced, while this table stays global infrastructure telemetry.
 
 Keeping the case off it buys three properties at once. It has no tenant dimension,
 so RLS on it would be wrong rather than missing. It needs no handling in the
-case-deletion path (Domain §51.1), which is correct for a row that by construction
-holds nothing about a person. And the spend ledger it feeds is a deployment-wide
+case-deletion path (Domain §51.1). And the spend ledger it feeds is a deployment-wide
 number, which is what a spend ceiling has to be.
+
+**One precision about "holds nothing about a person".** `trace_id` is shared with
+case-scoped rows that carry the same value (`evidence/domain.py`,
+`assessments/domain.py`), so before a case is deleted it can be *joined* to that
+case's records. It holds no case reference that survives deletion — the join target
+disappears and deletion stays terminal — which is the accurate form of the claim.
 
 **There is no column here that a prompt, a document, or a model payload could be
 written into.** That is the privacy guarantee (Architecture §20: *"Do not store

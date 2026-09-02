@@ -25,9 +25,38 @@ from app.core.config import LOCAL_ENVIRONMENTS, get_settings
 _log = structlog.get_logger()
 
 
+#: Minimum length for the probe secret. The probe spends real money against the same
+#: deployment-wide ledger as extraction, so a guessed secret does not merely waste a
+#: few dollars — it exhausts the day's ceiling and every user's document processing
+#: hard-stops until 00:00 UTC. There is no rate limiting anywhere in the application,
+#: so the secret is the whole of the gate and its entropy is the whole of its strength.
+_MIN_PROBE_SECRET_LENGTH = 32
+
+
 def check_ai_configuration() -> None:
+    """Validate the AI configuration, or refuse to boot.
+
+    **This guard depends on `ENVIRONMENT` being set**, and an environment that forgot
+    `OPENAI_API_KEY` can equally have forgotten `ENVIRONMENT` — in which case
+    `settings.environment` reads `local` and every check below is skipped. That is the
+    same weakness `check_backing_services` documents about itself, and it has no
+    equivalent of that function's environment-independent second line
+    (`broker_connection_retry_on_startup = False`), because a provider has no
+    connection to fail at boot. The backstop is `/health/ai-probe` plus the deployed
+    smoke: a real call is the only thing that does not depend on a variable being
+    right. Treat this as the *named* failure when the platform is configured enough to
+    give one, not as the whole defence.
+    """
     settings = get_settings()
     local = settings.environment in LOCAL_ENVIRONMENTS
+
+    if settings.ai_probe_secret and len(settings.ai_probe_secret) < _MIN_PROBE_SECRET_LENGTH:
+        raise RuntimeError(
+            f"AI_PROBE_SECRET must be at least {_MIN_PROBE_SECRET_LENGTH} characters. It "
+            "gates an endpoint that spends money against the shared daily ceiling, and "
+            "nothing in this application rate-limits, so a guessable secret is a way to "
+            "stop every user's document processing until the ceiling resets."
+        )
 
     if settings.ai_provider == "fake":
         if not local:
@@ -43,9 +72,12 @@ def check_ai_configuration() -> None:
                 "AI_PROVIDER=openai and supply OPENAI_API_KEY."
             )
         _log.warning("ai.fake_provider_selected", environment=settings.environment)
-        return
+        # Falls through to the bound checks below rather than returning: `just up`
+        # runs on the fake, so returning here meant the two arithmetic checks were
+        # never exercised in the environment developers actually use, and a broken
+        # deadline would first be discovered on a deployment.
 
-    if not settings.openai_api_key and not local:
+    if settings.ai_provider != "fake" and not settings.openai_api_key and not local:
         # Name the variable and what was observed, never the value. A bare "must be
         # set" cannot distinguish the four ways this actually goes wrong on a
         # platform, and those four are the whole diagnostic value of the message.

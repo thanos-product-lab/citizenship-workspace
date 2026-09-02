@@ -48,7 +48,7 @@ def run_probe(
     *,
     settings: Settings,
     trace_id: str | None = None,
-) -> Invocation:
+) -> Invocation[ProbeOutput]:
     return invoke(
         provider,
         capability=Capability.PROVIDER_PROBE,
