@@ -206,7 +206,7 @@ def validate_evidence(
             evidence_item_id=str(evidence_item_id),
         )
         return {"cancelled": True, "reason": "evidence_absent"}
-    except Exception:
+    except Exception as exc:
         # The catch-all exists because of what its absence costs. Anything unnamed above
         # left `run.status = RUNNING` and the item in `EXTRACTING_TEXT` — a state that is
         # in neither the terminal set nor the retryable one, so the client polls forever
@@ -223,7 +223,20 @@ def validate_evidence(
                     code=ProcessingFailureCode.CORRUPT_FILE,
                     summary="Something went wrong reading this file. You can try again.",
                 )
-        _log.exception("evidence.validate_errored", evidence_item_id=str(evidence_item_id))
+        # The class name, not the exception. `_log.exception` renders the message, and a
+        # SQLAlchemy `StatementError` renders `[SQL: ...] [parameters: ...]` — which on
+        # this pipeline means a document's extracted text, or the classifier's reasoning,
+        # in full, in a log aggregator. `hide_parameters` covers the driver's own
+        # rendering and not this one.
+        #
+        # The traceback is what makes an unexpected error diagnosable, and it is kept:
+        # `exc_info` gives frames and line numbers without the exception's own string.
+        _log.error(
+            "evidence.validate_errored",
+            evidence_item_id=str(evidence_item_id),
+            error_class=type(exc).__name__,
+            exc_info=False,
+        )
         raise
     finally:
         structlog.contextvars.unbind_contextvars("trace_id")

@@ -57,12 +57,33 @@ something reachable. Pointing the key the other way would make `model_runs`
 case-scoped, which would require an RLS policy on the spend ledger and put it in the
 case-deletion path — undoing every property ADR-worthy about keeping it global.
 
+## Columns §8 does not have
+
+The RFC's list is also *shorter* than what shipped, and the additions need naming as
+plainly as the removals — CLAUDE.md's precedence rule makes an undocumented extra column
+as much a divergence as a missing one.
+
+- `evidence_item_id` — §8 names only `evidence_file_id`. The item is what a user deletes,
+  what the library lists, and what the RLS policy resolves through; reaching it by joining
+  through the file on every read is a join for a parent that never changes.
+- `model_run_id` — this ADR's subject.
+- `input_characters` — with `input_hash`, enough to distinguish a truncated reading from a
+  whole one without storing either.
+- `classified_category`, `classification_confidence`, `classification_reasoning` — the
+  DocumentClassifier's finding. §8 describes the run's *shape* and leaves what a
+  capability concluded to `ExtractedClaim`, which is right for the extractors: their
+  output is a proposed value a user may confirm into a fact. A category is not. No
+  requirement reads it, no assessment depends on it, and there is nothing in the fact
+  model it could become — so it belongs to the run that produced it, and putting it in the
+  claim tables would mean shipping a claim nobody can review into a milestone whose whole
+  point is that claims are reviewed.
+
 ## Consequences
 
-`EVIDENCE_AND_CLAIM_LIFECYCLE_RFC.md` §8's field list is superseded by this ADR on
-the eleven duplicated columns. The RFC's *intent* — that every extraction is
-independently identifiable, attributable and costed — is preserved exactly; it is
-satisfied through a join rather than through duplication.
+`EVIDENCE_AND_CLAIM_LIFECYCLE_RFC.md` §8's field list is superseded by this ADR on the
+eleven duplicated columns and extended by it on the six above. The RFC's *intent* —
+that every extraction is independently identifiable, attributable and costed — is
+preserved exactly; it is satisfied through a join rather than through duplication.
 
 The join is one hop and is not on any hot path: nothing renders a document library
 page from `model_runs`.

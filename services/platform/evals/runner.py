@@ -171,14 +171,19 @@ def run_classifier(fixtures: list[Fixture]) -> "Report":
     from app.ai.service import AiBudget
     from app.core.config import get_settings
     from app.evidence import extraction
+    from app.shared.db import get_sessionmaker
     from evals.graders import Report, Verdict, grade_classification
 
     settings = get_settings()
+    # The quota check reads `extraction_runs`, and the harness writes none: its runs are
+    # constructed to be graded and never persisted, so every fixture starts from zero.
+    session = get_sessionmaker()()
     results = []
     for fixture in fixtures:
         text = extraction.extract(fixture.document_path.read_bytes()).content
         outcome = classify(
             get_provider(),
+            session,
             case_id=_EVAL_ID,
             evidence_item_id=_EVAL_ID,
             evidence_file_id=_EVAL_ID,
@@ -202,6 +207,7 @@ def run_classifier(fixtures: list[Fixture]) -> "Report":
         ]
         print(f"  {marker} {fixture.id:44s} {result.detail}")
         results.append(result)
+    session.close()
     return Report(results)
 
 
