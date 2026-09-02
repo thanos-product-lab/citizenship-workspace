@@ -207,6 +207,7 @@ def _upload_document(api: Api, user: str, case_id: str, session: Session) -> str
             capability=Capability.DOCUMENT_CLASSIFIER.value,
             status=ExtractionRunStatus.SUCCEEDED,
             input_text="synthetic content",
+            started_at=datetime.now(UTC),
             classified_category=ClassifiedCategory.TRAVEL_SUPPORT.value,
             classification_confidence=0.97,
             classification_reasoning="synthetic",
