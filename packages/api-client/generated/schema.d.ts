@@ -827,8 +827,6 @@ export interface components {
             proposed_category?: string | null;
             /** Proposed Category Confidence */
             proposed_category_confidence?: number | null;
-            /** Proposed Category Reasoning */
-            proposed_category_reasoning?: string | null;
             /** Revision */
             revision: number;
             /** Size Bytes */

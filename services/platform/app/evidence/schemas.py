@@ -133,9 +133,14 @@ class EvidenceResponse(BaseModel):
     #: How well the text fitted the category the model chose. Rendered as a qualifier,
     #: never as a gate — nothing in the product branches on it (RFC §36).
     proposed_category_confidence: float | None = None
-    #: The model's one sentence naming what decided it. Model-controlled text bounded
-    #: at 300 characters, and the only such text this response carries.
-    proposed_category_reasoning: str | None = None
+    # `proposed_category_reasoning` is deliberately **not** projected yet.
+    #
+    # It is the highest-risk field the classifier produces — free text from a model that
+    # has just read an untrusted document — and nothing renders it. Shipping it to the
+    # browser for no reader is the surface M7 removed the extraction excerpt to avoid:
+    # sitting in a response, in the Next.js server's memory, and in an error reporter's
+    # breadcrumbs, for a screen that does not exist. Slice 3b adds it back with the
+    # review surface, shown with explicit attribution rather than in the product's voice.
     #: Why analysis produced no category, in language someone can act on: a spent daily
     #: budget and a failed call have the same processing state but different remedies,
     #: and "processing failed" would send someone to re-upload a document that is fine.
@@ -175,9 +180,6 @@ class EvidenceResponse(BaseModel):
             proposed_category=classification.classified_category if classification else None,
             proposed_category_confidence=(
                 classification.classification_confidence if classification else None
-            ),
-            proposed_category_reasoning=(
-                classification.classification_reasoning if classification else None
             ),
             analysis_note=(
                 SUMMARY_FOR_STATUS.get(ExtractionRunStatus(classification.status))

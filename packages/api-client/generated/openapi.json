@@ -592,17 +592,6 @@
             ],
             "title": "Proposed Category Confidence"
           },
-          "proposed_category_reasoning": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Proposed Category Reasoning"
-          },
           "revision": {
             "title": "Revision",
             "type": "integer"
