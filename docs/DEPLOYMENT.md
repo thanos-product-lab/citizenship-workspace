@@ -24,10 +24,30 @@ Prerequisites: a Railway account, a Vercel account, and your Clerk keys.
    - `UPLOAD_TOKEN_SECRET` = 32+ random characters. **The API refuses to boot without
      it** whenever `ENVIRONMENT` is anything but `local`/`docker`/`test`. Generate one
      with `python -c "import secrets; print(secrets.token_urlsafe(48))"`.
+   - `OPENAI_API_KEY` = your provider key. **Also fatal outside local development**,
+     and needed on the **worker as well as the API** — see the note below.
 
    Then **Settings → Networking → Generate Domain** and note the **API URL**.
    Set the env before the first successful deploy — `/health/ready` needs Postgres
    and Redis reachable, or the health check fails.
+
+   > **Why `OPENAI_API_KEY` is fatal rather than a warning.** From M8 every uploaded
+   > document reaches an extraction stage that calls a model. Without a key that stage
+   > fails for every document while `/health/ready` keeps answering 200, because
+   > readiness reports configuration presence and a missing key is not an unreachable
+   > dependency — it is a request-time failure that looks like nothing at all. That is
+   > the shape of the M7 Redis incident, where the worker retried politely for fifteen
+   > minutes reporting itself healthy.
+   >
+   > The cost of this choice is real and worth stating: the deterministic product
+   > (M1–M7) works perfectly well without a model, so a missing key takes down more
+   > than it protects. It is fatal anyway because the alternative is a deployment that
+   > accepts uploads it can never process, and because the failure it produces names
+   > the variable, the environment, and both services that need it.
+   >
+   > **Set it before deploying M8.** A deployment that predates M8 will crash-loop on
+   > the first deploy that includes it — `restartPolicyMaxRetries` is 10, so you get
+   > eleven identical tracebacks and then a stopped service.
 
    > **Why `UPLOAD_TOKEN_SECRET` is fatal rather than a warning.** It signs the token
    > that carries an evidence upload's storage key back from the browser (ADR-0019).
@@ -195,9 +215,15 @@ whose credentials can create buckets is an application whose credentials can cre
    ```
    uv run celery -A worker.celery_app.celery_app worker --beat --loglevel info
    ```
-   Give it `DATABASE_URL`, `REDIS_URL` (same references), `ENVIRONMENT=production` and
-   the storage variables from the section below. It needs no domain, and **no Clerk or
-   upload-token variables**: it never verifies a token or signs one.
+   Give it `DATABASE_URL`, `REDIS_URL` (same references), `ENVIRONMENT=production`,
+   `OPENAI_API_KEY`, and the storage variables from the section below. It needs no
+   domain, and **no Clerk or upload-token variables**: it never verifies a token or
+   signs one.
+
+   The worker runs `check_ai_configuration()` too (`worker/celery_app.py`), and
+   deliberately: from M8 slice 2 the worker is where every real model call happens, so
+   a worker booting clean without a key would be the API's problem moved somewhere
+   nobody is looking.
 
    **Set the variables before the first deploy, and confirm the running deployment has
    them** — not just the dashboard. Railway injects variables at deploy time, so a

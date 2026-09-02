@@ -20,5 +20,15 @@ RUN if [ -f uv.lock ]; then uv sync --frozen --no-dev; else uv sync --no-dev; fi
 COPY services/platform/ ./
 
 EXPOSE 8000
-# $PORT is provided by the platform (Railway); defaults to 8000 locally.
-CMD ["sh", "-c", "uv run uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
+# `--no-sync` is load-bearing, not a micro-optimisation. Plain `uv run` re-resolves the
+# environment against pyproject.toml at *start* time and installs the dev group, so
+# every container boot downloaded mypy, ruff, hypothesis and pygments — ~28MB of test
+# tooling into a production image, on every restart, over the network. Visible in the
+# deploy log as "Installed 18 packages" seconds before the app starts.
+#
+# Three costs, and the third is the one that matters: it is slow, it puts developer
+# tooling in production, and it makes a *network fetch* a prerequisite for a process
+# that has already been built. A registry outage would then stop a container that has
+# everything it needs on disk. The image was built with `--no-dev` above; this makes
+# the runtime honour that rather than quietly undo it.
+CMD ["sh", "-c", "uv run --no-sync uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
