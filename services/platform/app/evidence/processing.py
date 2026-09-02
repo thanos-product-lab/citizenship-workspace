@@ -29,6 +29,11 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.ai import classification_service
+from app.ai.classifier import ClassifiedCategory
+from app.ai.factory import get_provider
+from app.ai.provider import AIProvider
+from app.ai.service import AiBudget
 from app.core.config import get_settings
 from app.core.storage import StorageAdapter, StorageError
 from app.evidence import extraction, validation
@@ -179,6 +184,7 @@ def _current_file(session: Session, evidence_item_id: uuid.UUID) -> EvidenceFile
 def validate_evidence(
     session: Session,
     storage: StorageAdapter,
+    provider: AIProvider | None = None,
     *,
     evidence_item_id: uuid.UUID,
     idempotency_key: str,
@@ -298,6 +304,7 @@ def validate_evidence(
         return _extract(
             session,
             storage,
+            provider,
             item=item,
             file=file,
             run=run,
@@ -345,6 +352,7 @@ def validate_evidence(
 def _extract(
     session: Session,
     storage: StorageAdapter,
+    provider: AIProvider | None,
     *,
     item: EvidenceItem,
     file: EvidenceFile,
@@ -413,14 +421,28 @@ def _extract(
     _record_text(session, file_id=file.id, found=found)
 
     if found.has_text_layer:
-        run.succeed(at=at)
-        item.processing_status = EvidenceProcessingStatus.COMPLETED.value
-    else:
-        # A real, readable document that happens to have no text layer — a scan. Reading
-        # it needs OCR or a multimodal model, both M8. `PARTIALLY_COMPLETED` says exactly
-        # that: the work was done and there was nothing to find.
-        run.partial(at=at)
-        item.processing_status = EvidenceProcessingStatus.PARTIALLY_COMPLETED.value
+        # The text is stored *before* the model is asked anything, and that ordering is
+        # the point: if classification fails, is refused, or the worker dies mid-call,
+        # the deterministic reading survives and the document does not have to be read
+        # again. M7's work is never contingent on M8's.
+        return _analyse(
+            session,
+            provider,
+            item=item,
+            file=file,
+            run=run,
+            found=found,
+            detected=detected,
+            trace_id=trace_id,
+        )
+    # A real, readable document that happens to have no text layer — a scan. Reading it
+    # needs OCR or a multimodal model, and neither is in M8's scope.
+    # `PARTIALLY_COMPLETED` says exactly that: the work was done and there was nothing
+    # to find. There is also nothing to classify — a classifier given an empty string
+    # would answer AMBIGUOUS, which would look like a finding about the document rather
+    # than about the absence of any text to look at.
+    run.partial(at=at)
+    item.processing_status = EvidenceProcessingStatus.PARTIALLY_COMPLETED.value
     item.updated_at = at
     session.commit()
 
@@ -433,6 +455,105 @@ def _extract(
         character_count=found.character_count,
         truncated=found.truncated,
         has_text_layer=found.has_text_layer,
+        detected_media_type=detected,
+        trace_id=trace_id,
+    )
+    return ProcessingOutcome(
+        run_id=run.id,
+        processing_status=EvidenceProcessingStatus(item.processing_status),
+        failure_code=None,
+    )
+
+
+def _analyse(
+    session: Session,
+    provider: AIProvider | None,
+    *,
+    item: EvidenceItem,
+    file: EvidenceFile,
+    run: EvidenceProcessingRun,
+    found: extraction.ExtractedText,
+    detected: str | None,
+    trace_id: str | None,
+) -> ProcessingOutcome:
+    """Ask the classifier what kind of document this is, and record the answer.
+
+    A fourth commit, after validation's two and extraction's one. `ANALYSING` is
+    published *before* the call for the same reason `EXTRACTING_TEXT` is: a state that
+    only becomes true after the slow thing finishes describes the past.
+
+    **Every outcome here is a state.** `classification_service.classify` returns rather
+    than raises on a refused budget, an exhausted deadline and a provider failure alike,
+    so there is no exception this function can forget to catch and no way for a document
+    to be left in `ANALYSING` with nothing left to move it.
+
+    **The user's category is untouched.** The classifier's answer goes on the
+    `ExtractionRun`; `item.category` is what the person chose at upload and stays theirs.
+    A disagreement is a signal for the review surface in slice 3b, not a correction to
+    apply — and there is no assignment to `item.category` anywhere below.
+    """
+    item.processing_status = EvidenceProcessingStatus.ANALYSING.value
+    item.updated_at = utcnow()
+    session.commit()
+
+    settings = get_settings()
+    outcome = classification_service.classify(
+        # Taken as a parameter, the way `storage` is, rather than reached for through a
+        # module global. A pipeline that fetches its own provider is a pipeline every
+        # test has to remember to neutralise, and the one that forgets makes a real,
+        # billable call — which is a bad way to find out.
+        provider or get_provider(),
+        case_id=item.case_id,
+        evidence_item_id=item.id,
+        evidence_file_id=file.id,
+        processing_run_id=run.id,
+        document_text=found.content,
+        budget=AiBudget(seconds=settings.ai_task_deadline_seconds),
+        settings=settings,
+        trace_id=trace_id,
+    )
+    session.add(outcome.run)
+
+    at = utcnow()
+    if outcome.category is ClassifiedCategory.UNSUPPORTED:
+        # A real, readable document of a kind this workspace does not handle. The same
+        # state a wrong file type reaches, because the user's remedy is the same one:
+        # this is not a document we can do anything with. MVP §8.10: unsupported
+        # documents do not create trusted facts.
+        run.succeed(at=at)
+        item.processing_status = EvidenceProcessingStatus.UNSUPPORTED.value
+    elif outcome.produced_an_answer:
+        # Includes AMBIGUOUS, and deliberately. Processing genuinely completed — the
+        # document was read, analysed, and the finding is that its type is unclear.
+        # Folding that into PARTIALLY_COMPLETED would make one state mean two different
+        # things with two different remedies ("this is a scan" and "we cannot tell what
+        # this is"), and the user cannot act on a state that ambiguous about itself.
+        run.succeed(at=at)
+        item.processing_status = EvidenceProcessingStatus.COMPLETED.value
+    else:
+        # Read but not analysed. Honestly partial: M7's work stands and M8's did not
+        # happen. The *reason* is not copied onto the processing run — it is already on
+        # the `ExtractionRun`, whose status distinguishes a spent budget from a provider
+        # failure, and the API projects a sentence from that. Writing it into
+        # `failure_summary` would put a non-failure in a column named for failures and
+        # give two rows the chance to disagree about one event.
+        run.partial(at=at)
+        item.processing_status = EvidenceProcessingStatus.PARTIALLY_COMPLETED.value
+
+    item.updated_at = at
+    session.commit()
+
+    _log.info(
+        "evidence.analysed",
+        evidence_item_id=str(item.id),
+        run_id=str(run.id),
+        extraction_run_id=str(outcome.run.id),
+        # The category and the run status. Never the reasoning, never the text.
+        category=outcome.category.value if outcome.category else None,
+        extraction_status=outcome.run.status,
+        page_count=found.page_count,
+        character_count=found.character_count,
+        truncated=found.truncated,
         detected_media_type=detected,
         trace_id=trace_id,
     )
