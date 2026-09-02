@@ -26,6 +26,36 @@ export const CATEGORY_LABELS: Record<string, string> = {
   UNKNOWN: "Unknown",
 };
 
+/**
+ * How the automatic analysis described a document, when it differs from the category the
+ * user chose.
+ *
+ * Two extra values the upload form does not offer, because they are answers the *model*
+ * can give and the user cannot: it read the document and could not tell (`AMBIGUOUS`), or
+ * it read the document and it is not one of the four kinds this workspace handles
+ * (`UNSUPPORTED`). Both are honest outcomes rather than failures.
+ */
+export const PROPOSED_CATEGORY_LABELS: Record<string, string> = {
+  ...CATEGORY_LABELS,
+  AMBIGUOUS: "Could not tell",
+  UNSUPPORTED: "Not a supported document",
+};
+
+/**
+ * What the analysis said, or null when there is nothing worth saying.
+ *
+ * Returns null when the analysis **agrees** with the user, and that is a deliberate
+ * absence rather than an oversight. Printing "Analysis agrees" on every row of a
+ * twenty-document library is twenty lines of noise a screen-reader user hears in full,
+ * and it trains people to skim past the one row where the two differ — which is the only
+ * row this is for.
+ */
+export function disagreement(item: EvidenceItem): string | null {
+  const proposed = item.proposed_category;
+  if (!proposed || proposed === item.category) return null;
+  return PROPOSED_CATEGORY_LABELS[proposed] ?? proposed;
+}
+
 /** Sizes in the units a person uses, not bytes. */
 export function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;

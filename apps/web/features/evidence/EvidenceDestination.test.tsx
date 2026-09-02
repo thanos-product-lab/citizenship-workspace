@@ -41,6 +41,10 @@ function anItem(overrides: Record<string, unknown> = {}) {
     character_count: null,
     text_truncated: false,
     can_retry: false,
+    proposed_category: null,
+    proposed_category_confidence: null,
+    proposed_category_reasoning: null,
+    analysis_note: null,
     uploaded_at: "2026-08-20T10:00:00Z",
     created_at: "2026-08-20T10:00:00Z",
     revision: 1,
@@ -820,5 +824,88 @@ describe("deleting a document", () => {
 
     expect(await screen.findByRole("button", { name: /Delete Athens booking/ })).toBeTruthy();
     expect(screen.getByRole("button", { name: /Delete Return flight/ })).toBeTruthy();
+  });
+});
+
+describe("what the analysis proposed", () => {
+  it("says nothing when the analysis agrees with the user", async () => {
+    // Deliberately silent. "Analysis agrees" on every row of a twenty-document library
+    // is twenty lines a screen-reader user hears in full, and it trains people to skim
+    // past the one row where the two differ — which is the only row this is for.
+    get.mockResolvedValue({
+      data: aLibrary([
+        anItem({
+          processing_status: "COMPLETED",
+          category: "TRAVEL_SUPPORT",
+          proposed_category: "TRAVEL_SUPPORT",
+          proposed_category_confidence: 0.98,
+        }),
+      ]),
+    });
+    renderWithQuery(<EvidenceDestination caseId={CASE_ID} />);
+
+    const row = within(await screen.findByRole("row", { name: /Athens booking/ }));
+    expect(row.getByText("Travel booking")).toBeTruthy();
+    expect(row.queryByText(/Analysis suggests/)).toBeNull();
+  });
+
+  it("shows the disagreement without replacing the user's own category", async () => {
+    get.mockResolvedValue({
+      data: aLibrary([
+        anItem({
+          processing_status: "COMPLETED",
+          category: "TRAVEL_SUPPORT",
+          proposed_category: "ENGLISH_LANGUAGE",
+          proposed_category_confidence: 0.91,
+        }),
+      ]),
+    });
+    renderWithQuery(<EvidenceDestination caseId={CASE_ID} />);
+
+    // Both are present. The user's answer is not corrected, moved or struck through:
+    // the model proposes, the person decides.
+    const row = within(await screen.findByRole("row", { name: /Athens booking/ }));
+    expect(row.getByText("Travel booking")).toBeTruthy();
+    expect(row.getByText(/Analysis suggests: English language/)).toBeTruthy();
+  });
+
+  it("names the two outcomes only the analysis can give", async () => {
+    get.mockResolvedValue({
+      data: aLibrary([
+        anItem({
+          processing_status: "COMPLETED",
+          category: "TRAVEL_SUPPORT",
+          proposed_category: "AMBIGUOUS",
+        }),
+      ]),
+    });
+    renderWithQuery(<EvidenceDestination caseId={CASE_ID} />);
+
+    // Plain English, not the enum name: "AMBIGUOUS" tells a user nothing about what to
+    // do, and it is the model's vocabulary rather than theirs.
+    const row = within(await screen.findByRole("row", { name: /Athens booking/ }));
+    expect(row.getByText(/Analysis suggests: Could not tell/)).toBeTruthy();
+  });
+
+  it("explains a spent budget rather than blaming the document", async () => {
+    // The failure this prevents: telling someone with a perfectly good document to try
+    // a different file, when the truth is the daily limit was reached and tomorrow it
+    // will work.
+    get.mockResolvedValue({
+      data: aLibrary([
+        anItem({
+          processing_status: "PARTIALLY_COMPLETED",
+          page_count: 1,
+          pages_read: 1,
+          character_count: 800,
+          analysis_note:
+            "Automatic analysis is paused until tomorrow because today's processing limit was reached. Your document was read and stored, and nothing was lost.",
+        }),
+      ]),
+    });
+    renderWithQuery(<EvidenceDestination caseId={CASE_ID} />);
+
+    const row = within(await screen.findByRole("row", { name: /Athens booking/ }));
+    expect(row.getByText(/paused until tomorrow/)).toBeTruthy();
   });
 });

@@ -14,6 +14,7 @@ import { cardStyle, errorTextStyle, linkButtonStyle, secondaryButtonStyle } from
 
 import {
   CATEGORY_LABELS,
+  disagreement,
   TERMINAL_PROCESSING_STATES,
   type EvidenceItem,
 } from "./library";
@@ -353,6 +354,12 @@ export function EvidenceDestination({ caseId }: { caseId: string }): JSX.Element
  */
 function stateNote(item: EvidenceItem): string | null {
   if (item.failure_reason) return item.failure_reason;
+  // Why analysis produced nothing, in the server's words. Checked before the generic
+  // "no text found" below because the two are different findings with different
+  // remedies: a scan has no text to read, whereas a spent daily budget means the text
+  // was read fine and the analysis will work tomorrow. Telling someone with a perfectly
+  // good document to try a different file is the failure this branch prevents.
+  if (item.analysis_note) return item.analysis_note;
   if (item.processing_status === "PARTIALLY_COMPLETED") {
     // Read from the token rather than repeated here: the same sentence written twice in
     // two packages is two sentences that can drift.
@@ -485,7 +492,29 @@ function EvidenceTable({
                   </span>
                 ) : null}
               </th>
-              <td role="cell">{CATEGORY_LABELS[item.category] ?? item.category}</td>
+              <td role="cell">
+                {CATEGORY_LABELS[item.category] ?? item.category}
+                {/* The model's reading of the document, shown *only* where it differs
+                    from the user's own answer, and never replacing it. The category is
+                    the person's; a disagreement is information for them, not a
+                    correction to apply on their behalf — nothing in the server writes
+                    this over `item.category` either.
+
+                    Text, not a colour or an icon: "these two disagree" is a sentence,
+                    and a coloured dot would need a legend to say the same thing. */}
+                {disagreement(item) ? (
+                  <span
+                    style={{
+                      display: "block",
+                      color: "var(--cw-text-muted)",
+                      fontSize: "var(--cw-text-xs)",
+                      fontWeight: "var(--cw-weight-regular)",
+                    }}
+                  >
+                    Analysis suggests: {disagreement(item)}
+                  </span>
+                ) : null}
+              </td>
               <td role="cell">
                 {/* No `withMeaning` here: the caption says it once. Repeating it per
                     row means a screen-reader user hears the same sentence twenty times
