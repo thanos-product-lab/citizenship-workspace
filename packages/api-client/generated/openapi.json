@@ -456,6 +456,17 @@
       },
       "EvidenceResponse": {
         "properties": {
+          "analysis_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Analysis Note"
+          },
           "can_retry": {
             "default": false,
             "title": "Can Retry",
@@ -558,6 +569,39 @@
           },
           "processing_status": {
             "$ref": "#/components/schemas/EvidenceProcessingStatus"
+          },
+          "proposed_category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Proposed Category"
+          },
+          "proposed_category_confidence": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Proposed Category Confidence"
+          },
+          "proposed_category_reasoning": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Proposed Category Reasoning"
           },
           "revision": {
             "title": "Revision",

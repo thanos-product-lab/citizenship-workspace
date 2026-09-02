@@ -19,6 +19,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
+from app.ai.extraction_run import SUMMARY_FOR_STATUS, ExtractionRun, ExtractionRunStatus
 from app.evidence.domain import (
     EvidenceCategory,
     EvidenceFile,
@@ -122,6 +123,24 @@ class EvidenceResponse(BaseModel):
     #: and computed by the same `may_retry` the retry command guards with, so the button
     #: cannot be offered for something the command will refuse.
     can_retry: bool = False
+
+    # --- what the classifier proposed (M8 slice 2) --------------------------------
+    #: The model's view of what kind of document this is. **A proposal, never a
+    #: correction.** `category` above is what the user chose at upload and is
+    #: untouched by analysis; these two disagreeing is a thing to show a person, not a
+    #: thing to resolve on their behalf. Null until a document has been analysed.
+    proposed_category: str | None = None
+    #: How well the text fitted the category the model chose. Rendered as a qualifier,
+    #: never as a gate — nothing in the product branches on it (RFC §36).
+    proposed_category_confidence: float | None = None
+    #: The model's one sentence naming what decided it. Model-controlled text bounded
+    #: at 300 characters, and the only such text this response carries.
+    proposed_category_reasoning: str | None = None
+    #: Why analysis produced no category, in language someone can act on: a spent daily
+    #: budget and a failed call have the same processing state but different remedies,
+    #: and "processing failed" would send someone to re-upload a document that is fine.
+    analysis_note: str | None = None
+
     media_type: str
     size_bytes: int
     original_filename: str | None
@@ -136,6 +155,7 @@ class EvidenceResponse(BaseModel):
         file: EvidenceFile,
         run: EvidenceProcessingRun | None = None,
         text: EvidenceFileText | None = None,
+        classification: "ExtractionRun | None" = None,
     ) -> "EvidenceResponse":
         status = EvidenceProcessingStatus(item.processing_status)
         return cls(
@@ -152,6 +172,18 @@ class EvidenceResponse(BaseModel):
             character_count=text.character_count if text else None,
             text_truncated=text.truncated if text else False,
             can_retry=may_retry(status, run.failure_code if run else None),
+            proposed_category=classification.classified_category if classification else None,
+            proposed_category_confidence=(
+                classification.classification_confidence if classification else None
+            ),
+            proposed_category_reasoning=(
+                classification.classification_reasoning if classification else None
+            ),
+            analysis_note=(
+                SUMMARY_FOR_STATUS.get(ExtractionRunStatus(classification.status))
+                if classification
+                else None
+            ),
             media_type=file.media_type,
             size_bytes=file.size_bytes,
             original_filename=file.original_filename,

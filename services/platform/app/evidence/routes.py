@@ -20,6 +20,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 
+from app.ai.repository import ExtractionRunRepository
 from app.auth.dependencies import get_current_user
 from app.auth.schemas import CurrentUser
 from app.cases.dependencies import require_case_access
@@ -94,7 +95,10 @@ def retry_processing(
     )
     run = EvidenceRepository.latest_run(session, evidence_item_id=item.id)
     text = EvidenceRepository.text_for_file(session, evidence_file_id=file.id)
-    return EvidenceResponse.from_domain(item, file, run, text)
+    classification = ExtractionRunRepository.latest_classification(
+        session, evidence_item_id=item.id
+    )
+    return EvidenceResponse.from_domain(item, file, run, text, classification)
 
 
 @router.delete("/{evidence_item_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -135,9 +139,21 @@ def list_evidence(
     # which is exactly what `truncated` exists to prevent. `texts_for_case` was written
     # for this call and sat unused.
     texts = EvidenceRepository.texts_for_case(session, case_id=case.id)
+    # One query for the whole case rather than one per document: the library renders
+    # every item, and a per-row read here is the N+1 that turns a page load into a
+    # hundred round trips.
+    classifications = ExtractionRunRepository.latest_classifications_for_case(
+        session, case_id=case.id
+    )
     return EvidenceLibraryResponse(
         items=[
-            EvidenceResponse.from_domain(item, file, runs.get(item.id), texts.get(file.id))
+            EvidenceResponse.from_domain(
+                item,
+                file,
+                runs.get(item.id),
+                texts.get(file.id),
+                classifications.get(item.id),
+            )
             for item, file in rows
         ],
         max_upload_bytes=get_settings().max_upload_bytes,
@@ -153,7 +169,10 @@ def get_evidence(
     item, file = service.get_evidence(session, case=case, evidence_item_id=evidence_item_id)
     run = EvidenceRepository.latest_run(session, evidence_item_id=item.id)
     text = EvidenceRepository.text_for_file(session, evidence_file_id=file.id)
-    return EvidenceResponse.from_domain(item, file, run, text)
+    classification = ExtractionRunRepository.latest_classification(
+        session, evidence_item_id=item.id
+    )
+    return EvidenceResponse.from_domain(item, file, run, text, classification)
 
 
 @router.get("/{evidence_item_id}/content", response_model=EvidenceContentResponse)

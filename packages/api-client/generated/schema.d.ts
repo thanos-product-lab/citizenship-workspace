@@ -782,6 +782,8 @@ export interface components {
         EvidenceProcessingStatus: "UPLOADED" | "VALIDATING" | "EXTRACTING_TEXT" | "ANALYSING" | "AWAITING_CONFIRMATION" | "COMPLETED" | "PARTIALLY_COMPLETED" | "FAILED" | "UNSUPPORTED";
         /** EvidenceResponse */
         EvidenceResponse: {
+            /** Analysis Note */
+            analysis_note?: string | null;
             /**
              * Can Retry
              * @default false
@@ -821,6 +823,12 @@ export interface components {
             /** Pages Read */
             pages_read?: number | null;
             processing_status: components["schemas"]["EvidenceProcessingStatus"];
+            /** Proposed Category */
+            proposed_category?: string | null;
+            /** Proposed Category Confidence */
+            proposed_category_confidence?: number | null;
+            /** Proposed Category Reasoning */
+            proposed_category_reasoning?: string | null;
             /** Revision */
             revision: number;
             /** Size Bytes */
