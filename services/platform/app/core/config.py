@@ -76,6 +76,35 @@ class Settings(BaseSettings):
     # controls what it declares, not what the store reports).
     max_upload_bytes: int = 20 * 1024 * 1024
 
+    # --- AI provider -------------------------------------------------------------
+    # Empty by default so the app imports without secrets, the same shape as Clerk
+    # above. `check_ai_configuration` refuses to boot deployed without it.
+    openai_api_key: str = ""
+    ai_provider: Literal["openai", "fake"] = "openai"
+
+    # One provider call. 5x the P95 and 4.6x the slowest single call the spike
+    # observed (AI_SPIKE_FINDINGS §4) — generous for a slow-but-honest response.
+    ai_request_timeout_seconds: float = 15.0
+    # The bound that actually matters. A per-request timeout bounds one call; a task
+    # makes several, and it is the *task* Celery kills. 45s leaves 15s of headroom
+    # under `task_soft_time_limit = 60`, so a hung provider fails here with a state
+    # to show for it rather than by the worker being killed mid-write.
+    ai_task_deadline_seconds: float = 45.0
+    # Attempts per invocation, terminal provider errors excluded (see provider.py).
+    ai_max_attempts: int = 3
+
+    # USD per day across the whole deployment, all capabilities, all tenants.
+    # Deliberately low: at the spike's ~$0.00026 per document this is thousands of
+    # documents, so it does not bound ordinary use — it bounds a loop. Reaching it
+    # is a hard stop with a user-visible reason, never a silent skip.
+    ai_daily_spend_ceiling_usd: float = 5.0
+
+    # Shared secret for `POST /health/ai-probe`, which makes a real (tiny) model call
+    # so the deployed smoke can tell a working key from a well-formed one. Unset
+    # disables the endpoint entirely — an unauthenticated route that spends money is
+    # not something to leave on by default.
+    ai_probe_secret: str = ""
+
     @field_validator("database_url")
     @classmethod
     def _use_psycopg_driver(cls, value: str) -> str:

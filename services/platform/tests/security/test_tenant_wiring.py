@@ -50,6 +50,12 @@ TENANT_FREE_ROUTES: frozenset[str] = frozenset(
         # The caller's own identity, straight from the verified token. Touches no
         # case-scoped table.
         "GET /api/v1/me",
+        # Makes one real model call so a deployment can prove its key works. Writes
+        # only `model_runs` and `ai_daily_spend`, which have no tenant dimension by
+        # design (migration 0025), and does so on the ledger's own session rather
+        # than one this handler holds. Gated on a shared secret, not on a user —
+        # there is no tenant to enter.
+        "POST /health/ai-probe",
         # FastAPI's own docs endpoints are Starlette routes, not `APIRoute`s, so they
         # are never in scope here — `test_the_allowlist_names_only_routes_that_exist`
         # refused them when they were listed, which is the guard doing its job.

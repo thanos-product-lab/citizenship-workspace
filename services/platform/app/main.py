@@ -7,6 +7,7 @@ import structlog
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.ai.boot import check_ai_configuration
 from app.api.routes import router as api_router
 from app.applicants.routes import router as route_profile_router
 from app.assessments.routes import (
@@ -95,6 +96,10 @@ def create_app() -> FastAPI:
     # before the health check ever has something to poll — which is what "fail closed"
     # should have looked like the first time.
     check_upload_secret()
+    # Same shape again, and the most easily missed of the three: a missing model key
+    # does not crash anything, it just makes every document fail at the extraction
+    # stage while the API keeps reporting ready.
+    check_ai_configuration()
     # Same reasoning, same place: a Postgres URL that never arrived is a boot failure,
     # not a request-time one. The API would otherwise pass its health check and 500 on
     # every query, which reads as a database outage rather than a missing variable.

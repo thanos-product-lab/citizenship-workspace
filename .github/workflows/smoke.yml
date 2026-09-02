@@ -2,6 +2,12 @@ name: Smoke
 
 # Runs the Playwright smoke against the deployed environment. Set the repo
 # secrets SMOKE_BASE_URL (web) and SMOKE_API_URL (API) once deployed.
+#
+# SMOKE_AI_PROBE_SECRET is optional and must match the API's AI_PROBE_SECRET. With it,
+# the smoke makes one real model call — the only check that distinguishes a working key
+# from a well-formed one, and the reason it runs on a schedule rather than per commit:
+# it costs a fraction of a penny each time, and a revoked key or an exhausted account is
+# something you want to learn about before a user does.
 on:
   workflow_dispatch:
   schedule:
@@ -14,6 +20,7 @@ jobs:
     env:
       SMOKE_BASE_URL: ${{ secrets.SMOKE_BASE_URL }}
       SMOKE_API_URL: ${{ secrets.SMOKE_API_URL }}
+      SMOKE_AI_PROBE_SECRET: ${{ secrets.SMOKE_AI_PROBE_SECRET }}
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6

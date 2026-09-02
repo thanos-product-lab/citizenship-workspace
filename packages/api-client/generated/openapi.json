@@ -1228,6 +1228,40 @@
         "title": "PriorityActionView",
         "type": "object"
       },
+      "ProbeResponse": {
+        "description": "Deliberately says nothing about the model's *answer* \u2014 only that a call\ncompleted. The probe checks the wiring; reporting what the model said would\ninvite reading it as a quality signal.",
+        "properties": {
+          "attempts": {
+            "title": "Attempts",
+            "type": "integer"
+          },
+          "latency_ms": {
+            "title": "Latency Ms",
+            "type": "integer"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "provider",
+          "model",
+          "latency_ms",
+          "attempts"
+        ],
+        "title": "ProbeResponse",
+        "type": "object"
+      },
       "ProposedApplicationDateResponse": {
         "properties": {
           "application_date": {
@@ -4849,6 +4883,50 @@
         "summary": "Me",
         "tags": [
           "identity"
+        ]
+      }
+    },
+    "/health/ai-probe": {
+      "post": {
+        "description": "Make one real capability call. Costs a fraction of a penny; gated accordingly.\n\nTakes no session. The ledger opens its own (see `ai/service.py`), so this handler\nnever holds one \u2014 which keeps `test_no_handler_takes_a_session_that_skipped_the\n_tenant` absolute rather than needing an exemption for the one route that would\nhave been a legitimate exception. An absolute guard is worth more than a correct\nexception to it.",
+        "operationId": "ai_probe_health_ai_probe_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-probe-secret",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "X-Probe-Secret",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProbeResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Ai Probe",
+        "tags": [
+          "health"
         ]
       }
     },

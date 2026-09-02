@@ -30,6 +30,11 @@ from sqlalchemy import Engine, create_engine, event, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session, sessionmaker
 
+# Deliberately reaching for the module Starlette itself resolved. It is not in
+# `starlette.testclient.__all__`, and that is the point: the public surface does not
+# expose which httpx the client ended up on, which is exactly the fact this needs.
+from starlette.testclient import httpx as _client_httpx  # type: ignore[attr-defined]
+
 from app.auth.dependencies import get_current_user
 from app.auth.schemas import CurrentUser
 from app.core.config import get_settings
@@ -179,6 +184,19 @@ def db_session(_schema: None) -> Iterator[Session]:
         session.commit()
         session.close()
 
+
+#: The response type `TestClient` actually returns.
+#:
+#: Read off Starlette's own resolved module rather than imported from a package by name.
+#: `starlette.testclient` does `import httpx2 as httpx` when httpx2 is installed and falls
+#: back to httpx otherwise — and both are now present, because the OpenAI SDK brought
+#: httpx2 in transitively. That silently moved the whole suite's client onto httpx2 and
+#: turned two `-> Response` annotations red without any test's behaviour changing.
+#:
+#: Following the client instead of naming a package means the next dependency bump that
+#: flips the resolution changes nothing here. An assignment rather than an import alias so
+#: strict mypy treats it as a definition this module exports.
+ApiResponse = _client_httpx.Response
 
 Api = Callable[[str], TestClient]
 

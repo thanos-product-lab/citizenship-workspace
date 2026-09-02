@@ -17,10 +17,9 @@ right where escalating would be wrong.
 from datetime import date
 
 import pytest
-from httpx import Response
 
 from app.shared.dates import MAX_ENTERED_DATE, MIN_ENTERED_DATE
-from tests.conftest import Api
+from tests.conftest import Api, ApiResponse
 
 #: The literal values from the walkthrough. Kept verbatim rather than reduced to "some old
 #: date", because the point is the shape of a real slip: a year typed into a native date
@@ -40,7 +39,7 @@ def _case(api: Api, user: str = "user_a", *, active: bool = False) -> str:
     return case_id
 
 
-def _profile(api: Api, user: str, case_id: str, **overrides: object) -> Response:
+def _profile(api: Api, user: str, case_id: str, **overrides: object) -> ApiResponse:
     body = {
         "date_of_birth": "1990-04-12",
         "status_type": "ILR",
@@ -49,7 +48,7 @@ def _profile(api: Api, user: str, case_id: str, **overrides: object) -> Response
         "may_already_be_british": False,
     }
     body.update(overrides)
-    response: Response = api(user).put(f"/api/v1/cases/{case_id}/route-profile", json=body)
+    response: ApiResponse = api(user).put(f"/api/v1/cases/{case_id}/route-profile", json=body)
     return response
 
 

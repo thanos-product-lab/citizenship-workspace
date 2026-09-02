@@ -11,12 +11,12 @@ from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
-from httpx import Response
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.residence.domain import TravelRecord, TravelRecordVersion
 from app.shared.records import DomainEventRecord
+from tests.conftest import ApiResponse
 
 pytestmark = pytest.mark.integration
 
@@ -85,8 +85,8 @@ def _validate(api: Api, user: str, case_id: str, content: str) -> dict[str, Any]
     return result
 
 
-def _commit(api: Api, user: str, case_id: str, content: str) -> Response:
-    resp: Response = api(user).post(f"{_url(case_id)}/import", json={"content": content})
+def _commit(api: Api, user: str, case_id: str, content: str) -> ApiResponse:
+    resp: ApiResponse = api(user).post(f"{_url(case_id)}/import", json={"content": content})
     return resp
 
 

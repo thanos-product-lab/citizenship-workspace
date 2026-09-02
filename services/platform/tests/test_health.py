@@ -22,4 +22,11 @@ def test_ready_ok_with_infra() -> None:
     """Requires Postgres and Redis (via `just up` locally, or CI service containers)."""
     resp = client.get("/health/ready")
     assert resp.status_code == 200
-    assert resp.json() == {"status": "ready", "checks": {"database": True, "redis": True}}
+    assert resp.json() == {
+        "status": "ready",
+        # `ai_provider` reports configuration presence, never reachability — a live
+        # model call on a readiness probe would bill the account for uptime. It passes
+        # unconditionally in local environments (including CI, which has no key), and
+        # only carries information deployed. `/health/ai-probe` is what actually dials.
+        "checks": {"database": True, "redis": True, "ai_provider": True},
+    }

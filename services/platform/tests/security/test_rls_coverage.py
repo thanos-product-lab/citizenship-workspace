@@ -16,10 +16,12 @@ Two things live here because behaviour tests cannot reach them:
    case-scoped and must be protected. A new evidence table without a policy turns this
    red on the migration that creates it.
 
-The two exclusion lists are kept apart because they mean opposite things. Global
-reference data *should not* have RLS — it has no tenant dimension, and a policy on it
-would be a bug. The infrastructure tables *should* and do not; that is ADR-0006 R3, an
-open gap, recorded here as an assertion rather than as prose in a document.
+The exclusion lists are kept apart because they mean opposite things. Global reference
+data and the AI telemetry tables *should not* have RLS — they have no tenant dimension,
+and a policy on them would be a bug. The infrastructure tables *should* and do not; that
+is ADR-0006 R3, an open gap, recorded here as an assertion rather than as prose in a
+document. Merging them would make "we decided this needs no policy" and "we have not got
+to this yet" indistinguishable, which is the thing these lists exist to keep apart.
 """
 
 import pytest
@@ -50,6 +52,19 @@ UNPROTECTED_INFRASTRUCTURE = frozenset({"domain_events", "audit_entries", "outbo
 # data, so RLS is the wrong control — but it is also not something a request should ever
 # write, which is what migration 0013 revokes and `test_catalog_grants.py` asserts.
 NON_MODELLED_TABLES = frozenset({"alembic_version"})
+
+# No tenant dimension *by design*, which is why these are not in the list above.
+# `UNPROTECTED_INFRASTRUCTURE` is ADR-0006 R3's list of gaps — tables that should carry a
+# policy and do not. These should not carry one: a `ModelRun` is telemetry about one
+# provider invocation and holds nothing about a case or a person (migration 0025 spells
+# out why the `case_id` is absent rather than forgotten), and `ai_daily_spend` is a
+# deployment-wide ledger, which is what a deployment-wide spend ceiling has to read.
+#
+# Kept apart from the gap list because filing them there would put two opposite claims in
+# one set and lose the distinction on the day someone closes R3. The case-scoped record of
+# an AI run is `extraction_runs` (M8 slice 2), which does carry a `case_id` and will
+# therefore be caught by the tests above.
+NON_TENANT_TELEMETRY = frozenset({"model_runs", "ai_daily_spend"})
 
 
 def _foreign_keys(session: Session) -> dict[str, set[str]]:
@@ -160,7 +175,12 @@ def test_the_set_of_unprotected_tables_is_exactly_the_documented_lists(
     noticing. Any table Postgres knows about now has to be classified here."""
     security = _row_security(db_session)
     unprotected = {name for name, (enabled, _) in security.items() if not enabled}
-    expected = GLOBAL_REFERENCE_TABLES | UNPROTECTED_INFRASTRUCTURE | NON_MODELLED_TABLES
+    expected = (
+        GLOBAL_REFERENCE_TABLES
+        | UNPROTECTED_INFRASTRUCTURE
+        | NON_MODELLED_TABLES
+        | NON_TENANT_TELEMETRY
+    )
 
     assert unprotected == set(expected), (
         "a table gained or lost RLS without the lists in this file being updated"

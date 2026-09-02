@@ -500,6 +500,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/health/ai-probe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ai Probe
+         * @description Make one real capability call. Costs a fraction of a penny; gated accordingly.
+         *
+         *     Takes no session. The ledger opens its own (see `ai/service.py`), so this handler
+         *     never holds one — which keeps `test_no_handler_takes_a_session_that_skipped_the
+         *     _tenant` absolute rather than needing an exemption for the one route that would
+         *     have been a legitimate exception. An absolute guard is worth more than a correct
+         *     exception to it.
+         */
+        post: operations["ai_probe_health_ai_probe_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health/live": {
         parameters: {
             query?: never;
@@ -1093,6 +1119,24 @@ export interface components {
             requirement_title: string;
             /** Text */
             text: string | null;
+        };
+        /**
+         * ProbeResponse
+         * @description Deliberately says nothing about the model's *answer* — only that a call
+         *     completed. The probe checks the wiring; reporting what the model said would
+         *     invite reading it as a quality signal.
+         */
+        ProbeResponse: {
+            /** Attempts */
+            attempts: number;
+            /** Latency Ms */
+            latency_ms: number;
+            /** Model */
+            model: string;
+            /** Provider */
+            provider: string;
+            /** Status */
+            status: string;
         };
         /** ProposedApplicationDateResponse */
         ProposedApplicationDateResponse: {
@@ -2930,6 +2974,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CurrentUser"];
+                };
+            };
+        };
+    };
+    ai_probe_health_ai_probe_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-probe-secret"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProbeResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

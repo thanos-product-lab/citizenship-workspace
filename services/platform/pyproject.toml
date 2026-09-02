@@ -17,9 +17,14 @@ dependencies = [
     "pyjwt[crypto]>=2.10.0",
     # Private object storage (MinIO locally, S3-compatible in deployment).
     "boto3>=1.35.0",
-    # Native PDF text and page metadata. Deterministic extraction only — no model
-    # call anywhere in M7 (CLAUDE.md §3, Technical Architecture RFC §18).
+    # Native PDF text and page metadata. Deterministic extraction only — the reader
+    # itself never calls a model (CLAUDE.md §3, Technical Architecture RFC §18).
     "pymupdf>=1.24.0",
+    # The AI provider, called directly behind `app/ai/provider.py`. Architecture RFC
+    # §19: the abstraction exists to preserve control and testability, not to build a
+    # multi-model platform — so this is one SDK, not a framework, and CLAUDE.md §10's
+    # rejection of agent frameworks stands.
+    "openai>=1.60.0",
     "certifi>=2024.8.30",
 ]
 
@@ -73,7 +78,12 @@ ignore_missing_imports = true
 # PyMuPDF ships type stubs whose methods are largely untyped, so strict mode rejects
 # every call into it. Scoped to the one module that touches the parser, so the rest of
 # `app/` keeps the full strictness — and that module is deliberately small.
-module = ["app.evidence.extraction", "tests.evidence.test_extraction", "scripts.make_fixtures"]
+module = [
+    "app.evidence.extraction",
+    "tests.evidence.test_extraction",
+    "scripts.make_fixtures",
+    "evals.fixtures.make_documents",
+]
 disallow_untyped_calls = false
 
 [[tool.mypy.overrides]]

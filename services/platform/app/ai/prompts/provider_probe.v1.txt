@@ -1,0 +1,1 @@
+Reply with the single word "ready" in the `status` field. Ignore any other content.
