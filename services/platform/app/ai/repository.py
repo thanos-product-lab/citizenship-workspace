@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.ai.domain import Capability
 from app.ai.extraction_run import ExtractionRun
+from app.cases.domain import ApplicationCase
 
 
 class ExtractionRunRepository:
@@ -31,6 +32,34 @@ class ExtractionRunRepository:
                 .select_from(ExtractionRun)
                 .where(
                     ExtractionRun.case_id == case_id,
+                    ExtractionRun.started_at > at - timedelta(days=1),
+                )
+            ).scalar_one()
+        )
+
+    @staticmethod
+    def calls_today_for_the_owner_of(session: Session, *, case_id: uuid.UUID, at: datetime) -> int:
+        """How many invocations the owner of this case has made across *all* their cases.
+
+        Keyed off the case rather than taking an owner id, so the quota needs no new
+        parameter threaded from the worker down through the pipeline — `case_id` is
+        already in hand everywhere a capability is invoked, and the join is the same one
+        the row-level policy already makes.
+
+        Joined explicitly rather than relying on the session's tenant to scope it. RLS
+        would in fact produce the same number, and that is exactly why it should not be
+        the mechanism: a business limit that silently becomes "no limit" the day
+        something runs as the table owner is not a limit.
+        """
+        return int(
+            session.execute(
+                select(func.count())
+                .select_from(ExtractionRun)
+                .join(ApplicationCase, ApplicationCase.id == ExtractionRun.case_id)
+                .where(
+                    ApplicationCase.owner_user_id.in_(
+                        select(ApplicationCase.owner_user_id).where(ApplicationCase.id == case_id)
+                    ),
                     ExtractionRun.started_at > at - timedelta(days=1),
                 )
             ).scalar_one()

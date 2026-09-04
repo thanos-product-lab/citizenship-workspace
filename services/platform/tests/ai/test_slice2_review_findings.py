@@ -406,3 +406,109 @@ def test_the_policy_predicates_on_the_column_the_queries_filter_on(
         text("SELECT qual FROM pg_policies WHERE tablename = 'extraction_runs'")
     ).scalar_one()
     assert "case_id" in str(predicate)
+
+
+def test_a_user_who_has_spread_their_calls_across_cases_is_still_refused(
+    db_session: Session, ai_settings: Settings
+) -> None:
+    """The gap the per-case limit alone leaves.
+
+    Nothing bounds how many cases a person opens, so 200 per case multiplied by an
+    unbounded number of cases is an unbounded number of calls — and one account could
+    still exhaust the deployment's daily ceiling and stop every other tenant's
+    processing until midnight. Each case here is comfortably under its own limit; the
+    user is not.
+    """
+    settings = ai_settings.model_copy(
+        update={"ai_case_daily_call_limit": 100, "ai_user_daily_call_limit": 2}
+    )
+    first, second = _a_chain(db_session), _a_chain(db_session)
+
+    provider = FakeProvider(responses=[succeeded(_output()), succeeded(_output())])
+    for chain in (first, second):
+        outcome = classify(
+            provider,
+            db_session,
+            case_id=chain.case_id,
+            evidence_item_id=chain.evidence_item_id,
+            evidence_file_id=chain.evidence_file_id,
+            processing_run_id=chain.processing_run_id,
+            document_text="A booking.",
+            budget=AiBudget(seconds=30.0),
+            settings=settings,
+        )
+        assert outcome.produced_an_answer
+        db_session.add(outcome.run)
+    db_session.flush()
+
+    # A third case, untouched, and well under its own limit of 100.
+    third = _a_chain(db_session)
+    refused = classify(
+        provider,
+        db_session,
+        case_id=third.case_id,
+        evidence_item_id=third.evidence_item_id,
+        evidence_file_id=third.evidence_file_id,
+        processing_run_id=third.processing_run_id,
+        document_text="A booking.",
+        budget=AiBudget(seconds=30.0),
+        settings=settings,
+    )
+
+    assert refused.run.status == ExtractionRunStatus.REFUSED_USER_QUOTA.value
+    assert refused.category is None
+    assert refused.run.model_run_id is None, "nothing was dialled"
+    assert len(provider.calls) == 2, "the third call reached the provider"
+
+
+def test_one_users_calls_do_not_count_against_another(
+    db_session: Session, ai_settings: Settings
+) -> None:
+    """A shared counter would make one busy tenant deny the service to everyone else —
+    which is the failure the per-user limit exists to prevent, not to cause."""
+    from app.ai.repository import ExtractionRunRepository
+    from app.cases.domain import ApplicationCase
+    from app.shared.tenant import clear_tenant, set_tenant
+
+    mine = _a_chain(db_session)
+    db_session.add(
+        ExtractionRun.record(
+            case_id=mine.case_id,
+            evidence_item_id=mine.evidence_item_id,
+            evidence_file_id=mine.evidence_file_id,
+            processing_run_id=mine.processing_run_id,
+            capability="DocumentClassifier",
+            status=ExtractionRunStatus.SUCCEEDED,
+            input_text="x",
+            started_at=datetime.now(UTC),
+            classified_category="TRAVEL_SUPPORT",
+        )
+    )
+    # Flushed before the tenant changes. SQLAlchemy defers the INSERT until flush, so
+    # switching first would send user_a's row under user_b's tenant and the policy would
+    # refuse it — correctly, and for a reason that has nothing to do with this test.
+    db_session.flush()
+
+    # Switch tenant to create the other user's case: RLS correctly refuses to let
+    # `user_a` insert a row owned by `user_b`, which is the policy doing its job.
+    set_tenant(db_session, "user_b")
+    theirs = ApplicationCase.create(owner_user_id="user_b", title="Someone else")
+    db_session.add(theirs)
+    db_session.flush()
+
+    # Counted as the table owner, with no tenant at all. That is the point: the
+    # repository *joins* on the owner rather than leaning on RLS to scope the count, and
+    # this asserts the join is what does the work. A limit that silently becomes "no
+    # limit" the day something runs as the owner is not a limit.
+    clear_tenant(db_session)
+    now = datetime.now(UTC)
+    assert (
+        ExtractionRunRepository.calls_today_for_the_owner_of(
+            db_session, case_id=mine.case_id, at=now
+        )
+        == 1
+    )
+    assert (
+        ExtractionRunRepository.calls_today_for_the_owner_of(db_session, case_id=theirs.id, at=now)
+        == 0
+    )

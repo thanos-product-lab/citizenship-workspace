@@ -56,11 +56,18 @@ class ExtractionRunStatus(StrEnum):
     REFUSED_NO_BUDGET = "REFUSED_NO_BUDGET"
     #: The task ran out of its AI budget before this call could start.
     REFUSED_NO_TIME = "REFUSED_NO_TIME"
-    #: This case has analysed as many documents today as it is allowed to. Distinct from
-    #: `REFUSED_NO_BUDGET`, which is the *deployment* running out: one is "you have had
-    #: your share", the other is "nobody gets any more", and telling a user the second
-    #: when the first is true would be blaming the system for their own retry loop.
+    #: This case has analysed as many documents today as it is allowed to.
     REFUSED_QUOTA = "REFUSED_QUOTA"
+    #: This *user* has, across every case they own. Separate from the case limit because
+    #: nothing bounds how many cases a person opens: 200 per case times an unbounded
+    #: number of cases is an unbounded number of calls, so the per-case limit alone
+    #: cannot bound a user.
+    #:
+    #: All three refusals are told apart on purpose. "This case has had its share",
+    #: "you have had your share" and "nobody gets any more today" have different causes
+    #: and different remedies, and giving someone the last when the first is true blames
+    #: the system for their own retry loop.
+    REFUSED_USER_QUOTA = "REFUSED_USER_QUOTA"
 
 
 #: Statuses in which the capability produced a usable answer.
@@ -92,7 +99,26 @@ SUMMARY_FOR_STATUS: dict[ExtractionRunStatus, str] = {
         "This case has reached its daily limit for automatic document analysis. Your "
         "document was read and stored, and analysis can be retried tomorrow."
     ),
+    ExtractionRunStatus.REFUSED_USER_QUOTA: (
+        "You have reached your daily limit for automatic document analysis across all "
+        "your cases. Your document was read and stored, and analysis can be retried "
+        "tomorrow."
+    ),
 }
+
+#: Refusals that happen before any provider call, so they can carry no `ModelRun`.
+#: Named once here because migration 0029's CHECK constraint says the same thing in SQL,
+#: and `tests/ai/test_extraction_run_statuses.py` asserts the two agree — the previous
+#: quota status was added to this enum with no migration at all, which made every
+#: refusal an `IntegrityError` the moment one was written.
+PRE_DIAL_REFUSALS = frozenset(
+    {
+        ExtractionRunStatus.REFUSED_NO_BUDGET,
+        ExtractionRunStatus.REFUSED_NO_TIME,
+        ExtractionRunStatus.REFUSED_QUOTA,
+        ExtractionRunStatus.REFUSED_USER_QUOTA,
+    }
+)
 
 
 def hash_input(text: str) -> str:

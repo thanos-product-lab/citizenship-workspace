@@ -108,6 +108,16 @@ class Settings(BaseSettings):
     # case has twelve documents.
     ai_case_daily_call_limit: int = 200
 
+    # Capability invocations one *user* may make per rolling 24 hours, across every case
+    # they own. The case limit alone cannot bound a user, because nothing bounds how many
+    # cases a person opens: 200 per case times an unbounded number of cases is unbounded.
+    #
+    # The three limits are a ladder, and the numbers are chosen so they compose. At the
+    # ~$0.00026 per document the M8 spike measured, the $5 deployment ceiling is roughly
+    # 19,000 calls; 500 is about 2.6% of it, so one account cannot deny the service to
+    # everyone else, and a person with three active cases is still far from touching it.
+    ai_user_daily_call_limit: int = 500
+
     # Shared secret for `POST /health/ai-probe`, which makes a real (tiny) model call
     # so the deployed smoke can tell a working key from a well-formed one. Unset
     # disables the endpoint entirely — an unauthenticated route that spends money is

@@ -124,6 +124,25 @@ def classify(
             user_summary=SUMMARY_FOR_STATUS[ExtractionRunStatus.REFUSED_QUOTA],
         )
 
+    owned = ExtractionRunRepository.calls_today_for_the_owner_of(
+        session, case_id=case_id, at=started_at
+    )
+    if owned >= settings.ai_user_daily_call_limit:
+        # After the case check, so the narrower message wins when both apply: being told
+        # "this case has had its share" is more actionable than "you have", when only one
+        # of your cases is affected.
+        _log.warning(
+            "ai.classification_refused_user_quota",
+            evidence_item_id=str(evidence_item_id),
+            calls_today=owned,
+            limit=settings.ai_user_daily_call_limit,
+        )
+        return ClassificationOutcome(
+            run=_run(ExtractionRunStatus.REFUSED_USER_QUOTA),
+            category=None,
+            user_summary=SUMMARY_FOR_STATUS[ExtractionRunStatus.REFUSED_USER_QUOTA],
+        )
+
     try:
         result = invoke(
             provider,
