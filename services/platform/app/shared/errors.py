@@ -89,6 +89,25 @@ class UnreadableEnteredValue(DomainError):
         )
 
 
+class IncompleteReview(DomainError):
+    """A review request did not carry what the decision it names requires.
+
+    A `CORRECT` with no value, a `REJECT` with no reason, a non-blind review with no
+    stated decision. Ordinary bad input, not a programming error — and it was a bare
+    `ValueError` until both slice-3a reviews pointed out where that ends up: FastAPI has
+    no handler for one, so it became a 500 whose stack frame holds `proposed_value`, the
+    model's verbatim transcription of the document. The day Sentry is wired,
+    `include_local_variables` defaults to true and that frame leaves the building.
+
+    A named domain error with a 422 keeps document text out of the error path entirely,
+    and tells the caller which field is missing rather than "internal server error"."""
+
+    code = "INCOMPLETE_REVIEW"
+
+    def __init__(self, detail: str) -> None:
+        super().__init__(detail)
+
+
 class TooManyCases(DomainError):
     """A user tried to open more cases than they are allowed to hold at once.
 
@@ -298,6 +317,15 @@ def register_exception_handlers(app: FastAPI) -> None:
         return JSONResponse(
             status_code=status.HTTP_409_CONFLICT,
             content={"detail": str(exc), "code": exc.code, "status": exc.status},
+        )
+
+    @app.exception_handler(IncompleteReview)
+    async def _incomplete_review(_request: Request, exc: IncompleteReview) -> JSONResponse:
+        return JSONResponse(
+            # 422 for the same reason as `UnreadableEnteredValue` below: the request is
+            # well-formed and the domain cannot act on it.
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            content={"detail": str(exc), "code": exc.code},
         )
 
     @app.exception_handler(UnreadableEnteredValue)

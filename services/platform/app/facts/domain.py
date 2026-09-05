@@ -115,6 +115,15 @@ class ClaimStatus(StrEnum):
     INVALIDATED = "INVALIDATED"
 
 
+#: Claim types whose fact identity needs a scope beyond the type itself, derived from
+#: the namespace rather than listed — a new `travel.*` type joins automatically, and a
+#: list is a thing to forget to update. Every other category describes the applicant
+#: once per case, so its facts are case-level.
+JOURNEY_SCOPED_CLAIM_TYPES: frozenset[ClaimType] = frozenset(
+    claim_type for claim_type in ClaimType if claim_type.value.startswith("travel.")
+)
+
+
 #: Claims a user has not yet decided about. The only status a review may act on — acting
 #: on any other would either duplicate a fact or resurrect a rejected proposal.
 OPEN_STATUSES = frozenset({ClaimStatus.PENDING_REVIEW})
@@ -347,9 +356,16 @@ class ClaimReviewDecision(Base):
 
     reviewed_by: Mapped[str] = mapped_column(String(255))
     reviewed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
-    #: Optimistic concurrency on the *claim*: two reviewers deciding about one claim must
-    #: not both create a fact (RFC §25).
-    claim_revision: Mapped[int] = mapped_column(Integer, default=0)
+    #: Which decision this is for the claim — always 1, enforced by
+    #: `uq_claim_review_decisions_claim` (migration 0033). Kept as a column rather than
+    #: dropped so the constraint has something legible beside it, and because §10's
+    #: "a claim is decided once" is a statement worth being able to read off a row.
+    #:
+    #: It was named `claim_revision` and documented as optimistic concurrency, and it
+    #: was neither: nothing ever compared it. Both slice-3a reviews found the same
+    #: thing independently. The serialisation is now the row lock in `review()` plus the
+    #: unique key — mechanisms that fail closed rather than a number nobody reads.
+    decision_sequence: Mapped[int] = mapped_column(Integer, default=1)
 
     def outcome(self, *, schema: ValueSchema) -> ReviewedValue:
         """The reviewed value this decision authorises, or a refusal to produce one.
@@ -385,13 +401,35 @@ class ClaimReviewDecision(Base):
 
 
 class CaseFact(Base):
-    """The stable identity of one trusted concept (RFC §11). Values live in versions."""
+    """The stable identity of one trusted concept (RFC §11). Values live in versions.
+
+    **Identity is `(case_id, fact_type, scope_key)`, not `(case_id, fact_type)`.** A
+    grant date is one thing per case and its scope key is empty. A departure date is
+    not: a two-leg booking proposes `travel.departure_date` twice, and two bookings in
+    one case propose it again — which is why `ExtractedClaim` carries `journey_index` at
+    all (RFC §41.2).
+
+    Without the scope key those all resolved to one fact, so confirming the second
+    journey appended a version and moved `current_version_id` off the first. Nothing
+    looked wrong: it is a legitimate-looking supersede chain, and the case's answer for
+    "when did you leave" quietly became whichever claim was reviewed last. Found by the
+    slice-3a trust review; every test in the suite happened to build one claim.
+    """
 
     __tablename__ = "case_facts"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     case_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("cases.id"), index=True)
     fact_type: Mapped[str] = mapped_column(String(60), index=True)
+    #: What this fact is *about*, when the type alone does not say. Empty for a
+    #: case-level fact; `"<evidence_item_id>:<journey_index>"` for a journey-scoped one.
+    #:
+    #: Scoped to the document rather than to the trip on purpose. Two bookings covering
+    #: one trip should eventually converge, but deciding *that they are the same trip*
+    #: is conflict detection (slice 4), not identity. Until then each document's reading
+    #: is its own fact, which is the conservative failure: a duplicate to reconcile
+    #: rather than a value silently replaced.
+    scope_key: Mapped[str] = mapped_column(String(80), default="")
     #: App-maintained pointer, no circular FK — the 0003/0005 convention.
     current_version_id: Mapped[uuid.UUID | None] = mapped_column()
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

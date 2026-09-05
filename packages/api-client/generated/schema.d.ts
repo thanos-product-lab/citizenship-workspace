@@ -1509,8 +1509,6 @@ export interface components {
             decision?: components["schemas"]["ReviewDecision"] | null;
             /** Entered Value */
             entered_value?: string | null;
-            /** Expected Revision */
-            expected_revision?: number | null;
             reason_code?: components["schemas"]["RejectionReason"] | null;
         };
         /** ReviewResponse */

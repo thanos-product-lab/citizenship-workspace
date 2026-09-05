@@ -6,7 +6,9 @@ unwritten — most of what is checked here is the **absence** of a capability, b
 absence is the only kind of guarantee that survives someone deleting a guard.
 """
 
+import ast
 import inspect
+import pathlib
 import uuid
 from datetime import UTC, datetime
 
@@ -14,7 +16,7 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.facts import domain, service, values
+from app.facts import service
 from app.facts.domain import (
     HIGH_RISK_CLAIM_TYPES,
     SCHEMA_FOR_CLAIM_TYPE,
@@ -51,9 +53,10 @@ def code_of(module_or_function: object) -> str:
     a check that cannot tell the two apart flags the very comment written to help the
     next reader — which teaches people to delete the explanation.
     """
-    import ast
+    return _strip(ast.parse(inspect.getsource(module_or_function)))  # type: ignore[arg-type]
 
-    tree = ast.parse(inspect.getsource(module_or_function))  # type: ignore[arg-type]
+
+def _strip(tree: "ast.Module") -> str:
     for node in ast.walk(tree):
         if isinstance(node, ast.Module | ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef):
             body = node.body
@@ -67,6 +70,12 @@ def code_of(module_or_function: object) -> str:
     # `ast.unparse` drops comments as a side effect of round-tripping, which is the other
     # half of what this needs.
     return ast.unparse(tree)
+
+
+def code_of_file(path: pathlib.Path) -> str:
+    """`code_of` for a path rather than an imported object, so a scan can walk the whole
+    package without importing every module in it."""
+    return _strip(ast.parse(path.read_text()))
 
 
 # --- layer 1: the type boundary -----------------------------------------------------
@@ -103,17 +112,35 @@ def test_from_review_accepts_only_a_reviewed_value() -> None:
 
 def test_nothing_converts_a_proposal_into_a_reviewed_value() -> None:
     """The other half. A constructor that took only `ReviewedValue` would be worthless
-    if some helper manufactured one from a claim."""
-    source = code_of(values) + code_of(domain)
-    # `ReviewedValue(` may be constructed in exactly one place: `outcome()`.
+    if some helper manufactured one from a claim.
+
+    **Scanned over the whole `app` package**, not over `values` and `domain` alone.
+    `ReviewedValue` is a public frozen dataclass with a public constructor, so writing
+    `ReviewedValue(decision_id=…, source_method=USER_CONFIRMED_AI_CLAIM, …)` in any
+    module typechecks fine and `FactRepository.append_version` accepts it. The type
+    boundary makes the *conversion* unspellable; only this makes the fabrication
+    visible. Two files were the reviewable surface until the slice-3a trust review
+    pointed out how much of the codebase they left out.
+
+    The database is the real backstop — `ck_fact_versions_ai_requires_decision` refuses
+    an AI-derived fact with no decision row whatever Python does. This is the layer that
+    fails at review time instead of at insert time.
+    """
+    import app
+
+    root = pathlib.Path(app.__file__).parent
     constructions = [
-        line.strip()
-        for line in source.splitlines()
-        if "ReviewedValue(" in line and "class " not in line and ":" not in line.split("(")[0]
+        f"{path.relative_to(root)}:{number}"
+        for path in sorted(root.rglob("*.py"))
+        for number, line in enumerate(code_of_file(path).splitlines(), start=1)
+        if "ReviewedValue(" in line and not line.lstrip().startswith(("class ", "def "))
     ]
     assert len(constructions) == 1, (
         f"ReviewedValue is constructed in {len(constructions)} places: {constructions}. "
         "Only ClaimReviewDecision.outcome() may build one."
+    )
+    assert constructions[0].startswith("facts/domain.py:"), (
+        f"the one construction moved to {constructions[0]}; it belongs in `outcome()`"
     )
 
 
@@ -180,11 +207,19 @@ def test_no_trusted_query_reads_claims() -> None:
     """The assessment path reads `fact_versions` and the versioned residence tables. It
     does not read `extracted_claims`, and a query that did would be an unreviewed
     proposal reaching a conclusion."""
+    from app.assessments import invalidation
     from app.assessments import service as assessments
+    from app.requirements import evaluation
 
-    source = code_of(assessments)
-    assert "ExtractedClaim" not in source
-    assert "extracted_claims" not in source
+    # Three modules, not one. The first version of this test scanned
+    # `assessments.service` alone, which is where `evaluate_case` lives — but the
+    # evaluators and the stale-propagation path are equally trusted readers, and an
+    # evaluator reading `extracted_claims` is precisely the failure this test is named
+    # for. Caught by the slice-3a trust review.
+    for module in (assessments, evaluation, invalidation):
+        source = code_of(module)
+        assert "ExtractedClaim" not in source, f"{module.__name__} names a claim type"
+        assert "extracted_claims" not in source, f"{module.__name__} queries claims"
 
 
 def test_the_extractor_cannot_name_a_fact_type() -> None:
@@ -193,7 +228,18 @@ def test_the_extractor_cannot_name_a_fact_type() -> None:
     from app.ai import extraction_service
 
     source = code_of(extraction_service)
-    for forbidden in ("FactVersion", "CaseFact", "FactEvidenceLink", "ClaimReviewDecision"):
+    for forbidden in (
+        "FactVersion",
+        "CaseFact",
+        "FactEvidenceLink",
+        "ClaimReviewDecision",
+        # The two the first version of this list missed, and the gap was real: the
+        # extractor could have built a `ReviewedValue` by hand and handed it to
+        # `append_version` without naming any of the four names above. Named directly
+        # by the slice-3a trust review.
+        "ReviewedValue",
+        "FactRepository",
+    ):
         assert forbidden not in source, f"the extractor names {forbidden} in code"
 
 

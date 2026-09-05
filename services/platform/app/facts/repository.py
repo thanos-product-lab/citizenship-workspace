@@ -41,6 +41,26 @@ class ClaimRepository:
         ).scalar_one_or_none()
 
     @staticmethod
+    def get_for_update(
+        session: Session, *, case_id: uuid.UUID, claim_id: uuid.UUID
+    ) -> ExtractedClaim | None:
+        """The same read, locked, for the command that decides about the claim.
+
+        A separate method rather than a flag, so a reader cannot take the lock by
+        accident and a writer cannot skip it by leaving an argument off. `review()` is
+        the only caller and the only thing that should be.
+
+        Without it, two concurrent reviews of one claim both saw `PENDING_REVIEW` under
+        READ COMMITTED and both went on to create a trusted fact — one proposal, two
+        answers, no error anywhere.
+        """
+        return session.execute(
+            select(ExtractedClaim)
+            .where(ExtractedClaim.id == claim_id, ExtractedClaim.case_id == case_id)
+            .with_for_update()
+        ).scalar_one_or_none()
+
+    @staticmethod
     def list_pending_for_case(session: Session, *, case_id: uuid.UUID) -> list[ExtractedClaim]:
         """The review queue.
 
@@ -133,7 +153,12 @@ class FactLinkRepository:
 class FactRepository:
     @staticmethod
     def append_version(
-        session: Session, *, case_id: uuid.UUID, fact_type: str, reviewed: ReviewedValue
+        session: Session,
+        *,
+        case_id: uuid.UUID,
+        fact_type: str,
+        scope_key: str,
+        reviewed: ReviewedValue,
     ) -> tuple[CaseFact, FactVersion]:
         """Add a version to a fact, creating the fact if this is its first value.
 
@@ -145,12 +170,21 @@ class FactRepository:
         Takes a `ReviewedValue` rather than a claim or a string. That parameter type is
         the guarantee: the only way to obtain one is `ClaimReviewDecision.outcome()` on
         a flushed decision, so this function cannot be called with a proposal.
+
+        `scope_key` is required rather than defaulted, because the failure it prevents
+        is silent: defaulting it to `""` would resolve every journey of every booking to
+        one `travel.departure_date` fact and let each confirmation supersede the last.
+        A caller has to say what the fact is about.
         """
         fact = session.execute(
-            select(CaseFact).where(CaseFact.case_id == case_id, CaseFact.fact_type == fact_type)
+            select(CaseFact).where(
+                CaseFact.case_id == case_id,
+                CaseFact.fact_type == fact_type,
+                CaseFact.scope_key == scope_key,
+            )
         ).scalar_one_or_none()
         if fact is None:
-            fact = CaseFact(case_id=case_id, fact_type=fact_type)
+            fact = CaseFact(case_id=case_id, fact_type=fact_type, scope_key=scope_key)
             session.add(fact)
             session.flush()
 

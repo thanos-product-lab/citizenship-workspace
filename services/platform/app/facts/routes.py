@@ -74,7 +74,6 @@ def review_claim(
         entered_value=body.entered_value,
         decision=body.decision,
         reason_code=body.reason_code,
-        expected_revision=body.expected_revision,
     )
     version = outcome.fact_version
     return ReviewResponse(

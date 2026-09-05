@@ -86,7 +86,12 @@ class ReviewRequest(BaseModel):
     entered_value: str | None = Field(default=None, max_length=500)
     decision: ReviewDecision | None = None
     reason_code: RejectionReason | None = None
-    expected_revision: int | None = None
+    # No `expected_revision`. It was here and it was decorative: `ExtractedClaim` has no
+    # revision column, `ClaimView` exposed none, so no client could send a meaningful
+    # value and nothing compared the one it did send. A field promising optimistic
+    # concurrency and delivering none is worse than no field — it is a guarantee
+    # somebody will rely on. The real serialisation is the row lock in `review()` and
+    # `uq_claim_review_decisions_claim` (migration 0033).
 
 
 class ReviewResponse(BaseModel):

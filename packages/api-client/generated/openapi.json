@@ -2147,17 +2147,6 @@
             ],
             "title": "Entered Value"
           },
-          "expected_revision": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Expected Revision"
-          },
           "reason_code": {
             "anyOf": [
               {

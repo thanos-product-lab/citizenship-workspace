@@ -66,6 +66,23 @@ def _case_with_claim(
     return case_id, claim
 
 
+def _second_journey(session: Session, claim: ExtractedClaim, *, raw: str) -> ExtractedClaim:
+    """Another `travel.departure_date` from the same document, one journey along."""
+    sibling = ExtractedClaim.propose(
+        case_id=claim.case_id,
+        evidence_item_id=claim.evidence_item_id,
+        evidence_file_id=claim.evidence_file_id,
+        extraction_run_id=claim.extraction_run_id,
+        claim_type=ClaimType(claim.claim_type),
+        journey_index=claim.journey_index + 1,
+        value=ProposedValue(schema=ValueSchema.DATE_V1, raw=raw, model_iso=None),
+    )
+    session.add(sibling)
+    session.flush()
+    session.commit()
+    return sibling
+
+
 def _evidence_chain(session: Session, *, case_id: uuid.UUID, user: str) -> dict[str, uuid.UUID]:
     from app.ai.domain import Capability
     from app.ai.extraction_run import ExtractionRun, ExtractionRunStatus
@@ -352,3 +369,117 @@ def test_another_users_claim_is_not_reviewable(api: Api, db_session: Session) ->
     assert stored.status == ClaimStatus.PENDING_REVIEW.value, (
         "another user's review changed the claim"
     )
+
+
+# --- what the reviews of slice 3a found ---------------------------------------------
+
+
+def test_confirming_the_second_journey_does_not_supersede_the_first(
+    api: Api, db_session: Session
+) -> None:
+    """A `CaseFact` is `(case_id, fact_type, scope_key)`, not `(case_id, fact_type)`.
+
+    A two-leg booking proposes `travel.departure_date` twice — that is what
+    `journey_index` is for — and `append_version` used to resolve both to one fact. The
+    second confirmation appended a version and moved `current_version_id`, so the first
+    journey's confirmed date stopped being the case's answer. Nothing failed: it looks
+    exactly like a legitimate correction, which is why every test in this file passed
+    while it was true. They all happened to build one claim.
+    """
+    from app.facts.domain import CaseFact
+
+    case_id, first = _case_with_claim(api, db_session, raw="4 May 2026", model_iso="2026-05-04")
+    second = _second_journey(db_session, first, raw="18 June 2026")
+
+    _review(api, case_id, first.id, entered_value="4 May 2026")
+    _review(api, case_id, second.id, entered_value="18 June 2026")
+
+    db_session.expire_all()
+    facts = db_session.execute(select(CaseFact)).scalars().all()
+    assert len(facts) == 2, "two journeys resolved to one fact, so one overwrote the other"
+    assert {f.scope_key for f in facts} == {
+        f"{first.evidence_item_id}:0",
+        f"{first.evidence_item_id}:1",
+    }
+
+    current = api("user_a").get(f"/api/v1/cases/{case_id}/facts").json()["items"]
+    assert sorted(item["value"] for item in current) == ["2026-05-04", "2026-06-18"]
+    # Both are version 1. A supersede chain here would mean the product had decided the
+    # two journeys were the same thing.
+    assert [item["version_number"] for item in current] == [1, 1]
+
+
+def test_agreeing_with_a_model_guess_is_recorded_as_a_correction(
+    api: Api, db_session: Session
+) -> None:
+    """The user's value wins, and so does the deterministic reading of the proposal.
+
+    `09/04/2025` determines no date, so `normalise` returns None and the claim reaches
+    review undecided — that much `test_boundary.py` already pins. What it did not cover
+    is the comparison: `_resolve` also checked the entry against `model_iso`, the
+    model's *guess*, and a user typing 9 April therefore had their fact stamped
+    `USER_CONFIRMED_AI_CLAIM`.
+
+    `source_method` is structural provenance (CLAUDE.md §2.5), so that is a guess
+    deciding what the record says a human did. There was no reading of this proposal to
+    agree with, so the honest answer is CORRECT: the value is the user's.
+    """
+    case_id, claim = _case_with_claim(api, db_session, raw="09/04/2025", model_iso="2025-04-09")
+    assert claim.normalised_value is None, "the fixture is not ambiguous, so this proves nothing"
+
+    body = _review(api, case_id, claim.id, entered_value="9 April 2025").json()
+
+    assert body["decision"] == "CORRECT"
+    db_session.expire_all()
+    version = db_session.execute(select(FactVersion)).scalar_one()
+    assert version.source_method == SourceMethod.USER_CORRECTED_AI_CLAIM.value
+    assert version.raw_value == "2025-04-09", "the user's reading is still what is recorded"
+
+
+def test_a_claim_cannot_be_reviewed_into_a_case_whose_deletion_was_requested(
+    api: Api, db_session: Session
+) -> None:
+    """`require_case_access` filters DELETED, not DELETION_PENDING.
+
+    So a review reached a case the purge is on its way to walk past, and wrote four rows
+    — including a `FactVersion` holding a value, and a `FactEvidenceLink` marked
+    AVAILABLE against a document being destroyed. Every other case-scoped write command
+    in the codebase checks this; this one did not.
+
+    The check is the visible half. The other half is the row lock taken before it, which
+    is what stops a deletion committing *between* the check and the write — the failure
+    `links.py` records from M7 and the reason a lifecycle check alone is not enough.
+    """
+    case_id, claim = _case_with_claim(api, db_session)
+    assert api("user_a").delete(f"/api/v1/cases/{case_id}").status_code == 200
+
+    refused = _review(api, case_id, claim.id, entered_value="4 May 2026")
+
+    assert refused.status_code == 409
+    db_session.expire_all()
+    assert db_session.execute(select(FactVersion)).scalar_one_or_none() is None
+
+
+def test_a_review_missing_what_its_decision_needs_is_refused_not_a_crash(
+    api: Api, db_session: Session
+) -> None:
+    """422, not 500 — and the difference is a privacy one, not only a tidiness one.
+
+    These were bare `ValueError`s, which FastAPI has no handler for. The frame they
+    raise in holds `proposal`, the model's verbatim transcription of the document. The
+    day Sentry is wired, `include_local_variables` defaults to true and a malformed
+    request ships a traveller's name to a third party.
+    """
+    case_id, low_risk = _case_with_claim(
+        api, db_session, claim_type=ClaimType.TRAVEL_ORIGIN, raw="London Gatwick", model_iso=None
+    )
+    # A non-blind field with no stated decision: nothing says what the user decided.
+    refused = _review(api, case_id, low_risk.id)
+    assert refused.status_code == 422
+    assert refused.json()["code"] == "INCOMPLETE_REVIEW"
+
+    case_id2, high_risk = _case_with_claim(api, db_session)
+    # A blind field with a decision but nothing typed: the entry *is* the decision.
+    refused2 = _review(api, case_id2, high_risk.id, decision="CONFIRM")
+    assert refused2.status_code == 422
+    assert refused2.json()["code"] == "INCOMPLETE_REVIEW"

@@ -171,6 +171,7 @@ def _upload_document(api: Api, user: str, case_id: str, session: Session) -> str
         EvidenceProcessingRun,
         ProcessingRunStatus,
     )
+    from app.facts import service as facts_service
     from app.facts.domain import (
         ClaimReviewDecision,
         ClaimType,
@@ -266,6 +267,10 @@ def _upload_document(api: Api, user: str, case_id: str, session: Session) -> str
         session,
         case_id=uuid.UUID(case_id),
         fact_type=claim.claim_type,
+        # Through the real helper rather than `""`: a travel fact is scoped to its
+        # document and journey, and hard-coding the case-level key here would build a
+        # fixture that could not exist.
+        scope_key=facts_service.scope_key_for(claim),
         reviewed=decision.outcome(schema=ValueSchema.DATE_V1),
     )
     session.add(
