@@ -290,7 +290,17 @@ export function EvidenceDestination({ caseId }: { caseId: string }): JSX.Element
           deletingItem
             ? `${deletingItem.display_name} will be removed from this case and its contents ` +
               "destroyed. This cannot be undone. Any trip it supports will show as having " +
-              "no document attached, and the travel-records check will need working out again."
+              "no document attached, and the travel-records check will need working out again." +
+              // Named only when it is true of *this* document, and always when it is. A
+              // document waiting to be confirmed holds values a person has not decided
+              // about yet, and deleting it closes every one of them unread — you cannot
+              // confirm what a booking says once you can no longer open the booking.
+              // Anything already confirmed is a fact and stays; this is about what is
+              // still an open question.
+              (deletingItem.processing_status === "AWAITING_CONFIRMATION"
+                ? " The values waiting for your confirmation will be closed unread; " +
+                  "anything you have already confirmed stays in your case."
+                : "")
             : ""
         }
         confirmLabel="Delete document"

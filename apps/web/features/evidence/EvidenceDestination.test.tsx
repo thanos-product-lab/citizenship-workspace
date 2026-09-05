@@ -114,6 +114,34 @@ describe("EvidenceDestination", () => {
     expect(container.textContent).not.toMatch(/next:/i);
   });
 
+  it("warns that deleting closes the confirmations still outstanding", async () => {
+    // The consequence M8 slice 3a adds to deletion, and the one a user is least able to
+    // guess: a document waiting to be confirmed holds values nobody has decided about,
+    // and destroying it closes them unread. Named only for a document actually in that
+    // state — a warning attached to every deletion is a warning people stop reading.
+    get.mockResolvedValue({
+      data: aLibrary([anItem({ processing_status: "AWAITING_CONFIRMATION" })]),
+    });
+    renderWithQuery(<EvidenceDestination caseId={CASE_ID} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /Delete Athens booking/ }));
+
+    const dialog = within(screen.getByRole("alertdialog"));
+    expect(dialog.getByText(/closed unread/)).toBeTruthy();
+    // And it says what survives, so the warning is not read as "you lose everything".
+    expect(dialog.getByText(/already confirmed stays in your case/)).toBeTruthy();
+  });
+
+  it("does not warn about confirmations when there are none outstanding", async () => {
+    get.mockResolvedValue({ data: aLibrary([anItem({ processing_status: "COMPLETED" })]) });
+    renderWithQuery(<EvidenceDestination caseId={CASE_ID} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /Delete Athens booking/ }));
+
+    const dialog = within(screen.getByRole("alertdialog"));
+    expect(dialog.queryByText(/closed unread/)).toBeNull();
+  });
+
   it("says whose turn it is when a document is waiting to be confirmed", async () => {
     // The state the whole milestone exists to reach, and the label carries prime
     // directive 1: values have been *proposed*, and the outstanding work is a person's.
