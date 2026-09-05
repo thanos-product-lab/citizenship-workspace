@@ -635,6 +635,55 @@ def test_deletion_erases_the_document_words_a_claim_was_holding(
         assert claim.extraction_run_id
 
 
+def test_deleting_a_document_withdraws_the_support_under_a_confirmed_fact(
+    api: Api, db_session: Session
+) -> None:
+    """CLAUDE.md §9: *"deleting evidence cannot leave its support state as available."*
+
+    Written because the mutation table found nothing guarding it. Making the fact-link
+    sweep in `mark_support_unavailable` a no-op left the whole suite green: every
+    existing deletion test covers `EvidenceTravelLink`, which M7 built, and the fact
+    links slice 3a added had no equivalent.
+
+    Both halves matter and they pull opposite ways. The fact **survives** — RFC §19 is
+    explicit that deleting a document does not delete a value a human confirmed, and the
+    trip date is still the trip date. What must not survive is the claim that the value
+    is *evidenced*: a fact still showing an available link to a destroyed file is the
+    product asserting support that cannot be produced.
+    """
+    from app.facts.domain import FactEvidenceLink, FactVersion, LinkAvailability
+    from tests.evidence.test_processing import _process, classifying
+
+    case_id, _ = _case_with_trip(api, "user_a")
+    item_id = uuid.UUID(_document(api, "user_a", case_id))
+    _process(item_id, idempotency_key="fact-link-1", provider=classifying())
+
+    queue = api("user_a").get(f"/api/v1/cases/{case_id}/claims").json()["items"]
+    departure = next(c for c in queue if c["claim_type"] == "travel.departure_date")
+    confirmed = api("user_a").post(
+        f"/api/v1/cases/{case_id}/claims/{departure['id']}/review",
+        json={"decision": "CONFIRM", "entered_value": "4 May 2026"},
+    )
+    assert confirmed.status_code == 201, confirmed.text
+
+    db_session.expire_all()
+    link = db_session.execute(select(FactEvidenceLink)).scalar_one()
+    assert link.availability_status == LinkAvailability.AVAILABLE.value
+
+    api("user_a").delete(f"/api/v1/cases/{case_id}/evidence/{item_id}")
+
+    db_session.expire_all()
+    link = db_session.execute(select(FactEvidenceLink)).scalar_one()
+    assert link.availability_status == LinkAvailability.DELETED.value, (
+        "a confirmed fact still claims support from a document that is being destroyed"
+    )
+    assert link.withdrawn_at is not None
+    version = db_session.execute(select(FactVersion)).scalar_one()
+    # ISO, because a blind date entry is parsed to a calendar date before it is stored —
+    # the words are the document's, and the date is the user's.
+    assert version.raw_value == "2026-05-04", "the value the user confirmed was destroyed too"
+
+
 def test_deleting_a_document_closes_the_claims_nobody_had_decided_about(
     api: Api, db_session: Session
 ) -> None:
