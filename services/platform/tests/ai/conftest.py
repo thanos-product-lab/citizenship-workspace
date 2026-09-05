@@ -41,15 +41,22 @@ def clear_ledger() -> Iterator[None]:
     `TRUNCATE` as the table owner, not `DELETE`: migration 0025 revokes DELETE on both
     tables from `app_rls`, because a ledger the request role can erase is not a ledger.
 
-    `extraction_runs` is named alongside them rather than relying on `CASCADE`, because
-    it references `model_runs` (ADR-0025) and Postgres refuses to truncate a table
-    something points at. Listing it is a sentence about what this fixture wipes;
-    `CASCADE` would be a standing instruction to wipe whatever happens to point at the
-    ledger next, which in a later slice could be a table a test meant to keep.
+    **`CASCADE`, after arguing against it and being wrong twice.** An earlier version
+    named the referencing tables explicitly, reasoning that a list is "a sentence about
+    what this fixture wipes" while `CASCADE` would be "a standing instruction to wipe
+    whatever happens to point at the ledger next". That sounded careful and broke on the
+    next two slices in a row: `extraction_runs` in slice 2, then `extracted_claims` in
+    3a, each time producing an `E` on every test in this package and a stale list nobody
+    would think to update.
+
+    The principle was wrong on its merits, not just inconvenient. A row that references a
+    ledger row is meaningless once that row is gone — a claim whose extraction run does
+    not exist is an orphan, not data a test meant to keep. `CASCADE` says exactly that,
+    and says it once rather than needing a maintainer to notice each new foreign key.
     """
     yield
     with get_sessionmaker()() as session:
-        session.execute(text("TRUNCATE TABLE extraction_runs, model_runs, ai_daily_spend"))
+        session.execute(text("TRUNCATE TABLE model_runs, ai_daily_spend CASCADE"))
         session.commit()
 
 

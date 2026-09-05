@@ -136,8 +136,10 @@ def test_the_ambiguous_date_fixture_expects_a_null() -> None:
         for f in load_fixtures()
         if "ambiguous" in f.tags and f.capability == "TravelRecordExtractor"
     ]
-    assert fixture.expected["journeys.0.departure.date_iso"] is None
-    assert fixture.expected["journeys.0.arrival_return.date_iso"] is None
+    # `iso`, not `date_iso`: the manifest names the field the shipped `ExtractedDate`
+    # schema has, rather than the one the throwaway spike used.
+    assert fixture.expected["journeys.0.departure.iso"] is None
+    assert fixture.expected["journeys.0.arrival_return.iso"] is None
 
 
 def test_the_classifier_still_calls_the_ambiguous_document_a_travel_booking() -> None:

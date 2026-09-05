@@ -73,6 +73,7 @@ class PromptVersion(StrEnum):
 
     PROVIDER_PROBE_V1 = "provider_probe.v1"
     CLASSIFY_DOCUMENT_V1 = "classify_document.v1"
+    EXTRACT_TRAVEL_V1 = "extract_travel.v1"
 
 
 def _load(version: PromptVersion) -> str:

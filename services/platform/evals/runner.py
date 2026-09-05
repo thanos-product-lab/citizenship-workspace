@@ -158,6 +158,52 @@ def check_manifests(fixtures: list[Fixture]) -> ManifestProblems:
     return problems
 
 
+def run_travel_extractor(fixtures: list[Fixture]) -> "Report":
+    """Run the real TravelRecordExtractor over the travel fixtures.
+
+    Grades the *model's* output rather than the claims it becomes: a claim is created
+    only for a field the document stated, so grading claims would conflate "the model
+    read it wrong" with "the document did not say", and the fixtures distinguish those
+    deliberately (`travel_ambiguous_numeric_dates_001` expects a null `iso`, which is a
+    correct extraction that produces a claim with no deterministic reading).
+    """
+    from app.ai.extractors import TravelExtraction
+    from app.ai.factory import get_provider
+    from app.ai.provider import DocumentText
+    from app.ai.service import invoke
+    from app.core.config import get_settings
+    from app.evidence import extraction
+    from evals.graders import Report, Verdict, grade_travel
+
+    settings = get_settings()
+    results = []
+    for fixture in fixtures:
+        text = extraction.extract(fixture.document_path.read_bytes()).content
+        from app.ai.domain import Capability
+        from app.ai.service import AiBudget
+
+        result = invoke(
+            get_provider(),
+            capability=Capability.TRAVEL_RECORD_EXTRACTOR,
+            document=DocumentText(text[:20_000]),
+            output_schema=TravelExtraction,
+            budget=AiBudget(seconds=settings.ai_task_deadline_seconds),
+            settings=settings,
+        )
+        output = (
+            json.loads(result.parsed.model_dump_json())
+            if result.succeeded and result.parsed
+            else None
+        )
+        graded = grade_travel(fixture, output)
+        marker = {Verdict.PASS: "ok  ", Verdict.FAIL: "FAIL", Verdict.UNMEASURED: "----"}[
+            graded.verdict
+        ]
+        print(f"  {marker} {fixture.id:44s} {graded.detail}")
+        results.append(graded)
+    return Report(results)
+
+
 def run_classifier(fixtures: list[Fixture]) -> "Report":
     """Run the real DocumentClassifier over the classifier fixtures.
 
@@ -262,7 +308,15 @@ def main() -> int:
 
     classifier_fixtures = [f for f in fixtures if f.capability == "DocumentClassifier"]
     print(f"\nDocumentClassifier — {len(classifier_fixtures)} fixtures")
-    report = run_classifier(classifier_fixtures)
+    classifier = run_classifier(classifier_fixtures)
+
+    travel_fixtures = [f for f in fixtures if f.capability == "TravelRecordExtractor"]
+    print(f"\nTravelRecordExtractor — {len(travel_fixtures)} fixtures")
+    travel = run_travel_extractor(travel_fixtures)
+
+    from evals.graders import Report
+
+    report = Report(classifier.results + travel.results)
 
     print()
     print(f"passed {report.passed}  failed {report.failed}  unmeasured {report.unmeasured}")
