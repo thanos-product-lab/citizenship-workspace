@@ -305,3 +305,35 @@ The **purge** has no UI by design — the object is gone and the row is a tombst
 is nothing to show. It is verified in `tests/evidence/test_storage_minio.py` against real
 MinIO, and was verified against real S3 in production: a presigned URL returning 200
 immediately before the deletion answered `NoSuchKey` five seconds after.
+
+## M8 (Human-in-the-loop document AI)
+
+`m8/m8-slice3a-needs-your-confirmation.jpg` — a real booking, read by the real model,
+sitting in the library at `AWAITING_CONFIRMATION`.
+
+The state M7 shipped with no producer, reached for the first time. It is the whole
+milestone in one row: the document has been read, six values have been **proposed**, and
+the product is waiting for a person. The label says "Needs your confirmation" rather than
+"Analysed" or "Ready" because the outstanding work is the user's, and prime directive 1
+turns on nobody mistaking a proposal for an answer.
+
+Two things in the frame worth pointing at:
+
+- **The classifier disagrees with the uploader, out loud.** The document was filed as
+  *Immigration status* and the row says *"Analysis suggests: Travel booking"*. The
+  machine's reading is shown beside the user's rather than replacing it.
+- **The state label exists because of this capture.** Slice 3a's browser check found the
+  row rendering the raw wire value `AWAITING_CONFIRMATION`, which is exactly what
+  `EvidenceState` is built to do with a state it has no token for. The design worked and
+  then told us the token was owed.
+
+### Not captured, and why
+
+The **review interaction** — blind entry for date fields — has no UI until slice 3b. The
+backend and the API are complete and exercised over HTTP; there is no screen to
+photograph, and mocking one for an asset would show a product that does not exist.
+
+The **claim redaction on deletion** is invisible for the same reason the purge was in M7:
+the point is the absence of data. Verified against the running stack — deleting this
+document left six claims `INVALIDATED` with `proposed_raw` blank, and the extraction runs
+kept only capability, status and cost.
