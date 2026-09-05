@@ -52,6 +52,18 @@ services:
       context: .
       dockerfile: infra/docker/platform.Dockerfile
     command: uv run uvicorn app.main:app --host 0.0.0.0 --port 8000
+    # The same file `just api` reads, so the local stack and a locally-run API are
+    # configured identically. Without it `just up` produced a stack that could not run a
+    # single AI capability — no key, so every uploaded document died at the classifier —
+    # while the same code run outside Docker worked fine. Two configurations for one
+    # application is how "works on my machine" starts.
+    #
+    # The explicit `environment:` below still wins: compose applies it after `env_file`,
+    # so the docker-network addresses override whatever a developer has pointed their
+    # host at.
+    env_file:
+      - path: services/platform/.env
+        required: false
     environment:
       ENVIRONMENT: docker
       DATABASE_URL: postgresql+psycopg://citizenship:citizenship@postgres:5432/citizenship
@@ -99,6 +111,13 @@ services:
     # purged, both silently. Two services locally and one deployed is exactly how that
     # goes unnoticed.
     command: uv run celery -A worker.celery_app.celery_app worker --beat --loglevel info
+    # Same file as the API. The worker is where every model call happens from M8 slice 2
+    # on, so a worker without a key is a stack whose documents reach the analysis stage
+    # and stop there — the failure `check_ai_configuration` refuses to boot into when
+    # deployed, and which local development had no reason to notice.
+    env_file:
+      - path: services/platform/.env
+        required: false
     # A hard ceiling under Celery's own child-recycling limit, so a document that
     # allocates faster than the recycler can react takes the container down rather than
     # the host. PyMuPDF is a C parser on attacker-controlled input and malware scanning
