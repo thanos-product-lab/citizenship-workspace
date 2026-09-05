@@ -194,19 +194,23 @@ export const provenanceTokens: Record<ProvenanceKind, ProvenanceToken> = {
  * - `validating`, `unsupported`, `failed` — M7 slice 2, with validation in the worker.
  * - `extracting_text`, `completed`, `partially_completed` — M7 slice 3, with
  *   deterministic extraction.
- * - `analysing` — M8. Deterministic extraction passes through no such stage: there is
- *   nothing to analyse until a model is doing the looking.
- * - `awaiting_confirmation` — **M8, and deliberately absent**. It has no producer until
- *   extracted claims exist. A token for it would let the UI name it as a stage a
- *   document might enter, which is a promise the product cannot keep; a state the
- *   product names but cannot reach is worse than one it does not mention.
- *   `EvidenceState` renders any state it has no token for verbatim, so when M8 makes it
- *   reachable the wire value shows up honestly rather than silently as something benign.
+ * - `analysing` — M8 slice 2, when a model first looks at a document.
+ * - `awaiting_confirmation` — M8 slice 3a, when an extraction first proposes values.
+ *
+ * Both were **deliberately withheld** until then, on the grounds that a state the
+ * product names but cannot reach is worse than one it does not mention. The mechanism
+ * that made that safe also proved it: `EvidenceState` renders a state it has no token
+ * for verbatim, and the browser check on slice 3a showed a real document sitting in the
+ * library labelled `AWAITING_CONFIRMATION` in wire case. That is the design working —
+ * the unnamed state surfaced honestly instead of passing for something benign — and it
+ * is the signal that the token is now owed.
  */
 export const evidenceProcessingStates = [
   "uploaded",
   "validating",
   "extracting_text",
+  "analysing",
+  "awaiting_confirmation",
   "completed",
   "partially_completed",
   "unsupported",
@@ -248,6 +252,25 @@ export const evidenceProcessingTokens: Record<
     glyph: "clock",
     label: "Reading",
     meaning: "Reading the text out of the document.",
+  },
+  analysing: {
+    colorVar: "--cw-currency-provisional",
+    glyph: "clock",
+    label: "Analysing",
+    // "Looking at", not "understanding" or "checking": the model is reading the text and
+    // proposing values, and nothing it proposes is true until a person says so. A
+    // transient state, but a user who refreshes at the wrong moment still sees it.
+    meaning: "Looking at what this document says. Nothing is decided yet.",
+  },
+  awaiting_confirmation: {
+    colorVar: "--cw-currency-provisional",
+    glyph: "proposed",
+    // "Needs your confirmation", not "Ready" or "Analysed". The document has been read
+    // and values have been *proposed*; the work outstanding is a person's, and the label
+    // has to say whose. `proposed` is the provenance glyph for exactly this — a machine
+    // suggestion that has not been decided about (prime directive 1).
+    label: "Needs your confirmation",
+    meaning: "We read some values out of this. Nothing counts until you confirm them.",
   },
   completed: {
     colorVar: "--cw-status-supported",

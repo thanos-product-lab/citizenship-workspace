@@ -97,15 +97,36 @@ describe("EvidenceDestination", () => {
     expect(screen.getByText(/nothing here is checked against your case/)).toBeTruthy();
   });
 
-  it("offers no stage the product cannot reach", async () => {
+  it("draws no path through the stages", async () => {
     get.mockResolvedValue({ data: aLibrary([anItem()]) });
     const { container } = renderWithQuery(<EvidenceDestination caseId={CASE_ID} />);
     await screen.findByRole("row", { name: /Athens booking/ });
 
-    // AWAITING_CONFIRMATION has no producer until M8. Naming it — in a stepper, a
-    // "next:" hint, or anywhere else — would promise a stage no document can enter.
-    expect(container.textContent).not.toMatch(/awaiting confirmation/i);
+    // No stepper, no progress bar, no "next: …". A document's route is not a fixed
+    // pipeline — it can stop at UNSUPPORTED, at PARTIALLY_COMPLETED, or wait at
+    // AWAITING_CONFIRMATION for a person rather than for the worker — so drawing the
+    // stages as a track would assert an order the product does not have.
+    //
+    // Until M8 slice 3a this test also asserted that AWAITING_CONFIRMATION was never
+    // named, because nothing could produce it. It can now, so that half is gone: the
+    // state is named where a document is actually in it, and nowhere else.
     expect(container.querySelector("progress")).toBeNull();
+    expect(container.textContent).not.toMatch(/next:/i);
+  });
+
+  it("says whose turn it is when a document is waiting to be confirmed", async () => {
+    // The state the whole milestone exists to reach, and the label carries prime
+    // directive 1: values have been *proposed*, and the outstanding work is a person's.
+    // "Analysed" or "Ready" would say the machine had finished and imply nothing is
+    // owed.
+    get.mockResolvedValue({
+      data: aLibrary([anItem({ processing_status: "AWAITING_CONFIRMATION" })]),
+    });
+    renderWithQuery(<EvidenceDestination caseId={CASE_ID} />);
+
+    const row = within(await screen.findByRole("row", { name: /Athens booking/ }));
+    expect(row.getByText("Needs your confirmation")).toBeTruthy();
+    expect(row.queryByText(/state not recognised/)).toBeNull();
   });
 
   it("says why a document was refused, not only that it was", async () => {
@@ -136,13 +157,17 @@ describe("EvidenceDestination", () => {
   });
 
   it("shows an unrecognised state verbatim rather than as something benign", async () => {
-    // ANALYSING is in the domain enum but has no token until slice 3.
-    get.mockResolvedValue({ data: aLibrary([anItem({ processing_status: "ANALYSING" })]) });
+    // Every §14.4 state a document can currently reach has a token, so this asserts the
+    // fallback against API/client skew: a state a newer API introduces, arriving at an
+    // older client. It is not hypothetical — ANALYSING and AWAITING_CONFIRMATION both
+    // sat here in turn, and the browser check on slice 3a found the second one rendered
+    // exactly like this, which is how the token came to be written.
+    get.mockResolvedValue({ data: aLibrary([anItem({ processing_status: "REDACTING" })]) });
     renderWithQuery(<EvidenceDestination caseId={CASE_ID} />);
 
     // A state this build has no token for must not render as "Uploaded". An API/client
     // skew has to be visible, not silently flattened to the reassuring case.
-    expect(await screen.findByText("ANALYSING")).toBeTruthy();
+    expect(await screen.findByText("REDACTING")).toBeTruthy();
     expect(screen.queryByText("Uploaded")).toBeNull();
     // And it says so, rather than leaving a screen-reader user to guess.
     expect(screen.getByText(/state not recognised/)).toBeTruthy();

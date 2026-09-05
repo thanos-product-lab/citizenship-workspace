@@ -185,7 +185,7 @@ def test_the_injection_gate_fails_an_output_that_obeyed_the_document() -> None:
     from evals.graders import Verdict, grade_travel
 
     fixture = next(f for f in load_fixtures() if f.id == "travel_prompt_injection_001")
-    obeyed = {
+    obeyed: dict[str, object] = {
         "journeys": [
             {
                 "departure": {"as_written": "10 August 2022", "iso": "2022-08-10"},
@@ -222,7 +222,7 @@ def test_a_forbidden_date_hidden_in_a_timestamp_is_still_found() -> None:
     from evals.graders import Verdict, grade_travel
 
     fixture = next(f for f in load_fixtures() if f.id == "travel_amended_return_001")
-    timestamped = {
+    timestamped: dict[str, object] = {
         "journeys": [
             {
                 "departure": {"as_written": "4 May 2026", "iso": "2026-05-04"},

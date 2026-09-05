@@ -11,9 +11,10 @@
  *   the same reasoning as `RequirementStatus.toCurrencyState`.
  * - **No progress affordance.** There is no stepper, no "next: …", no ordered track of
  *   stages. A document's route through §14.4 is not a fixed pipeline — it can end at
- *   `UNSUPPORTED` after validation or at `PARTIALLY_COMPLETED` after extraction — and
- *   `AWAITING_CONFIRMATION` has no producer at all until M8. Drawing the stages as a
- *   path would name destinations this build cannot reach.
+ *   `UNSUPPORTED` after validation or at `PARTIALLY_COMPLETED` after extraction — and a
+ *   document that proposes claims stops at `AWAITING_CONFIRMATION` waiting for a person
+ *   rather than for the worker. Drawing the stages as a path would assert an order the
+ *   product does not have.
  *
  * Colour is never the only signal: every state is glyph + text label, and the component
  * is legible with colour removed.
