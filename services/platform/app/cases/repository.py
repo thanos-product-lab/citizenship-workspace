@@ -7,7 +7,7 @@ layer's job; the repository only answers questions.
 
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.cases.domain import ApplicationCase, CaseMembership, LifecycleStatus
@@ -52,6 +52,38 @@ class CaseRepository:
             .order_by(ApplicationCase.created_at.desc())
         )
         return list(session.scalars(stmt))
+
+    @staticmethod
+    def count_for_owner(session: Session, owner_user_id: str) -> int:
+        """How many cases this user still holds — excluding the ones they have given up.
+
+        **Not** the same filter as `list_for_owner`, which excludes only `DELETED`. The
+        first draft matched it, on the reasoning that a limit should be checkable against
+        what the user can see. That was the wrong instinct, and the test caught it: a
+        deletion sets `DELETION_PENDING` and the purge worker sets `DELETED` afterwards,
+        so matching the listing meant deleting a case did not free a slot — while the
+        refusal message told the user to delete one.
+
+        The limit exists to bound storage, processing, and rows in every case-scoped
+        table. A case in `DELETION_PENDING` is on its way to releasing all three, and the
+        user can do nothing with it or to hurry it along, so holding a slot for it
+        protects nothing and punishes someone for a transition they do not control.
+
+        The listing still shows it, which is right — a case mid-deletion is a thing that
+        is happening and the user should see it — and the refusal carries `held` so the
+        number that counts is stated rather than inferred from a screen.
+        """
+        stmt = (
+            select(func.count())
+            .select_from(ApplicationCase)
+            .where(
+                ApplicationCase.owner_user_id == owner_user_id,
+                ApplicationCase._lifecycle_status.not_in(
+                    (LifecycleStatus.DELETED.value, LifecycleStatus.DELETION_PENDING.value)
+                ),
+            )
+        )
+        return int(session.execute(stmt).scalar_one())
 
 
 class MembershipRepository:

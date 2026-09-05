@@ -20,10 +20,24 @@ from app.cases.domain import (
     LifecycleStatus,
 )
 from app.cases.repository import CaseRepository, MembershipRepository
+from app.core.config import get_settings
+from app.shared.errors import TooManyCases
 from app.shared.unit_of_work import UnitOfWork
 
 
 def create_case(session: Session, *, user: CurrentUser, title: str) -> ApplicationCase:
+    held = CaseRepository.count_for_owner(session, user.user_id)
+    limit = get_settings().max_cases_per_user
+    if held >= limit:
+        # Counted and compared rather than enforced by the database, and the gap is worth
+        # naming: two concurrent creates can both read `held == limit - 1` and both
+        # succeed, so the real bound is `limit + concurrency`. "At most N rows" is not
+        # something a unique constraint can express, and the alternatives — a lock or a
+        # counter row — would serialise every case creation in the deployment to save a
+        # user from holding eleven cases instead of ten. Same trade as the spend
+        # ceiling's overshoot, and stated for the same reason.
+        raise TooManyCases(held=held, limit=limit)
+
     case = ApplicationCase.create(owner_user_id=user.user_id, title=title)
     CaseRepository.add(session, case)
     MembershipRepository.add(session, CaseMembership.owner(case_id=case.id, user_id=user.user_id))

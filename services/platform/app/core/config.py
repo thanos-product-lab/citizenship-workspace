@@ -118,6 +118,17 @@ class Settings(BaseSettings):
     # everyone else, and a person with three active cases is still far from touching it.
     ai_user_daily_call_limit: int = 500
 
+    # Cases one user may hold at once. The last rung of the ladder above: those two bound
+    # how much analysis a case and a user may buy, and this bounds how many workspaces a
+    # user can open to buy it from — along with the storage, the processing, and the rows
+    # in every case-scoped table that come with each one.
+    #
+    # Ten is deliberately far above what the product is for. A case is one intended
+    # application, and someone weighing two application dates uses the simulator rather
+    # than a second case, so nobody reaches this by working normally. A limit people meet
+    # in ordinary use is a workflow constraint wearing a safety label.
+    max_cases_per_user: int = 10
+
     # Shared secret for `POST /health/ai-probe`, which makes a real (tiny) model call
     # so the deployed smoke can tell a working key from a well-formed one. Unset
     # disables the endpoint entirely — an unauthenticated route that spends money is

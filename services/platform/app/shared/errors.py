@@ -45,6 +45,32 @@ class CaseNotActive(DomainError):
         super().__init__(f"this action needs an active case; the case is {lifecycle_status}")
 
 
+class TooManyCases(DomainError):
+    """A user tried to open more cases than they are allowed to hold at once.
+
+    The last of the ladder that bounds AI spend. `ai_case_daily_call_limit` bounds one
+    case and `ai_user_daily_call_limit` bounds one user, but neither bounds how many
+    cases a user *opens* — and an unbounded number of workspaces is an unbounded amount
+    of storage, of processing, and of rows in every case-scoped table.
+
+    A limit rather than a rejection of the idea: a case is one intended application
+    (CLAUDE.md §7), and someone comparing two plausible application dates uses the date
+    simulator rather than a second case, so the number a real person needs is small.
+    It is generous enough that nobody meets it by working normally, which is the only
+    kind of limit worth having — one people hit in ordinary use is a workflow constraint
+    wearing a safety label."""
+
+    code = "TOO_MANY_CASES"
+
+    def __init__(self, held: int, limit: int) -> None:
+        self.held = held
+        self.limit = limit
+        super().__init__(
+            f"you already have {held} cases, which is the maximum of {limit}. "
+            "Delete a case you have finished with to open another."
+        )
+
+
 class CaseNotAssessable(DomainError):
     """A trusted assessment was requested for an active case that is missing an input a
     trusted run requires — for slice 1, a selected application date. Distinct from
@@ -215,6 +241,22 @@ def register_exception_handlers(app: FastAPI) -> None:
     async def _illegal_transition(_request: Request, exc: IllegalTransition) -> JSONResponse:
         # 409: the aggregate is in a state that conflicts with the requested command.
         return JSONResponse(status_code=status.HTTP_409_CONFLICT, content={"detail": str(exc)})
+
+    @app.exception_handler(TooManyCases)
+    async def _too_many_cases(_request: Request, exc: TooManyCases) -> JSONResponse:
+        return JSONResponse(
+            # 409, matching `CaseNotActive` and `EvidenceNotRetryable`: the request is
+            # well-formed and the caller's account state is what refuses it. The limit is
+            # in the body so the client can say "10 of 10" rather than reprinting a
+            # number it would have to keep in step with the server's.
+            status_code=status.HTTP_409_CONFLICT,
+            content={
+                "detail": str(exc),
+                "code": exc.code,
+                "held": exc.held,
+                "limit": exc.limit,
+            },
+        )
 
     @app.exception_handler(CaseNotActive)
     async def _case_not_active(_request: Request, exc: CaseNotActive) -> JSONResponse:

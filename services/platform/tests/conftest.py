@@ -40,6 +40,18 @@ os.environ.setdefault("STORAGE_BACKEND", "memory")
 if os.environ.get("ALLOW_LIVE_AI_IN_TESTS") != "1":
     os.environ["AI_PROVIDER"] = "fake"
 
+# The per-user case limit is lifted for the suite, not disabled — `tests/cases/
+# test_case_limit.py` sets its own low value and exercises the real behaviour, including
+# the default.
+#
+# It is lifted because the property-based suites open a case per generated example, and
+# Hypothesis runs a hundred of them inside one test function under one identity. That is
+# not a user holding a hundred cases; it is the suite using an identity as a scratchpad,
+# and a production limit is the wrong thing to model it against. Left at the default,
+# `test_a_preview_equals_the_save_it_previews` failed on its eleventh example with a
+# refusal that was entirely correct and told us nothing about date simulation.
+os.environ.setdefault("MAX_CASES_PER_USER", "10000")
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import Engine, create_engine, event, text
