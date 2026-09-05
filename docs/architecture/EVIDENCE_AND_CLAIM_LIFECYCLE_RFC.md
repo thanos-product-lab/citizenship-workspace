@@ -278,6 +278,9 @@ unrelated evidence.
 
 ## 9. ExtractedClaim
 
+> **Amended by §41** (M8 Gate A): `claim_type` and `value_schema_version` are
+> enumerated there, along with the two value shapes and the per-category field lists.
+
 An `ExtractedClaim` is an immutable machine-proposed interpretation of
 information found in a specific evidence version.
 
@@ -347,6 +350,10 @@ value = 2020-09-14
 The original proposal remains unchanged.
 
 ## 10. Claim Review
+
+> **Amended by §41.4** (M8 Gate A): high-risk date fields are confirmed *blind* — the
+> proposed value is not pre-filled — and `ClaimReviewDecision` gains `review_mode`.
+> The `CONFIRM` / `CORRECT` enum below is unchanged.
 
 `ClaimReviewDecision` is an immutable user action:
 
@@ -1075,6 +1082,158 @@ The lifecycle is implementation-ready when:
 13. concurrency cannot silently overwrite review state;
 14. the synthetic demo exercises the complete lifecycle;
 15. tests enforce the architectural invariants.
+
+## 41. Claim types, value schemas, and the review interaction
+
+**Added 2026-09-05 (M8 Gate A).** §9 gives `ExtractedClaim` a `claim_type` and a
+`value_schema_version` without saying what either may contain, and §10 describes
+confirm/correct/reject without saying how a user is asked. Both gaps had to be closed
+before slice 3a could be written, because inventing them in code would be the
+divergence CLAUDE.md's precedence rule exists to prevent.
+
+Informed by `docs/evaluations/AI_SPIKE_FINDINGS.md` — the shapes below are what the
+model was observed to produce reliably, not what would be convenient to ask for.
+
+### 41.1 Two value schemas, not one per field
+
+Every claim's `proposed_value` conforms to one of two shapes, named by
+`value_schema_version`:
+
+``` text
+date.v1   { "as_written": string, "iso": string | null }
+text.v1   { "text": string }
+```
+
+`date.v1` is split deliberately, and it is the spike's central finding made
+structural (§3.1). `as_written` is the date exactly as the document writes it;
+`iso` is an interpretation, and is **null whenever the document does not determine
+one**. Under a mild instruction the model resolved `03/04/2025` to a confident
+`2025-04-03` three times out of three; under a forceful one it abstained three times
+out of three. A behaviour that swings entirely on prompt wording is not a guarantee,
+so `iso` is advisory and Python's deterministic normaliser decides
+`normalised_value` — a written form that does not parse unambiguously produces null
+regardless of what the model returned.
+
+**`value_schema_version` versions the value shape for one claim type.** It is not the
+capability's `schema_version` (Architecture §20), which versions the whole extractor
+output envelope. A change to how one field's value is represented moves the first; a
+change to what an extractor returns moves the second. Conflating them makes a schema
+change unattributable.
+
+### 41.2 Claim types per category
+
+``` text
+IMMIGRATION_STATUS
+  immigration.status_granted_on   date.v1   HIGH
+  immigration.date_of_birth       date.v1   HIGH
+  immigration.status_type         text.v1
+  immigration.holder_name         text.v1
+  immigration.reference_number    text.v1
+
+ENGLISH_LANGUAGE
+  english.test_date               date.v1   HIGH
+  english.cefr_level              text.v1
+  english.overall_result          text.v1
+  english.provider                text.v1
+  english.candidate_name          text.v1
+
+LIFE_IN_THE_UK
+  life_in_uk.test_date            date.v1   HIGH
+  life_in_uk.unique_reference     text.v1
+  life_in_uk.overall_result       text.v1
+  life_in_uk.candidate_name       text.v1
+
+TRAVEL_SUPPORT
+  travel.departure_date           date.v1   HIGH
+  travel.return_date              date.v1   HIGH
+  travel.origin                   text.v1
+  travel.destination              text.v1
+  travel.booking_reference        text.v1
+  travel.traveller_name           text.v1
+```
+
+Namespaced by category so a claim type names its own origin, and so two categories
+can hold a field of the same name without either becoming ambiguous.
+
+**A travel document may describe several journeys.** Claims from one document
+therefore carry a `journey_index`, and `travel.departure_date` at index 0 and index 1
+are different claims about different trips. Without it, a two-journey booking would
+produce two claims of the same type that nothing could tell apart.
+
+### 41.3 `HIGH_RISK_CLAIM_TYPES`
+
+The claim types marked HIGH above: every `date.v1` field. MVP §8.11 singles out
+"immigration-status grant dates and travel dates" and forbids bulk confirmation for
+them; this is that set, named once so the two rules that key off it cannot drift.
+
+Two rules key off it, and only these two:
+
+1. **Blind confirmation** (§41.4).
+2. **No bulk confirm.** MVP §8.11. In M8 this is met by there being *no bulk endpoint
+   at all* — every remaining field is low enough value that a batch route earns
+   nothing, and a route that does not exist cannot be called with a date claim.
+
+### 41.4 Blind confirmation for high-risk fields
+
+**The proposed value is not shown as an editable default.** For a `HIGH_RISK_CLAIM_TYPES`
+claim the user sees the source region and an **empty** input, and types what they
+read. The system then compares:
+
+``` text
+entry matches the proposal    → decision = CONFIRM, review_mode = BLIND_ENTRY
+entry differs                 → decision = CORRECT, review_mode = BLIND_ENTRY
+                                corrected_value = the user's entry
+```
+
+The user's value always wins. Confirm and Correct stop being two controls with
+different friction and become one interaction whose outcome is determined by what the
+person actually read.
+
+**Why.** A split view showing a value beside two buttons makes Confirm the path of
+least resistance, and a system that records `USER_CONFIRMED_AI_CLAIM` cannot then
+distinguish "I checked" from "I clicked". Everything else in this document assumes
+human confirmation is a trust boundary (§4); a frictionless button is a rubber stamp
+with extra steps, and the boundary is only as real as the act behind it.
+
+Three further consequences, each of which resolves a problem this RFC had left open:
+
+- It **degrades gracefully when the source locator is coarse**. The friction lives in
+  the entry, not the highlight, so §38's open question 1 — whether bounding boxes are
+  available for every pipeline — stops being load-bearing.
+- It makes §15's confirmed-without-change rate a **measurement** rather than a
+  foregone conclusion. Under a pre-filled confirm that rate measures button placement.
+- It **resolves the ambiguous date** (§41.1) with no extra UI. `normalised_value` is
+  null, and the human — who can see month names elsewhere on the page and the
+  booking's own internal logic — enters what it means. The system never guesses, and
+  the party best placed to disambiguate does.
+
+`review_mode` is a new field on `ClaimReviewDecision`:
+
+``` text
+review_mode   BLIND_ENTRY | PREFILLED
+```
+
+**The `CONFIRM` / `CORRECT` enum of §10 is unchanged.** §11's `source_method` split —
+`USER_CONFIRMED_AI_CLAIM` / `USER_CORRECTED_AI_CLAIM` — maps onto it one to one, and
+renaming the decision would ripple into fact provenance for no gain. `review_mode`
+records *how* the decision was taken, so `(CONFIRM, BLIND_ENTRY)` is
+confirm-as-proposed and `(CORRECT, BLIND_ENTRY)` is confirm-with-correction.
+
+Scope: high-risk fields only. `booking_reference`, `origin`, `destination` and the
+name fields keep a pre-filled confirm, because per-field friction is worth paying
+where a wrong value changes an assessment conclusion and not where it does not.
+
+### 41.5 What this does not settle
+
+- **Corroborating claims create no automatic `FactEvidenceLink` in M8.** §16 permits
+  adding provenance "when appropriate"; doing so would let an *unreviewed* claim
+  strengthen the appearance of support for a trusted fact. It changes no value, so it
+  is not a directive-1 violation, but it is close enough to false reassurance that the
+  conservative reading wins. §38 open question 4 stands, answered conservatively.
+- **Evidence replacement is out of M8** (§18). A confirmed claim on file v1 becoming
+  `SUPERSEDED` leaves its `FactEvidenceLink` pointing at a superseded version, and
+  neither marking it unavailable nor leaving it available is obviously right. §38 open
+  question 5 stands, unanswered, and is a named known gap rather than a guess.
 
 ## Final Principle
 
