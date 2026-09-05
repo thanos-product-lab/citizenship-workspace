@@ -40,6 +40,7 @@ from app.evidence.domain import (
     EvidenceLifecycleStatus,
     utcnow,
 )
+from app.facts.repository import ClaimRepository
 from app.issues import service as issues_service
 
 _log = structlog.get_logger()
@@ -144,6 +145,11 @@ def _tombstone(
     - `extraction_runs.classification_reasoning` — model-authored prose *about* the
       document, which the classifier prompt explicitly permits to quote from it. A
       fragment of a destroyed document is still a fragment of it.
+    - `extracted_claims.proposed_raw` and its two readings. Verbatim document text in a
+      second table, exactly as `evidence_file_texts` was — a traveller name, a booking
+      reference, a date as printed. Cleared rather than deleted because a confirmed
+      fact's provenance runs decision → claim, and removing the row would leave a trusted
+      value unable to say what proposal it came from.
     - the same name where `issues` copied it. `DUPLICATE_EVIDENCE` denormalises
       `display_name` and `other_name` into `message_parameters`, and resolving an issue
       leaves those untouched — so clearing the column alone left the user's words for a
@@ -180,6 +186,14 @@ def _tombstone(
         # and the constraint is right to insist a settled run says what it concluded.
         run.input_hash = ""
         run.classification_reasoning = None
+    for claim in ClaimRepository.list_for_evidence_item(
+        session, case_id=item.case_id, evidence_item_id=item.id
+    ):
+        # Every status, not only the open ones. A *confirmed* claim's `proposed_raw` is
+        # still the destroyed document's own words — the traveller's name as printed, the
+        # booking reference, the date as written — and the fact the user confirmed keeps
+        # its own copy of the value they entered, which is theirs and stays.
+        claim.redact()
     for text in session.execute(
         select(EvidenceFileText).where(
             EvidenceFileText.evidence_file_id.in_([file.id for file in files])

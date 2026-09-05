@@ -39,6 +39,9 @@ from app.evidence.domain import (
     utcnow,
 )
 from app.evidence.repository import EvidenceLinkRepository, EvidenceRepository
+from app.facts.domain import LinkAvailability as FactLinkAvailability
+from app.facts.events import ClaimInvalidated, FactSupportWithdrawn
+from app.facts.repository import ClaimRepository, FactLinkRepository
 from app.requirements.models import DependencyInputKind
 from app.residence.domain import TravelLifecycleStatus, TravelRecord
 from app.residence.repository import TravelRecordRepository
@@ -193,7 +196,11 @@ def mark_support_unavailable(
     evidence_item_id: uuid.UUID,
     at: datetime,
 ) -> int:
-    """Withdraw every link pointing at a document, because the document is going away.
+    """Undo everything that rested on a document, because the document is going away.
+
+    Three sweeps, in order: travel links, fact links, and the claims still awaiting
+    review. The first two withdraw support; the third closes an open offer to create
+    support. All three have the same trigger and must commit together with the deletion.
 
     **The single seam for step 4 of Domain §51.1** ("mark support links unavailable"), and
     it exists as one function before it has two callers on purpose. At M7 the only link
@@ -236,8 +243,63 @@ def mark_support_unavailable(
             target_type="TravelRecord",
             target_id=link.travel_record_id,
         )
-    # M8: FactEvidenceLink availability is withdrawn here too.
-    if links:
+    # The M8 addition this function's shape was written for, added *inside* here rather
+    # than at a call site — which is the whole reason the seam existed one slice early.
+    #
+    # A confirmed fact is not deleted when its evidence goes (RFC §19: "deleting evidence
+    # does not silently delete a confirmed fact"). The value the user confirmed remains
+    # true; what changes is that the document behind it is gone, and a fact still showing
+    # as evidenced by a deleted file is the exact false statement this path exists to
+    # prevent.
+    fact_links = FactLinkRepository.live_for_evidence_item(
+        session, case_id=case_id, evidence_item_id=evidence_item_id
+    )
+    for fact_link in fact_links:
+        fact_link.withdraw(availability=FactLinkAvailability.DELETED, at=at)
+        uow.emit(
+            FactSupportWithdrawn(
+                aggregate_id=fact_link.fact_version_id,
+                case_id=case_id,
+                evidence_item_id=evidence_item_id,
+                link_id=fact_link.id,
+                availability=FactLinkAvailability.DELETED.value,
+            ),
+            case_id=case_id,
+            action="fact.support_withdrawn_on_deletion",
+            target_type="FactVersion",
+            target_id=fact_link.fact_version_id,
+        )
+
+    # Third: the claims nobody decided about yet. Not support — a proposal supports
+    # nothing — but the same event ends them, and for a sharper reason than the links.
+    # A `PENDING_REVIEW` claim is an open offer to create a trusted fact by reading the
+    # document; once the document is unreachable that offer cannot be honestly taken, and
+    # `ClaimStatus.INVALIDATED` has existed since slice 3a with no producer waiting for
+    # exactly this.
+    #
+    # Here rather than in the purge task, because purge is asynchronous and retryable:
+    # between `delete_evidence` committing and the worker running, a review request would
+    # otherwise still be accepted.
+    invalidated = 0
+    for claim in ClaimRepository.pending_for_evidence_item(
+        session, case_id=case_id, evidence_item_id=evidence_item_id
+    ):
+        if claim.invalidate():
+            invalidated += 1
+            uow.emit(
+                ClaimInvalidated(
+                    aggregate_id=claim.id,
+                    case_id=case_id,
+                    evidence_item_id=evidence_item_id,
+                    claim_type=claim.claim_type,
+                ),
+                case_id=case_id,
+                action="claim.invalidated_on_deletion",
+                target_type="ExtractedClaim",
+                target_id=claim.id,
+            )
+
+    if links or fact_links:
         invalidate_for_input_change(
             session,
             uow,
@@ -245,6 +307,9 @@ def mark_support_unavailable(
             input_kind=DependencyInputKind.EVIDENCE_SUPPORT,
             reason_code=StaleReason.EVIDENCE_SUPPORT_CHANGED,
         )
+    # Deliberately not counted in the return value: an invalidated claim never influenced
+    # a trusted conclusion, so nothing it touched went out of date. Folding it in would
+    # make the caller's `if not withdrawn` branch skip a reconcile it still owes.
     return len(links)
 
 

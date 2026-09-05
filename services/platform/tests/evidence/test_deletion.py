@@ -560,42 +560,27 @@ def test_deletion_leaves_no_fingerprint_of_the_analysed_document(
     explicitly permits to quote from the document. Slice 2 added both and did not extend
     the purge; both slice-2 reviews caught it independently.
     """
-    from app.ai.classifier import ClassificationOutput, ClassifiedCategory
     from app.ai.extraction_run import ExtractionRun
-    from app.ai.fake import FakeProvider, succeeded
-    from tests.evidence.test_processing import _process
+    from tests.evidence.test_processing import _process, classifying
 
     case_id, _ = _case_with_trip(api, "user_a")
     item_id = uuid.UUID(_document(api, "user_a", case_id))
-    _process(
-        item_id,
-        idempotency_key="purge-1",
-        provider=FakeProvider(
-            responses=[
-                succeeded(
-                    ClassificationOutput(
-                        category=ClassifiedCategory.TRAVEL_SUPPORT,
-                        confidence=0.95,
-                        reasoning="Skyline Airways booking confirmation for Amara Okonkwo",
-                    )
-                )
-            ]
-        ),
-    )
+    _process(item_id, idempotency_key="purge-1", provider=classifying())
 
-    def _run() -> ExtractionRun:
+    def _classifier_run() -> ExtractionRun:
         db_session.expire_all()
-        return db_session.execute(
+        runs = db_session.execute(
             select(ExtractionRun).where(ExtractionRun.evidence_item_id == item_id)
-        ).scalar_one()
+        ).scalars()
+        return next(r for r in runs if r.classified_category)
 
-    before = _run()
+    before = _classifier_run()
     assert before.input_hash and before.classification_reasoning
 
     api("user_a").delete(f"/api/v1/cases/{case_id}/evidence/{item_id}")
     _purge(item_id)
 
-    after = _run()
+    after = _classifier_run()
     assert after.input_hash == "", "a content fingerprint survived deletion"
     assert after.classification_reasoning is None, "model prose about the document survived"
     # What identifies nothing stays, so the spend ledger still joins to a run that says
@@ -603,3 +588,91 @@ def test_deletion_leaves_no_fingerprint_of_the_analysed_document(
     # from one that was never analysed — a different claim than deletion should make.
     assert after.classified_category == "TRAVEL_SUPPORT"
     assert after.model_run_id is not None
+
+
+def test_deletion_erases_the_document_words_a_claim_was_holding(
+    api: Api, db_session: Session
+) -> None:
+    """A claim quotes the document, so a purge that skipped it kept the document.
+
+    `proposed_raw` is verbatim: the traveller's name as printed, the booking reference,
+    the date in the words the page used. `evidence_file_texts` is deleted outright
+    because there is no minimal non-sensitive version of a document's text — and a claim
+    holds the same text in a second table, cut into the fields that matter most.
+    """
+    from app.facts.domain import ExtractedClaim
+    from tests.evidence.test_processing import _process, classifying
+
+    case_id, _ = _case_with_trip(api, "user_a")
+    item_id = uuid.UUID(_document(api, "user_a", case_id))
+    _process(item_id, idempotency_key="purge-2", provider=classifying())
+
+    def _claims() -> list[ExtractedClaim]:
+        db_session.expire_all()
+        return list(
+            db_session.execute(
+                select(ExtractedClaim).where(ExtractedClaim.evidence_item_id == item_id)
+            ).scalars()
+        )
+
+    before = _claims()
+    assert before, "the fixture produced no claims, so this test proves nothing"
+    assert any(c.proposed_raw == "OKONKWO / AMARA MS" for c in before)
+
+    api("user_a").delete(f"/api/v1/cases/{case_id}/evidence/{item_id}")
+    _purge(item_id)
+
+    after = _claims()
+    assert len(after) == len(before), "claims were deleted rather than cleared"
+    for claim in after:
+        assert claim.proposed_raw == "", "the document's own words survived deletion"
+        assert claim.proposed_iso is None
+        assert claim.normalised_value is None
+        assert claim.source_locator is None
+        # The row survives because a confirmed fact's provenance runs decision → claim.
+        # What is left names no document and no person.
+        assert claim.claim_type
+        assert claim.extraction_run_id
+
+
+def test_deleting_a_document_closes_the_claims_nobody_had_decided_about(
+    api: Api, db_session: Session
+) -> None:
+    """The offer to create a fact ends when the document does — and at deletion, not at
+    purge.
+
+    Blind confirmation asks the user to read the page and type what it says. Once access
+    is blocked they cannot, so a claim still `PENDING_REVIEW` would present an empty box
+    beside a source region that 404s, and whatever was typed would become a trusted fact
+    backed by nothing. Purge is asynchronous and retryable, so waiting for it leaves a
+    window in which the review endpoint still answers.
+    """
+    from app.facts.domain import ClaimStatus, ExtractedClaim
+    from tests.evidence.test_processing import _process, classifying
+
+    case_id, _ = _case_with_trip(api, "user_a")
+    item_id = uuid.UUID(_document(api, "user_a", case_id))
+    _process(item_id, idempotency_key="purge-3", provider=classifying())
+
+    queue = api("user_a").get(f"/api/v1/cases/{case_id}/claims").json()["items"]
+    assert queue, "no pending claims to invalidate"
+    claim_id = queue[0]["id"]
+
+    api("user_a").delete(f"/api/v1/cases/{case_id}/evidence/{item_id}")
+
+    db_session.expire_all()
+    statuses = {
+        c.status
+        for c in db_session.execute(
+            select(ExtractedClaim).where(ExtractedClaim.evidence_item_id == item_id)
+        ).scalars()
+    }
+    assert statuses == {ClaimStatus.INVALIDATED.value}
+    assert api("user_a").get(f"/api/v1/cases/{case_id}/claims").json()["items"] == []
+
+    # Before the purge has run — the window this test exists to close.
+    refused = api("user_a").post(
+        f"/api/v1/cases/{case_id}/claims/{claim_id}/review",
+        json={"decision": "CONFIRM", "entered_value": "4 May 2026"},
+    )
+    assert refused.status_code == 409
