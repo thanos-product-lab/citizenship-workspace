@@ -122,6 +122,52 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/cases/{case_id}/claims": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Claims
+         * @description Claims awaiting a decision.
+         *
+         *     `PENDING_REVIEW` only. A rejected or already-confirmed claim in a queue invites a
+         *     second decision, which would either duplicate a fact or resurrect a refusal.
+         */
+        get: operations["list_claims_api_v1_cases__case_id__claims_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cases/{case_id}/claims/{claim_id}/review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Review Claim
+         * @description Decide about one claim, and create the fact it authorises.
+         *
+         *     201, because the thing that happened is that a decision — and usually a fact version
+         *     — came into existence. A 200 would describe this as reading something.
+         */
+        post: operations["review_claim_api_v1_cases__case_id__claims__claim_id__review_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/cases/{case_id}/evidence": {
         parameters: {
             query?: never;
@@ -220,6 +266,30 @@ export interface paths {
         put?: never;
         /** Retry Processing */
         post: operations["retry_processing_api_v1_cases__case_id__evidence__evidence_item_id__retry_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cases/{case_id}/facts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Facts
+         * @description The case's trusted values, current version only.
+         *
+         *     Returns `FactView`, built from a `FactVersion`. There is no shape here that a claim
+         *     could be serialised into, so an untrusted proposal cannot reach this response by
+         *     any route.
+         */
+        get: operations["list_facts_api_v1_cases__case_id__facts_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -670,6 +740,47 @@ export interface components {
              */
             updated_at: string;
         };
+        /** ClaimQueueResponse */
+        ClaimQueueResponse: {
+            /** Items */
+            items: components["schemas"]["ClaimView"][];
+        };
+        /**
+         * ClaimView
+         * @description One claim awaiting review.
+         */
+        ClaimView: {
+            /** Claim Type */
+            claim_type: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Journey Index */
+            journey_index: number;
+            /** Model Confidence */
+            model_confidence: number | null;
+            /** Normalised Value */
+            normalised_value: string | null;
+            /** Proposed Value */
+            proposed_value: string | null;
+            /** Requires Blind Entry */
+            requires_blind_entry: boolean;
+            /** Source Locator */
+            source_locator: {
+                [key: string]: unknown;
+            } | null;
+            /** Status */
+            status: string;
+            /** Value Schema Version */
+            value_schema_version: string;
+        };
         /**
          * ConclusionCountView
          * @description One conclusion and how many requirements in the group hold it. A list, ordered most
@@ -841,6 +952,37 @@ export interface components {
              * Format: date-time
              */
             uploaded_at: string;
+        };
+        /**
+         * FactView
+         * @description A trusted value, with where its trust came from.
+         */
+        FactView: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Fact Id
+             * Format: uuid
+             */
+            fact_id: string;
+            /** Fact Type */
+            fact_type: string;
+            /** Normalised Value */
+            normalised_value: string | null;
+            /** Source Method */
+            source_method: string;
+            /** Value */
+            value: string;
+            /** Version Number */
+            version_number: number;
+        };
+        /** FactsResponse */
+        FactsResponse: {
+            /** Items */
+            items: components["schemas"]["FactView"][];
         };
         /**
          * GroupSummaryView
@@ -1167,6 +1309,13 @@ export interface components {
             upload_token: string;
         };
         /**
+         * RejectionReason
+         * @description RFC §10. Structured, so "why was this wrong" is answerable across a corpus rather
+         *     than only by reading prose one claim at a time (AI_EVALUATION_PLAN §15).
+         * @enum {string}
+         */
+        RejectionReason: "VALUE_NOT_PRESENT" | "WRONG_FIELD" | "WRONG_DOCUMENT" | "DUPLICATE" | "AMBIGUOUS" | "OTHER";
+        /**
          * RenderedMessage
          * @description A code, its parameters, and the deterministic plain-language rendering of the two.
          *
@@ -1333,6 +1482,56 @@ export interface components {
             summary_parameters: {
                 [key: string]: unknown;
             };
+        };
+        /**
+         * ReviewDecision
+         * @description RFC §10. `DEFER` is not here: §10 permits it as a non-final UI state, and a
+         *     non-final state persisted alongside final ones is a status people will read as an
+         *     outcome.
+         * @enum {string}
+         */
+        ReviewDecision: "CONFIRM" | "CORRECT" | "REJECT";
+        /**
+         * ReviewRequest
+         * @description A decision about one claim.
+         *
+         *     For a **high-risk** claim: send `entered_value` — what the person read — and leave
+         *     `decision` unset. The server derives CONFIRM or CORRECT from whether the entry
+         *     matches, and there is no field in which a client could assert which it was.
+         *
+         *     For the rest: send `decision`, plus `entered_value` when correcting.
+         *
+         *     Rejection works for both: send `decision=REJECT` and a `reason_code`. "This date is
+         *     not in this document" is a real answer, and demanding a typed value for it would
+         *     force someone to invent one.
+         */
+        ReviewRequest: {
+            decision?: components["schemas"]["ReviewDecision"] | null;
+            /** Entered Value */
+            entered_value?: string | null;
+            /** Expected Revision */
+            expected_revision?: number | null;
+            reason_code?: components["schemas"]["RejectionReason"] | null;
+        };
+        /** ReviewResponse */
+        ReviewResponse: {
+            /**
+             * Claim Id
+             * Format: uuid
+             */
+            claim_id: string;
+            /** Claim Status */
+            claim_status: string;
+            /** Decision */
+            decision: string;
+            /** Fact Version Id */
+            fact_version_id: string | null;
+            /** Fact Version Number */
+            fact_version_number: number | null;
+            /** Review Mode */
+            review_mode: string;
+            /** Value */
+            value: string | null;
         };
         /** RouteProfileDraftInput */
         RouteProfileDraftInput: {
@@ -2129,6 +2328,73 @@ export interface operations {
             };
         };
     };
+    list_claims_api_v1_cases__case_id__claims_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClaimQueueResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    review_claim_api_v1_cases__case_id__claims__claim_id__review_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                claim_id: string;
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_evidence_api_v1_cases__case_id__evidence_get: {
         parameters: {
             query?: never;
@@ -2343,6 +2609,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EvidenceResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_facts_api_v1_cases__case_id__facts_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FactsResponse"];
                 };
             };
             /** @description Validation Error */

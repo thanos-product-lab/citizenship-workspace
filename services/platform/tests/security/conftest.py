@@ -52,6 +52,11 @@ CASE_SCOPED_TABLES: tuple[str, ...] = (
     "evidence_file_texts",
     "evidence_travel_links",
     "extraction_runs",
+    "extracted_claims",
+    "claim_review_decisions",
+    "case_facts",
+    "fact_versions",
+    "fact_evidence_links",
 )
 
 SUPPORTED_ANSWERS = {
@@ -166,6 +171,18 @@ def _upload_document(api: Api, user: str, case_id: str, session: Session) -> str
         EvidenceProcessingRun,
         ProcessingRunStatus,
     )
+    from app.facts.domain import (
+        ClaimReviewDecision,
+        ClaimType,
+        ExtractedClaim,
+        FactEvidenceLink,
+        LinkAvailability,
+        ReviewDecision,
+        ReviewMode,
+        SupportType,
+    )
+    from app.facts.repository import FactRepository
+    from app.facts.values import ProposedValue, ValueSchema
 
     file_id = session.execute(
         text("SELECT id FROM evidence_files WHERE evidence_item_id = :i"),
@@ -198,19 +215,68 @@ def _upload_document(api: Api, user: str, case_id: str, session: Session) -> str
     # `ClassifiedCategory` on a row is what makes the table non-empty, and asking a
     # provider for one would make this suite depend on a network and a budget to answer
     # a question about row visibility.
+    extraction_run = ExtractionRun.record(
+        case_id=uuid.UUID(case_id),
+        evidence_item_id=uuid.UUID(item["id"]),
+        evidence_file_id=file_id,
+        processing_run_id=processing_run.id,
+        capability=Capability.DOCUMENT_CLASSIFIER.value,
+        status=ExtractionRunStatus.SUCCEEDED,
+        input_text="synthetic content",
+        started_at=datetime.now(UTC),
+        classified_category=ClassifiedCategory.TRAVEL_SUPPORT.value,
+        classification_confidence=0.97,
+        classification_reasoning="synthetic",
+    )
+    session.add(extraction_run)
+    session.flush()
+
+    # A claim, a decision about it, and the fact it authorised — inserted directly for
+    # the reason the processing rows above are: this suite asks whether a row is visible
+    # to another tenant, and driving the real review command to get one would make it
+    # depend on a model provider to answer a question about row visibility.
+    claim = ExtractedClaim.propose(
+        case_id=uuid.UUID(case_id),
+        evidence_item_id=uuid.UUID(item["id"]),
+        evidence_file_id=file_id,
+        extraction_run_id=extraction_run.id,
+        claim_type=ClaimType.TRAVEL_DEPARTURE_DATE,
+        value=ProposedValue(schema=ValueSchema.DATE_V1, raw="4 May 2026", model_iso="2026-05-04"),
+    )
+    session.add(claim)
+    session.flush()
+
+    decision = ClaimReviewDecision(
+        case_id=uuid.UUID(case_id),
+        claim_id=claim.id,
+        decision=ReviewDecision.CONFIRM.value,
+        review_mode=ReviewMode.BLIND_ENTRY.value,
+        corrected_raw="2026-05-04",
+        corrected_normalised="2026-05-04",
+        reviewed_by=user,
+        reviewed_at=datetime.now(UTC),
+    )
+    session.add(decision)
+    session.flush()
+
+    # Through `FactRepository.append_version` rather than by hand, so the arrangement
+    # exercises the one path a fact can be created by — and so this fixture would fail
+    # if that path ever stopped requiring a decision.
+    _fact, version = FactRepository.append_version(
+        session,
+        case_id=uuid.UUID(case_id),
+        fact_type=claim.claim_type,
+        reviewed=decision.outcome(schema=ValueSchema.DATE_V1),
+    )
     session.add(
-        ExtractionRun.record(
+        FactEvidenceLink(
             case_id=uuid.UUID(case_id),
+            fact_version_id=version.id,
             evidence_item_id=uuid.UUID(item["id"]),
             evidence_file_id=file_id,
-            processing_run_id=processing_run.id,
-            capability=Capability.DOCUMENT_CLASSIFIER.value,
-            status=ExtractionRunStatus.SUCCEEDED,
-            input_text="synthetic content",
-            started_at=datetime.now(UTC),
-            classified_category=ClassifiedCategory.TRAVEL_SUPPORT.value,
-            classification_confidence=0.97,
-            classification_reasoning="synthetic",
+            claim_id=claim.id,
+            support_type=SupportType.PRIMARY.value,
+            availability_status=LinkAvailability.AVAILABLE.value,
         )
     )
     session.commit()

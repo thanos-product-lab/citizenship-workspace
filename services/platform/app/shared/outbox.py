@@ -87,6 +87,24 @@ NO_CONSUMER: frozenset[str] = frozenset(
         "AssessmentInvalidated",
         "IssuesReconciled",
         "IssueDismissed",
+        # The claim→fact path (M8 slice 3a). Both are history rather than work, and for
+        # the same reason the residence inputs above are: their consequences happen
+        # synchronously, in the transaction that caused them.
+        #
+        # `ClaimReviewed` — the fact version, its evidence link and the claim's new
+        # status are all written in the review command's own transaction. What a
+        # *later* slice adds is stale propagation when a confirmed value changes a trusted
+        # input, and that too belongs in the same transaction (Domain §41.2), not in a
+        # task that could run after the user has been told the value was accepted.
+        "ClaimReviewed",
+        # `FactSupportWithdrawn` — emitted inside `mark_support_unavailable`, which
+        # already calls `invalidate_for_input_change` in that same transaction. A
+        # consumer would re-do work that has, by then, been committed.
+        "FactSupportWithdrawn",
+        # `ClaimInvalidated` — same sweep, same transaction. The status change *is* the
+        # whole consequence: the claim leaves the review queue because the queue reads
+        # `PENDING_REVIEW`, and no asynchronous work follows an offer nobody can take.
+        "ClaimInvalidated",
         # *Case* deletion (Domain §51.2), which is not evidence deletion and does not
         # share its consumer. Its eight steps — cancelling tasks, deleting every
         # case-scoped record, retaining a non-identifying audit — are M11 per the roadmap.

@@ -45,6 +45,50 @@ class CaseNotActive(DomainError):
         super().__init__(f"this action needs an active case; the case is {lifecycle_status}")
 
 
+class ClaimNotFound(DomainError):
+    """No such claim in this case. Indistinguishable from "belongs to someone else", for
+    the reason `get_case` gives: claim existence must not leak across the ownership
+    boundary."""
+
+    code = "CLAIM_NOT_FOUND"
+
+    def __init__(self) -> None:
+        super().__init__("claim not found")
+
+
+class ClaimAlreadyReviewed(DomainError):
+    """Someone has already decided about this claim.
+
+    Deciding twice would either create a second fact from one proposal or resurrect a
+    rejection, so the second decision is refused rather than merged (RFC §25:
+    concurrency must not silently overwrite review state). Carries the status so the
+    client can say what happened instead of "conflict"."""
+
+    code = "CLAIM_ALREADY_REVIEWED"
+
+    def __init__(self, status: str) -> None:
+        self.status = status
+        super().__init__(f"this claim has already been reviewed; it is {status}")
+
+
+class UnreadableEnteredValue(DomainError):
+    """The date the user typed does not determine a calendar date.
+
+    The same rule the document normaliser applies, deliberately: `03/04/2025` typed by a
+    person is exactly as ambiguous as `03/04/2025` printed on a booking, and accepting it
+    would let the blind-entry interaction — which exists to remove a guess — quietly
+    reintroduce one. The message names a form that works rather than only refusing."""
+
+    code = "UNREADABLE_ENTERED_VALUE"
+
+    def __init__(self, value: str) -> None:
+        self.value = value
+        super().__init__(
+            "that date could be read more than one way. Write the month in words — "
+            "for example 11 May 2026 — or use the format 2026-05-11."
+        )
+
+
 class TooManyCases(DomainError):
     """A user tried to open more cases than they are allowed to hold at once.
 
@@ -241,6 +285,32 @@ def register_exception_handlers(app: FastAPI) -> None:
     async def _illegal_transition(_request: Request, exc: IllegalTransition) -> JSONResponse:
         # 409: the aggregate is in a state that conflicts with the requested command.
         return JSONResponse(status_code=status.HTTP_409_CONFLICT, content={"detail": str(exc)})
+
+    @app.exception_handler(ClaimNotFound)
+    async def _claim_not_found(_request: Request, exc: ClaimNotFound) -> JSONResponse:
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
+            content={"detail": str(exc), "code": exc.code},
+        )
+
+    @app.exception_handler(ClaimAlreadyReviewed)
+    async def _claim_already_reviewed(_request: Request, exc: ClaimAlreadyReviewed) -> JSONResponse:
+        return JSONResponse(
+            status_code=status.HTTP_409_CONFLICT,
+            content={"detail": str(exc), "code": exc.code, "status": exc.status},
+        )
+
+    @app.exception_handler(UnreadableEnteredValue)
+    async def _unreadable_entered_value(
+        _request: Request, exc: UnreadableEnteredValue
+    ) -> JSONResponse:
+        return JSONResponse(
+            # 422: the value is well-formed input that the domain cannot read, which is
+            # what this status is for. The message names a format that works, because
+            # refusing without saying what would be accepted is a dead end.
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            content={"detail": str(exc), "code": exc.code},
+        )
 
     @app.exception_handler(TooManyCases)
     async def _too_many_cases(_request: Request, exc: TooManyCases) -> JSONResponse:

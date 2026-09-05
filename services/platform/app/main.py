@@ -23,6 +23,7 @@ from app.core.middleware import TraceIdMiddleware
 from app.core.storage import StorageError, get_storage
 from app.evidence.routes import router as evidence_router
 from app.evidence.upload_token import check_upload_secret
+from app.facts.routes import router as claims_router
 from app.health.routes import router as health_router
 from app.issues.routes import router as issues_router
 from app.residence.routes import router as application_dates_router
@@ -126,6 +127,7 @@ def create_app() -> FastAPI:
     app.include_router(requirements_router)
     app.include_router(assessments_router)
     app.include_router(evidence_router)
+    app.include_router(claims_router)
     app.include_router(issues_router)
 
     structlog.get_logger().info("app.startup", environment=settings.environment)

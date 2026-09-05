@@ -256,6 +256,117 @@
         "title": "CaseResponse",
         "type": "object"
       },
+      "ClaimQueueResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ClaimView"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "ClaimQueueResponse",
+        "type": "object"
+      },
+      "ClaimView": {
+        "description": "One claim awaiting review.",
+        "properties": {
+          "claim_type": {
+            "title": "Claim Type",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "journey_index": {
+            "title": "Journey Index",
+            "type": "integer"
+          },
+          "model_confidence": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Confidence"
+          },
+          "normalised_value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Normalised Value"
+          },
+          "proposed_value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Proposed Value"
+          },
+          "requires_blind_entry": {
+            "title": "Requires Blind Entry",
+            "type": "boolean"
+          },
+          "source_locator": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Locator"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "value_schema_version": {
+            "title": "Value Schema Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "claim_type",
+          "journey_index",
+          "value_schema_version",
+          "proposed_value",
+          "normalised_value",
+          "requires_blind_entry",
+          "model_confidence",
+          "source_locator",
+          "status",
+          "created_at"
+        ],
+        "title": "ClaimView",
+        "type": "object"
+      },
       "ConclusionCountView": {
         "description": "One conclusion and how many requirements in the group hold it. A list, ordered most\nsevere first by the server, rather than a map \u2014 key order is not a contract, and the\nordering is a domain rule (RULES_SPEC \u00a77.13) no client should re-derive.",
         "properties": {
@@ -626,6 +737,75 @@
           "revision"
         ],
         "title": "EvidenceResponse",
+        "type": "object"
+      },
+      "FactView": {
+        "description": "A trusted value, with where its trust came from.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "fact_id": {
+            "format": "uuid",
+            "title": "Fact Id",
+            "type": "string"
+          },
+          "fact_type": {
+            "title": "Fact Type",
+            "type": "string"
+          },
+          "normalised_value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Normalised Value"
+          },
+          "source_method": {
+            "title": "Source Method",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          },
+          "version_number": {
+            "title": "Version Number",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "fact_id",
+          "fact_type",
+          "version_number",
+          "value",
+          "normalised_value",
+          "source_method",
+          "created_at"
+        ],
+        "title": "FactView",
+        "type": "object"
+      },
+      "FactsResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/FactView"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "FactsResponse",
         "type": "object"
       },
       "GroupSummaryView": {
@@ -1407,6 +1587,19 @@
         "title": "RecordUploadRequest",
         "type": "object"
       },
+      "RejectionReason": {
+        "description": "RFC \u00a710. Structured, so \"why was this wrong\" is answerable across a corpus rather\nthan only by reading prose one claim at a time (AI_EVALUATION_PLAN \u00a715).",
+        "enum": [
+          "VALUE_NOT_PRESENT",
+          "WRONG_FIELD",
+          "WRONG_DOCUMENT",
+          "DUPLICATE",
+          "AMBIGUOUS",
+          "OTHER"
+        ],
+        "title": "RejectionReason",
+        "type": "string"
+      },
       "RenderedMessage": {
         "description": "A code, its parameters, and the deterministic plain-language rendering of the two.\n\nAll three travel together on purpose. `text` is what a user reads; `code` and\n`parameters` are what a client keys layout off and what a reviewer checks the wording\nagainst. `text` is null only when a code has no template \u2014 a packaging bug the client\nhandles by showing the structured fields rather than inventing a sentence.",
         "properties": {
@@ -1917,6 +2110,132 @@
           "created_at"
         ],
         "title": "ResultHistoryView",
+        "type": "object"
+      },
+      "ReviewDecision": {
+        "description": "RFC \u00a710. `DEFER` is not here: \u00a710 permits it as a non-final UI state, and a\nnon-final state persisted alongside final ones is a status people will read as an\noutcome.",
+        "enum": [
+          "CONFIRM",
+          "CORRECT",
+          "REJECT"
+        ],
+        "title": "ReviewDecision",
+        "type": "string"
+      },
+      "ReviewRequest": {
+        "description": "A decision about one claim.\n\nFor a **high-risk** claim: send `entered_value` \u2014 what the person read \u2014 and leave\n`decision` unset. The server derives CONFIRM or CORRECT from whether the entry\nmatches, and there is no field in which a client could assert which it was.\n\nFor the rest: send `decision`, plus `entered_value` when correcting.\n\nRejection works for both: send `decision=REJECT` and a `reason_code`. \"This date is\nnot in this document\" is a real answer, and demanding a typed value for it would\nforce someone to invent one.",
+        "properties": {
+          "decision": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReviewDecision"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "entered_value": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entered Value"
+          },
+          "expected_revision": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Revision"
+          },
+          "reason_code": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RejectionReason"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "title": "ReviewRequest",
+        "type": "object"
+      },
+      "ReviewResponse": {
+        "properties": {
+          "claim_id": {
+            "format": "uuid",
+            "title": "Claim Id",
+            "type": "string"
+          },
+          "claim_status": {
+            "title": "Claim Status",
+            "type": "string"
+          },
+          "decision": {
+            "title": "Decision",
+            "type": "string"
+          },
+          "fact_version_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fact Version Id"
+          },
+          "fact_version_number": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fact Version Number"
+          },
+          "review_mode": {
+            "title": "Review Mode",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "claim_id",
+          "claim_status",
+          "decision",
+          "review_mode",
+          "fact_version_id",
+          "fact_version_number",
+          "value"
+        ],
+        "title": "ReviewResponse",
         "type": "object"
       },
       "RouteProfileDraftInput": {
@@ -3482,6 +3801,124 @@
         ]
       }
     },
+    "/api/v1/cases/{case_id}/claims": {
+      "get": {
+        "description": "Claims awaiting a decision.\n\n`PENDING_REVIEW` only. A rejected or already-confirmed claim in a queue invites a\nsecond decision, which would either duplicate a fact or resurrect a refusal.",
+        "operationId": "list_claims_api_v1_cases__case_id__claims_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Case Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClaimQueueResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Claims",
+        "tags": [
+          "claims"
+        ]
+      }
+    },
+    "/api/v1/cases/{case_id}/claims/{claim_id}/review": {
+      "post": {
+        "description": "Decide about one claim, and create the fact it authorises.\n\n201, because the thing that happened is that a decision \u2014 and usually a fact version\n\u2014 came into existence. A 200 would describe this as reading something.",
+        "operationId": "review_claim_api_v1_cases__case_id__claims__claim_id__review_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "claim_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Claim Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Case Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Review Claim",
+        "tags": [
+          "claims"
+        ]
+      }
+    },
     "/api/v1/cases/{case_id}/evidence": {
       "get": {
         "operationId": "list_evidence_api_v1_cases__case_id__evidence_get",
@@ -3865,6 +4302,55 @@
         "summary": "Retry Processing",
         "tags": [
           "evidence"
+        ]
+      }
+    },
+    "/api/v1/cases/{case_id}/facts": {
+      "get": {
+        "description": "The case's trusted values, current version only.\n\nReturns `FactView`, built from a `FactVersion`. There is no shape here that a claim\ncould be serialised into, so an untrusted proposal cannot reach this response by\nany route.",
+        "operationId": "list_facts_api_v1_cases__case_id__facts_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Case Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FactsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Facts",
+        "tags": [
+          "claims"
         ]
       }
     },

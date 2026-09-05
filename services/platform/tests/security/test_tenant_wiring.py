@@ -216,7 +216,14 @@ def test_no_case_scoped_aggregate_is_addressable_outside_a_case_prefix() -> None
         for form in (table, table.removesuffix("s")):
             candidates.add(form)
             candidates.add(form.replace("_", "-"))
-        candidates.add(table.split("_", 1)[0])
+        first = table.split("_", 1)[0]
+        # ...except when the first token *is* the case prefix. `case_facts` yields
+        # "case", which matches `/api/v1/cases` — the prefix every case-scoped route is
+        # supposed to sit under, not a violation of it. Without this the guard flags the
+        # case collection itself and the real check is drowned by a false positive, which
+        # is how a guard stops being read.
+        if first not in {"case", "cases"}:
+            candidates.add(first)
 
     offenders = [
         _label(route)
