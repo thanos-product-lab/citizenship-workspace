@@ -29,7 +29,8 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.ai import classification_service
+from app.ai import classification_service, extraction_service
+from app.ai.classifier import EXTRACTABLE, ClassifiedCategory
 from app.ai.factory import get_provider
 from app.ai.provider import AIProvider
 from app.ai.service import AiBudget
@@ -537,6 +538,26 @@ def _analyse(
     session.add(outcome.run)
 
     at = utcnow()
+    extractable = outcome.category is not None and outcome.category in EXTRACTABLE
+    if extractable and outcome.category is ClassifiedCategory.TRAVEL_SUPPORT:
+        # The classifier chose the schema; now the extractor reads under it. Only
+        # `TRAVEL_SUPPORT` today — the other three land in slice 5 — and a category the
+        # classifier abstained on selects nothing, which is what `EXTRACTABLE` excluding
+        # UNSUPPORTED and AMBIGUOUS is for: a document nobody could classify cannot have
+        # its fields read out under a guess.
+        return _propose(
+            session,
+            provider,
+            budget,
+            item=item,
+            file=file,
+            run=run,
+            classification=outcome,
+            found=found,
+            detected=detected,
+            trace_id=trace_id,
+        )
+
     if outcome.produced_an_answer:
         # Every answer completes, **including UNSUPPORTED and AMBIGUOUS**, and the
         # first of those is a correction: an earlier draft routed a model verdict of
@@ -593,6 +614,85 @@ def _analyse(
         page_count=found.page_count,
         character_count=found.character_count,
         truncated=found.truncated,
+        detected_media_type=detected,
+        trace_id=trace_id,
+    )
+    return ProcessingOutcome(
+        run_id=run.id,
+        processing_status=EvidenceProcessingStatus(item.processing_status),
+        failure_code=None,
+    )
+
+
+def _propose(
+    session: Session,
+    provider: AIProvider | None,
+    budget: AiBudget,
+    *,
+    item: EvidenceItem,
+    file: EvidenceFile,
+    run: EvidenceProcessingRun,
+    classification: classification_service.ClassificationOutcome,
+    found: extraction.ExtractedText,
+    detected: str | None,
+    trace_id: str | None,
+) -> ProcessingOutcome:
+    """Read the document's fields, and put what the model proposed in front of a person.
+
+    **`AWAITING_CONFIRMATION` gets a producer here**, and M7 shipped it unreachable
+    rather than faked precisely so that this moment would be the first time a user sees
+    it. It means what it says: the system has proposed values and is waiting for a human
+    to decide about them. Nothing has been trusted.
+
+    A document that proposes nothing does *not* reach that state — it completes. Asking
+    someone to confirm an empty list is a queue item with no work in it, and a state that
+    means "waiting for you" when nothing is waiting is the kind of small lie that makes
+    every other state less believable.
+    """
+    settings = get_settings()
+    outcome = extraction_service.extract_travel(
+        provider or get_provider(),
+        session,
+        case_id=item.case_id,
+        evidence_item_id=item.id,
+        evidence_file_id=file.id,
+        processing_run_id=run.id,
+        document_text=found.content,
+        budget=budget,
+        settings=settings,
+        trace_id=trace_id,
+    )
+    if outcome.run not in session:
+        session.add(outcome.run)
+
+    at = utcnow()
+    if outcome.proposed_anything:
+        run.succeed(at=at)
+        item.processing_status = EvidenceProcessingStatus.AWAITING_CONFIRMATION.value
+    elif outcome.user_summary is None:
+        # Extraction ran and found nothing to propose — a travel document with no legible
+        # journey. Complete, because the work was done; the classifier's category still
+        # stands as the finding.
+        run.succeed(at=at)
+        item.processing_status = EvidenceProcessingStatus.COMPLETED.value
+    else:
+        # Read and classified, but not extracted. Partial for the same reason a failed
+        # classification is: M7's work stands and M8's did not happen, and the
+        # `ExtractionRun`'s status carries which of the four reasons it was.
+        run.partial(at=at)
+        item.processing_status = EvidenceProcessingStatus.PARTIALLY_COMPLETED.value
+
+    item.updated_at = at
+    session.commit()
+
+    _log.info(
+        "evidence.proposed",
+        evidence_item_id=str(item.id),
+        run_id=str(run.id),
+        # Counts and statuses. Never a claim's value.
+        category=classification.category.value if classification.category else None,
+        claims=len(outcome.claims),
+        extraction_status=outcome.run.status,
         detected_media_type=detected,
         trace_id=trace_id,
     )

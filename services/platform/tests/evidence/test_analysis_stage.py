@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from app.ai.classifier import ClassificationOutput, ClassifiedCategory
 from app.ai.domain import ModelRun, ModelRunStatus
 from app.ai.extraction_run import ExtractionRun, ExtractionRunStatus
+from app.ai.extractors import ExtractedDate, Journey, TravelExtraction
 from app.ai.fake import FakeProvider, failed, succeeded
 from app.evidence.domain import EvidenceItem, EvidenceProcessingStatus
 from tests.conftest import Api
@@ -23,16 +24,42 @@ from tests.evidence.test_processing import _process, _uploaded
 pytestmark = pytest.mark.integration
 
 
-def _answering(category: ClassifiedCategory, confidence: float = 0.92) -> FakeProvider:
-    return FakeProvider(
-        responses=[
+def _answering(
+    category: ClassifiedCategory, confidence: float = 0.92, *, extract: bool = True
+) -> FakeProvider:
+    """A provider scripted for however many calls this category triggers.
+
+    A `TRAVEL_SUPPORT` classification is followed by an extraction from M8 slice 3a, so
+    these providers script two answers where they used to script one. `extract=False`
+    covers the tests that want the extraction step to fail or never happen.
+    """
+    responses: list[object] = [
+        succeeded(
+            ClassificationOutput(
+                category=category, confidence=confidence, reasoning="letterhead and dates"
+            )
+        )
+    ]
+    if extract and category is ClassifiedCategory.TRAVEL_SUPPORT:
+        responses.append(
             succeeded(
-                ClassificationOutput(
-                    category=category, confidence=confidence, reasoning="letterhead and dates"
+                TravelExtraction(
+                    journeys=[
+                        Journey(
+                            departure=ExtractedDate(as_written="4 May 2026", iso="2026-05-04"),
+                            arrival_return=ExtractedDate(
+                                as_written="11 May 2026", iso="2026-05-11"
+                            ),
+                            origin="London Gatwick",
+                            destination="Rome Fiumicino",
+                            booking_reference="SKY-7P2QMN",
+                            traveller_name="OKONKWO / AMARA MS",
+                        )
+                    ]
                 )
             )
-        ]
-    )
+        )
+    return FakeProvider(responses=responses)  # type: ignore[arg-type]
 
 
 def _runs(session: Session, item_id: uuid.UUID) -> list[ExtractionRun]:
@@ -53,21 +80,31 @@ def _item(session: Session, item_id: uuid.UUID) -> EvidenceItem:
 # --- the answers ------------------------------------------------------------------
 
 
-def test_a_classified_document_completes_and_records_the_category(
+def test_a_classified_document_records_the_category_and_awaits_confirmation(
     api: Api, db_session: Session
 ) -> None:
+    """`AWAITING_CONFIRMATION`, not `COMPLETED`, from M8 slice 3a.
+
+    M7 shipped that state with no producer rather than faking one, precisely so that the
+    first document to reach it would be a real one. It means what it says: the system has
+    proposed values and is waiting for a human to decide about them. Nothing is trusted
+    yet.
+    """
     item_id = _uploaded(api, "user_a", content=_fixture())
 
     outcome = _process(
         item_id, idempotency_key="a1", provider=_answering(ClassifiedCategory.TRAVEL_SUPPORT)
     )
 
-    assert outcome.processing_status is EvidenceProcessingStatus.COMPLETED
-    (run,) = _runs(db_session, item_id)
-    assert run.status == ExtractionRunStatus.SUCCEEDED.value
-    assert run.classified_category == "TRAVEL_SUPPORT"
-    assert run.classification_confidence == 0.92
-    assert run.model_run_id is not None
+    assert outcome.processing_status is EvidenceProcessingStatus.AWAITING_CONFIRMATION
+    # Two runs now: the classifier's, and the extractor's. Only the classifier's names a
+    # category — `ck_extraction_runs_category_matches_status` (migration 0031) requires
+    # that, because a conclusion is category-shaped for one capability and not the other.
+    classifier_run = next(r for r in _runs(db_session, item_id) if r.classified_category)
+    assert classifier_run.status == ExtractionRunStatus.SUCCEEDED.value
+    assert classifier_run.classified_category == "TRAVEL_SUPPORT"
+    assert classifier_run.classification_confidence == 0.92
+    assert classifier_run.model_run_id is not None
 
 
 def test_the_users_own_category_is_never_changed_by_the_classifier(
@@ -276,11 +313,14 @@ def test_the_run_is_linked_to_its_processing_run_and_model_run(
         item_id, idempotency_key="e1", provider=_answering(ClassifiedCategory.TRAVEL_SUPPORT)
     )
 
-    (run,) = _runs(db_session, item_id)
-    assert run.processing_run_id == outcome.run_id
-    model_run = db_session.get(ModelRun, run.model_run_id)
-    assert model_run is not None
-    assert model_run.capability == "DocumentClassifier"
+    runs = _runs(db_session, item_id)
+    assert {r.processing_run_id for r in runs} == {outcome.run_id}
+    capabilities = {
+        db_session.get(ModelRun, r.model_run_id).capability  # type: ignore[union-attr]
+        for r in runs
+        if r.model_run_id
+    }
+    assert capabilities == {"DocumentClassifier", "TravelRecordExtractor"}
 
 
 def _fixture(name: str = "travel-booking.pdf") -> bytes:

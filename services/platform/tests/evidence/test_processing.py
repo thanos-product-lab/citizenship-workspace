@@ -17,6 +17,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.ai.classifier import ClassificationOutput, ClassifiedCategory
+from app.ai.extractors import ExtractedDate, Journey, TravelExtraction
 from app.ai.fake import FakeProvider, succeeded
 from app.core.storage import InMemoryStorage, StorageError, get_storage
 from app.evidence import processing
@@ -32,6 +33,13 @@ from app.evidence.domain import (
 )
 from tests.evidence.conftest import fixture_bytes as _fixture
 from tests.security.conftest import SUPPORTED_ANSWERS
+
+# The settled *success* state for a travel document, from M8 slice 3a. The pipeline no
+# longer ends at COMPLETED for a document that proposed claims: it ends waiting for a
+# human to decide about them. Tests below that name this constant are not about the
+# state — they are about validating bytes, retries, and file versions — and they use it
+# so that a future change to the terminal state is one edit rather than five.
+_REVIEWABLE = EvidenceProcessingStatus.AWAITING_CONFIRMATION
 
 pytestmark = pytest.mark.integration
 
@@ -97,27 +105,46 @@ def _uploaded(
     return uuid.UUID(item["id"])
 
 
-def classifying(category: str = "TRAVEL_SUPPORT", *, calls: int = 1) -> FakeProvider:
-    """A provider that answers the classifier deterministically.
+def classifying(category: str = "TRAVEL_SUPPORT", *, journeys: int = 1) -> FakeProvider:
+    """A provider that answers the whole analysis pipeline deterministically.
 
-    Every test in this file that reaches a document's text now also reaches the
-    classifier, and none of them are *about* classification — they are about validating
-    bytes, reading text, and the states that follow. Scripting the answer keeps them
-    asking their own question.
+    **Two calls per travel document from M8 slice 3a**: classify, then extract. Scripting
+    only the first is how every test in this file broke when extraction landed — which is
+    the `FakeProvider` working as intended, refusing an unscripted call loudly instead of
+    quietly making a real, billable one.
 
-    The provider is passed in rather than reached for, so a test that forgets is a test
-    that fails loudly on an unscripted call instead of quietly making a real one.
+    None of these tests are *about* classification or extraction; they are about
+    validating bytes, reading text, and the states that follow. Scripting both answers
+    keeps them asking their own question.
     """
-    return FakeProvider(
-        responses=[
+    responses: list[object] = [
+        succeeded(
+            ClassificationOutput(
+                category=ClassifiedCategory(category), confidence=0.94, reasoning="a reason"
+            )
+        )
+    ]
+    if category == "TRAVEL_SUPPORT":
+        responses.append(
             succeeded(
-                ClassificationOutput(
-                    category=ClassifiedCategory(category), confidence=0.94, reasoning="a reason"
+                TravelExtraction(
+                    journeys=[
+                        Journey(
+                            departure=ExtractedDate(as_written="4 May 2026", iso="2026-05-04"),
+                            arrival_return=ExtractedDate(
+                                as_written="11 May 2026", iso="2026-05-11"
+                            ),
+                            origin="London Gatwick",
+                            destination="Rome Fiumicino",
+                            booking_reference="SKY-7P2QMN",
+                            traveller_name="OKONKWO / AMARA MS",
+                        )
+                        for _ in range(journeys)
+                    ]
                 )
             )
-            for _ in range(calls)
-        ]
-    )
+        )
+    return FakeProvider(responses=responses)  # type: ignore[arg-type]
 
 
 def _process(
@@ -177,7 +204,7 @@ def test_a_real_pdf_is_validated_then_read(api: Api, db_session: Session) -> Non
 
     outcome = _process(item_id, idempotency_key="k1")
 
-    assert outcome.processing_status is EvidenceProcessingStatus.COMPLETED
+    assert outcome.processing_status is _REVIEWABLE
     assert outcome.failure_code is None
     assert [r.run_status for r in _runs(db_session, item_id)] == [ProcessingRunStatus.SUCCEEDED]
 
@@ -403,7 +430,7 @@ def test_a_retry_after_a_transient_failure_actually_runs(api: Api, db_session: S
     outcome = _process(item_id, idempotency_key="k1")
 
     assert outcome.already_done is False, "the retry short-circuited on its own attempt"
-    assert outcome.processing_status is EvidenceProcessingStatus.COMPLETED
+    assert outcome.processing_status is _REVIEWABLE
     runs = _runs(db_session, item_id)
     # One run, not two: the attempt is counted on the run rather than duplicating it
     # (§16.2 — "a retry creates a new run or a new attempt record").
@@ -435,7 +462,7 @@ def test_the_delivery_acts_on_the_file_version_it_names(api: Api, db_session: Se
     ).scalar_one()
 
     outcome = _process(item_id, idempotency_key="k1", evidence_file_id=file.id)
-    assert outcome.processing_status is EvidenceProcessingStatus.COMPLETED
+    assert outcome.processing_status is _REVIEWABLE
 
     # A version that does not belong to this item is refused rather than silently
     # falling back to whatever is current.
@@ -698,7 +725,7 @@ def test_abandoning_cannot_overwrite_a_run_that_already_succeeded(
     assert run.run_status is ProcessingRunStatus.SUCCEEDED
     item = db_session.get(EvidenceItem, item_id)
     assert item is not None
-    assert item.processing_status == EvidenceProcessingStatus.COMPLETED.value
+    assert item.processing_status == _REVIEWABLE.value
 
 
 def test_a_password_protected_document_is_not_offered_a_retry(
