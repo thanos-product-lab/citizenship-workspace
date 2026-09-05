@@ -10,8 +10,19 @@ row that separates what a model proposed from what a human decided. `service.rev
 inserts one and never touches it again, and `ClaimRepository` exposes no mutator. Both
 were convention. If this row can be edited, then "a trusted fact exists only because a
 human decided" is a sentence in a docstring rather than a property of the database.
-Nothing about a past decision is redactable, either: it holds the user's own corrected
-value, which survives deletion of the document exactly as the fact it produced does.
+Nothing about a past decision is redactable, either — but not for the reason first
+written here, which was that the row "holds the user's own corrected value". That is true
+on the blind path and false on the prefilled one: a `PREFILLED` confirm writes
+`proposal.raw`, the model's transcription of the document, and the user typed nothing.
+Both M8 slice-3a reviews caught it independently.
+
+The revoke still stands, on the narrower and correct ground: a decision is a record of
+something a person did, and a record that can be edited is not one. What it retains
+alongside the fact is deliberate under RFC §39 — deleting evidence does not delete a
+confirmed fact — and `DELETE` stays granted so M11 case deletion can still remove the row
+entirely. If a prefilled confirm's `corrected_raw` should be redactable on *evidence*
+deletion, that needs a column-level `GRANT UPDATE` in a new migration and a decision
+recorded here first.
 
 **`fact_versions` — no UPDATE at all.** Append-only by construction:
 `FactRepository.append_version` writes a new row and moves `case_facts.current_version_id`,

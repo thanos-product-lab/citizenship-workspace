@@ -190,9 +190,23 @@ def _tombstone(
         session, case_id=item.case_id, evidence_item_id=item.id
     ):
         # Every status, not only the open ones. A *confirmed* claim's `proposed_raw` is
-        # still the destroyed document's own words — the traveller's name as printed, the
-        # booking reference, the date as written — and the fact the user confirmed keeps
-        # its own copy of the value they entered, which is theirs and stays.
+        # still the destroyed document's own words — the traveller's name as printed,
+        # the booking reference, the date as written.
+        #
+        # What is deliberately **not** redacted is the confirmed fact and the decision
+        # that authorised it (RFC §39: deleting evidence does not delete a fact). An
+        # earlier version of this comment justified that by saying the fact "keeps its
+        # own copy of the value they entered, which is theirs" — which is true on the
+        # blind path and false on the prefilled one, where `_resolve` writes
+        # `proposal.raw`, the model's transcription, and the user typed nothing. Both
+        # slice-3a reviews caught it.
+        #
+        # The retention is still right, and the honest reason is narrower: a fact is a
+        # statement about the *case* — this is when you left — and it survives its
+        # evidence the way a trip does. The row now says so with its support withdrawn,
+        # which is the part that changes. `0032` revokes UPDATE on both tables outright,
+        # so this is a decision that cannot be quietly reversed later; it needs a
+        # migration and this comment is what the next person will read first.
         claim.redact()
     for text in session.execute(
         select(EvidenceFileText).where(
