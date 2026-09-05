@@ -1,3 +1,4 @@
+import { toEvidenceProcessingState } from "@cw/design-system";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -31,23 +32,29 @@ function anItem(overrides: Partial<EvidenceItem> = {}): EvidenceItem {
 
 describe("polling", () => {
   it("watches while a document is being worked on", () => {
-    expect(pollInterval([anItem({ processing_status: "VALIDATING" })], NOW)).toBe(
-      POLL_INTERVAL_MS,
-    );
+    expect(
+      pollInterval([anItem({ processing_status: "VALIDATING" })], NOW),
+    ).toBe(POLL_INTERVAL_MS);
   });
 
   it("stops once every document has settled", () => {
     // The property that matters: a library of finished documents must not generate a
     // request every second and a half for as long as the tab is open.
-    expect(pollInterval([anItem({ processing_status: "COMPLETED" })], NOW)).toBe(false);
-    expect(pollInterval([anItem({ processing_status: "UNSUPPORTED" })], NOW)).toBe(false);
+    expect(
+      pollInterval([anItem({ processing_status: "COMPLETED" })], NOW),
+    ).toBe(false);
+    expect(
+      pollInterval([anItem({ processing_status: "UNSUPPORTED" })], NOW),
+    ).toBe(false);
     expect(pollInterval([], NOW)).toBe(false);
   });
 
   it("watches a just-uploaded document, then gives up on it", () => {
     // The awkward case: UPLOADED is where a document sits both *before* validation and
     // after it passes, so "poll until it leaves UPLOADED" would never stop.
-    const justNow = anItem({ uploaded_at: new Date(NOW - 1_000).toISOString() });
+    const justNow = anItem({
+      uploaded_at: new Date(NOW - 1_000).toISOString(),
+    });
     expect(pollInterval([justNow], NOW)).toBe(POLL_INTERVAL_MS);
 
     const older = anItem({
@@ -93,22 +100,44 @@ describe("the state sets", () => {
     expect(TERMINAL_PROCESSING_STATES.has("UPLOADED")).toBe(false);
   });
 
+  // Domain section 14.4, in full. Shared by the two guards below because they are two
+  // halves of one question: a state the client knows about must be one the API can send,
+  // and a state the API can send must be one a person can read.
+  const domainStates = new Set([
+    "UPLOADED",
+    "VALIDATING",
+    "EXTRACTING_TEXT",
+    "ANALYSING",
+    "AWAITING_CONFIRMATION",
+    "COMPLETED",
+    "PARTIALLY_COMPLETED",
+    "FAILED",
+    "UNSUPPORTED",
+  ]);
+
   it("names only states the API can actually return", () => {
     // Guards against drift with Domain section 14.4: a typo here is a document polled
     // forever or dropped early, and neither shows up as a failure anywhere else.
-    const domainStates = new Set([
-      "UPLOADED",
-      "VALIDATING",
-      "EXTRACTING_TEXT",
-      "ANALYSING",
-      "AWAITING_CONFIRMATION",
-      "COMPLETED",
-      "PARTIALLY_COMPLETED",
-      "FAILED",
-      "UNSUPPORTED",
-    ]);
-    for (const state of [...IN_FLIGHT_PROCESSING_STATES, ...TERMINAL_PROCESSING_STATES]) {
+    for (const state of [
+      ...IN_FLIGHT_PROCESSING_STATES,
+      ...TERMINAL_PROCESSING_STATES,
+    ]) {
       expect(domainStates.has(state)).toBe(true);
     }
+  });
+
+  it("gives every state the API can return a design-system token", () => {
+    // The guard whose absence let `AWAITING_CONFIRMATION` reach a real browser in wire
+    // case. `EvidenceState` renders an untokened state verbatim on purpose — that is the
+    // right fallback for version skew — but it is a fallback, not a shipping state, and
+    // nothing noticed the difference until a document actually got there.
+    //
+    // Deliberately keyed off the same `domainStates` set above rather than a second
+    // list: adding a state to Domain section 14.4 should fail here until it has a label
+    // a person can read, and one list is one place to update.
+    const untokened = [...domainStates].filter(
+      (state) => toEvidenceProcessingState(state) === null,
+    );
+    expect(untokened).toEqual([]);
   });
 });

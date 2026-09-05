@@ -129,7 +129,10 @@ describe("EvidenceDestination", () => {
     const dialog = within(screen.getByRole("alertdialog"));
     expect(dialog.getByText(/closed unread/)).toBeTruthy();
     // And it says what survives, so the warning is not read as "you lose everything".
-    expect(dialog.getByText(/already confirmed stays in your case/)).toBeTruthy();
+    // And it says what survives *and how it changes* — a confirmed value stays, but
+    // this command also withdraws the evidence link under it, so "stays in your case"
+    // on its own is the reassuring half of the truth.
+    expect(dialog.getByText(/no longer have this document behind it/)).toBeTruthy();
   });
 
   it("does not warn about confirmations when there are none outstanding", async () => {
@@ -142,19 +145,25 @@ describe("EvidenceDestination", () => {
     expect(dialog.queryByText(/closed unread/)).toBeNull();
   });
 
-  it("says whose turn it is when a document is waiting to be confirmed", async () => {
+  it("names what happened, not an action the product cannot yet offer", async () => {
     // The state the whole milestone exists to reach, and the label carries prime
-    // directive 1: values have been *proposed*, and the outstanding work is a person's.
-    // "Analysed" or "Ready" would say the machine had finished and imply nothing is
-    // owed.
+    // directive 1: values have been *proposed*, and none of them is true yet.
+    //
+    // "Needs your confirmation" was the first label and it failed the accessibility
+    // gate: the review screen is slice 3b, so a keyboard or screen-reader user was told
+    // to act and then found no control in the app — indistinguishable from having
+    // failed to find one. The one control the row does offer for that document is
+    // Delete. Restore the imperative when there is somewhere to follow it.
     get.mockResolvedValue({
       data: aLibrary([anItem({ processing_status: "AWAITING_CONFIRMATION" })]),
     });
     renderWithQuery(<EvidenceDestination caseId={CASE_ID} />);
 
-    const row = within(await screen.findByRole("row", { name: /Athens booking/ }));
-    expect(row.getByText("Needs your confirmation")).toBeTruthy();
+    const rowElement = await screen.findByRole("row", { name: /Athens booking/ });
+    const row = within(rowElement);
+    expect(row.getByText("Values proposed")).toBeTruthy();
     expect(row.queryByText(/state not recognised/)).toBeNull();
+    expect(rowElement.textContent).not.toMatch(/confirm (them|it|these)/i);
   });
 
   it("says why a document was refused, not only that it was", async () => {

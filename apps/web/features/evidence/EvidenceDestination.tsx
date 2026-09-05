@@ -298,8 +298,15 @@ export function EvidenceDestination({ caseId }: { caseId: string }): JSX.Element
               // Anything already confirmed is a fact and stays; this is about what is
               // still an open question.
               (deletingItem.processing_status === "AWAITING_CONFIRMATION"
-                ? " The values waiting for your confirmation will be closed unread; " +
-                  "anything you have already confirmed stays in your case."
+                ? " The values waiting for your confirmation will be closed unread. " +
+                  // "stays in your case" alone is the reassuring half of the truth. A
+                  // confirmed value does survive — RFC §19 — but this same command
+                  // withdraws the evidence link under it, so it stops being a value
+                  // with a document behind it. The sentence above says exactly that for
+                  // trips; saying less for facts is the false-reassurance failure
+                  // directive 7 names.
+                  "Anything you have already confirmed stays in your case, but will no " +
+                  "longer have this document behind it."
                 : "")
             : ""
         }
@@ -374,6 +381,13 @@ function stateNote(item: EvidenceItem): string | null {
     // Read from the token rather than repeated here: the same sentence written twice in
     // two packages is two sentences that can drift.
     return evidenceProcessingTokens.partially_completed.meaning;
+  }
+  if (item.processing_status === "AWAITING_CONFIRMATION") {
+    // Without this the announcement was "Values proposed. 1 page." — the page count
+    // stripped of the column header that gives it meaning on screen, arriving straight
+    // after a sentence about values, and parsing as *one page was proposed*. A number
+    // announced with no context, on the one state the milestone exists to reach.
+    return evidenceProcessingTokens.awaiting_confirmation.meaning;
   }
   return null;
 }

@@ -263,14 +263,27 @@ export const evidenceProcessingTokens: Record<
     meaning: "Looking at what this document says. Nothing is decided yet.",
   },
   awaiting_confirmation: {
-    colorVar: "--cw-currency-provisional",
+    // `--cw-provenance-ai-proposed`, not `--cw-currency-provisional`. The two are the
+    // same colour in light mode and diverge in dark, so borrowing the currency var made
+    // this badge rhyme with the "AI proposed" provenance badge in one theme and not the
+    // other. They mean the same thing — a machine suggestion nobody has decided about —
+    // and should look it in both.
+    colorVar: "--cw-provenance-ai-proposed",
     glyph: "proposed",
-    // "Needs your confirmation", not "Ready" or "Analysed". The document has been read
-    // and values have been *proposed*; the work outstanding is a person's, and the label
-    // has to say whose. `proposed` is the provenance glyph for exactly this — a machine
-    // suggestion that has not been decided about (prime directive 1).
-    label: "Needs your confirmation",
-    meaning: "We read some values out of this. Nothing counts until you confirm them.",
+    // **"Values proposed", not "Needs your confirmation" — until slice 3b.**
+    //
+    // The imperative was the honest description of the state and the wrong thing to put
+    // on screen: the review interaction does not exist yet, so a keyboard or
+    // screen-reader user is told to act and then finds no control anywhere in the app,
+    // unable to tell "I have not found it" from "there is none". The only control the
+    // row offers for that document is the irreversible one.
+    //
+    // The same rule this file already applies to itself twenty lines up — a state the
+    // product names but cannot reach is worse than one it does not mention — and the
+    // same rule `EvidenceDestination` applies to its retry button. Slice 3b lands the
+    // split view; the label becomes an instruction when there is somewhere to follow it.
+    label: "Values proposed",
+    meaning: "We read some values out of this. None of them counts until a person confirms it.",
   },
   completed: {
     colorVar: "--cw-status-supported",

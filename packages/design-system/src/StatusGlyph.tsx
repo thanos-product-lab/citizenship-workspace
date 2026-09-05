@@ -5,7 +5,13 @@
  * name, because colour must never be the only signal (WCAG 2.2, CLAUDE.md §6). This
  * module resolves those names to real shapes. Each glyph is deliberately distinguishable
  * by silhouette alone — a check, a dashed ring, crossed strokes, a gauge needle — so the
- * set survives greyscale, and no two states read the same at 16px.
+ * set survives greyscale, and no two *conclusions* read the same at 16px.
+ *
+ * Not every state: the evidence set deliberately shares `clock` across `validating`,
+ * `extracting_text` and `analysing`, because all three mean "the worker is still moving"
+ * and that is the distinction a glance needs. Colour is never the only signal — each
+ * carries its own text label — so the gate holds. The original sentence claimed more
+ * than the design intends, and said so about states it was never written for.
  *
  * These are decorative: the components that use them always render a text label beside
  * the glyph, so every icon is `aria-hidden` and the accessible name comes from the label.
