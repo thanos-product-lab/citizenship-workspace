@@ -42,6 +42,7 @@ from app.evidence.domain import (
     EvidenceCategory,
     EvidenceDeleted,
     EvidenceFile,
+    EvidenceFileText,
     EvidenceItem,
     EvidenceProcessingRequested,
     EvidenceProcessingStatus,
@@ -308,12 +309,23 @@ def content_url(
     *,
     case: ApplicationCase,
     evidence_item_id: uuid.UUID,
+    inline: bool = False,
 ) -> tuple[str, int]:
     """A short-lived, case-authorised URL for the file's content.
 
     The ownership check happens here, before the URL exists — the URL is a consequence
     of authorisation, never a substitute for it (Domain §52). It cannot be revoked once
     issued, so its TTL is the whole of its life; see ADR-0018.
+
+    `inline=True` is M8 slice 3b's review preview, which embeds the document in an
+    `<iframe>`. The default stays `attachment`: a download is what every other caller
+    wants, and an inline default would quietly change what the browser is willing to
+    interpret for a route nobody re-read.
+
+    The response content type is pinned to what was validated at upload rather than left
+    to whatever the object claims, so an object whose stored type disagreed with the one
+    we accepted cannot be rendered as that type. Only the store's copy of the bytes is
+    involved; nothing here reads them.
     """
     item, file = get_evidence(session, case=case, evidence_item_id=evidence_item_id)
     settings = get_settings()
@@ -322,9 +334,46 @@ def content_url(
             file.storage_key,
             ttl_seconds=settings.storage_presign_ttl_seconds,
             download_filename=file.original_filename or item.display_name,
+            disposition="inline" if inline else "attachment",
+            response_content_type=file.media_type if inline else None,
         ),
         settings.storage_presign_ttl_seconds,
     )
+
+
+def document_text(
+    session: Session, *, case: ApplicationCase, evidence_item_id: uuid.UUID
+) -> EvidenceFileText:
+    """What the parser read out of this document, for the person who uploaded it.
+
+    **The deferred half of a decision M7 already took**, not a new one.
+    `EvidenceFileText.content` says so in the model: *"Never projected over HTTP in M7 —
+    the full text waits for M8's review surface."* This is that surface.
+
+    Its own endpoint rather than a field on `EvidenceResponse`, and that is the whole
+    point of the split: the library projection selects an evidence row for every document
+    on the screen, and document text is Tier-3 content. The column is `deferred=True` so
+    touching a file row does not load it, and `test_no_evidence_response_ever_carries_
+    document_text` keeps holding — it asserts about the library and item responses, which
+    still carry counts and flags and no words.
+
+    Why it exists at all: the review screen asks a person to read the page and type what
+    it says, and an embedded PDF is not reliably readable by a screen reader. This is the
+    accessible equivalent of the preview, the same obligation CLAUDE.md §9 places on the
+    timeline's table alternative — without it the one interaction the trust model rests
+    on is unusable for some users.
+
+    Raises `EvidenceNotFound` when there is no *usable* text — no row at all, or a row
+    with nothing in it. A scan reaches `PARTIALLY_COMPLETED` with a real row and zero
+    characters, which is the case that made this check about the content rather than the
+    row: an empty string served as "here is the text" would put a blank panel in front of
+    someone who has been asked to read the page and type what it says.
+    """
+    _item, file = get_evidence(session, case=case, evidence_item_id=evidence_item_id)
+    text = EvidenceRepository.get_text(session, evidence_file_id=file.id)
+    if text is None or text.character_count == 0:
+        raise EvidenceNotFound()
+    return text
 
 
 #: States a user may ask us to try again from.

@@ -8,7 +8,7 @@ clause as well (Domain §3.1 and §52).
 import uuid
 
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, undefer
 
 from app.evidence.domain import (
     EvidenceFile,
@@ -131,6 +131,23 @@ class EvidenceRepository:
             )
             .order_by(EvidenceFile.version_number.desc())
             .limit(1)
+        )
+        return session.execute(stmt).scalar_one_or_none()
+
+    @staticmethod
+    def get_text(session: Session, *, evidence_file_id: uuid.UUID) -> EvidenceFileText | None:
+        """The stored text of one file version, content loaded.
+
+        `EvidenceFileText.content` is `deferred=True` so that touching a file row does
+        not drag a document's text into the API process — the reason the column lives on
+        its own table at all. This is the one read that wants it, so it undeferres
+        explicitly rather than letting a lazy load fire somewhere further out where
+        nobody expects a second query.
+        """
+        stmt = (
+            select(EvidenceFileText)
+            .where(EvidenceFileText.evidence_file_id == evidence_file_id)
+            .options(undefer(EvidenceFileText.content))
         )
         return session.execute(stmt).scalar_one_or_none()
 

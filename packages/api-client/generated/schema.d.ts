@@ -276,7 +276,14 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get Content Url */
+        /**
+         * Get Content Url
+         * @description A signed URL for the document itself.
+         *
+         *     `disposition=inline` is the review screen's preview, which embeds the file rather
+         *     than downloading it. A closed literal rather than a free string: the value reaches a
+         *     response header, and the set of dispositions this product serves is two.
+         */
         get: operations["get_content_url_api_v1_cases__case_id__evidence__evidence_item_id__content_get"];
         put?: never;
         post?: never;
@@ -297,6 +304,35 @@ export interface paths {
         put?: never;
         /** Retry Processing */
         post: operations["retry_processing_api_v1_cases__case_id__evidence__evidence_item_id__retry_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cases/{case_id}/evidence/{evidence_item_id}/text": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Document Text
+         * @description What the parser read out of this document.
+         *
+         *     **The only endpoint in the product that serves document text**, and it exists so the
+         *     review screen has an accessible equivalent of its visual preview — an embedded PDF is
+         *     not reliably readable by a screen reader, and blind confirmation asks the reader to
+         *     read the page.
+         *
+         *     Case-scoped and owner-checked before anything is loaded, like every other read here.
+         *     Kept off `EvidenceResponse` deliberately: the library projection selects a row per
+         *     document on the screen, and this is Tier-3 content that must not ride along with it.
+         */
+        get: operations["get_document_text_api_v1_cases__case_id__evidence__evidence_item_id__text_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1019,6 +1055,26 @@ export interface components {
              * Format: date-time
              */
             uploaded_at: string;
+        };
+        /**
+         * EvidenceTextResponse
+         * @description A document's extracted text, and how much of the document it covers.
+         *
+         *     `pages_read` is separate from `page_count` and both are returned, because a cap can
+         *     stop the read early and a reader who assumes they match will present a partial
+         *     reading as a complete one. The screen says so in words when they differ — a user
+         *     typing what they read from a text panel that silently stopped at page 5 would be
+         *     confirming values from a document they have not seen the whole of.
+         */
+        EvidenceTextResponse: {
+            /** Character Count */
+            character_count: number;
+            /** Content */
+            content: string;
+            /** Page Count */
+            page_count: number;
+            /** Pages Read */
+            pages_read: number;
         };
         /**
          * FactView
@@ -2657,7 +2713,9 @@ export interface operations {
     };
     get_content_url_api_v1_cases__case_id__evidence__evidence_item_id__content_get: {
         parameters: {
-            query?: never;
+            query?: {
+                disposition?: "attachment" | "inline";
+            };
             header?: never;
             path: {
                 evidence_item_id: string;
@@ -2706,6 +2764,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EvidenceResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_document_text_api_v1_cases__case_id__evidence__evidence_item_id__text_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                evidence_item_id: string;
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvidenceTextResponse"];
                 };
             };
             /** @description Validation Error */

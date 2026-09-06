@@ -784,3 +784,101 @@ def test_a_worker_stopped_by_its_own_limit_is_still_offered_a_retry() -> None:
     # one: nothing has established that the file is at fault.
     assert may_retry(EvidenceProcessingStatus.FAILED, None)
     assert may_retry(EvidenceProcessingStatus.FAILED, "SOMETHING_A_LATER_BUILD_ADDED")
+
+
+# --- the two endpoints that serve document content ----------------------------------
+
+
+def test_the_preview_url_is_inline_and_the_download_stays_an_attachment(
+    api: Api, db_session: Session
+) -> None:
+    """The review screen embeds the document; everything else downloads it.
+
+    Today's URL always carried `Content-Disposition: attachment`, which makes an
+    `<iframe>` download the file instead of rendering it — the preview would have been an
+    empty frame and a file in the user's Downloads folder. `inline` is opt-in, so no
+    existing caller changes what the browser is willing to interpret.
+    """
+    item_id = _uploaded(api, "user_a")
+    case_id = db_session.get(EvidenceItem, item_id).case_id  # type: ignore[union-attr]
+    base = f"/api/v1/cases/{case_id}/evidence/{item_id}/content"
+
+    default = api("user_a").get(base).json()["url"]
+    inline = api("user_a").get(f"{base}?disposition=inline").json()["url"]
+
+    assert "disposition=attachment" in default
+    assert "disposition=inline" in inline
+    # A third value is refused by the route rather than passed through to a header.
+    assert api("user_a").get(f"{base}?disposition=sideways").status_code == 422
+
+
+def test_the_text_endpoint_serves_the_document_to_its_owner_and_nobody_else(
+    api: Api, db_session: Session
+) -> None:
+    """The only endpoint in the product that returns document text.
+
+    It exists because blind confirmation asks a person to read the page, and an embedded
+    PDF is not reliably readable by a screen reader — so the accessible equivalent of the
+    preview is the text itself. That makes the ownership check the whole of the control:
+    everywhere else a leak is a filename or a count, and here it is the document.
+    """
+    item_id = _uploaded(api, "user_a", content=_fixture("travel-booking.pdf"))
+    _process(item_id, idempotency_key="text-1")
+    case_id = db_session.get(EvidenceItem, item_id).case_id  # type: ignore[union-attr]
+    path = f"/api/v1/cases/{case_id}/evidence/{item_id}/text"
+
+    body = api("user_a").get(path)
+    assert body.status_code == 200
+    payload = body.json()
+    assert "Amara Okonkwo" in payload["content"]
+    assert payload["page_count"] == 1
+    assert payload["pages_read"] == 1
+    assert payload["character_count"] > 0
+
+    # Another tenant gets the same 404 a missing document gets, from the same raise site.
+    assert api("user_b").get(path).status_code == 404
+
+    # **And the owner's *other* case cannot read it either — which is the assertion that
+    # actually tests this code.** RLS separates tenants; it does not separate one
+    # tenant's two cases, so the cross-tenant check above passes even with the ownership
+    # check deleted. `conftest.py` warns about exactly this inversion: a policy that
+    # holds can leave an application check missing and every test green. Only the
+    # `case_id` filter inside `get_evidence` refuses this one.
+    other_case = api("user_a").post("/api/v1/cases", json={"title": "Another"}).json()["id"]
+    leaked = api("user_a").get(f"/api/v1/cases/{other_case}/evidence/{item_id}/text")
+    assert leaked.status_code == 404, "a document was readable from a case it does not belong to"
+
+
+def test_a_document_with_no_readable_text_says_so_rather_than_returning_nothing(
+    api: Api, db_session: Session
+) -> None:
+    """A scan has no text layer, and an empty string would read as an empty document —
+    a user typing what they "read" from a blank panel is the failure this prevents."""
+    item_id = _uploaded(api, "user_a", content=_fixture("scan-no-text-layer.pdf"))
+    _process(item_id, idempotency_key="text-2", provider=classifying("IMMIGRATION_STATUS"))
+    case_id = db_session.get(EvidenceItem, item_id).case_id  # type: ignore[union-attr]
+
+    refused = api("user_a").get(f"/api/v1/cases/{case_id}/evidence/{item_id}/text")
+
+    assert refused.status_code == 404
+
+
+def test_the_library_still_carries_no_document_text_now_that_an_endpoint_does(
+    api: Api, db_session: Session
+) -> None:
+    """The split that makes the endpoint above safe.
+
+    `EvidenceFileText.content` is on its own table and deferred so that the library
+    projection — one row per document on the screen — never drags a document's words into
+    the API process. Adding a deliberate endpoint must not quietly relax that: this is the
+    same assertion as `test_no_evidence_response_ever_carries_document_text`, re-run after
+    the change that could have broken it.
+    """
+    item_id = _uploaded(api, "user_a", content=_fixture("travel-booking.pdf"))
+    _process(item_id, idempotency_key="text-3")
+    db_session.expire_all()
+    case_id = db_session.get(EvidenceItem, item_id).case_id  # type: ignore[union-attr]
+
+    for path in ("", f"/{item_id}"):
+        body = api("user_a").get(f"/api/v1/cases/{case_id}/evidence{path}").text
+        assert "Amara Okonkwo" not in body

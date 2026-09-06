@@ -86,12 +86,20 @@ def test_a_key_never_contains_the_original_filename() -> None:
 )
 def test_a_filename_cannot_split_the_header(hostile: str) -> None:
     """CWE-93 / CWE-113. React escapes a filename in the library view; a header does not,
-    so the encoding happens once, here, at the boundary."""
-    header = content_disposition(hostile)
-    assert "\r" not in header
-    assert "\n" not in header
-    assert "X-Injected" not in header
-    assert "Set-Cookie" not in header
+    so the encoding happens once, here, at the boundary.
+
+    **Both dispositions**, because M8 slice 3b added `inline` for the review preview and
+    the filename is exactly as untrusted on that path. One encoder covers both — an
+    `inline` header built somewhere else would be the same injection surface with none of
+    this reasoning applied to it — and this parameter is what holds that true.
+    """
+    for disposition in ("attachment", "inline"):
+        header = content_disposition(hostile, disposition=disposition)
+        assert header.startswith(f"{disposition}; ")
+        assert "\r" not in header
+        assert "\n" not in header
+        assert "X-Injected" not in header
+        assert "Set-Cookie" not in header
 
 
 def test_a_quote_cannot_escape_the_quoted_string() -> None:
@@ -109,3 +117,13 @@ def test_a_non_ascii_name_survives_in_the_extended_form() -> None:
 def test_a_name_with_nothing_usable_falls_back_rather_than_emitting_an_empty_filename() -> None:
     assert 'filename="document"' in content_disposition("\r\n\r\n")
     assert 'filename="document"' in content_disposition(None)
+
+
+def test_only_the_two_dispositions_this_product_serves_are_accepted() -> None:
+    """The value reaches a response header, and a third disposition would be a header
+    this product has never reasoned about. A closed set at the encoder, not only at the
+    route, so a future caller cannot widen it by passing a string."""
+    import pytest as _pytest
+
+    with _pytest.raises(ValueError, match="unsupported content disposition"):
+        content_disposition("a.pdf", disposition="inline; x=1")

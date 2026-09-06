@@ -15,7 +15,7 @@ would slip through at M7.
 """
 
 import uuid
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
@@ -33,6 +33,7 @@ from app.evidence.schemas import (
     EvidenceContentResponse,
     EvidenceLibraryResponse,
     EvidenceResponse,
+    EvidenceTextResponse,
     RecordUploadRequest,
     StartUploadRequest,
     UploadGrantResponse,
@@ -181,6 +182,40 @@ def get_content_url(
     case: Annotated[ApplicationCase, Depends(require_case_access)],
     session: Annotated[Session, Depends(get_tenant_session)],
     storage: Annotated[StorageAdapter, Depends(get_storage)],
+    disposition: Literal["attachment", "inline"] = "attachment",
 ) -> EvidenceContentResponse:
-    url, ttl = service.content_url(session, storage, case=case, evidence_item_id=evidence_item_id)
+    """A signed URL for the document itself.
+
+    `disposition=inline` is the review screen's preview, which embeds the file rather
+    than downloading it. A closed literal rather than a free string: the value reaches a
+    response header, and the set of dispositions this product serves is two.
+    """
+    url, ttl = service.content_url(
+        session,
+        storage,
+        case=case,
+        evidence_item_id=evidence_item_id,
+        inline=disposition == "inline",
+    )
     return EvidenceContentResponse(url=url, expires_in_seconds=ttl)
+
+
+@router.get("/{evidence_item_id}/text", response_model=EvidenceTextResponse)
+def get_document_text(
+    evidence_item_id: uuid.UUID,
+    case: Annotated[ApplicationCase, Depends(require_case_access)],
+    session: Annotated[Session, Depends(get_tenant_session)],
+) -> EvidenceTextResponse:
+    """What the parser read out of this document.
+
+    **The only endpoint in the product that serves document text**, and it exists so the
+    review screen has an accessible equivalent of its visual preview — an embedded PDF is
+    not reliably readable by a screen reader, and blind confirmation asks the reader to
+    read the page.
+
+    Case-scoped and owner-checked before anything is loaded, like every other read here.
+    Kept off `EvidenceResponse` deliberately: the library projection selects a row per
+    document on the screen, and this is Tier-3 content that must not ride along with it.
+    """
+    text = service.document_text(session, case=case, evidence_item_id=evidence_item_id)
+    return EvidenceTextResponse.of(text)

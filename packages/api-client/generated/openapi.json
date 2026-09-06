@@ -810,6 +810,35 @@
         "title": "EvidenceResponse",
         "type": "object"
       },
+      "EvidenceTextResponse": {
+        "description": "A document's extracted text, and how much of the document it covers.\n\n`pages_read` is separate from `page_count` and both are returned, because a cap can\nstop the read early and a reader who assumes they match will present a partial\nreading as a complete one. The screen says so in words when they differ \u2014 a user\ntyping what they read from a text panel that silently stopped at page 5 would be\nconfirming values from a document they have not seen the whole of.",
+        "properties": {
+          "character_count": {
+            "title": "Character Count",
+            "type": "integer"
+          },
+          "content": {
+            "title": "Content",
+            "type": "string"
+          },
+          "page_count": {
+            "title": "Page Count",
+            "type": "integer"
+          },
+          "pages_read": {
+            "title": "Pages Read",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "content",
+          "page_count",
+          "pages_read",
+          "character_count"
+        ],
+        "title": "EvidenceTextResponse",
+        "type": "object"
+      },
       "FactView": {
         "description": "A trusted value, with where its trust came from.",
         "properties": {
@@ -4310,6 +4339,7 @@
     },
     "/api/v1/cases/{case_id}/evidence/{evidence_item_id}/content": {
       "get": {
+        "description": "A signed URL for the document itself.\n\n`disposition=inline` is the review screen's preview, which embeds the file rather\nthan downloading it. A closed literal rather than a free string: the value reaches a\nresponse header, and the set of dispositions this product serves is two.",
         "operationId": "get_content_url_api_v1_cases__case_id__evidence__evidence_item_id__content_get",
         "parameters": [
           {
@@ -4329,6 +4359,20 @@
             "schema": {
               "format": "uuid",
               "title": "Case Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "disposition",
+            "required": false,
+            "schema": {
+              "default": "attachment",
+              "enum": [
+                "attachment",
+                "inline"
+              ],
+              "title": "Disposition",
               "type": "string"
             }
           }
@@ -4419,6 +4463,65 @@
           }
         ],
         "summary": "Retry Processing",
+        "tags": [
+          "evidence"
+        ]
+      }
+    },
+    "/api/v1/cases/{case_id}/evidence/{evidence_item_id}/text": {
+      "get": {
+        "description": "What the parser read out of this document.\n\n**The only endpoint in the product that serves document text**, and it exists so the\nreview screen has an accessible equivalent of its visual preview \u2014 an embedded PDF is\nnot reliably readable by a screen reader, and blind confirmation asks the reader to\nread the page.\n\nCase-scoped and owner-checked before anything is loaded, like every other read here.\nKept off `EvidenceResponse` deliberately: the library projection selects a row per\ndocument on the screen, and this is Tier-3 content that must not ride along with it.",
+        "operationId": "get_document_text_api_v1_cases__case_id__evidence__evidence_item_id__text_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "evidence_item_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Evidence Item Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Case Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvidenceTextResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Document Text",
         "tags": [
           "evidence"
         ]

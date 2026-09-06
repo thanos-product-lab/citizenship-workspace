@@ -89,7 +89,13 @@ class StorageAdapter(Protocol):
     ) -> PresignedUpload: ...
 
     def presigned_get_url(
-        self, key: str, *, ttl_seconds: int, download_filename: str | None = None
+        self,
+        key: str,
+        *,
+        ttl_seconds: int,
+        download_filename: str | None = None,
+        disposition: str = "attachment",
+        response_content_type: str | None = None,
     ) -> str: ...
 
     def head(self, key: str) -> StoredObject | None: ...
@@ -113,13 +119,24 @@ _FALLBACK_FILENAME = "document"
 _MAX_FILENAME = 120
 
 
-def content_disposition(filename: str | None) -> str:
-    """An `attachment` Content-Disposition for a user-supplied filename, per RFC 6266.
+def content_disposition(filename: str | None, *, disposition: str = "attachment") -> str:
+    """A Content-Disposition for a user-supplied filename, per RFC 6266.
 
     Emits both forms: a conservative ASCII `filename=` that every client understands,
     and `filename*=UTF-8''…` percent-encoded for the ones that read it. The result is
     always a single line — that is the property the CRLF test pins.
+
+    `disposition` is `attachment` by default and stays that way for every download.
+    M8 slice 3b adds `inline`, for one caller: the review screen's document preview,
+    which is an `<iframe>` and would otherwise trigger a download instead of rendering.
+
+    **The encoding is shared deliberately.** The filename is untrusted either way, so an
+    `inline` path with its own header construction would be the same CWE-93 surface with
+    none of the reasoning above applied to it. One function, one set of rules, both
+    dispositions covered by the same CRLF test.
     """
+    if disposition not in ("attachment", "inline"):  # pragma: no cover - programming error
+        raise ValueError(f"unsupported content disposition: {disposition!r}")
     raw = (filename or "").strip()[:_MAX_FILENAME]
     # Truncate at the first control character rather than filtering them out. Filtering
     # keeps the injected *payload* while dropping only the delimiter - "a.pdf\r\nSet-Cookie:
@@ -132,7 +149,7 @@ def content_disposition(filename: str | None) -> str:
             break
     ascii_name = "".join(c for c in raw if c in _ASCII_SAFE).strip() or _FALLBACK_FILENAME
     encoded = quote(raw.strip() or _FALLBACK_FILENAME, safe="")
-    return f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{encoded}"
+    return f"{disposition}; filename=\"{ascii_name}\"; filename*=UTF-8''{encoded}"
 
 
 # --- S3 ----------------------------------------------------------------------------
@@ -228,11 +245,26 @@ class S3Storage:
         )
 
     def presigned_get_url(
-        self, key: str, *, ttl_seconds: int, download_filename: str | None = None
+        self,
+        key: str,
+        *,
+        ttl_seconds: int,
+        download_filename: str | None = None,
+        disposition: str = "attachment",
+        response_content_type: str | None = None,
     ) -> str:
         params: dict[str, str] = {"Bucket": self._bucket, "Key": key}
         if download_filename is not None:
-            params["ResponseContentDisposition"] = content_disposition(download_filename)
+            params["ResponseContentDisposition"] = content_disposition(
+                download_filename, disposition=disposition
+            )
+        if response_content_type is not None:
+            # Pinned by the caller to the type validated at upload, rather than left to
+            # whatever the object claims. It matters only for `inline`: an object whose
+            # stored type disagreed with what we accepted would otherwise be rendered by
+            # the browser as that type, and a document served inline is a document the
+            # browser is willing to interpret.
+            params["ResponseContentType"] = response_content_type
         return str(
             self._signing_client.generate_presigned_url(
                 "get_object", Params=params, ExpiresIn=ttl_seconds
@@ -325,9 +357,15 @@ class InMemoryStorage:
         )
 
     def presigned_get_url(
-        self, key: str, *, ttl_seconds: int, download_filename: str | None = None
+        self,
+        key: str,
+        *,
+        ttl_seconds: int,
+        download_filename: str | None = None,
+        disposition: str = "attachment",
+        response_content_type: str | None = None,
     ) -> str:
-        return f"memory://get/{key}?expires={ttl_seconds}"
+        return f"memory://get/{key}?expires={ttl_seconds}&disposition={disposition}"
 
     def head(self, key: str) -> StoredObject | None:
         body = self.objects.get(key)

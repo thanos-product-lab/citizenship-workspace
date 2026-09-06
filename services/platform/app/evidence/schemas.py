@@ -208,6 +208,31 @@ class EvidenceLibraryResponse(BaseModel):
     max_upload_bytes: int
 
 
+class EvidenceTextResponse(BaseModel):
+    """A document's extracted text, and how much of the document it covers.
+
+    `pages_read` is separate from `page_count` and both are returned, because a cap can
+    stop the read early and a reader who assumes they match will present a partial
+    reading as a complete one. The screen says so in words when they differ — a user
+    typing what they read from a text panel that silently stopped at page 5 would be
+    confirming values from a document they have not seen the whole of.
+    """
+
+    content: str
+    page_count: int
+    pages_read: int
+    character_count: int
+
+    @classmethod
+    def of(cls, text: "EvidenceFileText") -> "EvidenceTextResponse":
+        return cls(
+            content=text.content,
+            page_count=text.page_count,
+            pages_read=text.pages_read,
+            character_count=text.character_count,
+        )
+
+
 class EvidenceContentResponse(BaseModel):
     """A short-lived URL for the file itself.
 
