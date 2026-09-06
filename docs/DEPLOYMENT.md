@@ -200,6 +200,12 @@ written down is the one place you cannot read them from. Both also appear as
 `NEXT_PUBLIC_API_BASE_URL` (Vercel) and `CORS_ALLOW_ORIGINS` (Railway); if either moves,
 all four need updating together.
 
+The bucket's origin is a **third** address that has to agree with itself in two places
+from M8: the bucket's CORS policy (which lets the browser *upload*) and Vercel's
+`NEXT_PUBLIC_STORAGE_ORIGIN` (which lets it *frame* the document for review). They fail
+differently and that is the thing to remember — a wrong CORS policy fails the upload
+loudly, and a wrong frame origin shows an empty box with nothing in any log.
+
 **If you do use R2 later:** endpoint is `https://<account-id>.r2.cloudflarestorage.com`;
 region must be `auto` (anything else fails as `SignatureDoesNotMatch`, which says nothing
 about regions). Buckets are private by default — do not attach a public development URL or
@@ -294,7 +300,40 @@ whose credentials can create buckets is an application whose credentials can cre
    - `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` = `pk_...`
    - `CLERK_SECRET_KEY` = `sk_...`
    - `NEXT_PUBLIC_API_BASE_URL` = the Railway **API URL** from A.3
-4. **Deploy**, then note the **Vercel URL**.
+   - `NEXT_PUBLIC_STORAGE_ORIGIN` = the scheme and host of your bucket's **signed URLs**
+     — see the note below. **The build fails without it**, deliberately.
+4. Set all four for **Production *and* Preview**. A preview deploy builds with
+   `NODE_ENV=production` too, so a variable scoped to Production only fails every PR
+   build.
+5. **Deploy**, then note the **Vercel URL**.
+
+### `NEXT_PUBLIC_STORAGE_ORIGIN` — and the trap in it
+
+M8's review screen embeds the user's document in an `<iframe>` so they can read it while
+confirming what a model read out of it. `apps/web/next.config.ts` sets
+`frame-src 'self' <this origin>`, so this is the only place the app may frame from. Get
+it wrong and the CSP does not error — the user sees an **empty box** on the one screen
+whose entire task is reading that document, which is why the build refuses to run without
+it rather than defaulting to localhost.
+
+**It is not necessarily `STORAGE_ENDPOINT_URL`.** boto3 uses virtual-hosted addressing for
+a DNS-compatible bucket name, so an endpoint of `https://s3.eu-west-2.amazonaws.com` signs
+URLs at `https://your-bucket.s3.eu-west-2.amazonaws.com`. Deriving the value by hand is
+how you get an empty frame and a correct-looking config.
+
+**Read it off a real URL instead.** Against the deployed API:
+
+```
+GET /api/v1/cases/{case_id}/evidence/{evidence_item_id}/content
+→ { "url": "https://your-bucket.s3.eu-west-2.amazonaws.com/cases/…?X-Amz-…", … }
+```
+
+Take the scheme and host of `url` — here `https://your-bucket.s3.eu-west-2.amazonaws.com`
+— and nothing else. No path, no trailing slash.
+
+Locally this is `http://localhost:9000`, which is the default when the variable is unset
+outside a production build, and matches `STORAGE_PUBLIC_ENDPOINT_URL` in
+`docker-compose.yml`.
 
 ## C. Wire the origins together
 

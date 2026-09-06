@@ -44,9 +44,14 @@ const STORAGE_ORIGIN = (() => {
   if (process.env.NODE_ENV === "production") {
     throw new Error(
       "NEXT_PUBLIC_STORAGE_ORIGIN is unset. It is the only origin this app may frame, " +
-        "and the document preview shows an empty frame without it. Set it to the " +
-        "browser-facing address of the object store — the same address the API signs " +
-        "URLs against (STORAGE_PUBLIC_ENDPOINT_URL, or the S3 endpoint when unset).",
+        "and without it the document preview is an empty box.\n\n" +
+        "It is the scheme and host of the URLs the API *signs*, which is not " +
+        "necessarily STORAGE_ENDPOINT_URL: boto3 uses virtual-hosted addressing for a " +
+        "DNS-compatible bucket, so an endpoint of https://s3.eu-west-2.amazonaws.com " +
+        "signs https://your-bucket.s3.eu-west-2.amazonaws.com.\n\n" +
+        "Read it off a real URL rather than deriving it — call " +
+        "GET /api/v1/cases/{case_id}/evidence/{id}/content on the deployed API and take " +
+        "the origin of the `url` it returns. See docs/DEPLOYMENT.md section B.",
     );
   }
   return "http://localhost:9000";
