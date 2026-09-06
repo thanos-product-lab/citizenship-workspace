@@ -22,17 +22,22 @@
  *   happened, and a user who cannot see the badge change must still hear which.
  */
 
-import {
-  ExtractedFieldReview,
-  type RejectionOption,
-} from "@cw/design-system";
+import { ExtractedFieldReview, type RejectionOption } from "@cw/design-system";
 import Link from "next/link";
 import { useState, type JSX } from "react";
 
-import { DocumentGone, useDocumentClaims, type ReviewClaim } from "./useDocumentClaims";
+import {
+  DocumentGone,
+  useDocumentClaims,
+  type ReviewClaim,
+} from "./useDocumentClaims";
 import { useDocumentPreview } from "./useDocumentPreview";
 import { useDocumentText } from "./useDocumentText";
-import { ReviewRefused, useReviewClaim, type RejectionCode } from "./useReviewClaim";
+import {
+  ReviewRefused,
+  useReviewClaim,
+  type RejectionCode,
+} from "./useReviewClaim";
 
 /**
  * What each claim type is called on screen.
@@ -61,9 +66,21 @@ const REJECTION_OPTIONS: readonly RejectionOption[] = [
   { value: "OTHER", label: "Something else" },
 ];
 
+/**
+ * Format guidance with **no usable date in it**, and that is deliberate.
+ *
+ * The first version read "for example 4 May 2026", which put a plausible date on screen
+ * beside the empty box — the exact shape of the failure blind entry exists to prevent,
+ * arriving through the help text rather than through a pre-filled input. Someone in a
+ * hurry types the example. Caught by the test that scans the whole rendered panel for
+ * anything date-shaped, which is why that test looks at the panel and not at the control.
+ *
+ * The slashed form stays, because it is the one being refused rather than offered, and
+ * naming it is what stops the refusal reading as arbitrary.
+ */
 const DATE_HINT =
-  "Write the month in words — for example 4 May 2026 — or use the format 2026-05-04. " +
-  "A date like 03/04/2025 can be read two ways, so it is not accepted.";
+  "Type it as the document writes it. Use the month's name — day, month, year — or the " +
+  "form YYYY-MM-DD. A slashed date such as 03/04/2025 can be read two ways, so it is refused.";
 
 interface FieldState {
   entered: string;
@@ -106,13 +123,18 @@ export function DocumentReview({
       [claimId]: { ...(current[claimId] ?? BLANK), ...change },
     }));
 
-  async function decide(claim: ReviewClaim, input: Parameters<typeof review.mutateAsync>[0]) {
+  async function decide(
+    claim: ReviewClaim,
+    input: Parameters<typeof review.mutateAsync>[0],
+  ) {
     patch(claim.id, { error: null });
     try {
       const outcome = await review.mutateAsync(input);
       await claims.refetch();
       patch(claim.id, { entered: "", correcting: false, rejecting: false });
-      setAnnouncement(describeOutcome(fieldLabel(claim), outcome.decision, outcome.value));
+      setAnnouncement(
+        describeOutcome(fieldLabel(claim), outcome.decision, outcome.value),
+      );
     } catch (error) {
       if (error instanceof ReviewRefused) {
         patch(claim.id, { error: error.message });
@@ -136,8 +158,14 @@ export function DocumentReview({
   if (claims.error instanceof DocumentGone) {
     return (
       <div role="alert" className="cw-empty">
-        <p>This document is no longer in your case, so there is nothing left to confirm.</p>
-        <Link className="cw-button cw-button--secondary" href={`/cases/${caseId}/evidence`}>
+        <p>
+          This document is no longer in your case, so there is nothing left to
+          confirm.
+        </p>
+        <Link
+          className="cw-button cw-button--secondary"
+          href={`/cases/${caseId}/evidence`}
+        >
           Back to your documents
         </Link>
       </div>
@@ -148,10 +176,15 @@ export function DocumentReview({
     return (
       <div role="alert" className="cw-empty">
         <p>
-          We could not load what this document proposed. That is a problem reaching the
-          server, not a statement about your document — nothing has changed.
+          We could not load what this document proposed. That is a problem
+          reaching the server, not a statement about your document — nothing has
+          changed.
         </p>
-        <button type="button" className="cw-button" onClick={() => void claims.refetch()}>
+        <button
+          type="button"
+          className="cw-button"
+          onClick={() => void claims.refetch()}
+        >
           Try again
         </button>
       </div>
@@ -170,7 +203,11 @@ export function DocumentReview({
 
       <div className="cw-review">
         <section className="cw-review__pane" aria-label="The document">
-          <div className="cw-review__tabs" role="group" aria-label="How to read the document">
+          <div
+            className="cw-review__tabs"
+            role="group"
+            aria-label="How to read the document"
+          >
             <button
               type="button"
               className={`cw-button ${pane === "document" ? "" : "cw-button--secondary"}`}
@@ -212,23 +249,32 @@ export function DocumentReview({
             <>
               {text.data.pages_read < text.data.page_count ? (
                 <p role="status" className="cw-field-review__hint">
-                  Only the first {text.data.pages_read} of {text.data.page_count} pages were
-                  read, so anything after that is not shown here.
+                  Only the first {text.data.pages_read} of{" "}
+                  {text.data.page_count} pages were read, so anything after that
+                  is not shown here.
                 </p>
               ) : null}
-              <div className="cw-review__text" tabIndex={0} role="region" aria-label="Document text">
+              <div
+                className="cw-review__text"
+                tabIndex={0}
+                role="region"
+                aria-label="Document text"
+              >
                 {text.data.content}
               </div>
             </>
           ) : (
             <p role="status" className="cw-review__text">
-              There is no text to show: this looks like a scan or a photo, so a parser found
-              nothing to read. Use the Document view instead.
+              There is no text to show: this looks like a scan or a photo, so a
+              parser found nothing to read. Use the Document view instead.
             </p>
           )}
         </section>
 
-        <section className="cw-review__pane" aria-label="What we read from this document">
+        <section
+          className="cw-review__pane"
+          aria-label="What we read from this document"
+        >
           <p role="status">
             {items.length === 0
               ? "Nothing here needs your decision."
@@ -243,7 +289,9 @@ export function DocumentReview({
                 // Only when there is more than one. A booking with a single journey has
                 // nothing to disambiguate, and "Journey 1" on its own is a heading that
                 // implies a Journey 2 the user should be looking for.
-                <h2 className="cw-review__journey-heading">Journey {journey + 1}</h2>
+                <h2 className="cw-review__journey-heading">
+                  Journey {journey + 1}
+                </h2>
               ) : null}
               {group.map((claim) => {
                 const state = stateFor(claim.id);
@@ -276,7 +324,10 @@ export function DocumentReview({
                         ...(claim.requires_blind_entry
                           ? { enteredValue: state.entered }
                           : state.correcting
-                            ? { decision: "CORRECT" as const, enteredValue: state.entered }
+                            ? {
+                                decision: "CORRECT" as const,
+                                enteredValue: state.entered,
+                              }
                             : { decision: "CONFIRM" as const }),
                       })
                     }
@@ -299,10 +350,14 @@ export function DocumentReview({
                       })
                     }
                     rejecting={state.rejecting}
-                    onRejectingChange={(rejecting) => patch(claim.id, { rejecting })}
+                    onRejectingChange={(rejecting) =>
+                      patch(claim.id, { rejecting })
+                    }
                     rejectionOptions={REJECTION_OPTIONS}
                     rejectionReason={state.reason}
-                    onRejectionReasonChange={(reason) => patch(claim.id, { reason })}
+                    onRejectionReasonChange={(reason) =>
+                      patch(claim.id, { reason })
+                    }
                     error={state.error}
                     busy={review.isPending}
                     hint={claim.requires_blind_entry ? DATE_HINT : undefined}
@@ -346,8 +401,13 @@ function groupByJourney(claims: ReviewClaim[]): [number, ReviewClaim[]][] {
  * the document differently, which is information they need and which the badge alone
  * gives only to someone who can see it.
  */
-function describeOutcome(label: string, decision: string, value: string | null): string {
-  if (decision === "REJECT") return `${label}: rejected. Nothing was recorded from it.`;
+function describeOutcome(
+  label: string,
+  decision: string,
+  value: string | null,
+): string {
+  if (decision === "REJECT")
+    return `${label}: rejected. Nothing was recorded from it.`;
   if (decision === "CORRECT") {
     return `${label}: corrected to ${value}. That differs from what we read, and yours is what was recorded.`;
   }

@@ -45,17 +45,21 @@ export function useDocumentClaims(caseId: string, evidenceItemId: string) {
     queryFn: async () => {
       const { data, response } = await api.GET(
         "/api/v1/cases/{case_id}/evidence/{evidence_item_id}/claims",
-        { params: { path: { case_id: caseId, evidence_item_id: evidenceItemId } } },
+        {
+          params: {
+            path: { case_id: caseId, evidence_item_id: evidenceItemId },
+          },
+        },
       );
       // A 404 is a real answer with its own screen — the document was deleted, or was
       // never in this case. Distinguished from a failed fetch, because "this document is
       // gone" and "we could not reach the server" want different words and different
       // controls.
       if (response?.status === 404) throw new DocumentGone();
-      if (!data || !Array.isArray(data.items)) throw new Error("claims unavailable");
+      if (!data || !Array.isArray(data.items))
+        throw new Error("claims unavailable");
       return data.items as ReviewClaim[];
     },
-    retry: (failureCount, error) => !(error instanceof DocumentGone) && failureCount < 2,
   });
 }
 

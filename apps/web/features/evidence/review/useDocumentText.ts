@@ -17,7 +17,11 @@ import { caseKeys } from "@/lib/queries";
  * in the product that carries a document's words, and a tab nobody opened should not pull
  * one over the wire.
  */
-export function useDocumentText(caseId: string, evidenceItemId: string, enabled: boolean) {
+export function useDocumentText(
+  caseId: string,
+  evidenceItemId: string,
+  enabled: boolean,
+) {
   const api = useApiClient();
 
   return useQuery({
@@ -26,7 +30,11 @@ export function useDocumentText(caseId: string, evidenceItemId: string, enabled:
     queryFn: async () => {
       const { data, response } = await api.GET(
         "/api/v1/cases/{case_id}/evidence/{evidence_item_id}/text",
-        { params: { path: { case_id: caseId, evidence_item_id: evidenceItemId } } },
+        {
+          params: {
+            path: { case_id: caseId, evidence_item_id: evidenceItemId },
+          },
+        },
       );
       // 404 means there is no readable text — a scan with no text layer. A real answer
       // with its own words, not a failure: an empty panel would invite someone to

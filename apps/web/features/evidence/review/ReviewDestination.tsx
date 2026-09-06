@@ -35,15 +35,15 @@ export function ReviewDestination({
       <p style={{ color: "var(--cw-text-muted)" }}>
         {document ? (
           <>
-            <strong>{document.display_name}</strong>. Read the document and say what it
-            says. Nothing below counts towards your case until you do — and where a value
-            matters enough to be worth checking, we ask you to type it rather than offering
-            ours to accept.
+            <strong>{document.display_name}</strong>. Read the document and say
+            what it says. Nothing below counts towards your case until you do —
+            and where a value matters enough to be worth checking, we ask you to
+            type it rather than offering ours to accept.
           </>
         ) : (
           <>
-            Read the document and say what it says. Nothing below counts towards your case
-            until you do.
+            Read the document and say what it says. Nothing below counts towards
+            your case until you do.
           </>
         )}
       </p>

@@ -82,7 +82,8 @@ export function useReviewClaim(caseId: string) {
         // is only one of the bodies this endpoint returns — a domain refusal carries
         // `code` and a string `detail`. Narrowed through `unknown` rather than asserted
         // across two unrelated shapes.
-        const body = error as unknown as { code?: string; detail?: string } | undefined;
+        const body = error as unknown as
+          { code?: string; detail?: string } | undefined;
         throw new ReviewRefused(
           body?.code ?? `HTTP_${response?.status ?? 0}`,
           body?.detail ?? "That could not be recorded. Try again.",
