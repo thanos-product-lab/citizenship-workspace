@@ -38,6 +38,7 @@ from app.core.config import get_settings
 from app.core.storage import StorageAdapter, build_key
 from app.evidence import links, upload_token
 from app.evidence.domain import (
+    CONTENT_VERIFIED_STATUSES,
     USER_RETRYABLE_FAILURE_CODES,
     EvidenceCategory,
     EvidenceDeleted,
@@ -54,6 +55,7 @@ from app.evidence.repository import EvidenceRepository
 from app.issues import service as issues_service
 from app.shared.errors import (
     CaseNotActive,
+    DocumentNotPreviewable,
     EvidenceNotFound,
     EvidenceNotRetryable,
     EvidenceRetryTooSoon,
@@ -322,12 +324,23 @@ def content_url(
     wants, and an inline default would quietly change what the browser is willing to
     interpret for a route nobody re-read.
 
-    The response content type is pinned to what was validated at upload rather than left
-    to whatever the object claims, so an object whose stored type disagreed with the one
-    we accepted cannot be rendered as that type. Only the store's copy of the bytes is
-    involved; nothing here reads them.
+    Two controls, because inline is the disposition that asks a browser to *interpret*:
+
+    - **The content check must have passed.** `get_evidence` says the document is active
+      and this case's; it says nothing about whether the bytes are what they claimed.
+      An `UNSUPPORTED` document — HTML uploaded as a PDF, caught by the worker's
+      magic-byte check — stayed downloadable and, until this gate, inline-servable.
+    - **The response content type is pinned** to the type validated at upload, so the
+      store cannot answer with whatever the object claims. Both are needed: the first is
+      about *which* documents may be interpreted, the second about *as what*.
+
+    Nothing here reads the bytes; only the store's copy is involved.
     """
     item, file = get_evidence(session, case=case, evidence_item_id=evidence_item_id)
+    if inline and EvidenceProcessingStatus(item.processing_status) not in (
+        CONTENT_VERIFIED_STATUSES
+    ):
+        raise DocumentNotPreviewable(item.processing_status)
     settings = get_settings()
     return (
         storage.presigned_get_url(

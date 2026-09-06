@@ -96,6 +96,34 @@ TERMINAL_PROCESSING_STATUSES = frozenset(
 )
 
 
+#: States in which the worker has opened the file and found its bytes to be the kind of
+#: document they claimed to be.
+#:
+#: The gate on serving a document **inline**, which is the disposition that asks a browser
+#: to *interpret* rather than save. Every other state is either "not checked yet"
+#: (`UPLOADED`, `VALIDATING`), "checked and the bytes lied" (`UNSUPPORTED`), or ambiguous
+#: about whether the check ran at all (`FAILED` covers a crash before validation as well
+#: as after it).
+#:
+#: Named positively on purpose. A deny-list would have to be right about every state added
+#: later, and the failure it protects against is a file whose declared type the store then
+#: asserts to a browser — the slice-3b security review confirmed an `UNSUPPORTED` document
+#: was still servable, and only the pinned response content type stood between that and
+#: stored content the browser would interpret.
+#:
+#: Download is unaffected: `attachment` is offered in every state, so a user can always
+#: retrieve their own file.
+CONTENT_VERIFIED_STATUSES = frozenset(
+    {
+        EvidenceProcessingStatus.EXTRACTING_TEXT,
+        EvidenceProcessingStatus.ANALYSING,
+        EvidenceProcessingStatus.AWAITING_CONFIRMATION,
+        EvidenceProcessingStatus.COMPLETED,
+        EvidenceProcessingStatus.PARTIALLY_COMPLETED,
+    }
+)
+
+
 class EvidenceItem(Base):
     __tablename__ = "evidence_items"
 

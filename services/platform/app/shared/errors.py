@@ -120,6 +120,25 @@ class IncompleteReview(DomainError):
         super().__init__(detail)
 
 
+class DocumentNotPreviewable(DomainError):
+    """This document may be downloaded but not shown inline.
+
+    `inline` asks the browser to *interpret* the bytes, so it is offered only once the
+    worker has opened the file and found it to be the kind of document it claimed to be.
+    Before that check, and for a file that failed it, the answer is no — the user can
+    still download their own file, which is what `attachment` is for.
+
+    A 409 rather than a 404: the document is real and theirs, and the reason is a state
+    that may change on its own. Carries the status so a client can say which.
+    """
+
+    code = "DOCUMENT_NOT_PREVIEWABLE"
+
+    def __init__(self, processing_status: str) -> None:
+        self.processing_status = processing_status
+        super().__init__("this document cannot be shown here yet; it can still be downloaded")
+
+
 class TooManyCases(DomainError):
     """A user tried to open more cases than they are allowed to hold at once.
 
@@ -329,6 +348,17 @@ def register_exception_handlers(app: FastAPI) -> None:
         return JSONResponse(
             status_code=status.HTTP_409_CONFLICT,
             content={"detail": str(exc), "code": exc.code, "status": exc.status},
+        )
+
+    @app.exception_handler(DocumentNotPreviewable)
+    async def _not_previewable(_request: Request, exc: DocumentNotPreviewable) -> JSONResponse:
+        return JSONResponse(
+            status_code=status.HTTP_409_CONFLICT,
+            content={
+                "detail": str(exc),
+                "code": exc.code,
+                "processing_status": exc.processing_status,
+            },
         )
 
     @app.exception_handler(IncompleteReview)

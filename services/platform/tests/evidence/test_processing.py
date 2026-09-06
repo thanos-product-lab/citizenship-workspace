@@ -800,6 +800,11 @@ def test_the_preview_url_is_inline_and_the_download_stays_an_attachment(
     existing caller changes what the browser is willing to interpret.
     """
     item_id = _uploaded(api, "user_a")
+    # Processed first, and that is not fixture noise: `inline` is gated on the worker
+    # having opened the file and found its bytes to be the kind of document they claimed
+    # to be. An unprocessed document is refused, which the test below asserts directly.
+    _process(item_id, idempotency_key="inline-1")
+    db_session.expire_all()
     case_id = db_session.get(EvidenceItem, item_id).case_id  # type: ignore[union-attr]
     base = f"/api/v1/cases/{case_id}/evidence/{item_id}/content"
 
@@ -820,6 +825,56 @@ def test_the_preview_url_is_inline_and_the_download_stays_an_attachment(
     # and threw it away.
     assert "type=application/pdf" in inline
     assert "type=" not in default, "a download does not need the type asserted"
+
+
+def test_a_file_whose_bytes_lied_can_be_downloaded_but_not_shown_inline(
+    api: Api, db_session: Session
+) -> None:
+    """`inline` asks the browser to interpret the bytes, so it waits for the check.
+
+    The security review confirmed the hole: HTML uploaded as `application/pdf` is caught
+    by the worker's magic-byte check and marked `UNSUPPORTED`, and the file **stays
+    available** — `get_evidence` never consults `processing_status`. Only the pinned
+    response content type stood between that and the store answering `text/html` with
+    `Content-Disposition: inline`, which is stored content the browser will interpret.
+
+    Two independent controls now, which is the point of having two: this one decides
+    *which* documents may be interpreted, the content-type pin decides *as what*.
+
+    Download is untouched. Refusing a user their own file because we could not read it
+    would be punishing them for our reading.
+    """
+    item_id = _uploaded(api, "user_a", content=_NOT_A_PDF)
+    _process(item_id, idempotency_key="inline-guard")
+    db_session.expire_all()
+    item = db_session.get(EvidenceItem, item_id)
+    assert item is not None
+    assert item.processing_status == EvidenceProcessingStatus.UNSUPPORTED.value
+    base = f"/api/v1/cases/{item.case_id}/evidence/{item_id}/content"
+
+    refused = api("user_a").get(f"{base}?disposition=inline")
+
+    assert refused.status_code == 409
+    assert refused.json()["code"] == "DOCUMENT_NOT_PREVIEWABLE"
+    assert api("user_a").get(base).status_code == 200, "the owner lost their download"
+
+
+def test_a_document_nothing_has_looked_at_yet_is_not_shown_inline(
+    api: Api, db_session: Session
+) -> None:
+    """`UPLOADED` means the bytes are in the store and nothing has opened them. Serving
+    them for a browser to interpret on the strength of what the client *declared* is the
+    same hole one state earlier."""
+    item_id = _uploaded(api, "user_a")
+    item = db_session.get(EvidenceItem, item_id)
+    assert item is not None
+    assert item.processing_status == EvidenceProcessingStatus.UPLOADED.value
+
+    refused = api("user_a").get(
+        f"/api/v1/cases/{item.case_id}/evidence/{item_id}/content?disposition=inline"
+    )
+
+    assert refused.status_code == 409
 
 
 def test_the_text_endpoint_serves_the_document_to_its_owner_and_nobody_else(
