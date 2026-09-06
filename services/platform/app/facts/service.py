@@ -337,6 +337,34 @@ def _emit(
     )
 
 
+def document_claims(
+    session: Session, *, case: ApplicationCase, evidence_item_id: uuid.UUID
+) -> list[tuple[ExtractedClaim, ClaimReviewDecision | None]]:
+    """Every claim one document proposed, paired with the decision that settled it.
+
+    Every status, not only the pending ones — this is the split view's data, and MVP
+    §8.11 asks it to show confirmation history. A queue shows what is still open; a
+    document shows what happened to it.
+
+    The evidence item is resolved first, through `evidence.service`, so a document that
+    was deleted or belongs to another case raises rather than returning an empty list.
+    "This document has no claims" and "this is not your document" are different answers
+    and a screen that cannot tell them apart will show the wrong one.
+    """
+    from app.evidence import service as evidence_service
+
+    item, _file = evidence_service.get_evidence(
+        session, case=case, evidence_item_id=evidence_item_id
+    )
+    claims = ClaimRepository.list_for_evidence_item(
+        session, case_id=case.id, evidence_item_id=item.id
+    )
+    decisions = ClaimRepository.decisions_by_claim(
+        session, case_id=case.id, claim_ids=[claim.id for claim in claims]
+    )
+    return [(claim, decisions.get(claim.id)) for claim in claims]
+
+
 def list_pending(session: Session, *, case: ApplicationCase) -> list[ExtractedClaim]:
     """The review queue: claims nobody has decided about yet."""
     return ClaimRepository.list_pending_for_case(session, case_id=case.id)

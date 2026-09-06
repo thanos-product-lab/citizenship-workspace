@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 
 from app.facts.domain import (
     CaseFact,
+    ClaimReviewDecision,
     ClaimStatus,
     ExtractedClaim,
     FactEvidenceLink,
@@ -98,6 +99,29 @@ class ClaimRepository:
                 )
             ).scalars()
         )
+
+    @staticmethod
+    def decisions_by_claim(
+        session: Session, *, case_id: uuid.UUID, claim_ids: list[uuid.UUID]
+    ) -> dict[uuid.UUID, ClaimReviewDecision]:
+        """The decision that settled each of these claims, keyed by claim.
+
+        One query for a whole document rather than one per field: the review screen
+        renders every claim a booking proposed, and a per-claim lookup would be six
+        round trips to draw one page.
+
+        At most one decision per claim by `uq_claim_review_decisions_claim` (migration
+        0033), so a dict is the honest shape and not a convenient lie.
+        """
+        if not claim_ids:
+            return {}
+        rows = session.execute(
+            select(ClaimReviewDecision).where(
+                ClaimReviewDecision.case_id == case_id,
+                ClaimReviewDecision.claim_id.in_(claim_ids),
+            )
+        ).scalars()
+        return {row.claim_id: row for row in rows}
 
     @staticmethod
     def list_for_evidence_item(

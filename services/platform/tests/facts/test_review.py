@@ -483,3 +483,117 @@ def test_a_review_missing_what_its_decision_needs_is_refused_not_a_crash(
     refused2 = _review(api, case_id2, high_risk.id, decision="CONFIRM")
     assert refused2.status_code == 422
     assert refused2.json()["code"] == "INCOMPLETE_REVIEW"
+
+
+# --- the split view's data ----------------------------------------------------------
+
+
+def _document_claims(api: Api, case_id: str, evidence_item_id: uuid.UUID) -> list[dict]:
+    body = api("user_a").get(f"/api/v1/cases/{case_id}/evidence/{evidence_item_id}/claims")
+    assert body.status_code == 200, body.text
+    return list(body.json()["items"])
+
+
+def test_a_documents_claims_include_the_ones_already_decided(api: Api, db_session: Session) -> None:
+    """The queue answers "what is still open"; a document answers "what happened to it".
+
+    `GET /claims` is `PENDING_REVIEW` only, deliberately — a decided claim in a queue
+    invites a second decision. The split view needs the opposite: MVP §8.11 asks it to
+    show confirmation history, and a screen that dropped a field the moment it was
+    decided would leave the user looking at a shrinking list with no record of what they
+    had just done.
+    """
+    case_id, first = _case_with_claim(api, db_session)
+    second = _second_journey(db_session, first, raw="18 June 2026")
+
+    _review(api, case_id, first.id, entered_value="4 May 2026")
+
+    queue = api("user_a").get(f"/api/v1/cases/{case_id}/claims").json()["items"]
+    assert [item["id"] for item in queue] == [str(second.id)], "a decided claim stayed in the queue"
+
+    document = _document_claims(api, case_id, first.evidence_item_id)
+    assert {item["id"] for item in document} == {str(first.id), str(second.id)}
+    decided = next(item for item in document if item["id"] == str(first.id))
+    assert decided["decision"]["decision"] == "CONFIRM"
+    assert decided["decision"]["review_mode"] == "BLIND_ENTRY"
+    assert decided["decision"]["value"] == "2026-05-04"
+    assert decided["decision"]["reviewed_by"] == "user_a"
+    still_open = next(item for item in document if item["id"] == str(second.id))
+    assert still_open["decision"] is None
+
+
+def test_a_proposal_is_withheld_until_it_is_decided_and_shown_afterwards(
+    api: Api, db_session: Session
+) -> None:
+    """Both halves of the conditional reveal, in one test on purpose.
+
+    Withholding is the blind-entry guarantee: a client that received the model's date
+    could render it beside the empty box. Revealing afterwards is MVP §8.11's *"correcting
+    a value preserves the original proposal"* — a promise nobody can see kept if the
+    proposal is never returned at all.
+
+    The two are one rule with a hinge, and splitting them across two tests is how a
+    mutation that moves the hinge passes one of them. The reveal keys off
+    `ClaimStatus.PENDING_REVIEW` — the same status `OPEN_STATUSES` gates the review
+    command on — so the value becomes visible in exactly the instant the claim stops
+    being reviewable.
+    """
+    case_id, claim = _case_with_claim(api, db_session, raw="10 May 2026", model_iso="2026-05-10")
+
+    before = _document_claims(api, case_id, claim.evidence_item_id)
+    assert before[0]["proposed_value"] is None
+    assert before[0]["normalised_value"] is None
+    assert "10 May 2026" not in str(before), "the proposal reached a screen that must not show it"
+
+    # The correction the demo case turns on: the document says 11 May, the model read 10.
+    _review(api, case_id, claim.id, entered_value="11 May 2026")
+
+    after = _document_claims(api, case_id, claim.evidence_item_id)
+    assert after[0]["proposed_value"] == "10 May 2026", (
+        "the original proposal is gone, so a correction cannot be shown as one"
+    )
+    assert after[0]["decision"]["decision"] == "CORRECT"
+    assert after[0]["decision"]["value"] == "2026-05-11", "the user's reading is what was recorded"
+
+
+def test_a_low_risk_proposal_is_visible_throughout(api: Api, db_session: Session) -> None:
+    """The reveal condition must not accidentally hide what was never hidden.
+
+    `travel.origin` is pre-filled by design — the friction is spent where a wrong value
+    changes a conclusion, and not where it does not (RFC §41.4). If the status check had
+    been written as "hide until decided" rather than "hide *blind* fields until decided",
+    every field would have gone blank and the pre-filled confirm would have had nothing
+    to confirm.
+    """
+    case_id, claim = _case_with_claim(
+        api, db_session, claim_type=ClaimType.TRAVEL_ORIGIN, raw="London Gatwick", model_iso=None
+    )
+
+    before = _document_claims(api, case_id, claim.evidence_item_id)
+    assert before[0]["requires_blind_entry"] is False
+    assert before[0]["proposed_value"] == "London Gatwick"
+
+    _review(api, case_id, claim.id, decision="CONFIRM")
+
+    after = _document_claims(api, case_id, claim.evidence_item_id)
+    assert after[0]["proposed_value"] == "London Gatwick"
+
+
+def test_a_deleted_documents_claims_are_a_404_not_an_empty_list(
+    api: Api, db_session: Session
+) -> None:
+    """ "This document has no claims" and "this is not your document" are different
+    answers, and a review screen that cannot tell them apart shows the wrong one — an
+    empty panel reading as "nothing needs your decision" for a document that is gone."""
+    case_id, claim = _case_with_claim(api, db_session)
+    item_id = claim.evidence_item_id
+
+    api("user_a").delete(f"/api/v1/cases/{case_id}/evidence/{item_id}")
+
+    refused = api("user_a").get(f"/api/v1/cases/{case_id}/evidence/{item_id}/claims")
+    assert refused.status_code == 404
+
+    # And another user's document is the same 404, from the same raise site — a claim's
+    # existence must not leak across the ownership boundary.
+    other = api("user_b").get(f"/api/v1/cases/{case_id}/evidence/{item_id}/claims")
+    assert other.status_code == 404

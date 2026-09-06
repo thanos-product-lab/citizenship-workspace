@@ -49,6 +49,29 @@ def list_claims(
     return ClaimQueueResponse(items=[ClaimView.of(claim) for claim in claims])
 
 
+@router.get("/evidence/{evidence_item_id}/claims", response_model=ClaimQueueResponse)
+def list_document_claims(
+    evidence_item_id: uuid.UUID,
+    case: Annotated[ApplicationCase, Depends(require_case_access)],
+    session: Annotated[Session, Depends(get_tenant_session)],
+) -> ClaimQueueResponse:
+    """One document's claims, in any status — the split view's data.
+
+    Under the evidence path because that is what it is about, and handled here because
+    `facts` owns claims: the URL says which document, the module that answers owns the
+    rows. Nothing reaches into evidence's internals — the item is resolved through
+    `evidence.service.get_evidence`, which is also what makes a deleted document a 404
+    rather than an empty list.
+
+    Distinct from `GET /claims` above and deliberately not a filter on it. That one is
+    the queue and answers "what is still open across this case"; this one is a document's
+    own history and answers "what happened to this booking". A shared route with a flag
+    would make one of those two questions the special case.
+    """
+    rows = service.document_claims(session, case=case, evidence_item_id=evidence_item_id)
+    return ClaimQueueResponse(items=[ClaimView.of(claim, decision) for claim, decision in rows])
+
+
 @router.post(
     "/claims/{claim_id}/review",
     response_model=ReviewResponse,

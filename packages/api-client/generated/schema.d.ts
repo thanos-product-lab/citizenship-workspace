@@ -238,6 +238,37 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/cases/{case_id}/evidence/{evidence_item_id}/claims": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Document Claims
+         * @description One document's claims, in any status — the split view's data.
+         *
+         *     Under the evidence path because that is what it is about, and handled here because
+         *     `facts` owns claims: the URL says which document, the module that answers owns the
+         *     rows. Nothing reaches into evidence's internals — the item is resolved through
+         *     `evidence.service.get_evidence`, which is also what makes a deleted document a 404
+         *     rather than an empty list.
+         *
+         *     Distinct from `GET /claims` above and deliberately not a filter on it. That one is
+         *     the queue and answers "what is still open across this case"; this one is a document's
+         *     own history and answers "what happened to this booking". A shared route with a flag
+         *     would make one of those two questions the special case.
+         */
+        get: operations["list_document_claims_api_v1_cases__case_id__evidence__evidence_item_id__claims_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/cases/{case_id}/evidence/{evidence_item_id}/content": {
         parameters: {
             query?: never;
@@ -747,7 +778,7 @@ export interface components {
         };
         /**
          * ClaimView
-         * @description One claim awaiting review.
+         * @description One claim: what was proposed, and what — if anything — was decided about it.
          */
         ClaimView: {
             /** Claim Type */
@@ -757,6 +788,12 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            decision: components["schemas"]["DecisionView"] | null;
+            /**
+             * Evidence Item Id
+             * Format: uuid
+             */
+            evidence_item_id: string;
             /**
              * Id
              * Format: uuid
@@ -827,6 +864,36 @@ export interface components {
          * @enum {string}
          */
         DateConfidence: "EXACT" | "ESTIMATED" | "CONFLICTING" | "UNKNOWN";
+        /**
+         * DecisionView
+         * @description What a person decided about one claim, and when.
+         *
+         *     `value` is what the decision authorised — the user's entry on a correction, the
+         *     proposal on a pre-filled confirm — and is null for a rejection, because a rejection
+         *     creates no trusted value (RFC §10).
+         *
+         *     `review_mode` is here rather than inferred from `claim_type`, so the record says how
+         *     the decision was actually taken. A field that was blind-confirmed and one that was
+         *     pre-filled are different acts, and AI_EVALUATION_PLAN §15's confirmed-without-change
+         *     rate only means anything if the two can be told apart after the fact.
+         */
+        DecisionView: {
+            /** Decision */
+            decision: string;
+            /** Reason Code */
+            reason_code: string | null;
+            /** Review Mode */
+            review_mode: string;
+            /**
+             * Reviewed At
+             * Format: date-time
+             */
+            reviewed_at: string;
+            /** Reviewed By */
+            reviewed_by: string;
+            /** Value */
+            value: string | null;
+        };
         /**
          * EvidenceCategory
          * @description Domain §14.2, verbatim.
@@ -2544,6 +2611,38 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_document_claims_api_v1_cases__case_id__evidence__evidence_item_id__claims_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                evidence_item_id: string;
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClaimQueueResponse"];
+                };
             };
             /** @description Validation Error */
             422: {

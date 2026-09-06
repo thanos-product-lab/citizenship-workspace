@@ -273,7 +273,7 @@
         "type": "object"
       },
       "ClaimView": {
-        "description": "One claim awaiting review.",
+        "description": "One claim: what was proposed, and what \u2014 if anything \u2014 was decided about it.",
         "properties": {
           "claim_type": {
             "title": "Claim Type",
@@ -282,6 +282,21 @@
           "created_at": {
             "format": "date-time",
             "title": "Created At",
+            "type": "string"
+          },
+          "decision": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DecisionView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "evidence_item_id": {
+            "format": "uuid",
+            "title": "Evidence Item Id",
             "type": "string"
           },
           "id": {
@@ -353,6 +368,7 @@
         },
         "required": [
           "id",
+          "evidence_item_id",
           "claim_type",
           "journey_index",
           "value_schema_version",
@@ -362,7 +378,8 @@
           "model_confidence",
           "source_locator",
           "status",
-          "created_at"
+          "created_at",
+          "decision"
         ],
         "title": "ClaimView",
         "type": "object"
@@ -477,6 +494,60 @@
         ],
         "title": "DateConfidence",
         "type": "string"
+      },
+      "DecisionView": {
+        "description": "What a person decided about one claim, and when.\n\n`value` is what the decision authorised \u2014 the user's entry on a correction, the\nproposal on a pre-filled confirm \u2014 and is null for a rejection, because a rejection\ncreates no trusted value (RFC \u00a710).\n\n`review_mode` is here rather than inferred from `claim_type`, so the record says how\nthe decision was actually taken. A field that was blind-confirmed and one that was\npre-filled are different acts, and AI_EVALUATION_PLAN \u00a715's confirmed-without-change\nrate only means anything if the two can be told apart after the fact.",
+        "properties": {
+          "decision": {
+            "title": "Decision",
+            "type": "string"
+          },
+          "reason_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason Code"
+          },
+          "review_mode": {
+            "title": "Review Mode",
+            "type": "string"
+          },
+          "reviewed_at": {
+            "format": "date-time",
+            "title": "Reviewed At",
+            "type": "string"
+          },
+          "reviewed_by": {
+            "title": "Reviewed By",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "decision",
+          "review_mode",
+          "reason_code",
+          "value",
+          "reviewed_by",
+          "reviewed_at"
+        ],
+        "title": "DecisionView",
+        "type": "object"
       },
       "EvidenceCategory": {
         "description": "Domain \u00a714.2, verbatim.\n\n\u00a714.2: `OTHER` and `UNKNOWN` \"can be stored but cannot create trusted domain facts\nwithout a supported review path\". Nothing creates a fact from evidence until M8, so\nthat constraint has no enforcement point yet \u2014 it arrives with `FactEvidenceLink`.",
@@ -4175,6 +4246,65 @@
         "summary": "Get Evidence",
         "tags": [
           "evidence"
+        ]
+      }
+    },
+    "/api/v1/cases/{case_id}/evidence/{evidence_item_id}/claims": {
+      "get": {
+        "description": "One document's claims, in any status \u2014 the split view's data.\n\nUnder the evidence path because that is what it is about, and handled here because\n`facts` owns claims: the URL says which document, the module that answers owns the\nrows. Nothing reaches into evidence's internals \u2014 the item is resolved through\n`evidence.service.get_evidence`, which is also what makes a deleted document a 404\nrather than an empty list.\n\nDistinct from `GET /claims` above and deliberately not a filter on it. That one is\nthe queue and answers \"what is still open across this case\"; this one is a document's\nown history and answers \"what happened to this booking\". A shared route with a flag\nwould make one of those two questions the special case.",
+        "operationId": "list_document_claims_api_v1_cases__case_id__evidence__evidence_item_id__claims_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "evidence_item_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Evidence Item Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Case Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClaimQueueResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Document Claims",
+        "tags": [
+          "claims"
         ]
       }
     },
