@@ -1,0 +1,355 @@
+"use client";
+
+/**
+ * The document review split view: the document on one side, what a model read out of it
+ * on the other, and the decision a person makes about each field.
+ *
+ * **This screen is the trust boundary made operable.** Everything else in M8 keeps an
+ * unreviewed proposal out of a trusted fact; here is where the review actually happens,
+ * and where the design either survives contact with a person or does not.
+ *
+ * Three things worth knowing before reading the code:
+ *
+ * - **A high-risk field shows no proposed value and starts empty.** Not because this
+ *   component hides it — because the API does not send it (`proposed_value` is `null`
+ *   while a blind claim is pending). There is nothing here to leak, which is the point
+ *   of putting the guarantee at the wire rather than in the markup.
+ * - **The preview and the text panel are equivalents, not a primary and a fallback.**
+ *   An embedded PDF is not reliably readable by a screen reader, and this screen asks
+ *   the reader to *read the document*. Both are in the same tab order and neither is
+ *   hidden from anyone.
+ * - **The outcome is announced.** "Confirmed" and "Corrected" are different things that
+ *   happened, and a user who cannot see the badge change must still hear which.
+ */
+
+import {
+  ExtractedFieldReview,
+  type RejectionOption,
+} from "@cw/design-system";
+import Link from "next/link";
+import { useState, type JSX } from "react";
+
+import { DocumentGone, useDocumentClaims, type ReviewClaim } from "./useDocumentClaims";
+import { useDocumentPreview } from "./useDocumentPreview";
+import { useDocumentText } from "./useDocumentText";
+import { ReviewRefused, useReviewClaim, type RejectionCode } from "./useReviewClaim";
+
+/**
+ * What each claim type is called on screen.
+ *
+ * `travel.departure_date` is the domain's name for the field and the right thing to
+ * store; it is not a thing to show anybody. A missing entry falls back to a humanised
+ * form rather than rendering the key, so a claim type added on the server appears as
+ * readable words here before this map catches up.
+ */
+const FIELD_LABELS: Record<string, string> = {
+  "travel.departure_date": "Departure date",
+  "travel.return_date": "Return date",
+  "travel.origin": "Departing from",
+  "travel.destination": "Arriving at",
+  "travel.booking_reference": "Booking reference",
+  "travel.traveller_name": "Traveller name",
+};
+
+/** RFC §10's reasons, in the words a person would use. */
+const REJECTION_OPTIONS: readonly RejectionOption[] = [
+  { value: "VALUE_NOT_PRESENT", label: "This is not on the document" },
+  { value: "WRONG_FIELD", label: "That value belongs to a different field" },
+  { value: "WRONG_DOCUMENT", label: "This is not about this document" },
+  { value: "DUPLICATE", label: "This repeats something already recorded" },
+  { value: "AMBIGUOUS", label: "The document is not clear enough to say" },
+  { value: "OTHER", label: "Something else" },
+];
+
+const DATE_HINT =
+  "Write the month in words — for example 4 May 2026 — or use the format 2026-05-04. " +
+  "A date like 03/04/2025 can be read two ways, so it is not accepted.";
+
+interface FieldState {
+  entered: string;
+  correcting: boolean;
+  rejecting: boolean;
+  reason: string;
+  error: string | null;
+}
+
+const BLANK: FieldState = {
+  entered: "",
+  correcting: false,
+  rejecting: false,
+  reason: REJECTION_OPTIONS[0]!.value,
+  error: null,
+};
+
+export function DocumentReview({
+  caseId,
+  evidenceItemId,
+  documentName,
+}: {
+  caseId: string;
+  evidenceItemId: string;
+  documentName: string;
+}): JSX.Element {
+  const claims = useDocumentClaims(caseId, evidenceItemId);
+  const preview = useDocumentPreview(caseId, evidenceItemId);
+  const [pane, setPane] = useState<"document" | "text">("document");
+  const text = useDocumentText(caseId, evidenceItemId, pane === "text");
+  const review = useReviewClaim(caseId);
+
+  const [fields, setFields] = useState<Record<string, FieldState>>({});
+  const [announcement, setAnnouncement] = useState("");
+
+  const stateFor = (claimId: string): FieldState => fields[claimId] ?? BLANK;
+  const patch = (claimId: string, change: Partial<FieldState>) =>
+    setFields((current) => ({
+      ...current,
+      [claimId]: { ...(current[claimId] ?? BLANK), ...change },
+    }));
+
+  async function decide(claim: ReviewClaim, input: Parameters<typeof review.mutateAsync>[0]) {
+    patch(claim.id, { error: null });
+    try {
+      const outcome = await review.mutateAsync(input);
+      await claims.refetch();
+      patch(claim.id, { entered: "", correcting: false, rejecting: false });
+      setAnnouncement(describeOutcome(fieldLabel(claim), outcome.decision, outcome.value));
+    } catch (error) {
+      if (error instanceof ReviewRefused) {
+        patch(claim.id, { error: error.message });
+        // Refetch on a conflict only: somebody else decided this claim, so the field must
+        // stop offering to decide it again rather than letting the user retype.
+        if (error.code === "CLAIM_ALREADY_REVIEWED") void claims.refetch();
+        return;
+      }
+      patch(claim.id, { error: "That could not be recorded. Try again." });
+    }
+  }
+
+  if (claims.isPending) {
+    return (
+      <p role="status" style={{ color: "var(--cw-text-muted)" }}>
+        Loading what we read from this document…
+      </p>
+    );
+  }
+
+  if (claims.error instanceof DocumentGone) {
+    return (
+      <div role="alert" className="cw-empty">
+        <p>This document is no longer in your case, so there is nothing left to confirm.</p>
+        <Link className="cw-button cw-button--secondary" href={`/cases/${caseId}/evidence`}>
+          Back to your documents
+        </Link>
+      </div>
+    );
+  }
+
+  if (claims.error) {
+    return (
+      <div role="alert" className="cw-empty">
+        <p>
+          We could not load what this document proposed. That is a problem reaching the
+          server, not a statement about your document — nothing has changed.
+        </p>
+        <button type="button" className="cw-button" onClick={() => void claims.refetch()}>
+          Try again
+        </button>
+      </div>
+    );
+  }
+
+  const items = claims.data ?? [];
+  const open = items.filter((claim) => claim.decision === null);
+  const journeys = groupByJourney(items);
+
+  return (
+    <div>
+      <div aria-live="polite" className="cw-visually-hidden">
+        {announcement}
+      </div>
+
+      <div className="cw-review">
+        <section className="cw-review__pane" aria-label="The document">
+          <div className="cw-review__tabs" role="group" aria-label="How to read the document">
+            <button
+              type="button"
+              className={`cw-button ${pane === "document" ? "" : "cw-button--secondary"}`}
+              aria-pressed={pane === "document"}
+              onClick={() => setPane("document")}
+            >
+              Document
+            </button>
+            <button
+              type="button"
+              className={`cw-button ${pane === "text" ? "" : "cw-button--secondary"}`}
+              aria-pressed={pane === "text"}
+              onClick={() => setPane("text")}
+            >
+              Text
+            </button>
+          </div>
+
+          {pane === "document" ? (
+            preview.data?.url ? (
+              <iframe
+                className="cw-review__frame"
+                src={preview.data.url}
+                title={`${documentName} — the document as uploaded`}
+              />
+            ) : (
+              <p role="status" className="cw-review__text">
+                {preview.isPending
+                  ? "Opening the document…"
+                  : "The document could not be opened just now. The fields on the right " +
+                    "still work, and switching to Text will show what was read from it."}
+              </p>
+            )
+          ) : text.isPending ? (
+            <p role="status" className="cw-review__text">
+              Loading the text…
+            </p>
+          ) : text.data ? (
+            <>
+              {text.data.pages_read < text.data.page_count ? (
+                <p role="status" className="cw-field-review__hint">
+                  Only the first {text.data.pages_read} of {text.data.page_count} pages were
+                  read, so anything after that is not shown here.
+                </p>
+              ) : null}
+              <div className="cw-review__text" tabIndex={0} role="region" aria-label="Document text">
+                {text.data.content}
+              </div>
+            </>
+          ) : (
+            <p role="status" className="cw-review__text">
+              There is no text to show: this looks like a scan or a photo, so a parser found
+              nothing to read. Use the Document view instead.
+            </p>
+          )}
+        </section>
+
+        <section className="cw-review__pane" aria-label="What we read from this document">
+          <p role="status">
+            {items.length === 0
+              ? "Nothing here needs your decision."
+              : open.length === 0
+                ? `All ${items.length} values have been decided.`
+                : `${open.length} of ${items.length} values still need your decision.`}
+          </p>
+
+          {journeys.map(([journey, group]) => (
+            <div className="cw-review__journey" key={journey}>
+              {journeys.length > 1 ? (
+                // Only when there is more than one. A booking with a single journey has
+                // nothing to disambiguate, and "Journey 1" on its own is a heading that
+                // implies a Journey 2 the user should be looking for.
+                <h2 className="cw-review__journey-heading">Journey {journey + 1}</h2>
+              ) : null}
+              {group.map((claim) => {
+                const state = stateFor(claim.id);
+                return (
+                  <ExtractedFieldReview
+                    key={claim.id}
+                    id={`claim-${claim.id}`}
+                    label={fieldLabel(claim)}
+                    blind={claim.requires_blind_entry}
+                    proposedValue={claim.proposed_value}
+                    decision={
+                      claim.decision
+                        ? {
+                            decision: claim.decision.decision,
+                            reviewMode: claim.decision.review_mode,
+                            value: claim.decision.value,
+                            reasonCode: claim.decision.reason_code,
+                            reviewedAt: claim.decision.reviewed_at,
+                          }
+                        : null
+                    }
+                    entered={state.entered}
+                    onEnteredChange={(entered) => patch(claim.id, { entered })}
+                    onSubmit={() =>
+                      void decide(claim, {
+                        claimId: claim.id,
+                        // A blind field sends only what was typed: there is no field in
+                        // the request for asserting which decision it was, so the server
+                        // works it out from the entry.
+                        ...(claim.requires_blind_entry
+                          ? { enteredValue: state.entered }
+                          : state.correcting
+                            ? { decision: "CORRECT" as const, enteredValue: state.entered }
+                            : { decision: "CONFIRM" as const }),
+                      })
+                    }
+                    onReject={(reasonCode) =>
+                      void decide(claim, {
+                        claimId: claim.id,
+                        decision: "REJECT" as const,
+                        reasonCode: reasonCode as RejectionCode,
+                      })
+                    }
+                    correcting={state.correcting}
+                    onCorrectingChange={(correcting) =>
+                      patch(claim.id, {
+                        correcting,
+                        // Seeded with the proposal, and only here: this is a low-risk
+                        // field the user has explicitly asked to change, so starting from
+                        // what was read saves retyping a booking reference. A blind field
+                        // never reaches this branch.
+                        entered: correcting ? (claim.proposed_value ?? "") : "",
+                      })
+                    }
+                    rejecting={state.rejecting}
+                    onRejectingChange={(rejecting) => patch(claim.id, { rejecting })}
+                    rejectionOptions={REJECTION_OPTIONS}
+                    rejectionReason={state.reason}
+                    onRejectionReasonChange={(reason) => patch(claim.id, { reason })}
+                    error={state.error}
+                    busy={review.isPending}
+                    hint={claim.requires_blind_entry ? DATE_HINT : undefined}
+                  />
+                );
+              })}
+            </div>
+          ))}
+        </section>
+      </div>
+    </div>
+  );
+}
+
+function fieldLabel(claim: ReviewClaim): string {
+  return FIELD_LABELS[claim.claim_type] ?? humanise(claim.claim_type);
+}
+
+function humanise(claimType: string): string {
+  const field = claimType.split(".").pop() ?? claimType;
+  const words = field.replace(/_/g, " ");
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+/** Journeys in order, each with its fields in the order the API returned them. */
+function groupByJourney(claims: ReviewClaim[]): [number, ReviewClaim[]][] {
+  const groups = new Map<number, ReviewClaim[]>();
+  for (const claim of claims) {
+    const bucket = groups.get(claim.journey_index) ?? [];
+    bucket.push(claim);
+    groups.set(claim.journey_index, bucket);
+  }
+  return [...groups.entries()].sort(([a], [b]) => a - b);
+}
+
+/**
+ * What to say out loud once a decision lands.
+ *
+ * Confirmed and corrected are different outcomes and the difference is the whole point:
+ * a user who typed what they read and got "corrected" has just learned the model read
+ * the document differently, which is information they need and which the badge alone
+ * gives only to someone who can see it.
+ */
+function describeOutcome(label: string, decision: string, value: string | null): string {
+  if (decision === "REJECT") return `${label}: rejected. Nothing was recorded from it.`;
+  if (decision === "CORRECT") {
+    return `${label}: corrected to ${value}. That differs from what we read, and yours is what was recorded.`;
+  }
+  return `${label}: confirmed as ${value}. That matches what we read.`;
+}

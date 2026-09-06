@@ -33,6 +33,14 @@ export const caseKeys = {
   evidence: (caseId: string) => [...caseKeys.detail(caseId), "evidence"] as const,
   requirement: (caseId: string, key: string) =>
     [...caseKeys.detail(caseId), "requirements", key] as const,
+  /** One document's claims, its signed preview URL, and its extracted text. Hung off the
+   *  case subtree so a review invalidates alongside everything else it touched. */
+  documentClaims: (caseId: string, itemId: string) =>
+    [...caseKeys.detail(caseId), "evidence", itemId, "claims"] as const,
+  documentPreview: (caseId: string, itemId: string) =>
+    [...caseKeys.detail(caseId), "evidence", itemId, "preview"] as const,
+  documentText: (caseId: string, itemId: string) =>
+    [...caseKeys.detail(caseId), "evidence", itemId, "text"] as const,
   applicationDate: (caseId: string) => [...caseKeys.detail(caseId), "application-date"] as const,
   travelRecords: (caseId: string) => [...caseKeys.detail(caseId), "travel-records"] as const,
 } as const;

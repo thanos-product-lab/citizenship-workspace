@@ -13,3 +13,4 @@ export * from "./SourceReference";
 export * from "./StaleAssessmentNotice";
 export * from "./BeforeAfterValue";
 export * from "./IssueCard";
+export * from "./ExtractedFieldReview";

@@ -2262,3 +2262,178 @@
   border: 1px solid var(--cw-border);
   font-variant-numeric: tabular-nums;
 }
+
+/* --- ExtractedFieldReview -------------------------------------------------- */
+
+.cw-field-review {
+  display: grid;
+  gap: var(--cw-space-3);
+  padding: var(--cw-space-4);
+  border: 1px solid var(--cw-border);
+  border-radius: var(--cw-radius-md);
+  background: var(--cw-surface);
+}
+
+/* A decided field recedes. It is still readable and still a record — it is not struck
+   through or greyed to the point of being hard to read — but the eye should land on what
+   is still asking. */
+.cw-field-review[data-decided="true"] {
+  background: var(--cw-surface-sunken);
+}
+
+.cw-field-review__head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cw-space-2);
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.cw-field-review__label {
+  font-weight: var(--cw-weight-medium);
+}
+
+.cw-field-review__value {
+  margin: 0;
+  font-size: var(--cw-text-lg);
+}
+
+.cw-field-review__settled {
+  display: grid;
+  gap: var(--cw-space-2);
+  margin: 0;
+  color: var(--cw-text);
+}
+
+.cw-field-review__open,
+.cw-field-review__entry {
+  display: grid;
+  gap: var(--cw-space-2);
+}
+
+.cw-field-review__entry-label {
+  font-size: var(--cw-text-sm);
+  font-weight: var(--cw-weight-medium);
+}
+
+.cw-field-review__hint {
+  margin: 0;
+  font-size: var(--cw-text-sm);
+  color: var(--cw-text-muted);
+}
+
+.cw-field-review__input,
+.cw-field-review__select {
+  padding: var(--cw-space-2) var(--cw-space-3);
+  font: inherit;
+  color: var(--cw-text);
+  background: var(--cw-surface);
+  border: 1px solid var(--cw-border);
+  border-radius: var(--cw-radius-sm);
+}
+
+.cw-field-review__input[aria-invalid="true"] {
+  border-color: var(--cw-status-not-satisfied);
+  /* Not colour alone: the error text below carries a glyph and the message, and the
+     border is the third signal rather than the only one. */
+  border-width: 2px;
+}
+
+.cw-field-review__error {
+  display: flex;
+  gap: var(--cw-space-2);
+  align-items: flex-start;
+  margin: 0;
+  font-size: var(--cw-text-sm);
+  color: var(--cw-status-not-satisfied);
+}
+
+.cw-field-review__conflict {
+  display: flex;
+  gap: var(--cw-space-2);
+  align-items: flex-start;
+  margin: 0;
+  font-size: var(--cw-text-sm);
+  color: var(--cw-provenance-conflicting);
+}
+
+.cw-field-review__controls,
+.cw-field-review__reject {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cw-space-2);
+  align-items: center;
+}
+
+.cw-field-review__reject {
+  padding-top: var(--cw-space-2);
+  border-top: 1px dashed var(--cw-border);
+}
+
+/* --- DocumentReview split view --------------------------------------------- */
+
+.cw-review {
+  display: grid;
+  gap: var(--cw-space-5);
+  /* Two columns where there is room, one where there is not. `minmax(0, …)` rather than
+     `1fr` because a PDF frame and a long extracted value both refuse to shrink below
+     their content otherwise, and the page starts scrolling sideways. */
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: start;
+}
+
+/* One column well before 200% zoom, and the preview stays first in both source and
+   visual order so the two never disagree for a keyboard user. */
+@media (max-width: 60rem) {
+  .cw-review {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.cw-review__pane {
+  display: grid;
+  gap: var(--cw-space-3);
+  min-width: 0;
+}
+
+.cw-review__tabs {
+  display: flex;
+  gap: var(--cw-space-2);
+}
+
+.cw-review__frame {
+  width: 100%;
+  height: min(70vh, 40rem);
+  border: 1px solid var(--cw-border);
+  border-radius: var(--cw-radius-md);
+  background: var(--cw-surface-sunken);
+}
+
+.cw-review__text {
+  max-height: min(70vh, 40rem);
+  padding: var(--cw-space-4);
+  overflow: auto;
+  font-size: var(--cw-text-sm);
+  line-height: 1.6;
+  white-space: pre-wrap;
+  /* The document's own words, wrapped. `pre-wrap` keeps the parser's line breaks, which
+     are what make a booking's columns legible at all when read as text. */
+  overflow-wrap: anywhere;
+  background: var(--cw-surface-sunken);
+  border: 1px solid var(--cw-border);
+  border-radius: var(--cw-radius-md);
+}
+
+.cw-review__journey {
+  display: grid;
+  gap: var(--cw-space-3);
+}
+
+.cw-review__journey-heading {
+  margin: 0;
+  font-size: var(--cw-text-sm);
+  font-weight: var(--cw-weight-medium);
+  color: var(--cw-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}

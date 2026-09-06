@@ -270,20 +270,17 @@ export const evidenceProcessingTokens: Record<
     // and should look it in both.
     colorVar: "--cw-provenance-ai-proposed",
     glyph: "proposed",
-    // **"Values proposed", not "Needs your confirmation" — until slice 3b.**
+    // "Needs your confirmation", and the imperative is only correct because slice 3b
+    // built the control it names. It briefly read "Values proposed" instead: the state
+    // had a producer and the review screen did not exist, so a keyboard or screen-reader
+    // user was told to act and then found nothing anywhere in the app to act with —
+    // unable to tell "I have not found it" from "there is none", with Delete as the only
+    // thing the row did offer.
     //
-    // The imperative was the honest description of the state and the wrong thing to put
-    // on screen: the review interaction does not exist yet, so a keyboard or
-    // screen-reader user is told to act and then finds no control anywhere in the app,
-    // unable to tell "I have not found it" from "there is none". The only control the
-    // row offers for that document is the irreversible one.
-    //
-    // The same rule this file already applies to itself twenty lines up — a state the
-    // product names but cannot reach is worse than one it does not mention — and the
-    // same rule `EvidenceDestination` applies to its retry button. Slice 3b lands the
-    // split view; the label becomes an instruction when there is somewhere to follow it.
-    label: "Values proposed",
-    meaning: "We read some values out of this. None of them counts until a person confirms it.",
+    // The rule is worth keeping when this file is next edited: an imperative label is a
+    // promise that something on the same row will honour it.
+    label: "Needs your confirmation",
+    meaning: "We read some values out of this. None of them counts until you confirm it.",
   },
   completed: {
     colorVar: "--cw-status-supported",

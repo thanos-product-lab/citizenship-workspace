@@ -145,15 +145,16 @@ describe("EvidenceDestination", () => {
     expect(dialog.queryByText(/closed unread/)).toBeNull();
   });
 
-  it("names what happened, not an action the product cannot yet offer", async () => {
+  it("names the outstanding work and offers the control that does it", async () => {
     // The state the whole milestone exists to reach, and the label carries prime
     // directive 1: values have been *proposed*, and none of them is true yet.
     //
-    // "Needs your confirmation" was the first label and it failed the accessibility
-    // gate: the review screen is slice 3b, so a keyboard or screen-reader user was told
-    // to act and then found no control in the app — indistinguishable from having
-    // failed to find one. The one control the row does offer for that document is
-    // Delete. Restore the imperative when there is somewhere to follow it.
+    // The label is an imperative again, and only because slice 3b built the screen it
+    // names. It briefly read "Values proposed" instead: the state had a producer and the
+    // review screen did not, so a keyboard user was told to act and then found nothing in
+    // the app to act with. These two assertions belong together for that reason — the
+    // label and the link are one promise, and a test that checked only the words would
+    // pass again the moment the link went away.
     get.mockResolvedValue({
       data: aLibrary([anItem({ processing_status: "AWAITING_CONFIRMATION" })]),
     });
@@ -161,9 +162,24 @@ describe("EvidenceDestination", () => {
 
     const rowElement = await screen.findByRole("row", { name: /Athens booking/ });
     const row = within(rowElement);
-    expect(row.getByText("Values proposed")).toBeTruthy();
+    expect(row.getByText("Needs your confirmation")).toBeTruthy();
     expect(row.queryByText(/state not recognised/)).toBeNull();
-    expect(rowElement.textContent).not.toMatch(/confirm (them|it|these)/i);
+
+    // A link, not a button: it navigates to a page with its own URL, and the document's
+    // name is in the accessible name so a links list is not a column of identical rows.
+    const link = row.getByRole("link", { name: /Confirm what we read from Athens booking/ });
+    expect(link).toHaveAttribute("href", `/cases/${CASE_ID}/evidence/ev-1/review`);
+  });
+
+  it("offers no review link for a document with nothing to confirm", async () => {
+    // The other half of the same rule. A COMPLETED document has been read and has nothing
+    // outstanding, so a link inviting confirmation would name work that does not exist —
+    // the same defect as an imperative label with no control, from the other direction.
+    get.mockResolvedValue({ data: aLibrary([anItem({ processing_status: "COMPLETED" })]) });
+    renderWithQuery(<EvidenceDestination caseId={CASE_ID} />);
+
+    const row = within(await screen.findByRole("row", { name: /Athens booking/ }));
+    expect(row.queryByRole("link", { name: /Confirm what we read/ })).toBeNull();
   });
 
   it("says why a document was refused, not only that it was", async () => {

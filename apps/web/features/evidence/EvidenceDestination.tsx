@@ -1,6 +1,7 @@
 "use client";
 
 import { type JSX, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { flushSync } from "react-dom";
 
 import {
@@ -254,6 +255,7 @@ export function EvidenceDestination({ caseId }: { caseId: string }): JSX.Element
             </p>
           ) : (
             <EvidenceTable
+              caseId={caseId}
               items={data.items as EvidenceItem[]}
               retryingId={retryingId}
               // Every row shares one mutation observer, so a second retry while the
@@ -442,12 +444,14 @@ function describeText(item: EvidenceItem): string {
 }
 
 function EvidenceTable({
+  caseId,
   items,
   onDelete,
   onRetry,
   retryingId,
   anyRetryPending,
 }: {
+  caseId: string;
   items: EvidenceItem[];
   onDelete: (id: string) => void;
   onRetry: (id: string) => void;
@@ -565,6 +569,24 @@ function EvidenceTable({
                   >
                     {stateNote(item)}
                   </span>
+                ) : null}
+                {/* The route from the state to the act. Until M8 slice 3b this row named
+                    work — "needs your confirmation" — and offered nowhere to do it, which
+                    is why the label was temporarily softened to "Values proposed". A link
+                    rather than a button: it is a navigation to a page with its own URL,
+                    and a keyboard user opening it in a new tab should get the review
+                    screen rather than nothing. */}
+                {item.processing_status === "AWAITING_CONFIRMATION" ? (
+                  <Link
+                    href={`/cases/${caseId}/evidence/${item.id}/review`}
+                    style={{ ...linkButtonStyle, display: "inline-block", marginTop: "var(--cw-space-1)" }}
+                  >
+                    Confirm what we read
+                    {/* The document's name is in the accessible name, not on screen: a
+                        column of identical "Confirm what we read" links is unusable from a
+                        links list, and repeating the name visually in every row is noise. */}
+                    <span className="cw-visually-hidden"> from {item.display_name}</span>
+                  </Link>
                 ) : null}
                 {/* Offered only where the server says a retry could do something. The
                     rule lives on the server so the client cannot decide, for instance,
