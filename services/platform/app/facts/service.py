@@ -301,8 +301,26 @@ def _resolve(
             return stated, ReviewMode.PREFILLED, None
         # A pre-filled confirm authorises the proposal as it stands; a correction
         # authorises what the user typed instead.
-        value = entered_value if stated is ReviewDecision.CORRECT else proposal.raw
-        return stated, ReviewMode.PREFILLED, value
+        if stated is not ReviewDecision.CORRECT:
+            return stated, ReviewMode.PREFILLED, proposal.raw
+        # **A correction must carry a value.** This read `entered_value` straight
+        # through, so `{"decision": "CORRECT"}` with an empty box produced a
+        # `FactVersion` whose `raw_value` was `""` — a trusted fact asserting nothing,
+        # with `source_method = USER_CORRECTED_AI_CLAIM` and an available evidence link
+        # behind it. Reachable from the review screen in three clicks: Correct,
+        # select-all, delete, Save.
+        #
+        # `extraction_service` already refuses to *propose* a blank, on the grounds that
+        # "a review queue must not ask someone to decide about a blank". Accepting one
+        # into a fact was the same rule missing from the other end.
+        #
+        # Whitespace collapsed here as well, which brings this path in line with the
+        # blind one below — a value that differs from the proposal only by spacing is
+        # not a correction anybody made.
+        corrected = " ".join((entered_value or "").split())
+        if not corrected:
+            raise IncompleteReview("a correction must carry the value you read")
+        return stated, ReviewMode.PREFILLED, corrected
 
     if stated is ReviewDecision.REJECT:
         # A high-risk claim can still be rejected outright — "this date is not in this

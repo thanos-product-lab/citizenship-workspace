@@ -28,7 +28,6 @@ from app.facts.domain import (
     HIGH_RISK_CLAIM_TYPES,
     CaseFact,
     ClaimReviewDecision,
-    ClaimStatus,
     ClaimType,
     ExtractedClaim,
     FactVersion,
@@ -91,12 +90,20 @@ class ClaimView(BaseModel):
     @classmethod
     def of(cls, claim: ExtractedClaim, decision: ClaimReviewDecision | None = None) -> "ClaimView":
         blind = ClaimType(claim.claim_type) in HIGH_RISK_CLAIM_TYPES
-        # Withheld only while the claim can still be acted on. `ClaimStatus.PENDING_REVIEW`
-        # rather than "is there a decision", because those are two ways of asking and only
-        # one of them is the rule: the status is what `OPEN_STATUSES` gates the review
-        # command on, so keying the reveal off it means the value becomes visible in the
-        # same instant the claim stops being reviewable.
-        withheld = blind and claim.status == ClaimStatus.PENDING_REVIEW.value
+        # **Withheld until a person decided**, not until the claim stopped being
+        # reviewable. Those are two different predicates and this keyed off the wrong
+        # one: `claim.status != PENDING_REVIEW` is also true of `SUPERSEDED` and
+        # `INVALIDATED`, states nobody decided anything in, so the proposal would have
+        # been revealed on the strength of the claim having been *closed*.
+        #
+        # What justifies showing it is the decision — MVP §8.11 asks the split view to
+        # show a correction as a correction, and it is the decision that makes the value
+        # safe to show, because there is no longer anything for it to influence. It also
+        # makes this the same predicate the screen renders on (`decision === null`
+        # chooses the editable branch), so a claim can never be shown as actionable
+        # *and* have its proposal revealed. Two hinges that agree by construction rather
+        # than by luck; the slice-3b trust review found them disagreeing.
+        withheld = blind and decision is None
         return cls(
             id=claim.id,
             evidence_item_id=claim.evidence_item_id,

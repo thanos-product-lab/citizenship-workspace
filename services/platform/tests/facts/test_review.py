@@ -730,3 +730,100 @@ def test_no_message_on_the_blind_path_contains_a_worked_date(api: Api, db_sessio
     # It still says what *would* work — refusing without naming an acceptable form is a
     # dead end, which is why the message exists at all.
     assert "YYYY-MM-DD" in detail
+
+
+def test_a_closed_but_undecided_claim_keeps_its_proposal_hidden(
+    api: Api, db_session: Session
+) -> None:
+    """The hinge itself, which the test above cannot reach.
+
+    `test_a_proposal_is_withheld_until_it_is_decided_and_shown_afterwards` moves a claim
+    from pending to decided in one step, so "not pending" and "has a decision" are the
+    same thing throughout it — and the reveal passed whichever of the two it keyed off.
+    The slice-3b trust review pointed out that a test which cannot separate two
+    predicates cannot pin the choice between them.
+
+    `INVALIDATED` separates them: the claim is closed, nobody decided anything, and the
+    original reason for withholding — that a person is going to be asked to read this
+    field off the document — has not been discharged. It is only unreachable through the
+    API today because an invalidated claim's document is being deleted, which is luck
+    rather than design.
+    """
+    from app.facts.domain import ClaimStatus
+    from app.facts.schemas import ClaimView
+
+    _case_id, claim = _case_with_claim(api, db_session, raw="10 May 2026")
+    claim.status = ClaimStatus.INVALIDATED.value
+    db_session.flush()
+
+    view = ClaimView.of(claim, None)
+
+    assert view.status == "INVALIDATED"
+    assert view.decision is None
+    assert view.proposed_value is None, (
+        "a closed claim nobody decided about revealed the model's reading"
+    )
+    assert view.normalised_value is None
+
+
+@pytest.mark.parametrize("empty", ["", "   ", None])
+def test_a_correction_that_carries_no_value_creates_no_fact(
+    api: Api, db_session: Session, empty: str | None
+) -> None:
+    """A trusted fact asserting nothing is worse than no fact.
+
+    `entered_value` is optional with no minimum length, and the pre-filled branch passed
+    it straight through — so `{"decision": "CORRECT"}` with an empty box produced a
+    `FactVersion` whose `raw_value` was `""`, stamped `USER_CORRECTED_AI_CLAIM`, with an
+    evidence link marked available behind it. Three clicks from the review screen:
+    Correct, select all, delete, Save.
+
+    `extraction_service` already refuses to *propose* a blank — "a review queue must not
+    ask someone to decide about a blank" — and this was the same rule missing from the
+    other end of the same path. Found by the slice-3b trust review.
+
+    Whitespace counts as empty, which also means a "correction" differing from the
+    proposal only by spacing is refused rather than recorded as a change nobody made.
+    """
+    body: dict[str, object] = {"decision": "CORRECT"}
+    if empty is not None:
+        body["entered_value"] = empty
+
+    case_id, claim = _case_with_claim(
+        api, db_session, claim_type=ClaimType.TRAVEL_ORIGIN, raw="London Gatwick", model_iso=None
+    )
+
+    refused = api("user_a").post(f"/api/v1/cases/{case_id}/claims/{claim.id}/review", json=body)
+
+    assert refused.status_code == 422
+    assert refused.json()["code"] == "INCOMPLETE_REVIEW"
+    db_session.expire_all()
+    assert db_session.execute(select(FactVersion)).scalar_one_or_none() is None
+    assert db_session.get(ExtractedClaim, claim.id).status == "PENDING_REVIEW"  # type: ignore[union-attr]
+
+
+def test_a_decision_with_no_value_cannot_produce_a_reviewed_value(db_session: Session) -> None:
+    """The second layer, at the type boundary rather than at the request.
+
+    `outcome()` read `self.corrected_raw or ""`, so a decision that authorised nothing
+    still handed back a `ReviewedValue` — and `ReviewedValue` is the one thing a
+    `FactVersion` can be built from. There is no value it can carry meaning "nothing",
+    which is exactly why this method already raises for a rejection. A row written by
+    some future path that skips `_resolve` now hits the same refusal.
+    """
+    from app.facts.domain import ClaimReviewDecision, ReviewDecision, ReviewMode
+
+    decision = ClaimReviewDecision(
+        case_id=uuid.uuid4(),
+        claim_id=uuid.uuid4(),
+        decision=ReviewDecision.CORRECT.value,
+        review_mode=ReviewMode.PREFILLED.value,
+        corrected_raw="",
+        corrected_normalised=None,
+        reviewed_by="user_a",
+        reviewed_at=datetime.now(UTC),
+    )
+    decision.id = uuid.uuid4()
+
+    with pytest.raises(ValueError, match="must carry one"):
+        decision.outcome(schema=ValueSchema.TEXT_V1)

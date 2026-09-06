@@ -384,11 +384,21 @@ class ClaimReviewDecision(Base):
             )
 
         corrected = decision is ReviewDecision.CORRECT
+        if not self.corrected_raw:
+            # `or ""` sat here, and it is what let an empty correction through: a
+            # missing value became an empty trusted fact instead of an error. A
+            # `ReviewedValue` is the thing a `FactVersion` is built from, so there is no
+            # value it can carry that means "nothing" — the same reason this method
+            # raises for a rejection rather than returning a blank one.
+            raise ValueError(
+                "a decision that authorises a value must carry one; "
+                f"{decision.value} arrived with none"
+            )
         return ReviewedValue(
             decision_id=self.id,
             claim_id=self.claim_id,
             schema=schema,
-            raw=self.corrected_raw or "",
+            raw=self.corrected_raw,
             normalised=self.corrected_normalised,
             source_method=(
                 SourceMethod.USER_CORRECTED_AI_CLAIM
