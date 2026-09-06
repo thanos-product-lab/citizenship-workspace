@@ -365,7 +365,14 @@ class InMemoryStorage:
         disposition: str = "attachment",
         response_content_type: str | None = None,
     ) -> str:
-        return f"memory://get/{key}?expires={ttl_seconds}&disposition={disposition}"
+        # Both response overrides go into the URL, so a test against the fake can see
+        # them. They were accepted and dropped, which meant the one control that makes
+        # inline serving safe — pinning the content type to what was validated at upload,
+        # rather than trusting what the object claims — could be deleted with the whole
+        # suite still green. A fake that quietly discards the argument under test is a
+        # fake that certifies nothing.
+        pinned = f"&type={response_content_type}" if response_content_type else ""
+        return f"memory://get/{key}?expires={ttl_seconds}&disposition={disposition}{pinned}"
 
     def head(self, key: str) -> StoredObject | None:
         body = self.objects.get(key)

@@ -811,6 +811,16 @@ def test_the_preview_url_is_inline_and_the_download_stays_an_attachment(
     # A third value is refused by the route rather than passed through to a header.
     assert api("user_a").get(f"{base}?disposition=sideways").status_code == 422
 
+    # **And the inline URL pins the response content type to what was validated at
+    # upload.** This is the whole of what makes serving user bytes inline safe: without
+    # it the store answers with whatever the object claims, and a file uploaded as a PDF
+    # whose bytes are HTML would be served `text/html` with `Content-Disposition: inline`
+    # — stored XSS on the storage origin. The security review found the pin could be
+    # deleted with the entire suite still green, because the fake accepted the argument
+    # and threw it away.
+    assert "type=application/pdf" in inline
+    assert "type=" not in default, "a download does not need the type asserted"
+
 
 def test_the_text_endpoint_serves_the_document_to_its_owner_and_nobody_else(
     api: Api, db_session: Session
