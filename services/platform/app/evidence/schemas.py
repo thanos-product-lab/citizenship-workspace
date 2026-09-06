@@ -211,17 +211,26 @@ class EvidenceLibraryResponse(BaseModel):
 class EvidenceTextResponse(BaseModel):
     """A document's extracted text, and how much of the document it covers.
 
-    `pages_read` is separate from `page_count` and both are returned, because a cap can
-    stop the read early and a reader who assumes they match will present a partial
-    reading as a complete one. The screen says so in words when they differ — a user
-    typing what they read from a text panel that silently stopped at page 5 would be
-    confirming values from a document they have not seen the whole of.
+    **Two different caps can stop a read, and only one of them shows in the page
+    counts.** `pages_read < page_count` is a page cap; `truncated` is the character
+    ceiling, which can cut the last page in half while the two counts still agree. Both
+    are returned because a reader who assumes they match will present a partial reading
+    as a complete one — and a user typing what they read from a panel that silently
+    stopped is confirming values from a document they have not seen the whole of.
     """
 
     content: str
     page_count: int
     pages_read: int
     character_count: int
+    #: Whether the *character* cap stopped the read, which `pages_read` cannot express.
+    #:
+    #: A document cut off partway through its last page has `pages_read == page_count`
+    #: and is still incomplete, so a panel keyed only on the page counts showed a
+    #: silently shortened text with no notice — to someone who had been asked to read the
+    #: page and type what it says. Missing until the slice-3b security review; the
+    #: docstring above already claimed the screen said so.
+    truncated: bool
 
     @classmethod
     def of(cls, text: "EvidenceFileText") -> "EvidenceTextResponse":
@@ -230,6 +239,7 @@ class EvidenceTextResponse(BaseModel):
             page_count=text.page_count,
             pages_read=text.pages_read,
             character_count=text.character_count,
+            truncated=text.truncated,
         )
 
 

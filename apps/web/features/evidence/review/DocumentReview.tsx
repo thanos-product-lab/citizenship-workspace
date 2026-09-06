@@ -301,11 +301,17 @@ export function DocumentReview({
               </p>
             ) : text.data ? (
               <>
-                {text.data.pages_read < text.data.page_count ? (
+                {/* Two caps can stop a read and only one shows in the page counts: a
+                    character ceiling can cut the last page in half while `pages_read`
+                    and `page_count` still agree. Keyed on the counts alone, this panel
+                    showed a silently shortened document to someone who had been asked to
+                    read it and type what it says. */}
+                {text.data.pages_read < text.data.page_count ||
+                text.data.truncated ? (
                   <p role="status" className="cw-field-review__hint">
-                    Only the first {text.data.pages_read} of{" "}
-                    {text.data.page_count} pages were read, so anything after
-                    that is not shown here.
+                    {text.data.pages_read < text.data.page_count
+                      ? `Only the first ${text.data.pages_read} of ${text.data.page_count} pages were read, so anything after that is not shown here.`
+                      : "This document was longer than we could read, so the end of it is not shown here."}
                   </p>
                 ) : null}
                 <div

@@ -70,6 +70,7 @@ function serve({
     page_count: 1,
     pages_read: 1,
     character_count: 18,
+    truncated: false,
   },
   claimsStatus = 200,
   textStatus = 200,
@@ -453,6 +454,29 @@ describe("the two ways to read the document", () => {
     ).toBeTruthy();
   });
 
+  it("says a read the character cap stopped is partial, even when the pages agree", async () => {
+    // The page counts cannot express this: a character ceiling can cut the last page in
+    // half while `pages_read` and `page_count` still match. Keyed on the counts alone,
+    // the panel showed a silently shortened document to someone asked to read it and type
+    // what it says — false completeness on the one surface blind confirmation rests on.
+    serve({
+      text: {
+        content: "a very long booking, cut off",
+        page_count: 4,
+        pages_read: 4,
+        character_count: 200000,
+        truncated: true,
+      },
+    });
+    render();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Text" }));
+
+    expect(
+      await screen.findByText(/the end of it is not shown here/),
+    ).toBeTruthy();
+  });
+
   it("says plainly when there is no text rather than showing a blank panel", async () => {
     serve({ textStatus: 404 });
     render();
@@ -694,6 +718,44 @@ describe("what a keyboard and a screen reader get", () => {
     fireEvent.submit(input.closest("form")!);
 
     await waitFor(() => expect(post).toHaveBeenCalled());
+  });
+
+  it("does not reload the document when a field is decided", async () => {
+    // The reader is looking at the page to find the answer. Re-minting the signed URL
+    // changes the `<iframe src>` and throws them back to page 1 of the document they are
+    // reading the answer off — once per field, getting worse as they go, which is exactly
+    // the pressure that produces guessing rather than reading.
+    //
+    // It happened because the preview key hung off `caseKeys.detail`, and the review
+    // mutation invalidates that whole subtree by design. The fake storage returns a
+    // constant URL, so only the count of `/content` fetches can see this.
+    post.mockResolvedValue({
+      data: {
+        claim_id: "claim-1",
+        claim_status: "CONFIRMED",
+        decision: "CONFIRM",
+        review_mode: "BLIND_ENTRY",
+        value: "2026-05-11",
+      },
+    });
+    render();
+
+    await screen.findByLabelText(/Return date, as the document writes it/);
+    const before = get.mock.calls.filter((call) =>
+      String(call[0]).endsWith("/content"),
+    ).length;
+
+    fireEvent.change(
+      screen.getByLabelText(/Return date, as the document writes it/),
+      { target: { value: DOCUMENT_SAYS } },
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(post).toHaveBeenCalled());
+
+    const after = get.mock.calls.filter((call) =>
+      String(call[0]).endsWith("/content"),
+    ).length;
+    expect(after).toBe(before);
   });
 
   it("offers a way to see the document at full size", async () => {

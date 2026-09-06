@@ -811,7 +811,7 @@
         "type": "object"
       },
       "EvidenceTextResponse": {
-        "description": "A document's extracted text, and how much of the document it covers.\n\n`pages_read` is separate from `page_count` and both are returned, because a cap can\nstop the read early and a reader who assumes they match will present a partial\nreading as a complete one. The screen says so in words when they differ \u2014 a user\ntyping what they read from a text panel that silently stopped at page 5 would be\nconfirming values from a document they have not seen the whole of.",
+        "description": "A document's extracted text, and how much of the document it covers.\n\n**Two different caps can stop a read, and only one of them shows in the page\ncounts.** `pages_read < page_count` is a page cap; `truncated` is the character\nceiling, which can cut the last page in half while the two counts still agree. Both\nare returned because a reader who assumes they match will present a partial reading\nas a complete one \u2014 and a user typing what they read from a panel that silently\nstopped is confirming values from a document they have not seen the whole of.",
         "properties": {
           "character_count": {
             "title": "Character Count",
@@ -828,13 +828,18 @@
           "pages_read": {
             "title": "Pages Read",
             "type": "integer"
+          },
+          "truncated": {
+            "title": "Truncated",
+            "type": "boolean"
           }
         },
         "required": [
           "content",
           "page_count",
           "pages_read",
-          "character_count"
+          "character_count",
+          "truncated"
         ],
         "title": "EvidenceTextResponse",
         "type": "object"
