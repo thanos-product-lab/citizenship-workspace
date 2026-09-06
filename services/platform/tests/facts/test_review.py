@@ -10,6 +10,7 @@ boundary; these are about whether the human on the other side of it was really a
 
 import uuid
 from datetime import UTC, datetime
+from typing import Any
 
 import pytest
 from sqlalchemy import select
@@ -488,7 +489,7 @@ def test_a_review_missing_what_its_decision_needs_is_refused_not_a_crash(
 # --- the split view's data ----------------------------------------------------------
 
 
-def _document_claims(api: Api, case_id: str, evidence_item_id: uuid.UUID) -> list[dict]:
+def _document_claims(api: Api, case_id: str, evidence_item_id: uuid.UUID) -> list[Any]:
     body = api("user_a").get(f"/api/v1/cases/{case_id}/evidence/{evidence_item_id}/claims")
     assert body.status_code == 200, body.text
     return list(body.json()["items"])
