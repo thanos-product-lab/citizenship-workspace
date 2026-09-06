@@ -367,8 +367,8 @@ describe("when the server refuses", () => {
     );
     // Refetched, so the field can show what actually happened rather than staying open.
     await waitFor(() => {
-      const claimCalls = get.mock.calls.filter(([path]: [string]) =>
-        path.endsWith("/claims"),
+      const claimCalls = get.mock.calls.filter((call) =>
+        String(call[0]).endsWith("/claims"),
       );
       expect(claimCalls.length).toBeGreaterThan(1);
     });
@@ -420,14 +420,14 @@ describe("the two ways to read the document", () => {
     render();
     await screen.findByRole("button", { name: "Text" });
     expect(
-      get.mock.calls.some(([path]: [string]) => path.endsWith("/text")),
+      get.mock.calls.some((call) => String(call[0]).endsWith("/text")),
     ).toBe(false);
 
     fireEvent.click(screen.getByRole("button", { name: "Text" }));
 
     await waitFor(() =>
       expect(
-        get.mock.calls.some(([path]: [string]) => path.endsWith("/text")),
+        get.mock.calls.some((call) => String(call[0]).endsWith("/text")),
       ).toBe(true),
     );
     expect(await screen.findByText(/Return 11 May 2026/)).toBeTruthy();
