@@ -269,6 +269,39 @@ def get_evidence(
     return item, file
 
 
+def mark_review_settled(session: Session, *, evidence_item_id: uuid.UUID) -> bool:
+    """Every value this document proposed has now been decided about.
+
+    **The exit `AWAITING_CONFIRMATION` shipped without.** M8 slice 3a gave that state a
+    producer and nothing that clears it, so a document whose every field had been
+    confirmed went on saying "needs your confirmation" for good — the library asserting
+    outstanding work that no longer exists, which is the inverse of false reassurance and
+    just as much a lie about the case.
+
+    Called by `facts.service.review`, and the split of responsibility is deliberate:
+    *facts* decides whether any proposal is still open, because it owns claims; *here*
+    decides whether the document may move, because it owns `processing_status`. Neither
+    module reaches into the other's rows to answer the other's question.
+
+    **Only from `AWAITING_CONFIRMATION`.** A `FAILED` or `UNSUPPORTED` document has no
+    claims, so this should never be reached for one — but "should never" is how a
+    document that could not be read ends up labelled as read. Returns whether anything
+    moved, so a caller can log it and a test can assert the refusal.
+    """
+    item = session.get(EvidenceItem, evidence_item_id)
+    if item is None:
+        return False
+    if item.processing_status != EvidenceProcessingStatus.AWAITING_CONFIRMATION.value:
+        return False
+    # `COMPLETED`, whose label is "Text read": the document has been read and everything
+    # it proposed has been settled. Not a new state — §14.4 is a closed enum and adding
+    # "reviewed" to it would be an RFC change (CLAUDE.md §7) for a distinction the user
+    # can already see in the fields themselves.
+    item.processing_status = EvidenceProcessingStatus.COMPLETED.value
+    item.updated_at = utcnow()
+    return True
+
+
 def content_url(
     session: Session,
     storage: StorageAdapter,

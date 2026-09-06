@@ -597,3 +597,99 @@ def test_a_deleted_documents_claims_are_a_404_not_an_empty_list(
     # existence must not leak across the ownership boundary.
     other = api("user_b").get(f"/api/v1/cases/{case_id}/evidence/{item_id}/claims")
     assert other.status_code == 404
+
+
+# --- the document stops asking ------------------------------------------------------
+
+
+def _status(session: Session, evidence_item_id: uuid.UUID) -> str:
+    from app.evidence.domain import EvidenceItem
+
+    session.expire_all()
+    item = session.get(EvidenceItem, evidence_item_id)
+    assert item is not None
+    return item.processing_status
+
+
+def test_a_document_leaves_awaiting_confirmation_once_every_field_is_decided(
+    api: Api, db_session: Session
+) -> None:
+    """The exit `AWAITING_CONFIRMATION` shipped without.
+
+    Slice 3a gave the state a producer and nothing that clears it, so a document whose
+    every field had been confirmed went on saying "needs your confirmation" — the library
+    asserting outstanding work that no longer exists. Found by that slice's trust review.
+
+    It settles on the *last* decision, not the first: a two-field document still needs
+    the second answer, and moving early would drop it out of the queue with work left.
+    """
+    from app.evidence.domain import EvidenceItem, EvidenceProcessingStatus
+
+    case_id, first = _case_with_claim(api, db_session)
+    second = _second_journey(db_session, first, raw="18 June 2026")
+    item = db_session.get(EvidenceItem, first.evidence_item_id)
+    assert item is not None
+    item.processing_status = EvidenceProcessingStatus.AWAITING_CONFIRMATION.value
+    db_session.commit()
+
+    _review(api, case_id, first.id, entered_value="4 May 2026")
+    assert _status(db_session, first.evidence_item_id) == "AWAITING_CONFIRMATION", (
+        "the document settled while a field was still waiting"
+    )
+
+    _review(api, case_id, second.id, entered_value="18 June 2026")
+    assert _status(db_session, first.evidence_item_id) == "COMPLETED"
+
+
+def test_a_rejection_settles_the_document_as_surely_as_a_confirmation(
+    api: Api, db_session: Session
+) -> None:
+    """What the state records is whether a person decided, not what they decided.
+
+    Leaving the document waiting because its last field was rejected rather than
+    confirmed would make the label depend on the *outcome* of a review — a document with
+    nothing left to ask, still asking.
+    """
+    from app.evidence.domain import EvidenceItem, EvidenceProcessingStatus
+
+    case_id, claim = _case_with_claim(api, db_session)
+    item = db_session.get(EvidenceItem, claim.evidence_item_id)
+    assert item is not None
+    item.processing_status = EvidenceProcessingStatus.AWAITING_CONFIRMATION.value
+    db_session.commit()
+
+    _review(api, case_id, claim.id, decision="REJECT", reason_code="VALUE_NOT_PRESENT")
+
+    assert _status(db_session, claim.evidence_item_id) == "COMPLETED"
+
+
+def test_a_document_that_could_not_be_read_is_never_marked_as_read(
+    api: Api, db_session: Session
+) -> None:
+    """Mutation-table row 14, and the reason the state guard lives in `evidence`.
+
+    A `FAILED` document has no claims, so nothing should ever call this for one — but
+    "should never" is precisely how a document that could not be read ends up labelled
+    "Text read", telling the user their file was fine when it was not. The refusal is a
+    property of the seam rather than of every caller that might one day exist.
+    """
+    from app.evidence import service as evidence_service
+    from app.evidence.domain import EvidenceItem, EvidenceProcessingStatus
+
+    _case_id, claim = _case_with_claim(api, db_session)
+    item = db_session.get(EvidenceItem, claim.evidence_item_id)
+    assert item is not None
+
+    for refused in (
+        EvidenceProcessingStatus.FAILED,
+        EvidenceProcessingStatus.UNSUPPORTED,
+        EvidenceProcessingStatus.COMPLETED,
+        EvidenceProcessingStatus.EXTRACTING_TEXT,
+    ):
+        item.processing_status = refused.value
+        db_session.flush()
+
+        moved = evidence_service.mark_review_settled(db_session, evidence_item_id=item.id)
+
+        assert moved is False, f"a {refused.value} document was marked as reviewed"
+        assert item.processing_status == refused.value

@@ -106,6 +106,34 @@ def _require_reviewable_document(session: Session, claim: ExtractedClaim) -> Non
         raise ClaimNotFound()
 
 
+def _settle_document_if_done(
+    session: Session, *, case: ApplicationCase, claim: ExtractedClaim
+) -> None:
+    """Move the document out of `AWAITING_CONFIRMATION` once nothing is left to decide.
+
+    Split across two modules on purpose. *This* function answers the claims question,
+    because `facts` owns claims; `evidence.service.mark_review_settled` answers the state
+    question, because `evidence` owns `processing_status` and is the only place that can
+    refuse the transition from a state a document should never be moving out of.
+
+    The claim being decided is still in the session and may not be flushed, so it is
+    excluded by id rather than trusted to have landed — otherwise the last field of a
+    document would find itself still pending and the document would never settle.
+    """
+    from app.evidence import service as evidence_service
+
+    remaining = [
+        pending.id
+        for pending in ClaimRepository.pending_for_evidence_item(
+            session, case_id=case.id, evidence_item_id=claim.evidence_item_id
+        )
+        if pending.id != claim.id
+    ]
+    if remaining:
+        return
+    evidence_service.mark_review_settled(session, evidence_item_id=claim.evidence_item_id)
+
+
 def review(
     session: Session,
     *,
@@ -196,6 +224,11 @@ def review(
 
     if resolved is ReviewDecision.REJECT:
         claim.status = ClaimStatus.REJECTED.value
+        # A rejection settles the claim as surely as a confirmation does. Leaving the
+        # document waiting because the last field was rejected rather than confirmed
+        # would make the state depend on *which* decision a person took, when what it
+        # records is only whether they took one.
+        _settle_document_if_done(session, case=case, claim=claim)
         _emit(uow, case, claim, record, fact_version=None)
         uow.commit()
         return ReviewOutcome(claim=claim, decision=record, fact_version=None)
@@ -228,6 +261,7 @@ def review(
         if resolved is ReviewDecision.CORRECT
         else ClaimStatus.CONFIRMED.value
     )
+    _settle_document_if_done(session, case=case, claim=claim)
     _emit(uow, case, claim, record, fact_version=version)
     uow.commit()
 
