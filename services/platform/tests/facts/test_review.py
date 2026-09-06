@@ -226,6 +226,13 @@ def test_an_ambiguous_entry_is_refused_with_a_format_that_works(
     Accepting it would let the interaction that exists to remove a guess quietly
     reintroduce one — so it is refused, and the message names a form that works rather
     than only saying no.
+
+    **This assertion used to require a worked example**, `"11 May 2026" in detail` — and
+    that is the demo booking's actual return date, so the test was insisting the server
+    hand the user the proposal in an error message beside the empty box. The test
+    encoded the defect. It now checks the message names an acceptable *shape*, and
+    `test_no_message_on_the_blind_path_contains_a_worked_date` checks it carries no date
+    at all.
     """
     case_id, claim = _case_with_claim(api, db_session)
 
@@ -234,7 +241,8 @@ def test_an_ambiguous_entry_is_refused_with_a_format_that_works(
     assert response.status_code == 422
     body = response.json()
     assert body["code"] == "UNREADABLE_ENTERED_VALUE"
-    assert "11 May 2026" in body["detail"] or "2026-05-11" in body["detail"]
+    assert "YYYY-MM-DD" in body["detail"]
+    assert "month" in body["detail"]
 
 
 def test_a_high_risk_claim_can_still_be_rejected_outright(api: Api, db_session: Session) -> None:
@@ -694,3 +702,31 @@ def test_a_document_that_could_not_be_read_is_never_marked_as_read(
 
         assert moved is False, f"a {refused.value} document was marked as reviewed"
         assert item.processing_status == refused.value
+
+
+def test_no_message_on_the_blind_path_contains_a_worked_date(api: Api, db_session: Session) -> None:
+    """Nothing the server says beside an empty date box may contain a date.
+
+    A worked example is a value, and a value next to this input is a nudge whatever
+    produced it. The first refusal message read *"for example 11 May 2026"* — the demo
+    booking's actual return date, and so the exact proposal blind entry exists to
+    withhold, handed back in an error. Found by driving the screen in Chrome; the client
+    hint had already been rewritten for the same reason, and this was the same mistake
+    reaching the same pixel from the server side.
+
+    Written as a scan for anything date-shaped rather than for that one string, because
+    the defect is the *class* of message, not the sentence that happened to carry it.
+    """
+    import re
+
+    case_id, claim = _case_with_claim(api, db_session)
+
+    refused = _review(api, case_id, claim.id, entered_value="03/04/2025")
+
+    assert refused.status_code == 422
+    detail = refused.json()["detail"]
+    assert not re.search(r"\d{1,2} [A-Z][a-z]+ \d{4}", detail), detail
+    assert not re.search(r"\d{4}-\d{2}-\d{2}", detail), detail
+    # It still says what *would* work — refusing without naming an acceptable form is a
+    # dead end, which is why the message exists at all.
+    assert "YYYY-MM-DD" in detail

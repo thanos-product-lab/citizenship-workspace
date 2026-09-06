@@ -341,3 +341,39 @@ The **claim redaction on deletion** is invisible for the same reason the purge w
 the point is the absence of data. Verified against the running stack — deleting this
 document left six claims `INVALIDATED` with `proposed_raw` blank, and the extraction runs
 kept only capability, status and cost.
+
+### M8 slice 3b (the review split view)
+
+Three frames, and the middle one is the milestone.
+
+`m8/m8-slice3b-blind-entry.jpg` — **the interaction the trust model rests on.** The
+document is on the left saying *"Departure date: 03/04/2025"* and, under it, *"No month is
+written in words anywhere on this confirmation."* On the right, an **empty box**. The
+model's reading is not on the screen, because the API does not send it: `proposed_value`
+is null for a pending high-risk claim. The person reads the page and types what it says,
+and the system works out from the entry whether that was a confirmation or a correction.
+
+`m8/m8-slice3b-your-value-won.jpg` — a correction, recorded. The model read *11 May 2026*
+off the amended booking; the reviewer entered 10 May; the fact says `2026-05-10` and the
+badge says **Corrected**, with the model's original proposal shown beside it. MVP §8.11
+requires that correcting preserves the original proposal — this is the frame where a user
+can see that it did, and that theirs won.
+
+`m8/m8-slice3b-ambiguous-refused.jpg` — the ambiguity, refused. `03/04/2025` is 3 April or
+3 March and nothing on the page settles it, so the server declines it from a person for
+exactly the reason it declines it from a model. The message is bound to the input and
+names an acceptable **shape**.
+
+### Not captured, and why
+
+The **first version of that refusal message** said *"for example 11 May 2026"* — which is
+the canonical demo booking's actual return date, and therefore the exact value blind entry
+withholds, handed back in an error beside the empty box. It was found by driving this
+screen in Chrome, not by a test; the client-side hint had already been rewritten for the
+same reason an hour earlier, and this was the same mistake arriving at the same pixel from
+the server side. Fixed, and pinned by a test that scans the refusal for anything
+date-shaped rather than for that one sentence.
+
+The **announcement** cannot be photographed: "Confirmed" and "Corrected" are read into a
+live region, because they are different outcomes and the badge only tells someone who can
+see it.

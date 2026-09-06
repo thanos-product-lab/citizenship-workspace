@@ -77,15 +77,27 @@ class UnreadableEnteredValue(DomainError):
     The same rule the document normaliser applies, deliberately: `03/04/2025` typed by a
     person is exactly as ambiguous as `03/04/2025` printed on a booking, and accepting it
     would let the blind-entry interaction — which exists to remove a guess — quietly
-    reintroduce one. The message names a form that works rather than only refusing."""
+    reintroduce one. The message names a form that works rather than only refusing.
+
+    **It names a shape, not a date**, and that is not cosmetic. The first version read
+    *"for example 11 May 2026"* — which is the canonical demo booking's actual return
+    date, and therefore the exact value the model proposed and blind entry withholds. So
+    a user refused while typing a date was shown the proposal, in an error message,
+    beside the empty box they were meant to fill from the document.
+
+    Found by driving the screen in Chrome rather than by a test: `DATE_HINT` on the
+    client had already been rewritten for the same reason, and this is the server's copy
+    of the same mistake reaching the same pixel from the other side. A worked example is
+    a value, and a value near this input is a nudge whatever produced it.
+    """
 
     code = "UNREADABLE_ENTERED_VALUE"
 
     def __init__(self, value: str) -> None:
         self.value = value
         super().__init__(
-            "that date could be read more than one way. Write the month in words — "
-            "for example 11 May 2026 — or use the format 2026-05-11."
+            "that date could be read more than one way. Write the month's name — the "
+            "day, the month and the year — or use the form YYYY-MM-DD."
         )
 
 
