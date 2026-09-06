@@ -301,20 +301,31 @@ whose credentials can create buckets is an application whose credentials can cre
    - `CLERK_SECRET_KEY` = `sk_...`
    - `NEXT_PUBLIC_API_BASE_URL` = the Railway **API URL** from A.3
    - `NEXT_PUBLIC_STORAGE_ORIGIN` = the scheme and host of your bucket's **signed URLs**
-     — see the note below. **The build fails without it**, deliberately.
+     — see the note below. The build **warns and continues** without it; the review
+     screen's document preview is the only thing that stops working.
 4. Set all four for **Production *and* Preview**. A preview deploy builds with
-   `NODE_ENV=production` too, so a variable scoped to Production only fails every PR
-   build.
+   `NODE_ENV=production` too, so a variable scoped to Production only gets the warning
+   on every PR build.
 5. **Deploy**, then note the **Vercel URL**.
 
 ### `NEXT_PUBLIC_STORAGE_ORIGIN` — and the trap in it
 
 M8's review screen embeds the user's document in an `<iframe>` so they can read it while
 confirming what a model read out of it. `apps/web/next.config.ts` sets
-`frame-src 'self' <this origin>`, so this is the only place the app may frame from. Get
-it wrong and the CSP does not error — the user sees an **empty box** on the one screen
-whose entire task is reading that document, which is why the build refuses to run without
-it rather than defaulting to localhost.
+`frame-src 'self' <this origin>`, so this is the only place the app may frame from.
+
+**Getting it wrong is quiet.** A CSP naming the wrong origin does not error; the user sees
+an **empty box** on the one screen whose entire task is reading that document. Leaving it
+unset is at least loud in the build log — the build prints a warning and falls back to
+`frame-src 'self'`, which refuses the frame rather than permitting every origin. A wrong
+value has no such warning, so check it against a real URL below rather than deriving it.
+
+*(This blocked the build outright for about an hour on 6 September 2026, on the reasoning
+`check_backing_services` uses for `STORAGE_ENDPOINT_URL`. That reasoning does not carry:
+an unset storage endpoint points the feature at a host that is not there, while an unset
+frame origin only withholds a bound that did not exist the day before. Taking every page
+down for a missing defence-in-depth header is not a trade worth making, and two blocked
+deploys made the point.)*
 
 **It is not necessarily `STORAGE_ENDPOINT_URL`.** boto3 uses virtual-hosted addressing for
 a DNS-compatible bucket name, so an endpoint of `https://s3.eu-west-2.amazonaws.com` signs

@@ -27,34 +27,53 @@ import type { NextConfig } from "next";
  * bootstrap and Clerk both have opinions about, and shipping a broken one is worse than
  * shipping this one honestly scoped. This is the directive the new surface needs.
  *
- * **The origin must be set when deployed.** Defaulting to localhost and shipping is
- * the failure this repository has already had twice: M7's presigned URLs were signed for a host the browser could not resolve, and
- * M8's compose stack ran with no provider key. Both were green locally and dead
- * deployed, and both were silent. This one would be too — a CSP naming the wrong origin
- * does not error, it shows an empty frame where the user's document should be, on the
- * screen whose entire task is reading that document.
+ * **When the origin is unset in production this warns and falls back to `'self'`,
+ * rather than failing the build.**
  *
- * So it fails the *build* rather than the request, which is the discipline
- * `check_backing_services` already applies on the API side: refuse to start rather than
- * start wrong.
+ * It did fail the build for one afternoon, on the reasoning `check_backing_services`
+ * uses on the API side: refuse to start rather than start wrong. That reasoning does not
+ * transfer, and two blocked deploys are what showed it. `STORAGE_ENDPOINT_URL` is
+ * boot-blocking because without it the *feature* is pointed at a host that is not there.
+ * This variable is a bound on something that had no bound at all the day before, so its
+ * absence cannot leave the product worse than it already was — and taking every page of
+ * the app down for a missing defence-in-depth header is a trade nobody would make on
+ * purpose.
+ *
+ * `'self'` and not "omit `frame-src`": omitting it permits every origin, which is the one
+ * outcome worse than a broken preview. This fails **closed** — the frame is refused, the
+ * rest of the app is untouched, and the Text pane beside it still shows the document's
+ * words, so the review interaction survives with its accessible half.
+ *
+ * The warning is the part that has to carry the weight now, so it says what broke, what
+ * to set, and where to read the value.
  */
-const STORAGE_ORIGIN = (() => {
+const FRAME_ORIGIN = (() => {
   const configured = process.env["NEXT_PUBLIC_STORAGE_ORIGIN"];
   if (configured) return configured;
-  if (process.env.NODE_ENV === "production") {
-    throw new Error(
-      "NEXT_PUBLIC_STORAGE_ORIGIN is unset. It is the only origin this app may frame, " +
-        "and without it the document preview is an empty box.\n\n" +
-        "It is the scheme and host of the URLs the API *signs*, which is not " +
-        "necessarily STORAGE_ENDPOINT_URL: boto3 uses virtual-hosted addressing for a " +
-        "DNS-compatible bucket, so an endpoint of https://s3.eu-west-2.amazonaws.com " +
-        "signs https://your-bucket.s3.eu-west-2.amazonaws.com.\n\n" +
-        "Read it off a real URL rather than deriving it — call " +
-        "GET /api/v1/cases/{case_id}/evidence/{id}/content on the deployed API and take " +
-        "the origin of the `url` it returns. See docs/DEPLOYMENT.md section B.",
-    );
-  }
-  return "http://localhost:9000";
+  if (process.env.NODE_ENV !== "production") return "http://localhost:9000";
+
+  console.warn(
+    [
+      "",
+      "  ⚠  NEXT_PUBLIC_STORAGE_ORIGIN is unset.",
+      "     Falling back to frame-src 'self', so the document preview on the review",
+      "     screen will not render. Everything else works, and the Text pane beside it",
+      "     still shows what was read out of the document.",
+      "",
+      "     Set it to the scheme and host of the URLs the API *signs* — which is not",
+      "     necessarily STORAGE_ENDPOINT_URL. boto3 uses virtual-hosted addressing for a",
+      "     DNS-compatible bucket, so an endpoint of https://s3.eu-west-2.amazonaws.com",
+      "     signs https://your-bucket.s3.eu-west-2.amazonaws.com.",
+      "",
+      "     Read it off a real URL rather than deriving it: call",
+      "     GET /api/v1/cases/{case_id}/evidence/{id}/content on the deployed API and",
+      "     take the origin of the `url` it returns. docs/DEPLOYMENT.md section B.",
+      "",
+    ].join("\n"),
+  );
+  // `'self'`, never omitted. Omitting `frame-src` permits every origin, which is the one
+  // outcome worse than a preview that does not load.
+  return "'self'";
 })();
 
 const config: NextConfig = {
@@ -68,7 +87,9 @@ const config: NextConfig = {
           {
             key: "Content-Security-Policy",
             value: [
-              `frame-src 'self' ${STORAGE_ORIGIN}`,
+              // `'self'` twice when the origin is unset is harmless and keeps the
+              // fallback a one-token change rather than a second code path.
+              `frame-src 'self' ${FRAME_ORIGIN}`,
               "object-src 'none'",
             ].join("; "),
           },
