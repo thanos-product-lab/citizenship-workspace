@@ -3,7 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 
 import { useApiClient } from "@/lib/api";
-import { caseKeys } from "@/lib/queries";
+import { documentAssetKeys } from "@/lib/queries";
 
 /**
  * A short-lived signed URL for the document, served `inline` so a frame renders it
@@ -21,7 +21,7 @@ export function useDocumentPreview(caseId: string, evidenceItemId: string) {
   const api = useApiClient();
 
   return useQuery({
-    queryKey: caseKeys.documentPreview(caseId, evidenceItemId),
+    queryKey: documentAssetKeys.preview(caseId, evidenceItemId),
     queryFn: async () => {
       const { data } = await api.GET(
         "/api/v1/cases/{case_id}/evidence/{evidence_item_id}/content",
@@ -36,9 +36,16 @@ export function useDocumentPreview(caseId: string, evidenceItemId: string) {
       return data;
     },
     // Refresh at 80% of the signature's life, so the frame never holds a dead URL.
+    //
+    // Clamped at both ends. The floor stops a very short TTL turning this into a request
+    // every few seconds; the ceiling stops the floor *exceeding* the TTL if
+    // `storage_presign_ttl_seconds` is ever lowered below about 37 seconds, which would
+    // make the frame reliably hold a URL that had already expired — a config change
+    // silently breaking the preview.
     refetchInterval: (query) => {
       const ttl = query.state.data?.expires_in_seconds;
-      return ttl ? Math.max(30_000, ttl * 800) : false;
+      if (!ttl) return false;
+      return Math.min(Math.max(30_000, ttl * 800), ttl * 900);
     },
     staleTime: 0,
   });

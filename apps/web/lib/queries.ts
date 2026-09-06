@@ -27,22 +27,23 @@ export const caseKeys = {
   /** The prefix every case-scoped query hangs off, so one invalidation reaches them all. */
   detail: (caseId: string) => [...caseKeys.all, caseId] as const,
   case: (caseId: string) => [...caseKeys.detail(caseId), "case"] as const,
-  overview: (caseId: string) => [...caseKeys.detail(caseId), "overview"] as const,
-  requirements: (caseId: string) => [...caseKeys.detail(caseId), "requirements"] as const,
+  overview: (caseId: string) =>
+    [...caseKeys.detail(caseId), "overview"] as const,
+  requirements: (caseId: string) =>
+    [...caseKeys.detail(caseId), "requirements"] as const,
   issues: (caseId: string) => [...caseKeys.detail(caseId), "issues"] as const,
-  evidence: (caseId: string) => [...caseKeys.detail(caseId), "evidence"] as const,
+  evidence: (caseId: string) =>
+    [...caseKeys.detail(caseId), "evidence"] as const,
   requirement: (caseId: string, key: string) =>
     [...caseKeys.detail(caseId), "requirements", key] as const,
-  /** One document's claims, its signed preview URL, and its extracted text. Hung off the
-   *  case subtree so a review invalidates alongside everything else it touched. */
+  /** One document's claims. Under the case subtree, because a decision genuinely changes
+   *  case state and every other reader of it should hear. */
   documentClaims: (caseId: string, itemId: string) =>
     [...caseKeys.detail(caseId), "evidence", itemId, "claims"] as const,
-  documentPreview: (caseId: string, itemId: string) =>
-    [...caseKeys.detail(caseId), "evidence", itemId, "preview"] as const,
-  documentText: (caseId: string, itemId: string) =>
-    [...caseKeys.detail(caseId), "evidence", itemId, "text"] as const,
-  applicationDate: (caseId: string) => [...caseKeys.detail(caseId), "application-date"] as const,
-  travelRecords: (caseId: string) => [...caseKeys.detail(caseId), "travel-records"] as const,
+  applicationDate: (caseId: string) =>
+    [...caseKeys.detail(caseId), "application-date"] as const,
+  travelRecords: (caseId: string) =>
+    [...caseKeys.detail(caseId), "travel-records"] as const,
 } as const;
 
 /**
@@ -54,6 +55,33 @@ export const caseKeys = {
  * failure mode this exists to prevent is precisely a reader nobody remembered to name.
  * Selective invalidation is a server concern (M6, ADR-0008), not a client one.
  */
-export function assessmentTouched(client: QueryClient, caseId: string): Promise<void> {
+/**
+ * A document's rendered content: the signed preview URL and the extracted text.
+ *
+ * **Deliberately outside `caseKeys.detail`**, which is the one place in this file that
+ * breaks the "hang everything off the case" rule, so it needs its reason written down.
+ *
+ * `assessmentTouched` invalidates the whole case subtree by design — the failure it
+ * prevents is a reader nobody remembered to name. But these two are not case *state*:
+ * the preview is a short-lived credential, and re-minting it changes the `<iframe src>`
+ * and reloads the PDF. Under the case prefix, confirming field 1 of 6 threw the reader
+ * back to page 1 of the document they were reading the answer off — on the one screen
+ * whose entire task is "read this and type what it says", getting more expensive with
+ * every field, which is precisely the pressure that produces guessing.
+ *
+ * The claims list is refetched explicitly by the review screen, so the blunt
+ * invalidation was buying nothing here that it was not also charging for.
+ */
+export const documentAssetKeys = {
+  preview: (caseId: string, itemId: string) =>
+    ["document-assets", caseId, itemId, "preview"] as const,
+  text: (caseId: string, itemId: string) =>
+    ["document-assets", caseId, itemId, "text"] as const,
+} as const;
+
+export function assessmentTouched(
+  client: QueryClient,
+  caseId: string,
+): Promise<void> {
   return client.invalidateQueries({ queryKey: caseKeys.detail(caseId) });
 }

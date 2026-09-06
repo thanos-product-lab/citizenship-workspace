@@ -3,7 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 
 import { useApiClient } from "@/lib/api";
-import { caseKeys } from "@/lib/queries";
+import { documentAssetKeys } from "@/lib/queries";
 
 /**
  * The text a deterministic parser read out of the document.
@@ -25,7 +25,7 @@ export function useDocumentText(
   const api = useApiClient();
 
   return useQuery({
-    queryKey: caseKeys.documentText(caseId, evidenceItemId),
+    queryKey: documentAssetKeys.text(caseId, evidenceItemId),
     enabled,
     queryFn: async () => {
       const { data, response } = await api.GET(
