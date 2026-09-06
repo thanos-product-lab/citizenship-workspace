@@ -567,3 +567,145 @@ describe("what the screen says about itself", () => {
     expect(screen.getByRole("button", { name: "Try again" })).toBeTruthy();
   });
 });
+
+describe("what a keyboard and a screen reader get", () => {
+  it("moves focus to the field that just settled, not to the body", async () => {
+    // **The gate failure the whole 22-test suite could not see.** The control the user
+    // activates is unmounted the moment the claim settles, so focus fell to `<body>`:
+    // the next Tab started from the top of the page, past every already-decided field,
+    // and a screen reader's virtual cursor reset with only the announcement to go on.
+    // Four fields on a booking, four times.
+    post.mockResolvedValue({
+      data: {
+        claim_id: "claim-1",
+        claim_status: "CONFIRMED",
+        decision: "CONFIRM",
+        review_mode: "BLIND_ENTRY",
+        value: "2026-05-11",
+      },
+    });
+    let call = 0;
+    get.mockImplementation((path: string) => {
+      if (String(path).endsWith("/claims")) {
+        call += 1;
+        return Promise.resolve({
+          data: {
+            items:
+              call === 1
+                ? [aClaim()]
+                : [
+                    aClaim({
+                      status: "CONFIRMED",
+                      proposed_value: DOCUMENT_SAYS,
+                      decision: {
+                        decision: "CONFIRM",
+                        review_mode: "BLIND_ENTRY",
+                        reason_code: null,
+                        value: "2026-05-11",
+                        reviewed_by: "user_a",
+                        reviewed_at: "2026-09-06T09:00:00Z",
+                      },
+                    }),
+                  ],
+          },
+          response: { status: 200 },
+        });
+      }
+      return Promise.resolve({ data: undefined, response: { status: 200 } });
+    });
+    render();
+
+    fireEvent.change(
+      await screen.findByLabelText(/Return date, as the document writes it/),
+      { target: { value: DOCUMENT_SAYS } },
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() =>
+      expect(document.activeElement?.id).toBe("claim-claim-1-card"),
+    );
+  });
+
+  it("does not put every other field on the page into a busy state", async () => {
+    // One mutation hook serves the whole screen, so `review.isPending` alone made a
+    // decision on one field refuse keystrokes on all the others — for no reason the user
+    // could see, while a screen reader announced them "unavailable".
+    serve({ claims: [aClaim(), aTextClaim()] });
+    post.mockImplementation(() => new Promise(() => {})); // never resolves: stays pending
+    render();
+
+    fireEvent.change(
+      await screen.findByLabelText(/Return date, as the document writes it/),
+      { target: { value: DOCUMENT_SAYS } },
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    // The other field's Confirm is still offered, and nothing on it is disabled.
+    await waitFor(() => expect(post).toHaveBeenCalled());
+    const other = screen.getByRole("button", { name: "Confirm" });
+    expect(other).not.toHaveAttribute("aria-disabled", "true");
+  });
+
+  it("gives a two-journey booking two distinguishable date fields", async () => {
+    // Ungrouped, both inputs were named "Return date, as the document writes it" —
+    // character-identical, told apart only by an `<h2>` in a plain div, which is no
+    // distinction at all in forms mode or a screen reader's list of controls. On this
+    // screen that means typing the outbound date into the return field.
+    serve({ claims: [aClaim(), aClaim({ id: "claim-3", journey_index: 1 })] });
+    render();
+
+    expect(
+      await screen.findByLabelText(
+        /Return date, as the document writes it, Journey 1/,
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByLabelText(
+        /Return date, as the document writes it, Journey 2/,
+      ),
+    ).toBeTruthy();
+  });
+
+  it("adds no journey to the name when there is only one", async () => {
+    render();
+    const input = await screen.findByLabelText(
+      /Return date, as the document writes it/,
+    );
+    expect(input.getAttribute("aria-label") ?? "").not.toMatch(/Journey/);
+    expect(screen.queryByLabelText(/Journey 1/)).toBeNull();
+  });
+
+  it("submits on Enter, which is the first thing anybody tries", async () => {
+    post.mockResolvedValue({
+      data: {
+        claim_id: "claim-1",
+        claim_status: "CONFIRMED",
+        decision: "CONFIRM",
+        review_mode: "BLIND_ENTRY",
+        value: "2026-05-11",
+      },
+    });
+    render();
+
+    const input = await screen.findByLabelText(
+      /Return date, as the document writes it/,
+    );
+    fireEvent.change(input, { target: { value: DOCUMENT_SAYS } });
+    fireEvent.submit(input.closest("form")!);
+
+    await waitFor(() => expect(post).toHaveBeenCalled());
+  });
+
+  it("offers a way to see the document at full size", async () => {
+    // The frame is about 400px wide at every desktop width, which is an A4 page at half
+    // legibility — on the one screen whose task is reading a date off it.
+    render();
+
+    const link = await screen.findByRole("link", {
+      name: /Open full size in a new tab/,
+    });
+    expect(link).toHaveAttribute("href", "https://store.example/doc.pdf?sig=x");
+    // A signed URL must not reach a `Referer` header (threat model §6.4).
+    expect(link).toHaveAttribute("rel", "noreferrer");
+  });
+});

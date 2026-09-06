@@ -2328,8 +2328,23 @@
   font: inherit;
   color: var(--cw-text);
   background: var(--cw-surface);
-  border: 1px solid var(--cw-border);
+  /* `--cw-neutral-500`, not `--cw-border`. The default border is 1.27:1 against the
+     card, and on this screen the *empty box is the design*: blind entry says "nothing is
+     shown, type what the page says", so for a low-vision user there was nothing on
+     screen at all, including the field. 1.4.11 wants 3:1 for a control's boundary; this
+     measures 4.73:1 light and 3.67:1 dark. `.cw-button--secondary` already took the same
+     escape hatch for the same reason. */
+  border: 1px solid var(--cw-neutral-500);
   border-radius: var(--cw-radius-sm);
+}
+
+/* The visual half of `aria-disabled`. Without it a sighted user saw an unchanged box
+   that silently refused keystrokes while a screen-reader user heard "unavailable" — the
+   asymmetry the button rules in this file explicitly refuse to ship. */
+.cw-field-review__input[aria-disabled="true"] {
+  color: var(--cw-text-muted);
+  background: var(--cw-surface-sunken);
+  cursor: not-allowed;
 }
 
 .cw-field-review__input[aria-invalid="true"] {

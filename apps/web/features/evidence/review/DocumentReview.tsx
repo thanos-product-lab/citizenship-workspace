@@ -114,7 +114,14 @@ export function DocumentReview({
   const review = useReviewClaim(caseId);
 
   const [fields, setFields] = useState<Record<string, FieldState>>({});
-  const [announcement, setAnnouncement] = useState("");
+  // `{ text, seq }` rather than a bare string. React bails out of a state update when the
+  // value is unchanged, so confirming the *same* value on the same-named field of a
+  // second journey wrote an identical string, mutated nothing, and was announced to
+  // nobody. Rejections are the worse case: their wording carries no value at all, so
+  // every rejection after the first was silent.
+  const [announcement, setAnnouncement] = useState({ text: "", seq: 0 });
+  const announce = (text: string) =>
+    setAnnouncement((prev) => ({ text, seq: prev.seq + 1 }));
 
   const stateFor = (claimId: string): FieldState => fields[claimId] ?? BLANK;
   const patch = (claimId: string, change: Partial<FieldState>) =>
@@ -130,14 +137,34 @@ export function DocumentReview({
     patch(claim.id, { error: null });
     try {
       const outcome = await review.mutateAsync(input);
+      // Refetched *before* announcing, deliberately. M7 shipped a bug where a refetch
+      // overwrote a live-region message 38ms after it was set, so a screen reader never
+      // said the thing had happened; announcing once the DOM has settled is what stops
+      // this being that again.
       await claims.refetch();
       patch(claim.id, { entered: "", correcting: false, rejecting: false });
-      setAnnouncement(
+      announce(
         describeOutcome(fieldLabel(claim), outcome.decision, outcome.value),
+      );
+      // Focus follows the field. The control the user just activated is unmounted the
+      // moment the claim settles, which dropped focus to `<body>`: a keyboard user lost
+      // their place on every save and had to tab from the top of the page past every
+      // decided field to reach the next open one, and a screen-reader user's virtual
+      // cursor jumped to the top with only the announcement to go on. Four fields, four
+      // times. The deletion flow solved the same problem the same way in M7.
+      requestAnimationFrame(() =>
+        document.getElementById(`claim-${claim.id}-card`)?.focus(),
       );
     } catch (error) {
       if (error instanceof ReviewRefused) {
         patch(claim.id, { error: error.message });
+        // Focus back to the box, not left on Save. The ambiguous-date refusal asks the
+        // user to *retype*, and leaving them on the button means finding their way back
+        // to a field that still holds the value that was refused. `TravelRecordForm`
+        // takes the same route for the same reason.
+        requestAnimationFrame(() =>
+          document.getElementById(`claim-${claim.id}`)?.focus(),
+        );
         // Refetch on a conflict only: somebody else decided this claim, so the field must
         // stop offering to decide it again rather than letting the user retype.
         if (error.code === "CLAIM_ALREADY_REVIEWED") void claims.refetch();
@@ -198,7 +225,7 @@ export function DocumentReview({
   return (
     <div>
       <div aria-live="polite" className="cw-visually-hidden">
-        {announcement}
+        {announcement.text}
       </div>
 
       <div className="cw-review">
@@ -212,6 +239,7 @@ export function DocumentReview({
               type="button"
               className={`cw-button ${pane === "document" ? "" : "cw-button--secondary"}`}
               aria-pressed={pane === "document"}
+              aria-controls="review-pane-body"
               onClick={() => setPane("document")}
             >
               Document
@@ -220,55 +248,82 @@ export function DocumentReview({
               type="button"
               className={`cw-button ${pane === "text" ? "" : "cw-button--secondary"}`}
               aria-pressed={pane === "text"}
+              aria-controls="review-pane-body"
               onClick={() => setPane("text")}
             >
               Text
             </button>
+            {preview.data?.url ? (
+              // The frame renders an A4 page at roughly half scale — the shell caps
+              // content at 52rem, so each pane is about 400px at every desktop width, and
+              // 10pt body text lands around 5px tall. Not a WCAG failure (the browser's
+              // viewer has its own zoom, and the Text pane is the same content at full
+              // size), but the task on this screen is *read the date off the document*,
+              // and offering no way to see it properly is the wrong place to be stingy.
+              //
+              // `rel="noreferrer"`: this is a signed URL, and threat model §6.4 keeps
+              // those out of anywhere they can be logged — a `Referer` header is exactly
+              // that.
+              <a
+                className="cw-button cw-button--secondary"
+                href={preview.data.url}
+                target="_blank"
+                rel="noreferrer"
+              >
+                Open full size
+                <span className="cw-visually-hidden"> in a new tab</span>
+              </a>
+            ) : null}
           </div>
 
-          {pane === "document" ? (
-            preview.data?.url ? (
-              <iframe
-                className="cw-review__frame"
-                src={preview.data.url}
-                title={`${documentName} — the document as uploaded`}
-              />
+          {/* The id the two toggles name. Without it nothing tells a screen reader that
+              pressing "Text" changed something elsewhere on the page — focus stays on the
+              button and the user has to go looking for what moved. */}
+          <div id="review-pane-body">
+            {pane === "document" ? (
+              preview.data?.url ? (
+                <iframe
+                  className="cw-review__frame"
+                  src={preview.data.url}
+                  title={`${documentName} — the document as uploaded`}
+                />
+              ) : (
+                <p role="status" className="cw-review__text">
+                  {preview.isPending
+                    ? "Opening the document…"
+                    : "The document could not be opened just now. The fields on the right " +
+                      "still work, and switching to Text will show what was read from it."}
+                </p>
+              )
+            ) : text.isPending ? (
+              <p role="status" className="cw-review__text">
+                Loading the text…
+              </p>
+            ) : text.data ? (
+              <>
+                {text.data.pages_read < text.data.page_count ? (
+                  <p role="status" className="cw-field-review__hint">
+                    Only the first {text.data.pages_read} of{" "}
+                    {text.data.page_count} pages were read, so anything after
+                    that is not shown here.
+                  </p>
+                ) : null}
+                <div
+                  className="cw-review__text"
+                  tabIndex={0}
+                  role="region"
+                  aria-label="Document text"
+                >
+                  {text.data.content}
+                </div>
+              </>
             ) : (
               <p role="status" className="cw-review__text">
-                {preview.isPending
-                  ? "Opening the document…"
-                  : "The document could not be opened just now. The fields on the right " +
-                    "still work, and switching to Text will show what was read from it."}
+                There is no text to show: this looks like a scan or a photo, so
+                a parser found nothing to read. Use the Document view instead.
               </p>
-            )
-          ) : text.isPending ? (
-            <p role="status" className="cw-review__text">
-              Loading the text…
-            </p>
-          ) : text.data ? (
-            <>
-              {text.data.pages_read < text.data.page_count ? (
-                <p role="status" className="cw-field-review__hint">
-                  Only the first {text.data.pages_read} of{" "}
-                  {text.data.page_count} pages were read, so anything after that
-                  is not shown here.
-                </p>
-              ) : null}
-              <div
-                className="cw-review__text"
-                tabIndex={0}
-                role="region"
-                aria-label="Document text"
-              >
-                {text.data.content}
-              </div>
-            </>
-          ) : (
-            <p role="status" className="cw-review__text">
-              There is no text to show: this looks like a scan or a photo, so a
-              parser found nothing to read. Use the Document view instead.
-            </p>
-          )}
+            )}
+          </div>
         </section>
 
         <section
@@ -359,8 +414,18 @@ export function DocumentReview({
                       patch(claim.id, { reason })
                     }
                     error={state.error}
-                    busy={review.isPending}
+                    // **This claim's** decision, not any decision on the page. One
+                    // mutation hook serves every field, so `review.isPending` alone put
+                    // every other field on the screen into a busy state while one was
+                    // saving — a user who moved on to the next field found it refusing
+                    // keystrokes for no reason they could see.
+                    busy={
+                      review.isPending && review.variables?.claimId === claim.id
+                    }
                     hint={claim.requires_blind_entry ? DATE_HINT : undefined}
+                    context={
+                      journeys.length > 1 ? `Journey ${journey + 1}` : undefined
+                    }
                   />
                 );
               })}

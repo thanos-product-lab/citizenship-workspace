@@ -91,6 +91,19 @@ export interface ExtractedFieldReviewProps {
    *  `| undefined` explicitly: `exactOptionalPropertyTypes` is on, and a caller that
    *  computes the hint conditionally passes `undefined` rather than omitting the prop. */
   hint?: string | undefined;
+  /**
+   * What tells this field apart from an identically-named one elsewhere on the page —
+   * "Journey 2" on a two-leg booking.
+   *
+   * Appended to the control's **accessible name**, not to the visible label. A booking
+   * with two journeys renders two blind date inputs whose names were character-identical,
+   * distinguished only by a heading in a plain `div` above them — which is no
+   * distinction at all in forms mode or in a screen reader's list of controls. The
+   * consequence on this screen is typing the outbound date into the return field, which
+   * is a wrong trip boundary entering the case through the one interaction the trust
+   * model rests on.
+   */
+  context?: string | undefined;
 }
 
 const DECISION_PROVENANCE: Record<string, string> = {
@@ -119,13 +132,25 @@ export function ExtractedFieldReview({
   busy = false,
   conflictsWith = null,
   hint,
+  context,
 }: ExtractedFieldReviewProps): JSX.Element {
   const hintId = `${id}-hint`;
   const errorId = `${id}-error`;
   const decided = decision !== null;
 
   return (
-    <div className="cw-field-review" data-decided={decided} data-blind={blind}>
+    <div
+      // Focusable only programmatically, and it exists so the app can put focus here
+      // after a decision. The control the user activated is unmounted the moment the
+      // field settles, which dropped focus to `<body>` — a keyboard user lost their place
+      // on every save, and a screen-reader user's virtual cursor jumped to the top of the
+      // page. The deletion flow solved the same problem the same way in M7.
+      id={`${id}-card`}
+      tabIndex={-1}
+      className="cw-field-review"
+      data-decided={decided}
+      data-blind={blind}
+    >
       <div className="cw-field-review__head">
         <span className="cw-field-review__label" id={`${id}-name`}>
           {label}
@@ -134,7 +159,11 @@ export function ExtractedFieldReview({
       </div>
 
       {decided ? (
-        <Settled decision={decision} proposedValue={proposedValue} label={label} />
+        <Settled
+          decision={decision}
+          proposedValue={proposedValue}
+          label={label}
+        />
       ) : (
         <Open
           id={id}
@@ -155,6 +184,7 @@ export function ExtractedFieldReview({
           error={error}
           busy={busy}
           hint={hint}
+          context={context}
           hintId={hintId}
           errorId={errorId}
         />
@@ -171,7 +201,10 @@ export function ExtractedFieldReview({
 }
 
 /** What the badge says about a field nobody has decided about yet, or has. */
-function badgeKind(decision: FieldDecision | null, conflictsWith: string | null): string {
+function badgeKind(
+  decision: FieldDecision | null,
+  conflictsWith: string | null,
+): string {
   if (conflictsWith) return "conflicting";
   if (decision === null) return "ai_proposed";
   // A rejection is neither confirmed nor corrected: nothing was trusted. `unavailable`
@@ -192,7 +225,9 @@ function Settled({
     return (
       <p className="cw-field-review__settled">
         You said this was wrong, so nothing was recorded from it.
-        {decision.reasonCode ? <> Reason: {humanise(decision.reasonCode)}.</> : null}
+        {decision.reasonCode ? (
+          <> Reason: {humanise(decision.reasonCode)}.</>
+        ) : null}
       </p>
     );
   }
@@ -236,6 +271,7 @@ interface OpenFieldProps {
   // optional property refuses an explicitly-undefined value, and this is an internal
   // component whose caller always passes the prop.
   hint: string | undefined;
+  context: string | undefined;
   hintId: string;
   errorId: string;
 }
@@ -259,14 +295,37 @@ function Open({
   error,
   busy,
   hint,
+  context,
   hintId,
   errorId,
 }: OpenFieldProps): JSX.Element {
   const typing = blind || correcting;
-  const describedBy = [hint ? hintId : null, error ? errorId : null].filter(Boolean).join(" ");
+  const describedBy = [hint ? hintId : null, error ? errorId : null]
+    .filter(Boolean)
+    .join(" ");
+
+  const submit = () => {
+    // Guarded rather than relying on `aria-disabled` alone. The attribute tells a screen
+    // reader the control is unavailable and does nothing to stop the click, so three
+    // clicks on a Save announced as unavailable sent three requests — the second and
+    // third refused as already-reviewed, into a field that no longer rendered the error.
+    // A control that announces one thing and does another is worse than either.
+    if (busy) return;
+    onSubmit();
+  };
 
   return (
-    <div className="cw-field-review__open">
+    <form
+      className="cw-field-review__open"
+      // Enter in the box submits, which is the first thing anybody tries and did nothing
+      // at all before this: the entry was not in a form, so there was no implicit
+      // submission and no feedback either. On a phone the keyboard's return key was
+      // equally inert.
+      onSubmit={(event) => {
+        event.preventDefault();
+        submit();
+      }}
+    >
       {!blind ? (
         // Shown only for a low-risk field. RFC §41.4 spends the friction where a wrong
         // value changes an assessment conclusion, and not where it does not.
@@ -276,7 +335,16 @@ function Open({
       {typing ? (
         <div className="cw-field-review__entry">
           <label className="cw-field-review__entry-label" htmlFor={id}>
-            {blind ? `${label}, as the document writes it` : `${label}, corrected`}
+            {blind
+              ? `${label}, as the document writes it`
+              : `${label}, corrected`}
+            {/* Off-screen, because the journey is already a visible heading above the
+                group — but a heading in a `div` is no distinction at all in forms mode,
+                where the two blind date inputs of a two-leg booking had
+                character-identical names. */}
+            {context ? (
+              <span className="cw-visually-hidden">, {context}</span>
+            ) : null}
           </label>
           {hint ? (
             <p className="cw-field-review__hint" id={hintId}>
@@ -295,7 +363,13 @@ function Open({
             aria-invalid={error ? true : undefined}
             autoComplete="off"
             spellCheck={false}
-            disabled={busy}
+            // `readOnly` + `aria-disabled`, never `disabled` — `components.css` records
+            // why for buttons and it is the same here: the browser blurs a focused
+            // element the moment it becomes `disabled`, dropping keyboard focus
+            // mid-keystroke. `readOnly` refuses input while keeping the field focusable
+            // and in the tab order.
+            readOnly={busy}
+            aria-disabled={busy || undefined}
           />
           {error ? (
             <p className="cw-field-review__error" id={errorId} role="alert">
@@ -308,9 +382,9 @@ function Open({
 
       <div className="cw-field-review__controls">
         <button
-          type="button"
+          type="submit"
           className="cw-button"
-          onClick={onSubmit}
+          onClick={submit}
           aria-disabled={busy || undefined}
         >
           {blind ? "Save" : correcting ? "Save correction" : "Confirm"}
@@ -336,9 +410,15 @@ function Open({
         <button
           type="button"
           className="cw-button cw-button--secondary"
-          onClick={() => onRejectingChange(!rejecting)}
+          onClick={() => {
+            if (busy) return;
+            onRejectingChange(!rejecting);
+          }}
+          aria-disabled={busy || undefined}
           aria-expanded={rejecting}
-          aria-controls={`${id}-reject`}
+          // Only while the panel exists. A permanent `aria-controls` pointing at an
+          // element that is not in the DOM is a dangling IDREF.
+          aria-controls={rejecting ? `${id}-reject` : undefined}
         >
           This is wrong
         </button>
@@ -349,7 +429,10 @@ function Open({
         // wrong" answerable across a corpus rather than one claim at a time — and because
         // a rejection with no reason tells a later evaluation nothing.
         <div className="cw-field-review__reject" id={`${id}-reject`}>
-          <label className="cw-field-review__entry-label" htmlFor={`${id}-reason`}>
+          <label
+            className="cw-field-review__entry-label"
+            htmlFor={`${id}-reason`}
+          >
             Why is it wrong?
           </label>
           <select
@@ -367,14 +450,17 @@ function Open({
           <button
             type="button"
             className="cw-button cw-button--danger"
-            onClick={() => onReject(rejectionReason)}
+            onClick={() => {
+              if (busy) return;
+              onReject(rejectionReason);
+            }}
             aria-disabled={busy || undefined}
           >
             Reject this value
           </button>
         </div>
       ) : null}
-    </div>
+    </form>
   );
 }
 
