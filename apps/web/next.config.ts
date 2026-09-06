@@ -26,9 +26,31 @@ import type { NextConfig } from "next";
  * Deliberately not a full CSP: `script-src` needs a nonce strategy that Next's inline
  * bootstrap and Clerk both have opinions about, and shipping a broken one is worse than
  * shipping this one honestly scoped. This is the directive the new surface needs.
+ *
+ * **The origin must be set when deployed.** Defaulting to localhost and shipping is
+ * the failure this repository has already had twice: M7's presigned URLs were signed for a host the browser could not resolve, and
+ * M8's compose stack ran with no provider key. Both were green locally and dead
+ * deployed, and both were silent. This one would be too — a CSP naming the wrong origin
+ * does not error, it shows an empty frame where the user's document should be, on the
+ * screen whose entire task is reading that document.
+ *
+ * So it fails the *build* rather than the request, which is the discipline
+ * `check_backing_services` already applies on the API side: refuse to start rather than
+ * start wrong.
  */
-const STORAGE_ORIGIN =
-  process.env["NEXT_PUBLIC_STORAGE_ORIGIN"] ?? "http://localhost:9000";
+const STORAGE_ORIGIN = (() => {
+  const configured = process.env["NEXT_PUBLIC_STORAGE_ORIGIN"];
+  if (configured) return configured;
+  if (process.env.NODE_ENV === "production") {
+    throw new Error(
+      "NEXT_PUBLIC_STORAGE_ORIGIN is unset. It is the only origin this app may frame, " +
+        "and the document preview shows an empty frame without it. Set it to the " +
+        "browser-facing address of the object store — the same address the API signs " +
+        "URLs against (STORAGE_PUBLIC_ENDPOINT_URL, or the S3 endpoint when unset).",
+    );
+  }
+  return "http://localhost:9000";
+})();
 
 const config: NextConfig = {
   // Workspace TypeScript packages are transpiled by Next rather than pre-built.

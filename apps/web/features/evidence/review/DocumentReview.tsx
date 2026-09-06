@@ -165,9 +165,21 @@ export function DocumentReview({
         requestAnimationFrame(() =>
           document.getElementById(`claim-${claim.id}`)?.focus(),
         );
-        // Refetch on a conflict only: somebody else decided this claim, so the field must
-        // stop offering to decide it again rather than letting the user retype.
-        if (error.code === "CLAIM_ALREADY_REVIEWED") void claims.refetch();
+        if (error.code === "CLAIM_ALREADY_REVIEWED") {
+          // Somebody else — another tab, usually — decided this claim. Refetch so the
+          // field stops offering to decide it again, and **say so**: the refetch settles
+          // the field, which takes the error message down with it, so without this the
+          // user clicks Save, watches the field turn into a decision, and reasonably
+          // concludes theirs was the one recorded. It was not.
+          void claims
+            .refetch()
+            .then(() =>
+              announce(
+                `${fieldLabel(claim)} had already been decided, so what you typed was not recorded.`,
+              ),
+            );
+          return;
+        }
         return;
       }
       patch(claim.id, { error: "That could not be recorded. Try again." });

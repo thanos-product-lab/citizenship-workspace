@@ -351,6 +351,39 @@ describe("when the server refuses", () => {
       },
       response: { status: 409 },
     });
+    // The refetch must come back with the decision that *won*, or this test asserts only
+    // that a request was made — which is what it did until the slice-3b trust review
+    // pointed out that the mock kept returning the same still-pending claim, so the
+    // field went on offering to decide it and the assertion in the title was never made.
+    let call = 0;
+    get.mockImplementation((path: string) => {
+      if (String(path).endsWith("/claims")) {
+        call += 1;
+        return Promise.resolve({
+          data: {
+            items:
+              call === 1
+                ? [aClaim()]
+                : [
+                    aClaim({
+                      status: "CONFIRMED",
+                      proposed_value: MODEL_READ,
+                      decision: {
+                        decision: "CONFIRM",
+                        review_mode: "BLIND_ENTRY",
+                        reason_code: null,
+                        value: "2026-05-10",
+                        reviewed_by: "someone_else",
+                        reviewed_at: "2026-09-06T09:00:00Z",
+                      },
+                    }),
+                  ],
+          },
+          response: { status: 200 },
+        });
+      }
+      return Promise.resolve({ data: undefined, response: { status: 200 } });
+    });
     render();
 
     fireEvent.change(
@@ -361,18 +394,20 @@ describe("when the server refuses", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
+    // The field settles into the decision that won, which takes the inline error down
+    // with it — so the outcome is said out loud instead. Without it the user watches the
+    // field turn into a decision and concludes theirs was the one recorded.
     await waitFor(() =>
-      expect(screen.getByRole("alert").textContent).toMatch(
-        /already been reviewed/,
+      expect(screen.getByText(/had already been decided/).textContent).toMatch(
+        /what you typed was not recorded/,
       ),
     );
-    // Refetched, so the field can show what actually happened rather than staying open.
-    await waitFor(() => {
-      const claimCalls = get.mock.calls.filter((call) =>
-        String(call[0]).endsWith("/claims"),
-      );
-      expect(claimCalls.length).toBeGreaterThan(1);
-    });
+    // And the field stops offering to decide it: the decision that won is shown, and the
+    // Save button is gone. Offering to overwrite a fact that already exists is the thing
+    // the server refuses, and a screen that keeps offering it is a screen that keeps
+    // producing that refusal.
+    await waitFor(() => expect(screen.getByText("Confirmed")).toBeTruthy());
+    expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
   });
 });
 
