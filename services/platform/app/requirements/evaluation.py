@@ -85,6 +85,11 @@ class LinkInputKind(StrEnum):
     #: `availability`, and availability is precisely what must stale a result when it
     #: changes. See Domain §31.1.
     EVIDENCE_LINK = "EVIDENCE_LINK"
+    #: The confirmed value a document proposed, read by `residence.travel_consistency`
+    #: from M8 slice 4 to detect a date the user's record disagrees with. A *version*,
+    #: like the others: the conclusion depended on what the fact said when it ran, and a
+    #: later correction must leave the historical result resolving to the value it read.
+    CASE_FACT_VERSION = "CASE_FACT_VERSION"
 
 
 class ContributionRole(StrEnum):
@@ -367,6 +372,19 @@ UNCERTAIN_CONFIDENCES = frozenset({"ESTIMATED", "UNKNOWN"})
 
 
 @dataclass(frozen=True)
+class ConflictedFactInput:
+    """One confirmed fact whose date disagrees with the trip it is attached to.
+
+    The rule does not compare anything — `assessments.conflicts` already did, and putting
+    the values here would invite a second implementation of the comparison. What the rule
+    needs is the fact version id, so the result can say the conclusion depended on it.
+    """
+
+    fact_version_id: uuid.UUID
+    travel_record_id: uuid.UUID
+
+
+@dataclass(frozen=True)
 class TripInput:
     """One active travel record, flattened. `is_trusted` is the §6.1 gate — ACTIVE and
     CONFIRMED and EXACT — decided by the service; the evaluator never re-derives trust.
@@ -426,10 +444,28 @@ class ResidenceAssessmentInputs:
     #: rule writes one `AssessmentInputLink` per link, and an unordered read would make
     #: provenance rows differ between two runs over identical inputs.
     evidence_links: tuple[EvidenceLinkInput, ...] = ()
+    #: The fact versions whose confirmed dates disagree with a trip they are attached to
+    #: (M8 slice 4). Carried as ids only: the *detection* happened in the service, and the
+    #: rule's interest is solely in naming what it read. A rule that could see the values
+    #: could re-derive the comparison, and then there would be two implementations of it.
+    date_conflicts: tuple[ConflictedFactInput, ...] = ()
 
 
 def _app_date_link(inputs: ResidenceAssessmentInputs) -> InputLinkSpec:
     return InputLinkSpec(LinkInputKind.APPLICATION_DATE_VERSION, inputs.application_date_version_id)
+
+
+def _fact_links(conflicts: tuple["ConflictedFactInput", ...]) -> tuple[InputLinkSpec, ...]:
+    """One link per confirmed fact this rule found in conflict.
+
+    Sorted, for the reason `evidence_links` is: the rule writes one `AssessmentInputLink`
+    per entry, and unordered provenance would differ between two runs over identical
+    inputs — which would make a diff of two results look like a change.
+    """
+    return tuple(
+        InputLinkSpec(LinkInputKind.CASE_FACT_VERSION, conflict.fact_version_id)
+        for conflict in sorted(conflicts, key=lambda c: str(c.fact_version_id))
+    )
 
 
 def _same_place(left: TripInput, right: TripInput) -> bool:
@@ -908,6 +944,10 @@ def _evaluate_travel_consistency(inputs: ResidenceAssessmentInputs) -> Evaluated
             _app_date_link(inputs),
             *_travel_links(inputs.trips),
             *_evidence_links(inputs.evidence_links),
+            # From v2.2.0. A `CONFLICTING` verdict is only explicable if the result says
+            # which confirmed fact it disagreed with — directive 5, and the thing that
+            # makes a superseded result still readable a milestone later.
+            *_fact_links(inputs.date_conflicts),
         ),
         limitations=tuple(limitations),
     )

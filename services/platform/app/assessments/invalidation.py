@@ -52,6 +52,12 @@ class StaleReason:
     #: by an activation migration rather than by a command, because there is no request in
     #: flight when a deployment changes the rules.
     RULE_VERSION_CHANGED = "RULE_VERSION_CHANGED"
+    #: A value was confirmed, corrected or rejected on a document (M8 slice 4). Its own
+    #: reason rather than `TRAVEL_RECORD_CHANGED`, for the same reason evidence support has
+    #: one: nothing about the user's travel history changed. What changed is whether a
+    #: document agrees with it, which can move a trip in or out of the trusted total
+    #: without a single trip being edited.
+    CASE_FACT_CHANGED = "CASE_FACT_CHANGED"
 
 
 @dataclass(frozen=True)

@@ -21,6 +21,7 @@ declares. Nothing structural reveals that — only behaviour does, which is what
 
 import uuid
 from collections.abc import Callable
+from datetime import UTC, datetime
 
 import pytest
 from fastapi.testclient import TestClient
@@ -88,6 +89,10 @@ _DEPENDENCY_TO_LINK = {
     # Not `_VERSION`: an evidence link has no version sequence, only availability
     # (Domain §31.1).
     "EVIDENCE_SUPPORT": "EVIDENCE_LINK",
+    # From v2.2.0. Conditional, like `EVIDENCE_SUPPORT`: a link exists only where a
+    # confirmed document value disagrees with the trip it is attached to, which is why the
+    # fixture below deliberately creates one.
+    "CASE_FACT": "CASE_FACT_VERSION",
 }
 
 
@@ -118,8 +123,10 @@ def _active_rule_version(session: Session, requirement_id: uuid.UUID) -> RuleVer
     return versions[0]
 
 
-def _attach_a_document(api: Api, case_id: str, travel_record_id: str) -> None:
-    """Upload one document and attach it to a trip, through the real commands."""
+def _attach_a_document(api: Api, case_id: str, travel_record_id: str) -> str:
+    """Upload one document and attach it to a trip, through the real commands.
+
+    Returns the evidence item id, so a caller can go on to confirm a value from it."""
     from app.core.storage import InMemoryStorage, get_storage
     from tests.evidence.conftest import fixture_bytes
 
@@ -148,6 +155,75 @@ def _attach_a_document(api: Api, case_id: str, travel_record_id: str) -> None:
         f"/api/v1/cases/{case_id}/travel-records/{travel_record_id}/evidence",
         json={"evidence_item_id": item.json()["id"]},
     )
+    return str(item.json()["id"])
+
+
+def _confirm_a_conflicting_date(
+    session: Session, api: Api, case_id: str, evidence_item_id: str, *, documented: str
+) -> None:
+    """Confirm a return date from that document which disagrees with the trip.
+
+    Built through the domain rather than by running a model, for the reason
+    `tests/facts/conftest`-style fixtures give: the question here is what provenance a
+    conflict produces, and driving a provider to get one would make this test depend on a
+    network and a budget to answer it.
+
+    The review itself goes through the real command, because the fact and its version are
+    exactly what the assessment must end up linking.
+    """
+    from app.ai.domain import Capability
+    from app.ai.extraction_run import ExtractionRun, ExtractionRunStatus
+    from app.evidence.domain import (
+        PIPELINE_VERSION,
+        EvidenceFile,
+        EvidenceItem,
+        EvidenceProcessingRun,
+        ProcessingRunStatus,
+    )
+    from app.facts.domain import ClaimType, ExtractedClaim
+    from app.facts.values import ProposedValue, ValueSchema
+
+    item_id = uuid.UUID(evidence_item_id)
+    file = session.scalar(select(EvidenceFile).where(EvidenceFile.evidence_item_id == item_id))
+    assert file is not None
+    processing = EvidenceProcessingRun(
+        evidence_item_id=item_id,
+        evidence_file_id=file.id,
+        status=ProcessingRunStatus.SUCCEEDED.value,
+        pipeline_version=PIPELINE_VERSION,
+        completed_at=datetime.now(UTC),
+        idempotency_key=f"prov-{uuid.uuid4()}",
+    )
+    session.add(processing)
+    session.flush()
+    run = ExtractionRun.record(
+        case_id=uuid.UUID(case_id),
+        evidence_item_id=item_id,
+        evidence_file_id=file.id,
+        processing_run_id=processing.id,
+        capability=Capability.TRAVEL_RECORD_EXTRACTOR.value,
+        status=ExtractionRunStatus.SUCCEEDED,
+        input_text="a booking",
+        started_at=datetime.now(UTC),
+    )
+    session.add(run)
+    session.flush()
+    claim = ExtractedClaim.propose(
+        case_id=uuid.UUID(case_id),
+        evidence_item_id=item_id,
+        evidence_file_id=file.id,
+        extraction_run_id=run.id,
+        claim_type=ClaimType.TRAVEL_RETURN_DATE,
+        value=ProposedValue(schema=ValueSchema.DATE_V1, raw=documented, model_iso=None),
+    )
+    session.add(claim)
+    session.flush()
+    session.commit()
+    api("user_a").post(
+        f"/api/v1/cases/{case_id}/claims/{claim.id}/review",
+        json={"entered_value": documented},
+    )
+    _ = session.get(EvidenceItem, item_id)
 
 
 def _case_with_date(api: Api, user: str) -> str:
@@ -231,7 +307,14 @@ def test_residence_links_cover_declared_kinds_and_every_active_trip(
     # `EVIDENCE_LINK` rows, which is correct behaviour and leaves the strict kind-equality
     # below with nothing to compare — the same reason this fixture has always created
     # trips rather than asserting against an empty case.
-    _attach_a_document(api, case_id, trip_ids[0])
+    evidence_item_id = _attach_a_document(api, case_id, trip_ids[0])
+    # And one confirmed value from it that disagrees with the trip, so v2.2.0's `CASE_FACT`
+    # dependency fans out too. Same reasoning one line up: a conditional fan-out with
+    # nothing to fan out to would leave the strict equality below quietly weaker than it
+    # reads, which is how a missing link kind stops being noticed.
+    _confirm_a_conflicting_date(
+        db_session, api, case_id, evidence_item_id, documented="20 July 2023"
+    )
     api("user_a").post(f"/api/v1/cases/{case_id}/assessments/recalculate")
 
     active_travel_version_ids = {

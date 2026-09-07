@@ -33,6 +33,8 @@ from app.applicants.domain import ReviewState as ProfileReviewState
 from app.applicants.repository import RouteProfileRepository
 from app.assessments.domain import AssessmentInputLink
 from app.evidence.domain import EvidenceTravelLink
+from app.facts.domain import CaseFact, FactVersion
+from app.facts.values import SourceMethod
 from app.requirements.evaluation import LinkInputKind
 from app.requirements.messages import format_date
 from app.residence.domain import (
@@ -95,6 +97,15 @@ class ResolvedInput:
     is_removed: bool = False
 
 
+#: What each travel fact type is called in the provenance panel. Only the types a rule can
+#: actually read appear: a label for something no conclusion depends on would be a promise
+#: the panel cannot keep.
+FACT_TYPE_LABELS: dict[str, str] = {
+    "travel.departure_date": "Departure date, confirmed from a document",
+    "travel.return_date": "Return date, confirmed from a document",
+}
+
+
 def resolve_input_links(session: Session, links: list[AssessmentInputLink]) -> list[ResolvedInput]:
     """Resolve each link, preserving the order the result recorded them in."""
     return [_resolve(session, link) for link in links]
@@ -109,7 +120,64 @@ def _resolve(session: Session, link: AssessmentInputLink) -> ResolvedInput:
         return _resolve_route_profile(session, link)
     if link.input_kind == LinkInputKind.EVIDENCE_LINK.value:
         return _resolve_evidence_link(session, link)
+    if link.input_kind == LinkInputKind.CASE_FACT_VERSION.value:
+        return _resolve_case_fact(session, link)
     return _unavailable(link, label="Unrecognised input")
+
+
+def _resolve_case_fact(session: Session, link: AssessmentInputLink) -> ResolvedInput:
+    """Describe a confirmed value from a document that a conclusion read (M8 slice 4).
+
+    Its own branch for the reason the evidence link has one: falling through renders "No
+    longer available", which about a value the user confirmed themselves is false in the
+    one panel whose job is being trustworthy about what a conclusion rested on.
+
+    **The value is shown**, unlike the evidence link's document name — because here the
+    rule genuinely read it. That is the line provenance draws: it describes what was read,
+    so a value the conclusion turned on belongs, and a filename the rule never looked at
+    does not.
+
+    `is_still_current` is whether this is *the fact's current version*. A later correction
+    supersedes it, and a historical result must keep resolving to the value it actually
+    read — saying so is how the panel stays honest about a superseded conclusion.
+    """
+    version = session.get(FactVersion, link.input_version_id)
+    if version is None:
+        return _unavailable(link, label="Confirmed from a document")
+
+    fact = session.get(CaseFact, version.case_fact_id)
+    label = FACT_TYPE_LABELS.get(fact.fact_type if fact else "", "Confirmed from a document")
+    current = fact.current_version_id == version.id if fact else False
+    return ResolvedInput(
+        input_kind=link.input_kind,
+        input_key=link.input_key,
+        input_version_id=link.input_version_id,
+        contribution_role=link.contribution_role,
+        label=label,
+        value=version.normalised_value or version.raw_value,
+        detail=(
+            "You confirmed this from a document. It disagrees with the trip you recorded, "
+            "so that trip was held back from the confirmed total."
+            if current
+            else "You confirmed this from a document. It has since been corrected."
+        ),
+        version_number=version.version_number,
+        is_still_current=current,
+        # A confirmed fact is not itself a *trip* and never passes or fails §6.1 — the gate
+        # applies to travel records. `None` is the honest answer, the same one the
+        # application date gives, rather than `False` which would read as "this was held
+        # back" about something the gate does not judge.
+        counts_as_confirmed=None,
+        # `user_confirmed` / `user_corrected` from the value's own provenance, not
+        # `conflicting`: this row describes the *fact*, and the fact is not in doubt — a
+        # person read it off the page. What conflicts is the pair, and the trip's own row
+        # already carries that.
+        provenance_kind=(
+            "user_corrected"
+            if version.source_method == SourceMethod.USER_CORRECTED_AI_CLAIM.value
+            else "user_confirmed"
+        ),
+    )
 
 
 def _unavailable(link: AssessmentInputLink, *, label: str) -> ResolvedInput:

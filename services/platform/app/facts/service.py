@@ -30,6 +30,7 @@ from datetime import UTC, datetime
 import structlog
 from sqlalchemy.orm import Session
 
+from app.assessments.invalidation import StaleReason, invalidate_for_input_change
 from app.cases import service as cases_service
 from app.cases.domain import ApplicationCase, LifecycleStatus
 from app.facts.domain import (
@@ -52,6 +53,7 @@ from app.facts.domain import (
 )
 from app.facts.repository import ClaimRepository, FactRepository
 from app.facts.values import ProposedValue, ValueSchema, normalise, parse_entered_date
+from app.requirements.models import DependencyInputKind
 from app.shared.errors import (
     CaseNotActive,
     ClaimAlreadyReviewed,
@@ -104,6 +106,34 @@ def _require_reviewable_document(session: Session, claim: ExtractedClaim) -> Non
     item = session.get(EvidenceItem, claim.evidence_item_id)
     if item is None or item.lifecycle_status is not EvidenceLifecycleStatus.ACTIVE:
         raise ClaimNotFound()
+
+
+def _invalidate_dependents(session: Session, uow: UnitOfWork, *, case: ApplicationCase) -> None:
+    """Mark results that declare a `CASE_FACT` dependency stale, in this transaction.
+
+    **The seam slice 3a shipped without.** `DependencyInputKind.CASE_FACT` existed and
+    nothing declared or invalidated on it, which that slice's trust review called out
+    directly: the deletion seam was created a slice early so nobody would have to remember
+    a call site, and the write side had none at all.
+
+    In the same transaction as the decision, per Domain §41.2 — a user told their value was
+    accepted must not be able to read a conclusion that predates it. `review()` already
+    holds the case lock, so nothing can interleave between the fact landing and its
+    dependants going stale.
+
+    Blunt, like every other invalidation here: it names the input *kind*, and
+    `invalidate_for_input_change` decides which rules declared it. A confirmed English test
+    date will stale `residence.travel_consistency` under this until fact types are
+    dependency-scoped — a cost paid in one unnecessary recalculation, against the cost of a
+    conclusion nobody restaled.
+    """
+    invalidate_for_input_change(
+        session,
+        uow,
+        case_id=case.id,
+        input_kind=DependencyInputKind.CASE_FACT,
+        reason_code=StaleReason.CASE_FACT_CHANGED,
+    )
 
 
 def _settle_document_if_done(
@@ -229,6 +259,10 @@ def review(
         # would make the state depend on *which* decision a person took, when what it
         # records is only whether they took one.
         _settle_document_if_done(session, case=case, claim=claim)
+        # A rejection stales too. It cannot *create* a conflict, but it can end one: the
+        # claim stops being a confirmed value, so a trip held back because of it is trusted
+        # again. Skipping this would leave the figure held back until an unrelated edit.
+        _invalidate_dependents(session, uow, case=case)
         _emit(uow, case, claim, record, fact_version=None)
         uow.commit()
         return ReviewOutcome(claim=claim, decision=record, fact_version=None)
@@ -262,6 +296,7 @@ def review(
         else ClaimStatus.CONFIRMED.value
     )
     _settle_document_if_done(session, case=case, claim=claim)
+    _invalidate_dependents(session, uow, case=case)
     _emit(uow, case, claim, record, fact_version=version)
     uow.commit()
 

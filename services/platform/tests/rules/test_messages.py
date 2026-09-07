@@ -45,6 +45,7 @@ _NOT_MESSAGE_CODES = frozenset(
         "APPLICATION_DATE_VERSION",
         "TRAVEL_RECORD_VERSION",
         "EVIDENCE_LINK",
+        "CASE_FACT_VERSION",
         # ContributionRole
         "REQUIRED",
         "SUPPORTING",

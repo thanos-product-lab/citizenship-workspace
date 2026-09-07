@@ -154,15 +154,49 @@ def test_a_kind_no_rule_declares_invalidates_nothing(db_session: Session) -> Non
     """Domain §41.5's last row: an unrelated input invalidates nothing, unless a rule
     declares it.
 
-    `CASE_FACT`, because nothing produces or reads a fact until M8. This test named
+    `KNOWLEDGE_RECORD`, because nothing produces or reads one — the English-language and
+    Life-in-the-UK requirements have no evaluator yet.
+
+    **This test has now been rotated twice**, and the pattern is the point. It named
     `EVIDENCE_SUPPORT` until M7 slice 4a, when `residence.travel_consistency` v2.0.0
-    started declaring it — at which point the test was asserting the opposite of the
-    truth, and said so.
+    started declaring it; it named `CASE_FACT` until M8 slice 4, when v2.2.0 did the same.
+    Each time the test was left asserting the opposite of the truth and said so on the next
+    run, which is the behaviour worth keeping: an undeclared kind is a fact about today's
+    catalog, so the test has to fail when that changes rather than quietly keep passing
+    against a kind that has since acquired a declarer.
     """
     assert (
-        resolve_affected_requirements(db_session, input_kind=DependencyInputKind.CASE_FACT)
+        resolve_affected_requirements(db_session, input_kind=DependencyInputKind.KNOWLEDGE_RECORD)
         == frozenset()
     )
+
+
+def test_a_confirmed_fact_stales_the_consistency_rule_and_nothing_else(
+    db_session: Session,
+) -> None:
+    """The fact fan-out is exactly one, and both halves matter — the same shape as evidence
+    support below, for the same reason.
+
+    Confirming a date on a document must stale the consistency verdict: from M8 slice 4 that
+    rule compares confirmed facts against the trips they are attached to, so a new
+    confirmation can change its answer under a CURRENT result.
+
+    It must **not** stale the absence totals directly. Confirming what a booking says does
+    not change how many days the user was absent — what it can change is whether a trip is
+    trusted, and that reaches the totals through the trip itself when the user resolves the
+    conflict, not through the fact. Collapsing the two would restale the whole residence
+    group on every confirmation, which on a six-field document is six times per booking.
+    """
+    resolved = resolve_affected_requirements(db_session, input_kind=DependencyInputKind.CASE_FACT)
+
+    assert resolved == {"residence.travel_consistency"}
+    for untouched in (
+        "residence.total_absences",
+        "residence.final_year_absences",
+        "residence.physical_presence_start_date",
+        "residence.qualifying_period",
+    ):
+        assert untouched not in resolved
 
 
 def test_evidence_support_stales_the_consistency_rule_and_nothing_else(

@@ -454,6 +454,13 @@ STALE_REASON_TEMPLATES: dict[str, _Template] = {
     "RULE_VERSION_CHANGED": lambda p: (
         "We updated how this requirement is checked, so this needs working out again."
     ),
+    # "a value on one of your documents", not "a fact": *fact* is this codebase's word for
+    # the trusted side of the trust boundary and means nothing to a user. The sentence has
+    # to work for a confirmation, a correction and a rejection alike, because all three
+    # change whether a document agrees with the trips recorded.
+    "CASE_FACT_CHANGED": lambda p: (
+        "You confirmed or changed a value on one of your documents after this was worked out."
+    ),
 }
 
 

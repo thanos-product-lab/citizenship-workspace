@@ -26,6 +26,14 @@ from sqlalchemy.orm import Session
 
 from app.applicants.domain import RouteProfileVersion
 from app.applicants.repository import RouteProfileRepository
+from app.assessments.conflicts import (
+    TRAVEL_DATE_CLAIM_TYPES,
+    ConfirmedDocumentDate,
+    DateConflict,
+    RecordedTrip,
+    conflicted_record_ids,
+    detect,
+)
 from app.assessments.domain import (
     AssessmentInputLink,
     AssessmentMode,
@@ -45,10 +53,12 @@ from app.cases import service as cases_service
 from app.cases.domain import ApplicationCase, CasePhase, LifecycleStatus
 from app.cases.phase import RequirementState, derive_phase
 from app.evidence.repository import EvidenceLinkRepository
+from app.facts.repository import FactRepository
 from app.issues import service as issues_service
 from app.issues.repository import IssueRepository
 from app.requirements.domain import Conclusion
 from app.requirements.evaluation import (
+    ConflictedFactInput,
     EvaluatedResult,
     EvidenceLinkInput,
     ResidenceAssessmentInputs,
@@ -62,7 +72,10 @@ from app.requirements.evaluation import (
 )
 from app.requirements.models import RequirementDefinition, RuleVersion
 from app.residence.domain import (
+    DateConfidence,
     ProposedApplicationDateVersion,
+    TravelRecord,
+    TravelRecordVersion,
     counts_toward_trusted_total,
 )
 from app.residence.repository import (
@@ -238,11 +251,19 @@ def evaluate_case(
         route_profile_version_id=profile_version.id,
         application_date_version_id=date_version.id,
     )
+    trips, conflicts = _gather_trips(session, case.id)
     residence_inputs = ResidenceAssessmentInputs(
         application_date=application_date,
         application_date_version_id=date_version.id,
-        trips=_gather_trips(session, case.id),
+        trips=trips,
         evidence_links=_gather_evidence_links(session, case.id),
+        date_conflicts=tuple(
+            ConflictedFactInput(
+                fact_version_id=conflict.fact_version_id,
+                travel_record_id=conflict.travel_record_id,
+            )
+            for conflict in conflicts
+        ),
     )
     evaluated = [
         *evaluate_route_requirements(route_inputs),
@@ -641,25 +662,121 @@ def _persist_result(
         )
 
 
-def _gather_trips(session: Session, case_id: uuid.UUID) -> tuple[TripInput, ...]:
+def _gather_trips(
+    session: Session, case_id: uuid.UUID
+) -> tuple[tuple[TripInput, ...], list[DateConflict]]:
     """Every active travel record, flattened to primitives, with the §6.1 trust gate decided
     here (ACTIVE + CONFIRMED + EXACT). The evaluator gets all active trips — trusted totals
-    use the gated subset, provisional totals use all — so the sensitivity rule can run."""
+    use the gated subset, provisional totals use all — so the sensitivity rule can run.
+
+    **A trip a confirmed document disagrees with is overlaid as `CONFLICTING`** (M8 slice 4,
+    RFC §42). Two things change together and neither is optional:
+
+    - `date_confidence` becomes `CONFLICTING`, which `_evaluate_travel_consistency` already
+      turns into an `INCONSISTENT` verdict — no rule logic changed to make that work.
+    - `is_trusted` becomes **false**. RULES_SPEC §6.1: *"anything else — UNCERTAIN,
+      ESTIMATED, CONFLICTING, DRAFT — is excluded from trusted totals."* Setting the
+      confidence and leaving the trip counted would apply half of §6.1 and contradict the
+      other half inside one evaluation, and the user would see a figure flagged inconsistent
+      that was nonetheless built from the disputed date. §6.2's sensitivity limitation is
+      what then says a figure is being held back.
+
+    Returns the conflicts alongside the trips because the caller needs them twice more: as
+    `AssessmentInputLink` rows naming the fact versions read, and — through the issue queue —
+    as the values a user is shown.
+    """
     records = TravelRecordRepository.list_active_with_current_version(session, case_id)
-    return tuple(
-        TripInput(
-            departure_date=version.departure_date,
-            return_date=version.return_date,
-            travel_record_version_id=version.id,
-            travel_record_id=record.id,
-            is_trusted=counts_toward_trusted_total(record, version),
-            date_confidence=version.date_confidence,
-            review_state=version.review_state,
-            destination_country_code=version.destination_country_code,
-            destination_label=version.destination_label,
-        )
-        for record, version in records
+    conflicts = _detect_conflicts(session, case_id, records)
+    disputed = conflicted_record_ids(conflicts)
+    return (
+        tuple(
+            TripInput(
+                departure_date=version.departure_date,
+                return_date=version.return_date,
+                travel_record_version_id=version.id,
+                travel_record_id=record.id,
+                is_trusted=(
+                    counts_toward_trusted_total(record, version) and record.id not in disputed
+                ),
+                date_confidence=(
+                    DateConfidence.CONFLICTING.value
+                    if record.id in disputed
+                    else version.date_confidence
+                ),
+                review_state=version.review_state,
+                destination_country_code=version.destination_country_code,
+                destination_label=version.destination_label,
+            )
+            for record, version in records
+        ),
+        conflicts,
     )
+
+
+def _detect_conflicts(
+    session: Session,
+    case_id: uuid.UUID,
+    records: list[tuple[TravelRecord, TravelRecordVersion]],
+) -> list[DateConflict]:
+    """Read the three inputs a conflict is a relationship between, and compare them.
+
+    The comparison itself is in `conflicts.py`, over primitives. This is the read half, and
+    it is deliberately the only place that joins them: a fact scoped to a document, the
+    user's link from that document to a trip, and the trip's current dates.
+
+    Confirmed facts only — `current_for_case` returns `FactVersion`, a type an
+    `ExtractedClaim` cannot be. The scope key is parsed rather than queried because it is
+    where `facts.service.scope_key_for` put the evidence item: `"<item_id>:<journey>"`.
+    """
+    documented: list[ConfirmedDocumentDate] = []
+    for fact, version in FactRepository.current_for_case(session, case_id=case_id):
+        if fact.fact_type not in TRAVEL_DATE_CLAIM_TYPES or not version.normalised_value:
+            continue
+        evidence_item_id = _evidence_item_of(fact.scope_key)
+        if evidence_item_id is None:
+            continue
+        documented.append(
+            ConfirmedDocumentDate(
+                fact_version_id=version.id,
+                evidence_item_id=evidence_item_id,
+                claim_type=fact.fact_type,
+                value=date.fromisoformat(version.normalised_value),
+            )
+        )
+    if not documented:
+        # The overwhelmingly common case, and worth short-circuiting: no confirmed travel
+        # document means no conflict is possible, and the link read below is a query.
+        return []
+
+    return detect(
+        trips=[
+            RecordedTrip(
+                travel_record_id=record.id,
+                departure_date=version.departure_date,
+                return_date=version.return_date,
+            )
+            for record, version in records
+        ],
+        documented=documented,
+        attachments=[
+            (link.evidence_item_id, link.travel_record_id)
+            for link in EvidenceLinkRepository.live_for_case(session, case_id=case_id)
+        ],
+    )
+
+
+def _evidence_item_of(scope_key: str) -> uuid.UUID | None:
+    """The evidence item a journey-scoped fact belongs to.
+
+    `""` for a case-level fact, which has no document behind it and cannot conflict with a
+    trip. A malformed key returns None rather than raising: this runs inside an assessment,
+    and a parse error should not be able to take a whole recalculation down.
+    """
+    item, _, _journey = scope_key.partition(":")
+    try:
+        return uuid.UUID(item)
+    except ValueError:
+        return None
 
 
 def _gather_evidence_links(session: Session, case_id: uuid.UUID) -> tuple[EvidenceLinkInput, ...]:
