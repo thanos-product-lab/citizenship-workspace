@@ -99,6 +99,26 @@ def _unevidenced_clause(count: int | None) -> str:
 # --- summary codes ----------------------------------------------------------
 
 
+def _held_back_records(p: Parameters) -> str:
+    """Names *why* records are missing from the confirmed figure.
+
+    Until M8 slice 4 there was one reason — the record was not confirmed — and this sentence
+    said so unconditionally. A conflicted record is confirmed and excluded anyway (§6.1), so
+    the old wording told a user who had just confirmed a date that they had not. The counts
+    come from the result, so a superseded result still explains itself in the terms that were
+    true when it ran.
+    """
+    conflicted = _int(p, "conflicted_record_count") or 0
+    unconfirmed = _int(p, "unconfirmed_record_count") or 0
+    if conflicted and unconfirmed:
+        return "Records you have not confirmed, and records whose dates a document disputes,"
+    if conflicted:
+        return "Records whose dates a document disputes"
+    # Also the fallback for a result written before these counts existed: absent parameters
+    # read as zero, and the original wording is what those results meant.
+    return "Records you have not confirmed"
+
+
 def _absence_summary(
     p: Parameters,
     *,
@@ -137,7 +157,7 @@ def _absence_summary(
     if provisional is not None and provisional > confirmed:
         extra = provisional - confirmed
         sentence += (
-            f" Records you have not confirmed would add {_days(extra)},"
+            f" {_held_back_records(p)} would add {_days(extra)},"
             f" bringing the total to {provisional}."
         )
         if verdict_covers_unconfirmed:

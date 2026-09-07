@@ -164,8 +164,13 @@ def test_deleting_a_document_withdraws_its_support_and_stales_the_verdict(
 
     after = _currency(api, case_id)
     assert after["residence.travel_consistency"] == "STALE"
-    assert after["residence.total_absences"] == "CURRENT"
-    assert after["residence.final_year_absences"] == "CURRENT"
+    # STALE from `0035`: deleting the document withdraws the link, which can dissolve a
+    # conflict and return a trip to the trusted total. `qualifying_period` reads only the
+    # application date, so it is the one that stays — the check that this is still selective
+    # invalidation and not the blunt residence-group sweep ADR-0008 got wrong.
+    assert after["residence.total_absences"] == "STALE"
+    assert after["residence.final_year_absences"] == "STALE"
+    assert after["residence.qualifying_period"] == "CURRENT"
 
     db_session.expire_all()
     link = db_session.execute(

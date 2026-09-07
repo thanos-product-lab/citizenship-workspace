@@ -444,3 +444,134 @@ def test_adopting_twice_is_refused_the_second_time(api: Api, db_session: Session
     assert _adopt(api, case_id, trip_id).status_code == 200
 
     assert _adopt(api, case_id, trip_id).status_code == 409
+
+
+def test_a_conflict_large_enough_to_matter_downgrades_the_conclusion(
+    api: Api, db_session: Session
+) -> None:
+    """§6.2's sensitivity rule fires on a conflict, and does so without a line of new code.
+
+    This is the interaction I could not assume. §6.2 downgrades when the trusted total
+    bands satisfied/near but the provisional total would band worse — which is *exactly* a
+    conflict's shape: holding a trip back lowers the trusted figure and leaves the
+    provisional one alone. The earlier tests in this file use a 29-day trip, far too small
+    to cross any band, so they never exercised it.
+
+    It works because `_uncertain_ids` keys off `is_trusted` rather than the confidence
+    enum, so the disputed trip is named as a cause of the downgrade rather than the
+    limitation pointing at nothing. Had it keyed off `UNCERTAIN_CONFIDENCES`
+    (`ESTIMATED`/`UNKNOWN`, which does not include `CONFLICTING`), the user would have been
+    shown a downgraded conclusion attributed to no record at all.
+    """
+    from app.residence.domain import TravelRecordVersion
+
+    case_id = str(api("user_a").post("/api/v1/cases", json={"title": "Big"}).json()["id"])
+    api("user_a").put(f"/api/v1/cases/{case_id}/route-profile", json=SUPPORTED_ANSWERS)
+    api("user_a").post(f"/api/v1/cases/{case_id}/route-profile/confirm", json={})
+    api("user_a").post(
+        f"/api/v1/cases/{case_id}/application-dates/select",
+        json={"application_date": "2027-04-15"},
+    )
+    # Long enough that including it crosses the 450-day threshold and excluding it does not.
+    trip_id = str(
+        api("user_a")
+        .post(
+            f"/api/v1/cases/{case_id}/travel-records",
+            json={
+                "destination_label": "A long stay",
+                "departure_date": "2023-01-01",
+                "return_date": "2024-05-01",
+                "date_confidence": "EXACT",
+                "review_state": "CONFIRMED",
+            },
+        )
+        .json()["id"]
+    )
+    item_id = _attach_document(api, case_id, trip_id)
+    claim_id = _propose(db_session, case_id, item_id, raw="2 May 2024")
+    api("user_a").post(
+        f"/api/v1/cases/{case_id}/claims/{claim_id}/review",
+        json={"entered_value": "2 May 2024"},
+    )
+    api("user_a").post(f"/api/v1/cases/{case_id}/assessments/recalculate")
+
+    total = _detail(api, case_id, "residence.total_absences")
+
+    assert total["summary_parameters"]["days"] == 0, "the disputed trip counted as confirmed"
+    assert total["summary_parameters"]["provisional_days"] > 450
+    # Never SUPPORTED on the confirmed subset alone: that is the false reassurance §6.2
+    # exists to prevent, and it is the whole reason holding a trip back is not enough on
+    # its own.
+    assert total["conclusion"] != "SUPPORTED"
+    limitation = next(
+        item
+        for item in total["limitations"]
+        if item["code"] == "UNCONFIRMED_RECORDS_AFFECT_CONCLUSION"
+    )
+    version_id = str(
+        db_session.scalars(
+            select(TravelRecordVersion).where(
+                TravelRecordVersion.travel_record_id == uuid.UUID(trip_id)
+            )
+        )
+        .one()
+        .id
+    )
+    assert limitation["affected_input_ids"] == [version_id], (
+        "the downgrade named no record, so the user cannot tell which trip caused it"
+    )
+
+
+def test_every_result_the_conflict_moves_was_staled_first(api: Api, db_session: Session) -> None:
+    """The invariant, stated over the rules rather than about one of them.
+
+    `0034` declared the `CASE_FACT` dependency on `residence.travel_consistency` and stopped
+    there — but the §6.1 half of a conflict lives in `_gather_trips`, which builds the trips
+    tuple *every* residence rule reads, and three of them consume `is_trusted`. So confirming
+    the booking's return date left `residence.total_absences` standing `CURRENT` on a figure
+    that the next recalculation — for any unrelated reason — would move. A user reading it in
+    between saw a current conclusion computed from a date the product was about to report as
+    disputed. CLAUDE.md §9: *every current trusted assessment references current relevant
+    input versions*.
+
+    Written as "what changed must have been staled" rather than as a list of keys, because a
+    list is exactly what was one short. A future rule that starts reading trip trust and
+    forgets to declare the dependency fails here without anyone remembering to add it.
+    """
+    case_id, trip_id = _case_with_trip(api)
+    item_id = _attach_document(api, case_id, trip_id)
+    api("user_a").post(f"/api/v1/cases/{case_id}/assessments/recalculate")
+
+    def _snapshot() -> dict[str, Any]:
+        return {
+            row["requirement_key"]: (
+                row["conclusion"],
+                _detail(api, case_id, row["requirement_key"])["summary_parameters"],
+            )
+            for row in api("user_a").get(f"/api/v1/cases/{case_id}/requirements").json()
+        }
+
+    before = _snapshot()
+
+    claim_id = _propose(db_session, case_id, item_id, raw="2 July 2023")
+    api("user_a").post(
+        f"/api/v1/cases/{case_id}/claims/{claim_id}/review",
+        json={"entered_value": "2 July 2023"},
+    )
+
+    staled = {
+        row["requirement_key"]
+        for row in api("user_a").get(f"/api/v1/cases/{case_id}/requirements").json()
+        if row["currency"] == "STALE"
+    }
+
+    api("user_a").post(f"/api/v1/cases/{case_id}/assessments/recalculate")
+    after = _snapshot()
+
+    moved = {key for key in before if before[key] != after.get(key)}
+    assert moved, "the fixture no longer produces a conflict that changes anything"
+    assert moved <= staled, (
+        "changed without being staled first: "
+        f"{sorted(moved - staled)} — these rules read an input they do not declare"
+    )
+

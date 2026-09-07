@@ -366,9 +366,13 @@ def test_detail_names_the_rule_that_produced_the_result(api: Api) -> None:
         .get(f"/api/v1/cases/{case_id}/requirements/residence.total_absences")
         .json()["rule"]
     )
-    assert rule["semantic_version"] == "1.0.0"
+    # 1.1.0 since `0035`: this rule declares CASE_FACT and EVIDENCE_SUPPORT, because a
+    # confirmed document date that disputes a trip moves its figure (§6.1).
+    assert rule["semantic_version"] == "1.1.0"
     assert rule["rule_set"] == "2026.07.0"
     assert rule["lifecycle_status"] == "ACTIVE"
+    # Carried by the migration from the retired version rather than restated, so this also
+    # guards against a version bump quietly dropping the guidance links.
     assert rule["guidance"]
 
 

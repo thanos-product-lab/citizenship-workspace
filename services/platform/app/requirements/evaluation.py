@@ -579,6 +579,40 @@ def _uncertain_ids(trips: tuple[TripInput, ...]) -> tuple[str, ...]:
     return tuple(str(t.travel_record_version_id) for t in trips if not t.is_trusted)
 
 
+def _conflicted(trips: Iterable[TripInput]) -> tuple[TripInput, ...]:
+    """The trips held back over a disputed date rather than an unconfirmed one.
+
+    M8 slice 4 gave a trip a **second** reason to fail the §6.1 gate. Until then untrusted
+    meant unconfirmed, and every rule that reported a held-back trip said so in those words.
+    A conflicted trip is confirmed — the user typed the date themselves — and is excluded
+    anyway, so a result that reports it as unconfirmed, or does not mention it, describes the
+    figure it just produced incorrectly. That is the false reassurance directive 7 exists to
+    prevent, and it is why this distinction is drawn in every rule that reads `is_trusted`,
+    not only in `residence.travel_consistency`.
+    """
+    return tuple(t for t in trips if t.date_confidence == "CONFLICTING")
+
+
+def _conflict_limitation(trips: Iterable[TripInput]) -> tuple[Limitation, ...]:
+    """`CONFLICTING_SOURCE_DATES` over the trips *this* rule held back, or nothing.
+
+    Scoped by the caller to the trips its own window reads: a conflict outside the window
+    cannot move the figure, and a limitation naming it would tell the user something is
+    wrong with a number it did not touch.
+    """
+    conflicted = _conflicted(trips)
+    if not conflicted:
+        return ()
+    return (
+        Limitation(
+            code="CONFLICTING_SOURCE_DATES",
+            severity=LimitationSeverity.REVIEW_REQUIRED,
+            message_parameters={},
+            affected_input_ids=tuple(str(t.travel_record_version_id) for t in conflicted),
+        ),
+    )
+
+
 def _threshold_conclusion(
     trusted_total: int,
     provisional_total: int,
@@ -674,8 +708,20 @@ def _evaluate_physical_presence(inputs: ResidenceAssessmentInputs) -> EvaluatedR
     anchor = physical_presence_date(inputs.application_date)
     trusted_union = absence_union(_spans(t for t in inputs.trips if t.is_trusted))
     provisional_union = absence_union(_spans(inputs.trips))
-    links = (_app_date_link(inputs), *_travel_links(inputs.trips))
+    links = (
+        _app_date_link(inputs),
+        *_travel_links(inputs.trips),
+        # From v1.1.0, for the same reason as the absence totals: a disputed date can move
+        # a trip out of `trusted_union`, and a membership test that changed because of a
+        # fact must say which fact.
+        *_evidence_links(inputs.evidence_links),
+        *_fact_links(inputs.date_conflicts),
+    )
     params: dict[str, object] = {"physical_presence_date": anchor.isoformat()}
+    # Scoped to the anchor, not the whole window: this rule asks one question about one day.
+    covering_anchor = tuple(
+        t for t in inputs.trips if not t.is_trusted and anchor in absence_union(_spans([t]))
+    )
 
     if anchor in trusted_union:
         # The resolving date is searched over the *trusted* absent union only: an unconfirmed
@@ -715,7 +761,7 @@ def _evaluate_physical_presence(inputs: ResidenceAssessmentInputs) -> EvaluatedR
             summary_code="PRESENCE_UNCERTAIN",
             summary_parameters=params,
             input_links=links,
-            limitations=(limitation,),
+            limitations=(limitation, *_conflict_limitation(covering_anchor)),
         )
     return EvaluatedResult(
         requirement_key=KEY_PHYSICAL_PRESENCE,
@@ -744,6 +790,15 @@ def _evaluate_absence_total(
     conclusion, summary_code, limitations = _threshold_conclusion(
         trusted_total, provisional_total, band_fn, capped_summary_code, _uncertain_ids(inputs.trips)
     )
+    # Held back *by this window*. A trip whose absent days all fall outside it contributes
+    # nothing to either total, so naming it would attach a problem to a figure it did not
+    # move — the same window-scoping §7.8 applies to its own conflict detection.
+    in_window = tuple(
+        t
+        for t in inputs.trips
+        if count_in_window(absence_union(_spans([t])), w) > 0 and not t.is_trusted
+    )
+    conflicted = _conflicted(in_window)
     params: dict[str, object] = {
         "days": trusted_total,
         "provisional_days": provisional_total,
@@ -751,14 +806,28 @@ def _evaluate_absence_total(
         "window_start": w.start.isoformat(),
         "window_end": w.end.isoformat(),
         "trip_count": len(inputs.trips),
+        # The two reasons a record is missing from the confirmed figure, counted separately
+        # so the summary can say which applies. Before slice 4 there was only one, and the
+        # sentence said "records you have not confirmed" unconditionally.
+        "conflicted_record_count": len(conflicted),
+        "unconfirmed_record_count": len(in_window) - len(conflicted),
     }
     return EvaluatedResult(
         requirement_key=requirement_key,
         conclusion=conclusion.value,
         summary_code=summary_code,
         summary_parameters=params,
-        input_links=(_app_date_link(inputs), *_travel_links(inputs.trips)),
-        limitations=limitations,
+        input_links=(
+            _app_date_link(inputs),
+            *_travel_links(inputs.trips),
+            # From v1.1.0. This rule's figure moves when a confirmed document date disputes
+            # a trip, so directive 5 requires it to name the fact and the link that made the
+            # dispute possible — without them the result cannot explain why it is 434 and
+            # not 439.
+            *_evidence_links(inputs.evidence_links),
+            *_fact_links(inputs.date_conflicts),
+        ),
+        limitations=(*limitations, *_conflict_limitation(in_window)),
     )
 
 

@@ -174,58 +174,57 @@ def test_a_kind_no_rule_declares_invalidates_nothing(db_session: Session) -> Non
 def test_a_confirmed_fact_stales_the_consistency_rule_and_nothing_else(
     db_session: Session,
 ) -> None:
-    """The fact fan-out is exactly one, and both halves matter — the same shape as evidence
-    support below, for the same reason.
+    """The fact fan-out is the four rules that read trip trust, and `qualifying_period` is
+    not one of them.
 
-    Confirming a date on a document must stale the consistency verdict: from M8 slice 4 that
-    rule compares confirmed facts against the trips they are attached to, so a new
-    confirmation can change its answer under a CURRENT result.
+    **This assertion used to name one rule, and the reason it gave was wrong.** It said
+    confirming what a booking says "does not change how many days the user was absent — what
+    it can change is whether a trip is trusted, and that reaches the totals through the trip
+    itself when the user resolves the conflict, not through the fact." The second half does
+    not follow from the first. Whether a trip is trusted *is* what the totals read: §6.1
+    excludes a `CONFLICTING` trip, so the confirmed fact moves the figure at the very next
+    evaluation, with no trip version ever changing. On the canonical demo case that was
+    439 days becoming 434 under a result still marked CURRENT.
 
-    It must **not** stale the absence totals directly. Confirming what a booking says does
-    not change how many days the user was absent — what it can change is whether a trip is
-    trusted, and that reaches the totals through the trip itself when the user resolves the
-    conflict, not through the fact. Collapsing the two would restale the whole residence
-    group on every confirmation, which on a six-field document is six times per booking.
+    So the fan-out is four, and the narrower cost the old wording was protecting is real and
+    accepted: confirming any of a booking's six fields now restales the residence group.
+    Over-firing leaves a true statement on screen — these conclusions have not been rechecked
+    — while under-firing left a false one. `resolve_affected_requirements` explains why
+    narrowing on `input_key` is not the escape hatch it looks like.
+
+    `residence.qualifying_period` stays out. It reads the application date and nothing else
+    (ADR-0014), so no fact can reach it.
     """
     resolved = resolve_affected_requirements(db_session, input_kind=DependencyInputKind.CASE_FACT)
+    declaring = _declaring(db_session, DependencyInputKind.CASE_FACT)
 
-    assert resolved == {"residence.travel_consistency"}
-    for untouched in (
-        "residence.total_absences",
-        "residence.final_year_absences",
-        "residence.physical_presence_start_date",
-        "residence.qualifying_period",
-    ):
-        assert untouched not in resolved
+    assert resolved == declaring
+    # Derived, not listed: the four rules that read `TripInput.is_trusted`. Spelling them out
+    # here would restate the declarations rather than check them — and a list is precisely
+    # what was one short.
+    assert set(RESIDENCE_REQUIREMENT_KEYS) - resolved == {"residence.qualifying_period"}
 
 
 def test_evidence_support_stales_the_consistency_rule_and_nothing_else(
     db_session: Session,
 ) -> None:
-    """The evidence fan-out is exactly one, and both halves matter (RULES_SPEC §8).
+    """The evidence fan-out follows the fact fan-out, and for the same reason (RULES_SPEC §8).
 
-    Attaching a document must stale the consistency verdict — otherwise the coverage the
-    rule just started reading can change under a CURRENT result, and a stale result is
-    returned as current (CLAUDE.md §9).
+    **Also previously one rule, on reasoning that M8 slice 4 invalidated.** It said a user
+    who attaches a booking "has not changed how many days they were absent; they have changed
+    how well supported their own account of it is." That was true until an evidence link
+    became the thing that gives a confirmed document date the authority to dispute a trip
+    (`conflicts.detect`: without a link there is no conflict). Attaching the booking is now
+    exactly what can move a total, and detaching it is what moves it back.
 
-    It must **not** stale the absence totals. A user who attaches or deletes a booking has
-    not changed how many days they were absent; they have changed how well supported their
-    own account of it is. Collapsing the two would restale the whole residence group on
-    every upload — over-firing of exactly the kind ADR-0014 exists to prevent — and would
-    teach the user their totals are less stable than they are.
+    `residence.qualifying_period` stays out for the same reason as above.
     """
     resolved = resolve_affected_requirements(
         db_session, input_kind=DependencyInputKind.EVIDENCE_SUPPORT
     )
 
-    assert resolved == {"residence.travel_consistency"}
-    for untouched in (
-        "residence.total_absences",
-        "residence.final_year_absences",
-        "residence.physical_presence_start_date",
-        "residence.qualifying_period",
-    ):
-        assert untouched not in resolved
+    assert resolved == _declaring(db_session, DependencyInputKind.EVIDENCE_SUPPORT)
+    assert set(RESIDENCE_REQUIREMENT_KEYS) - resolved == {"residence.qualifying_period"}
 
 
 def test_resolution_never_names_a_requirement_without_an_evaluator(db_session: Session) -> None:

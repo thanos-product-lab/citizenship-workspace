@@ -296,17 +296,24 @@ def _currency(api: Api, case_id: str) -> dict[str, str]:
 def test_attaching_a_document_stales_the_consistency_verdict_only(
     api: Api, db_session: Session
 ) -> None:
-    """The fan-out, end to end, and both halves are the test.
+    """The fan-out, end to end. `residence.qualifying_period` is the half that stays CURRENT.
 
     Attaching **must** stale `residence.travel_consistency`: the rule reads coverage, so a
     coverage change under a CURRENT result would leave a stale result being returned as
     current (CLAUDE.md §9).
 
-    It **must not** stale the absence totals. Attaching a booking does not change how many
-    days the user was outside the UK — it changes how well supported their own account of
-    it is. The unit-level version of this property is in
-    `test_selective_invalidation.py`; this one proves the command actually fires it, which
-    a declaration alone never shows.
+    **It must stale the absence totals too, and until `0035` it did not.** This test
+    previously asserted the opposite, reasoning that attaching a booking "does not change how
+    many days the user was outside the UK — it changes how well supported their own account
+    of it is". That held until M8 slice 4 made the link the thing that gives a confirmed
+    document date the authority to dispute a trip (`conflicts.detect` returns nothing without
+    one). From that slice on, attaching is exactly what can push a trip out of the trusted
+    total, and detaching is what pulls it back.
+
+    `residence.qualifying_period` reads the application date and nothing else (ADR-0014), so
+    it stays CURRENT — that is the half that keeps this from being blunt invalidation again.
+    The unit-level version is in `test_selective_invalidation.py`; this one proves the
+    command actually fires it, which a declaration alone never shows.
     """
     case_id, trip_id = _case_with_trip(api, "user_a")
     item_id = _document(api, "user_a", case_id)
@@ -320,9 +327,10 @@ def test_attaching_a_document_stales_the_consistency_verdict_only(
 
     after = _currency(api, case_id)
     assert after["residence.travel_consistency"] == "STALE"
-    assert after["residence.total_absences"] == "CURRENT"
-    assert after["residence.final_year_absences"] == "CURRENT"
-    assert after["residence.physical_presence_start_date"] == "CURRENT"
+    assert after["residence.total_absences"] == "STALE"
+    assert after["residence.final_year_absences"] == "STALE"
+    assert after["residence.physical_presence_start_date"] == "STALE"
+    assert after["residence.qualifying_period"] == "CURRENT"
 
 
 def test_detaching_a_document_stales_it_too(api: Api, db_session: Session) -> None:
@@ -340,7 +348,11 @@ def test_detaching_a_document_stales_it_too(api: Api, db_session: Session) -> No
 
     after = _currency(api, case_id)
     assert after["residence.travel_consistency"] == "STALE"
-    assert after["residence.total_absences"] == "CURRENT"
+    # From `0035`, and this is the direction the sentence above is about: a detach can
+    # dissolve a conflict, which puts a trip back into the trusted total. Leaving the total
+    # CURRENT would be a figure drawn while the document was disputing it.
+    assert after["residence.total_absences"] == "STALE"
+    assert after["residence.qualifying_period"] == "CURRENT"
 
 
 def test_the_stale_reason_says_it_was_the_documents(api: Api, db_session: Session) -> None:
