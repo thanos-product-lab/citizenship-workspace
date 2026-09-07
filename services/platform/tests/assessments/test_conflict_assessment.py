@@ -1,0 +1,277 @@
+"""A confirmed document date that disagrees with the trip, through the real command path.
+
+`test_conflicts.py` proves the comparison. This proves the *wiring*, and specifically the
+half that a partial implementation would drop: RULES_SPEC §6.1 excludes a `CONFLICTING`
+trip from the trusted total, so the figure is **held back**, not quietly built from a date
+two sources disagree about.
+"""
+
+import uuid
+from collections.abc import Callable
+from datetime import UTC, datetime
+from typing import Any
+
+import pytest
+from fastapi.testclient import TestClient
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+pytestmark = pytest.mark.integration
+
+Api = Callable[[str], TestClient]
+
+SUPPORTED_ANSWERS = {
+    "date_of_birth": "1990-05-01",
+    "status_type": "ILR",
+    "status_granted_on": "2019-01-01",
+    "married_to_british_citizen": False,
+    "may_already_be_british": False,
+}
+
+#: One trip well inside the qualifying window and clear of the presence anchor, so the only
+#: thing that can move its contribution is the conflict under test.
+#:
+#: 29 absent days, not 30: the departure and return days are UK days and never count
+#: (RULES_SPEC §5.1), so `1 June → 1 July` is the 29 days between them.
+DEPARTURE = "2023-06-01"
+RECORDED_RETURN = "2023-07-01"
+ABSENT_DAYS = 29
+
+
+def _case_with_trip(api: Api) -> tuple[str, str]:
+    case_id = str(api("user_a").post("/api/v1/cases", json={"title": "Conflict"}).json()["id"])
+    api("user_a").put(f"/api/v1/cases/{case_id}/route-profile", json=SUPPORTED_ANSWERS)
+    api("user_a").post(f"/api/v1/cases/{case_id}/route-profile/confirm", json={})
+    api("user_a").post(
+        f"/api/v1/cases/{case_id}/application-dates/select",
+        json={"application_date": "2027-04-15"},
+    )
+    trip_id = str(
+        api("user_a")
+        .post(
+            f"/api/v1/cases/{case_id}/travel-records",
+            json={
+                "destination_label": "Rome",
+                "departure_date": DEPARTURE,
+                "return_date": RECORDED_RETURN,
+                "date_confidence": "EXACT",
+                "review_state": "CONFIRMED",
+            },
+        )
+        .json()["id"]
+    )
+    return case_id, trip_id
+
+
+def _attach_document(api: Api, case_id: str, trip_id: str) -> str:
+    from app.core.storage import InMemoryStorage, get_storage
+    from tests.evidence.conftest import fixture_bytes
+
+    content = fixture_bytes("travel-booking.pdf")
+    grant = (
+        api("user_a")
+        .post(
+            f"/api/v1/cases/{case_id}/evidence/uploads",
+            json={"media_type": "application/pdf", "declared_size_bytes": len(content)},
+        )
+        .json()
+    )
+    store = get_storage()
+    assert isinstance(store, InMemoryStorage)
+    store.put(str(grant["upload_fields"]["key"]), content)
+    item_id = str(
+        api("user_a")
+        .post(
+            f"/api/v1/cases/{case_id}/evidence",
+            json={
+                "upload_token": grant["upload_token"],
+                "category": "TRAVEL_SUPPORT",
+                "display_name": "Rome booking",
+                "original_filename": "booking.pdf",
+            },
+        )
+        .json()["id"]
+    )
+    api("user_a").post(
+        f"/api/v1/cases/{case_id}/travel-records/{trip_id}/evidence",
+        json={"evidence_item_id": item_id},
+    )
+    return item_id
+
+
+def _propose(session: Session, case_id: str, item_id: str, *, raw: str) -> uuid.UUID:
+    """A pending `travel.return_date` claim on that document.
+
+    Built through the domain rather than by running a model: this file asks what happens
+    *after* a value is confirmed, and driving a provider to get a claim would make it depend
+    on a network and a budget to answer that.
+    """
+    from app.ai.domain import Capability
+    from app.ai.extraction_run import ExtractionRun, ExtractionRunStatus
+    from app.evidence.domain import (
+        PIPELINE_VERSION,
+        EvidenceFile,
+        EvidenceProcessingRun,
+        ProcessingRunStatus,
+    )
+    from app.facts.domain import ClaimType, ExtractedClaim
+    from app.facts.values import ProposedValue, ValueSchema
+
+    item = uuid.UUID(item_id)
+    file = session.scalar(select(EvidenceFile).where(EvidenceFile.evidence_item_id == item))
+    assert file is not None
+    processing = EvidenceProcessingRun(
+        evidence_item_id=item,
+        evidence_file_id=file.id,
+        status=ProcessingRunStatus.SUCCEEDED.value,
+        pipeline_version=PIPELINE_VERSION,
+        completed_at=datetime.now(UTC),
+        idempotency_key=f"conflict-{uuid.uuid4()}",
+    )
+    session.add(processing)
+    session.flush()
+    run = ExtractionRun.record(
+        case_id=uuid.UUID(case_id),
+        evidence_item_id=item,
+        evidence_file_id=file.id,
+        processing_run_id=processing.id,
+        capability=Capability.TRAVEL_RECORD_EXTRACTOR.value,
+        status=ExtractionRunStatus.SUCCEEDED,
+        input_text="a booking",
+        started_at=datetime.now(UTC),
+    )
+    session.add(run)
+    session.flush()
+    claim = ExtractedClaim.propose(
+        case_id=uuid.UUID(case_id),
+        evidence_item_id=item,
+        evidence_file_id=file.id,
+        extraction_run_id=run.id,
+        claim_type=ClaimType.TRAVEL_RETURN_DATE,
+        value=ProposedValue(schema=ValueSchema.DATE_V1, raw=raw, model_iso=None),
+    )
+    session.add(claim)
+    session.flush()
+    session.commit()
+    return claim.id
+
+
+def _detail(api: Api, case_id: str, key: str) -> dict[str, Any]:
+    body: dict[str, Any] = api("user_a").get(f"/api/v1/cases/{case_id}/requirements/{key}").json()
+    return body
+
+
+def _conflicting_case(api: Api, session: Session) -> tuple[str, str]:
+    """A case whose booking has been confirmed as 2 July while the trip says 1 July."""
+    case_id, trip_id = _case_with_trip(api)
+    item_id = _attach_document(api, case_id, trip_id)
+    claim_id = _propose(session, case_id, item_id, raw="2 July 2023")
+    api("user_a").post(
+        f"/api/v1/cases/{case_id}/claims/{claim_id}/review",
+        json={"entered_value": "2 July 2023"},
+    )
+    return case_id, trip_id
+
+
+def test_a_disputed_trip_is_held_back_from_the_trusted_total(api: Api, db_session: Session) -> None:
+    """**Mutation-table row 15**, and the half of §6.1 a partial implementation drops.
+
+    *"Anything else — UNCERTAIN, ESTIMATED, CONFLICTING, DRAFT — is excluded from trusted
+    totals."* Marking the trip `CONFLICTING` for the consistency verdict while still
+    counting its days would apply half of §6.1 and contradict the other half inside one
+    evaluation — the user would be told the date is disputed and shown a confirmed figure
+    built from it.
+
+    `provisional_days` still carries the trip, which is what makes the difference legible:
+    the days did not vanish, they stopped being *confirmed*.
+    """
+    case_id, _trip_id = _conflicting_case(api, db_session)
+    api("user_a").post(f"/api/v1/cases/{case_id}/assessments/recalculate")
+
+    total = _detail(api, case_id, "residence.total_absences")
+
+    assert total["summary_parameters"]["days"] == 0, "a disputed trip counted as confirmed"
+    assert total["summary_parameters"]["provisional_days"] == ABSENT_DAYS
+
+
+def test_the_consistency_verdict_says_the_sources_disagree(api: Api, db_session: Session) -> None:
+    """§7.8's `CONFLICTING_SOURCE_DATES` → `INCONSISTENT`, reached for the first time by
+    something other than a test. Not one line of the rule changed to make this work."""
+    case_id, _trip_id = _conflicting_case(api, db_session)
+    api("user_a").post(f"/api/v1/cases/{case_id}/assessments/recalculate")
+
+    consistency = _detail(api, case_id, "residence.travel_consistency")
+
+    assert consistency["conclusion"] == "INCONSISTENT"
+    codes = [limitation["code"] for limitation in consistency["limitations"]]
+    assert "CONFLICTING_SOURCE_DATES" in codes
+
+
+def test_confirming_a_value_stales_what_depended_on_it(api: Api, db_session: Session) -> None:
+    """**Mutation-table row 17.** The `CASE_FACT` seam slice 3a shipped without.
+
+    In the review's own transaction (Domain §41.2): a user told their value was accepted
+    must not then be able to read a conclusion that predates it.
+    """
+    case_id, trip_id = _case_with_trip(api)
+    item_id = _attach_document(api, case_id, trip_id)
+    api("user_a").post(f"/api/v1/cases/{case_id}/assessments/recalculate")
+    assert _detail(api, case_id, "residence.travel_consistency")["currency"] == "CURRENT"
+
+    claim_id = _propose(db_session, case_id, item_id, raw="2 July 2023")
+    api("user_a").post(
+        f"/api/v1/cases/{case_id}/claims/{claim_id}/review",
+        json={"entered_value": "2 July 2023"},
+    )
+
+    consistency = _detail(api, case_id, "residence.travel_consistency")
+    assert consistency["currency"] == "STALE"
+    # Nested, and present only while STALE — a CURRENT result carries no stale block at all,
+    # so a client cannot render a stale notice over a conclusion that is still good.
+    assert consistency["stale"]["reason_code"] == "CASE_FACT_CHANGED"
+
+
+def test_a_value_that_agrees_changes_nothing(api: Api, db_session: Session) -> None:
+    """Corroboration is not conflict (RFC §16). The trip stays trusted and the verdict stays
+    clean — otherwise every confirmed booking would make its own trip look disputed."""
+    case_id, trip_id = _case_with_trip(api)
+    item_id = _attach_document(api, case_id, trip_id)
+    claim_id = _propose(db_session, case_id, item_id, raw="1 July 2023")
+    api("user_a").post(
+        f"/api/v1/cases/{case_id}/claims/{claim_id}/review",
+        json={"entered_value": "1 July 2023"},
+    )
+    api("user_a").post(f"/api/v1/cases/{case_id}/assessments/recalculate")
+
+    assert (
+        _detail(api, case_id, "residence.total_absences")["summary_parameters"]["days"]
+        == ABSENT_DAYS
+    )
+    assert _detail(api, case_id, "residence.travel_consistency")["conclusion"] == "SUPPORTED"
+
+
+def test_a_confirmed_value_on_an_unattached_document_conflicts_with_nothing(
+    api: Api, db_session: Session
+) -> None:
+    """The link is the authority (RFC §42.1). A booking the user has not filed against a
+    trip must not argue with one — on a case with a dozen trips, comparing against all of
+    them would turn one unfiled document into a dozen conflicts."""
+    case_id, trip_id = _case_with_trip(api)
+    item_id = _attach_document(api, case_id, trip_id)
+    # Detach it again, so the document is live and the trip is live and nothing joins them.
+    detached = api("user_a").delete(
+        f"/api/v1/cases/{case_id}/travel-records/{trip_id}/evidence/{item_id}"
+    )
+    assert detached.status_code == 200, detached.text
+    claim_id = _propose(db_session, case_id, item_id, raw="2 July 2023")
+    api("user_a").post(
+        f"/api/v1/cases/{case_id}/claims/{claim_id}/review",
+        json={"entered_value": "2 July 2023"},
+    )
+    api("user_a").post(f"/api/v1/cases/{case_id}/assessments/recalculate")
+
+    assert (
+        _detail(api, case_id, "residence.total_absences")["summary_parameters"]["days"]
+        == ABSENT_DAYS
+    )
+    assert _detail(api, case_id, "residence.travel_consistency")["conclusion"] != "INCONSISTENT"
