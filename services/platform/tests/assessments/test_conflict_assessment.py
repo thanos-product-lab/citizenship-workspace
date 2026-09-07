@@ -275,3 +275,77 @@ def test_a_confirmed_value_on_an_unattached_document_conflicts_with_nothing(
         == ABSENT_DAYS
     )
     assert _detail(api, case_id, "residence.travel_consistency")["conclusion"] != "INCONSISTENT"
+
+
+def _issues(api: Api, case_id: str) -> list[dict[str, Any]]:
+    """Every open issue, flattened out of the action groups the queue returns."""
+    body: dict[str, Any] = api("user_a").get(f"/api/v1/cases/{case_id}/issues").json()
+    return [issue for group in body["groups"] for issue in group["issues"]]
+
+
+def _conflicts(api: Api, case_id: str) -> list[dict[str, Any]]:
+    return [i for i in _issues(api, case_id) if i["issue_type"] == "CONFLICTING_CLAIMS"]
+
+
+def test_the_queue_names_both_values_and_the_document(api: Api, db_session: Session) -> None:
+    """`IssueType.CONFLICTING_CLAIMS`, deferred since M3A waiting for evidence to disagree
+    with, reached at last.
+
+    Both values in the message, because "these disagree" without saying what disagrees
+    sends the user hunting for the comparison the product has already made.
+    """
+    case_id, trip_id = _conflicting_case(api, db_session)
+    api("user_a").post(f"/api/v1/cases/{case_id}/assessments/recalculate")
+
+    conflicts = [
+        item for item in _issues(api, case_id) if item["issue_type"] == "CONFLICTING_CLAIMS"
+    ]
+
+    assert len(conflicts) == 1, "one item per trip, not one per disagreeing field"
+    issue = conflicts[0]
+    assert issue["affected_object_id"] == trip_id
+    assert "Rome" in issue["title"]
+    assert "Rome booking" in issue["title"]
+    assert "2023-07-01" in issue["body"]
+    assert "2023-07-02" in issue["body"]
+
+
+def test_a_conflict_cannot_be_dismissed(api: Api, db_session: Session) -> None:
+    """**Mutation-table row 19.** MVP §8.11: *"conflicting claims remain unresolved until
+    the user chooses or provides another source."*
+
+    A Dismiss control would let the queue go quiet while two sources still disagree — and
+    while a trip is being held back from the confirmed total because of it, which is the
+    part a quiet queue would make inexplicable.
+    """
+    case_id, _trip_id = _conflicting_case(api, db_session)
+    api("user_a").post(f"/api/v1/cases/{case_id}/assessments/recalculate")
+
+    issue = next(iter(_conflicts(api, case_id)))
+    assert issue["dismissibility"] == "NOT_DISMISSIBLE"
+
+    refused = api("user_a").post(f"/api/v1/cases/{case_id}/issues/{issue['id']}/dismiss")
+    assert refused.status_code == 409
+
+
+def test_rejecting_the_claim_clears_the_conflict(api: Api, db_session: Session) -> None:
+    """One of the two existing outs the issue points at, and it needs no new code.
+
+    If the record is right, the model misread the document — and rejecting the value is
+    already a command. The fact stops being confirmed, so nothing disagrees with the trip
+    and the days come back into the confirmed total.
+    """
+    case_id, trip_id = _case_with_trip(api)
+    item_id = _attach_document(api, case_id, trip_id)
+    claim_id = _propose(db_session, case_id, item_id, raw="2 July 2023")
+    api("user_a").post(
+        f"/api/v1/cases/{case_id}/claims/{claim_id}/review",
+        json={"decision": "REJECT", "reason_code": "WRONG_DOCUMENT"},
+    )
+    api("user_a").post(f"/api/v1/cases/{case_id}/assessments/recalculate")
+
+    assert (
+        _detail(api, case_id, "residence.total_absences")["summary_parameters"]["days"]
+        == ABSENT_DAYS
+    )
+    assert not _conflicts(api, case_id)

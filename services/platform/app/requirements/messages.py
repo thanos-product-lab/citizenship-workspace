@@ -464,6 +464,28 @@ STALE_REASON_TEMPLATES: dict[str, _Template] = {
 }
 
 
+def _conflicting_body(parameters: Parameters) -> str:
+    """One sentence per disagreeing field, naming both values.
+
+    Field labels are spelled out rather than derived from the key, so `departure_date`
+    never reaches a user as "departure date" by accident of formatting — and so an
+    unrecognised field degrades to something readable instead of a raw column name.
+    """
+    labels = {"departure_date": "You recorded leaving", "return_date": "You recorded returning"}
+    fields = parameters.get("fields")
+    if not isinstance(fields, list) or not fields:
+        return "This trip and the document attached to it give different dates."
+    sentences = []
+    for entry in fields:
+        if not isinstance(entry, dict):
+            continue
+        label = labels.get(str(entry.get("field")), "You recorded")
+        sentences.append(
+            f"{label} on {entry.get('recorded')}; the document says {entry.get('documented')}."
+        )
+    return " ".join(sentences) or "This trip and the document attached to it give different dates."
+
+
 # --- rendering --------------------------------------------------------------
 
 
@@ -515,6 +537,12 @@ ISSUE_TITLE_TEMPLATES: dict[str, _Template] = {
     "ISSUE_OVERLAPPING_TRAVEL": lambda p: (
         f"Your trip to {p.get('destination', 'this destination')} overlaps another trip"
     ),
+    # Names the disagreement, not a remedy. "Fix the dates of…" would assume the document
+    # is right, and it is exactly as likely that the document is not about this trip.
+    "ISSUE_CONFLICTING_CLAIMS": lambda p: (
+        f"Your trip to {p.get('destination', 'this destination')} and "
+        f"{p.get('document') or 'a document'} give different dates"
+    ),
     "ISSUE_UNCERTAIN_TRAVEL_DATE": lambda p: (
         f"Confirm the dates of your trip to {p.get('destination', 'this destination')}"
     ),
@@ -559,6 +587,9 @@ ISSUE_BODY_TEMPLATES: dict[str, _Template] = {
         "Two of your trips cover some of the same dates. Overlapping records make the "
         "days outside the UK ambiguous."
     ),
+    # Both values, spelled out. "These disagree" without saying what disagrees sends the
+    # user hunting for the comparison the product has already made.
+    "ISSUE_CONFLICTING_CLAIMS": lambda p: _conflicting_body(p),
     "ISSUE_UNCERTAIN_TRAVEL_DATE": lambda p: (
         "These dates are recorded as uncertain, so they are not counted in the confirmed totals."
     ),
@@ -629,6 +660,13 @@ ISSUE_IMPACT_TEMPLATES: dict[str, _Template] = {
     ),
     "ISSUE_OVERLAPPING_TRAVEL": lambda p: (
         "While the records overlap, the total days outside the UK cannot be relied on."
+    ),
+    # Says the figure is *held back*, never that it is wrong. Neither value has been
+    # established, so calling either one an error would be the product taking a side it
+    # has no basis for.
+    "ISSUE_CONFLICTING_CLAIMS": lambda p: (
+        "While the two disagree, this trip is left out of your confirmed totals, so they "
+        "read lower than your full history."
     ),
     "ISSUE_UNCERTAIN_TRAVEL_DATE": lambda p: (
         "Your confirmed totals exclude these days, so they read lower than your full history."

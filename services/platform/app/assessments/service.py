@@ -252,6 +252,7 @@ def evaluate_case(
         application_date_version_id=date_version.id,
     )
     trips, conflicts = _gather_trips(session, case.id)
+    version_ids = {trip.travel_record_id: trip.travel_record_version_id for trip in trips}
     residence_inputs = ResidenceAssessmentInputs(
         application_date=application_date,
         application_date_version_id=date_version.id,
@@ -261,6 +262,11 @@ def evaluate_case(
             ConflictedFactInput(
                 fact_version_id=conflict.fact_version_id,
                 travel_record_id=conflict.travel_record_id,
+                travel_record_version_id=version_ids[conflict.travel_record_id],
+                evidence_item_id=conflict.evidence_item_id,
+                field=conflict.field,
+                recorded=conflict.recorded.isoformat(),
+                documented=conflict.documented.isoformat(),
             )
             for conflict in conflicts
         ),

@@ -375,13 +375,25 @@ UNCERTAIN_CONFIDENCES = frozenset({"ESTIMATED", "UNKNOWN"})
 class ConflictedFactInput:
     """One confirmed fact whose date disagrees with the trip it is attached to.
 
-    The rule does not compare anything — `assessments.conflicts` already did, and putting
-    the values here would invite a second implementation of the comparison. What the rule
-    needs is the fact version id, so the result can say the conclusion depended on it.
+    **The rule does not compare anything** — `assessments.conflicts` already did. It carries
+    the values so it can *report* them, which is a different thing: the limitation is what
+    the issue queue reads, and a superseded result has to keep saying which two values
+    disagreed when it ran, not whichever two disagree now.
+
+    Carrying them costs no capability the rule did not have: it can already see every
+    trip's dates. What it still cannot see is a claim.
     """
 
     fact_version_id: uuid.UUID
     travel_record_id: uuid.UUID
+    travel_record_version_id: uuid.UUID
+    evidence_item_id: uuid.UUID
+    #: `departure_date` or `return_date`.
+    field: str
+    #: ISO dates. Strings, because they go straight into `message_parameters`, which is
+    #: persisted as JSON and read back by the issue derivation.
+    recorded: str
+    documented: str
 
 
 @dataclass(frozen=True)
@@ -783,10 +795,33 @@ def _evaluate_travel_consistency(inputs: ResidenceAssessmentInputs) -> Evaluated
     # conflict cannot affect the assessment, so it is not surfaced as an inconsistency.
     conflicting = [t for t in trips if t.date_confidence == "CONFLICTING" and _in_window(t)]
     if conflicting:
+        in_window_records = {t.travel_record_id for t in conflicting}
         limitations.append(
             Limitation(
                 "CONFLICTING_SOURCE_DATES",
                 LimitationSeverity.REVIEW_REQUIRED,
+                # The two values, carried so the queue can name them without re-deriving
+                # the comparison — and so a superseded result still says which two
+                # disagreed *when it ran*. Window-scoped to match `affected_input_ids`
+                # below: an out-of-window conflict cannot affect the assessment and is not
+                # surfaced, so listing it here would put an item in the queue that the
+                # limitation itself says is not a problem.
+                message_parameters={
+                    "conflicts": [
+                        {
+                            "travel_record_id": str(conflict.travel_record_id),
+                            "evidence_item_id": str(conflict.evidence_item_id),
+                            "field": conflict.field,
+                            "recorded": conflict.recorded,
+                            "documented": conflict.documented,
+                        }
+                        for conflict in sorted(
+                            inputs.date_conflicts,
+                            key=lambda c: (str(c.travel_record_id), c.field),
+                        )
+                        if conflict.travel_record_id in in_window_records
+                    ]
+                },
                 affected_input_ids=tuple(str(t.travel_record_version_id) for t in conflicting),
             )
         )

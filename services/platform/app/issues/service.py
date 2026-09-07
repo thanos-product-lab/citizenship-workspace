@@ -31,6 +31,7 @@ from app.assessments.domain import AssessmentRunStatus
 from app.assessments.repository import AssessmentRepository
 from app.evidence.repository import EvidenceRepository
 from app.issues.derivation import (
+    LIMITATION_CONFLICTING,
     LIMITATION_DUPLICATE_RECORD,
     LIMITATION_MISSING_EVIDENCE,
     LIMITATION_OVERLAPPING,
@@ -326,10 +327,19 @@ def _limitation_targets(
         if (record_id := versions_to_records.get(str(version_id))) is not None
     }
 
+    conflicts: tuple[dict[str, str], ...] = ()
+    for requirement in requirements:
+        limitation = requirement.limitation(LIMITATION_CONFLICTING)
+        if limitation is None:
+            continue
+        parameters = limitation.get("message_parameters") or {}
+        conflicts = tuple(parameters.get("conflicts", []))
+
     return LimitationTargets(
         overlapping_records=_records(LIMITATION_OVERLAPPING),
         uncertain_in_window_records=_records(LIMITATION_UNCERTAIN),
         judged_records=frozenset(judged),
+        conflicts=conflicts,
         unevidenced_records=_records(LIMITATION_MISSING_EVIDENCE),
         duplicate_records=_records(LIMITATION_DUPLICATE_RECORD),
     )

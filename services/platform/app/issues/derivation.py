@@ -44,6 +44,7 @@ LIMITATION_UNCERTAIN = "UNCERTAIN_TRAVEL_DATE"
 LIMITATION_NARROW_MARGIN = "STATUS_PERIOD_NARROW_MARGIN"
 LIMITATION_MISSING_EVIDENCE = "MISSING_TRAVEL_EVIDENCE"
 LIMITATION_DUPLICATE_RECORD = "DUPLICATE_TRAVEL_RECORD"
+LIMITATION_CONFLICTING = "CONFLICTING_SOURCE_DATES"
 
 #: Conclusions the prototype declines to assess on its own (UI/UX §10.2). Stopping is a
 #: successful outcome, not a failure (CLAUDE.md §2.7), so these are surfaced as issues
@@ -134,6 +135,15 @@ class LimitationTargets:
     overlapping_records: frozenset[str]
     uncertain_in_window_records: frozenset[str]
     judged_records: frozenset[str]
+    #: One entry per trip whose confirmed document date disagrees with what the user
+    #: recorded, carrying both values and the document, straight from the limitation the
+    #: consistency rule wrote (M8 slice 4).
+    #:
+    #: Read from the *result* rather than recomputed, like everything else in this file:
+    #: a superseded result must go on naming the two values that disagreed when it ran,
+    #: and a queue that re-derived them would silently describe a conflict the result
+    #: never saw.
+    conflicts: tuple[dict[str, str], ...]
     #: Records the consistency rule reported as being the same trip entered twice (§7.8).
     #: These *also* appear in `overlapping_records` for any trip of non-zero length, since
     #: identical dates intersect — the suppression below is what keeps one problem from
@@ -172,6 +182,7 @@ def derive(
     for requirement in requirements:
         issues.extend(_requirement_issues(requirement))
     issues.extend(_travel_issues(travel, targets, case_holds_evidence=has_ever_held_evidence))
+    issues.extend(_conflict_issues(travel, targets, {e.item_id: e.display_name for e in evidence}))
     issues.extend(_duplicate_evidence_issues(evidence))
     return issues
 
@@ -320,6 +331,67 @@ def _requirement_issues(requirement: RequirementSnapshot) -> list[DesiredIssue]:
             )
         )
 
+    return issues
+
+
+def _conflict_issues(
+    travel: list[TravelSnapshot],
+    targets: LimitationTargets,
+    documents: dict[str, str],
+) -> list[DesiredIssue]:
+    """One item per trip whose confirmed document date disagrees with what was recorded.
+
+    **Per trip, not per field.** A booking whose departure *and* return both disagree is
+    one disagreement to resolve, and one action resolves it; two items would double the
+    queue for one problem and make adopting the document look half-done.
+
+    **`ACTION_REQUIRED` and not dismissible.** MVP §8.11: *"conflicting claims remain
+    unresolved until the user chooses or provides another source."* A Dismiss control would
+    let the queue go quiet while two sources still disagree — and while a trip is being
+    held back from the confirmed total because of it, which is the part a quiet queue would
+    make inexplicable.
+
+    The message carries both values and the document's name, because "these disagree" with
+    neither value shown sends the user hunting for what to compare.
+    """
+    by_record = {trip.record_id: trip for trip in travel}
+    grouped: dict[str, list[dict[str, str]]] = {}
+    for conflict in targets.conflicts:
+        grouped.setdefault(conflict["travel_record_id"], []).append(conflict)
+
+    issues: list[DesiredIssue] = []
+    for record_id, conflicts in sorted(grouped.items()):
+        trip = by_record.get(record_id)
+        if trip is None:
+            # The limitation named a trip that is no longer active. The result is a record
+            # of what was true when it ran; the queue is about what is true now.
+            continue
+        fields = sorted(conflicts, key=lambda c: c["field"])
+        document_names = sorted(
+            {documents[c["evidence_item_id"]] for c in fields if c["evidence_item_id"] in documents}
+        )
+        issues.append(
+            DesiredIssue(
+                issue_type=IssueType.CONFLICTING_CLAIMS,
+                severity=IssueSeverity.ACTION_REQUIRED,
+                dismissibility=Dismissibility.NOT_DISMISSIBLE,
+                title_code="ISSUE_CONFLICTING_CLAIMS",
+                affected_object_type=AFFECTED_TRAVEL_RECORD,
+                affected_object_id=record_id,
+                message_parameters={
+                    "destination": trip.label,
+                    "document": document_names[0] if document_names else None,
+                    "fields": [
+                        {
+                            "field": conflict["field"],
+                            "recorded": conflict["recorded"],
+                            "documented": conflict["documented"],
+                        }
+                        for conflict in fields
+                    ],
+                },
+            )
+        )
     return issues
 
 
