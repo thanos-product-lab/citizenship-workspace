@@ -258,14 +258,34 @@ export function RequirementDetail({
             ) : null}
           </ExplanationLayer>
 
-          {/* The layer stays in the stack rather than being dropped: "no evidence is
-              linked" is a true and important statement about this case, and removing the
-              layer would let the reader assume the question had been satisfied. */}
+          {/* The layer stays in the stack even when empty rather than being dropped: "no
+              evidence is linked" is a true and important statement about this case, and
+              removing the layer would let the reader assume the question had been satisfied.
+              Which is exactly why it must not say that when documents *are* linked — until
+              `0035` this layer had no children at all and printed the empty message over a
+              result whose figure a document had moved. */}
           <ExplanationLayer
             id="layer-evidence"
             title="Evidence used"
             emptyMessage="No documents are linked to these records. Every figure above rests on dates you entered yourself, not on evidence the system has checked."
-          />
+          >
+            {detail.evidence_inputs.length > 0 ? (
+              <ul className="cw-input-list">
+                {detail.evidence_inputs.map((input) => (
+                  <AssessedInput
+                    key={String(input.input_version_id)}
+                    label={input.label}
+                    value={input.value}
+                    detail={input.detail}
+                    provenanceKind={input.provenance_kind}
+                    countsAsConfirmed={input.counts_as_confirmed}
+                    isStillCurrent={input.is_still_current}
+                    unavailable={input.unavailable}
+                  />
+                ))}
+              </ul>
+            ) : null}
+          </ExplanationLayer>
 
           <ExplanationLayer
             id="layer-rule"
@@ -443,6 +463,7 @@ function isRenderable(detail: Detail): boolean {
   return (
     Array.isArray(detail.facts_used) &&
     Array.isArray(detail.travel_inputs) &&
+    Array.isArray(detail.evidence_inputs) &&
     Array.isArray(detail.limitations) &&
     Array.isArray(detail.next_actions) &&
     Array.isArray(detail.history)
@@ -476,5 +497,10 @@ function travelNote(detail: Detail): string {
   if (counted === total) {
     return `All ${total} travel records this assessment read were confirmed with exact dates, so all of them counted towards the figure.`;
   }
-  return `${counted} of the ${total} travel records this assessment read were confirmed with exact dates. Only those counted towards the figure.`;
+  // `counts_as_confirmed` is the *result's* verdict, not the row's: a trip whose dates a
+  // document disputes is stored as confirmed with exact dates and still did not count
+  // (RFC §42). So the sentence says how many counted, and leaves why to each row's own
+  // "Confirmed · conflicting dates" — saying "were confirmed with exact dates" of the
+  // counted ones was accurate only while unconfirmed was the sole way to fail the gate.
+  return `${counted} of the ${total} travel records this assessment read counted towards the figure. Each record below says whether it did, and why.`;
 }

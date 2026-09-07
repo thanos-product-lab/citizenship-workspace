@@ -290,10 +290,20 @@ class RequirementDetail(BaseModel):
     limitations: list[LimitationView]
     next_actions: list[NextActionView]
     #: The explanation stack splits inputs by what they are. `facts_used` is the route
-    #: profile answers and the proposed application date; `travel_inputs` is the travel
-    #: records. Both are resolved from the same link set and neither is filtered.
+    #: profile answers, the proposed application date and values confirmed from a document;
+    #: `travel_inputs` is the travel records; `evidence_inputs` is the document-to-trip
+    #: links. All three are resolved from the same link set and none is filtered.
+    #:
+    #: `evidence_inputs` was split out when `0035` gave the absence rules an
+    #: `EVIDENCE_SUPPORT` dependency. Until then only `residence.travel_consistency` linked
+    #: evidence, those links fell into `facts_used`, and the evidence layer of the
+    #: explanation stack rendered its empty message — "No documents are linked to these
+    #: records. Every figure above rests on dates you entered yourself" — on a page that had
+    #: just listed the links. A false statement about evidence is the one this product can
+    #: least afford (directive 7).
     facts_used: list[ResolvedInputView]
     travel_inputs: list[ResolvedInputView]
+    evidence_inputs: list[ResolvedInputView]
     rule: RuleView | None
     guidance: list[dict[str, str]]
     history: list[ResultHistoryView]
@@ -328,10 +338,16 @@ class RequirementDetail(BaseModel):
                 NextActionView.of(item) for item in (current.next_actions if current else [])
             ],
             facts_used=[
-                item for item in resolved if item.input_kind != LinkInputKind.TRAVEL_RECORD_VERSION
+                item
+                for item in resolved
+                if item.input_kind
+                not in (LinkInputKind.TRAVEL_RECORD_VERSION, LinkInputKind.EVIDENCE_LINK)
             ],
             travel_inputs=[
                 item for item in resolved if item.input_kind == LinkInputKind.TRAVEL_RECORD_VERSION
+            ],
+            evidence_inputs=[
+                item for item in resolved if item.input_kind == LinkInputKind.EVIDENCE_LINK
             ],
             rule=RuleView.of(view.rule, view.guidance) if view.rule is not None else None,
             guidance=view.guidance,

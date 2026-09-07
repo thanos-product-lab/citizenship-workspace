@@ -100,8 +100,20 @@ export function buildCalculationRows(
 
   const provisional = num(parameters, "provisional_days");
   if (provisional !== null && confirmed !== null && provisional > confirmed) {
+    // Named by *why* the records were held back, matching the summary sentence. Since M8
+    // slice 4 a record can fail the §6.1 gate while being confirmed — its dates are disputed
+    // by a document — and calling that row "unconfirmed" told a user who had just confirmed
+    // the date that they had not.
+    const conflicted = num(parameters, "conflicted_record_count") ?? 0;
+    const unconfirmed = num(parameters, "unconfirmed_record_count") ?? 0;
+    const label =
+      conflicted > 0 && unconfirmed > 0
+        ? "Additional days from unconfirmed and disputed records"
+        : conflicted > 0
+          ? "Additional days records with disputed dates would add"
+          : "Additional days unconfirmed records would add";
     rows.push({
-      label: "Additional days unconfirmed records would add",
+      label,
       value: days(provisional - confirmed),
       note: "not counted towards the figure above",
     });

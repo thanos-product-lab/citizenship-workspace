@@ -106,16 +106,35 @@ FACT_TYPE_LABELS: dict[str, str] = {
 }
 
 
-def resolve_input_links(session: Session, links: list[AssessmentInputLink]) -> list[ResolvedInput]:
-    """Resolve each link, preserving the order the result recorded them in."""
-    return [_resolve(session, link) for link in links]
+def resolve_input_links(
+    session: Session,
+    links: list[AssessmentInputLink],
+    *,
+    disputed_version_ids: frozenset[uuid.UUID] = frozenset(),
+) -> list[ResolvedInput]:
+    """Resolve each link, preserving the order the result recorded them in.
+
+    `disputed_version_ids` are the travel-record versions **this result** held back over a
+    conflicting document date. They have to be passed in, because the conflict is derived
+    rather than stored (RFC §42): the row on disk still says CONFIRMED with EXACT dates, so
+    a resolver reading it alone reports a trip as counting when the figure beside it proves
+    it did not. That is how the total-absences page came to say "all 12 travel records ...
+    counted towards the figure" directly above a total that had excluded one of them.
+
+    The set comes from the result's own `CONFLICTING_SOURCE_DATES` limitation, so a
+    superseded result still explains itself in the terms that were true when it ran — which
+    re-deriving the conflict from today's rows would not.
+    """
+    return [_resolve(session, link, disputed_version_ids) for link in links]
 
 
-def _resolve(session: Session, link: AssessmentInputLink) -> ResolvedInput:
+def _resolve(
+    session: Session, link: AssessmentInputLink, disputed: frozenset[uuid.UUID] = frozenset()
+) -> ResolvedInput:
     if link.input_kind == LinkInputKind.APPLICATION_DATE_VERSION.value:
         return _resolve_application_date(session, link)
     if link.input_kind == LinkInputKind.TRAVEL_RECORD_VERSION.value:
-        return _resolve_travel_record(session, link)
+        return _resolve_travel_record(session, link, disputed)
     if link.input_kind == LinkInputKind.ROUTE_PROFILE_VERSION.value:
         return _resolve_route_profile(session, link)
     if link.input_kind == LinkInputKind.EVIDENCE_LINK.value:
@@ -154,7 +173,10 @@ def _resolve_case_fact(session: Session, link: AssessmentInputLink) -> ResolvedI
         input_version_id=link.input_version_id,
         contribution_role=link.contribution_role,
         label=label,
-        value=version.normalised_value or version.raw_value,
+        # Formatted, not the stored ISO string. `format_date` exists because UI/UX §13.3
+        # reads an ISO date in a sentence as machine output — and this panel's whole job is
+        # to look like the product's own account of what it read.
+        value=_fact_value(version.normalised_value or version.raw_value),
         detail=(
             "You confirmed this from a document. It disagrees with the trip you recorded, "
             "so that trip was held back from the confirmed total."
@@ -221,7 +243,9 @@ def _resolve_application_date(session: Session, link: AssessmentInputLink) -> Re
     )
 
 
-def _resolve_travel_record(session: Session, link: AssessmentInputLink) -> ResolvedInput:
+def _resolve_travel_record(
+    session: Session, link: AssessmentInputLink, disputed: frozenset[uuid.UUID] = frozenset()
+) -> ResolvedInput:
     found = TravelRecordRepository.get_record_for_version(session, link.input_version_id)
     if found is None:
         return _unavailable(link, label="Travel record")
@@ -231,7 +255,7 @@ def _resolve_travel_record(session: Session, link: AssessmentInputLink) -> Resol
     removed = record.lifecycle_status is TravelLifecycleStatus.REMOVED
     # One definition of the §6.1 gate, shared with the assessment service. It includes the
     # ACTIVE check, which is what stops a removed record reporting as counting.
-    counts = counts_toward_trusted_total(record, version)
+    counts = counts_toward_trusted_total(record, version) and link.input_version_id not in disputed
 
     return ResolvedInput(
         input_kind=link.input_kind,
@@ -240,11 +264,23 @@ def _resolve_travel_record(session: Session, link: AssessmentInputLink) -> Resol
         contribution_role=link.contribution_role,
         label=f"Trip to {version.destination_label}",
         value=_trip_dates(version.departure_date, version.return_date),
-        detail=_trip_detail(confirmed=confirmed, date_confidence=version.date_confidence),
+        detail=_trip_detail(
+            confirmed=confirmed,
+            date_confidence=(
+                # The derived confidence, not the stored one. Directive 4 keeps conclusion
+                # and currency apart; this keeps *what the row says* and *what the rule made
+                # of it* apart in the same spirit — the record is genuinely confirmed, and
+                # this result genuinely did not count it.
+                "CONFLICTING" if link.input_version_id in disputed else version.date_confidence
+            ),
+        ),
         version_number=version.version_number,
         is_still_current=record.current_version_id == link.input_version_id,
         is_removed=removed,
         counts_as_confirmed=counts,
+        # Provenance is how the value came to be, and a dispute does not change that: the
+        # user still typed it. Deliberately reads the stored confidence where `detail` reads
+        # the derived one.
         provenance_kind=_travel_provenance(
             removed=removed, confirmed=confirmed, date_confidence=version.date_confidence
         ),
@@ -372,6 +408,19 @@ def _resolve_route_profile(session: Session, link: AssessmentInputLink) -> Resol
 
 
 # --- value formatting -------------------------------------------------------
+
+
+def _fact_value(stored: str) -> str:
+    """A confirmed fact's value, formatted for reading.
+
+    Only date-shaped values are reformatted; a booking reference or an airport name is
+    already the string the document used and must not be touched. Anything that does not
+    parse as a date is returned unchanged rather than guessed at.
+    """
+    try:
+        return format_date(date.fromisoformat(stored))
+    except ValueError:
+        return stored
 
 
 def _trip_dates(departure: date, return_: date) -> str:

@@ -575,3 +575,45 @@ def test_every_result_the_conflict_moves_was_staled_first(api: Api, db_session: 
         f"{sorted(moved - staled)} — these rules read an input they do not declare"
     )
 
+
+def test_the_result_explains_itself_without_calling_the_trip_unconfirmed(
+    api: Api, db_session: Session
+) -> None:
+    """The absence total's own explanation surface, which was describing a figure it had not
+    produced.
+
+    Before this, `residence.total_absences` reported the disputed trip as `Confirmed · exact
+    dates` and counting, said "All N travel records ... counted towards the figure" above a
+    total that had excluded one, attributed the gap to "records you have not confirmed" —
+    which the user had just confirmed — and recorded no limitation at all. Every one of those
+    came from reading the stored `TravelRecordVersion`, which still says CONFIRMED and EXACT
+    because the conflict is derived (RFC §42). A result has to explain itself from what it
+    recorded, not from what the rows say today.
+    """
+    case_id, _ = _conflicting_case(api, db_session)
+    api("user_a").post(f"/api/v1/cases/{case_id}/assessments/recalculate")
+
+    detail = _detail(api, case_id, "residence.total_absences")
+
+    # The gap is attributed to the dispute, not to a confirmation the user already gave.
+    assert "a document disputes" in detail["summary"]["text"]
+    assert "you have not confirmed" not in detail["summary"]["text"]
+    assert detail["summary_parameters"]["conflicted_record_count"] == 1
+    assert detail["summary_parameters"]["unconfirmed_record_count"] == 0
+
+    # The trip says it did not count, and why — from the result, not from its stored row.
+    trip = next(t for t in detail["travel_inputs"] if t["counts_as_confirmed"] is False)
+    assert "conflicting dates" in trip["detail"]
+
+    # The fact that moved the figure is named, and reads as a date rather than as an ISO
+    # string (UI/UX §13.3).
+    fact = next(t for t in detail["facts_used"] if t["input_kind"] == "CASE_FACT_VERSION")
+    assert fact["value"] == "2 July 2023"
+
+    # And the document that made the dispute possible is listed, so the page cannot render
+    # its "no documents are linked" empty message over a result a document moved.
+    assert len(detail["evidence_inputs"]) == 1
+
+    assert [limitation["code"] for limitation in detail["limitations"]] == [
+        "CONFLICTING_SOURCE_DATES"
+    ]

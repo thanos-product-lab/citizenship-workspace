@@ -67,6 +67,7 @@ function aDetail(overrides: Record<string, unknown> = {}) {
       }),
     ],
     travel_inputs: [anInput()],
+    evidence_inputs: [],
     rule: {
       semantic_version: "1.0.0",
       rule_set: "2026.07.0",
@@ -142,9 +143,46 @@ describe("RequirementDetail", () => {
     render(<RequirementDetail caseId="c1" requirementKey="residence.total_absences" />);
 
     expect(
-      await screen.findByText(/1 of the 2 travel records this assessment read were confirmed/),
+      await screen.findByText(/1 of the 2 travel records this assessment read counted/),
     ).toBeInTheDocument();
     expect(screen.getByText(/Did not count towards the confirmed figure/)).toBeInTheDocument();
+  });
+
+  it("does not claim a disputed trip was counted, nor that no documents are linked", async () => {
+    // The two false sentences this page printed after M8 slice 4 made a *confirmed* trip
+    // fail the §6.1 gate. Both came from reading the stored row: it still says CONFIRMED
+    // with EXACT dates, because the conflict is derived, not stored (RFC §42).
+    get.mockResolvedValue({
+      data: aDetail({
+        travel_inputs: [
+          anInput(),
+          anInput({
+            input_version_id: "44444444-4444-4444-4444-444444444444",
+            label: "Trip to Italy",
+            detail: "Confirmed · conflicting dates",
+            counts_as_confirmed: false,
+          }),
+        ],
+        evidence_inputs: [
+          anInput({
+            input_kind: "EVIDENCE_LINK",
+            input_version_id: "55555555-5555-5555-5555-555555555555",
+            label: "italy_booking_amended_return",
+            value: "Attached to your trip to Italy",
+            counts_as_confirmed: null,
+          }),
+        ],
+      }),
+    });
+    render(<RequirementDetail caseId="c1" requirementKey="residence.total_absences" />);
+
+    expect(
+      await screen.findByText(/1 of the 2 travel records this assessment read counted/),
+    ).toBeInTheDocument();
+    // Not "All 2 ... were confirmed with exact dates, so all of them counted".
+    expect(screen.queryByText(/so all of them counted/)).not.toBeInTheDocument();
+    expect(screen.getByText("italy_booking_amended_return")).toBeInTheDocument();
+    expect(screen.queryByText(/No documents are linked to these records/)).not.toBeInTheDocument();
   });
 
   it("declares the guidance gap rather than filling it", async () => {

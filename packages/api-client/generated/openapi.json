@@ -1759,6 +1759,13 @@
             ],
             "title": "Currency"
           },
+          "evidence_inputs": {
+            "items": {
+              "$ref": "#/components/schemas/ResolvedInputView"
+            },
+            "title": "Evidence Inputs",
+            "type": "array"
+          },
           "facts_used": {
             "items": {
               "$ref": "#/components/schemas/ResolvedInputView"
@@ -1890,6 +1897,7 @@
           "next_actions",
           "facts_used",
           "travel_inputs",
+          "evidence_inputs",
           "rule",
           "guidance",
           "history"

@@ -1498,6 +1498,8 @@ export interface components {
             conclusion: string;
             /** Currency */
             currency: string | null;
+            /** Evidence Inputs */
+            evidence_inputs: components["schemas"]["ResolvedInputView"][];
             /** Facts Used */
             facts_used: components["schemas"]["ResolvedInputView"][];
             /** Group Key */
