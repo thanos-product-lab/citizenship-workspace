@@ -526,6 +526,10 @@ Assessment
 
 ## 15. Conflict Detection
 
+> **Amended by §42 (M8 Gate B).** M8 derives conflicts rather than storing them, so the
+> entity below has no table in M8 and the shape is retained as the vocabulary. Read §42
+> for what that gives up and when to build it.
+
 A `ConflictCandidate` represents potentially incompatible information:
 
 ``` text
@@ -1234,6 +1238,76 @@ where a wrong value changes an assessment conclusion and not where it does not.
   `SUPERSEDED` leaves its `FactEvidenceLink` pointing at a superseded version, and
   neither marking it unavailable nor leaving it available is obviously right. §38 open
   question 5 stands, unanswered, and is a named known gap rather than a guess.
+
+## 42. Conflict is derived in M8, not stored
+
+**Added 2026-09-07 (M8 Gate B).** §15 defines `ConflictCandidate` as an entity with an
+`id`, a `status` and a `resolved_at`. M8 slice 4 does not build that table, and this
+section records the divergence rather than leaving it in code.
+
+### 42.1 Why derived
+
+The issue queue is already a **pure derivation over durable state**: `issues.derive` takes
+snapshots and returns the complete desired open-issue set, and reconciliation opens what is
+missing and resolves what is no longer caused. It already carries the exact lifecycle §15
+gives a conflict candidate — an identity that survives across episodes
+(`deduplication_key`), an open state, and a resolution.
+
+A stored `ConflictCandidate` beside it would be a **second lifecycle for one fact about the
+world**, and the two would be free to disagree: a candidate `OPEN` whose cause has gone, or
+`RESOLVED` while the values still differ. The queue's own docstring names that failure
+directly — *"a type omitted here is a type that silently clears itself"* — and the inverse,
+a type that silently fails to clear, is the same defect from the other side.
+
+So in M8 a conflict is a **relationship between a confirmed fact and a travel record**,
+recomputed wherever it is needed and never written down:
+
+``` text
+confirmed FactVersion (travel date)
+  → EvidenceTravelLink   the user's own assertion that this document is about this trip
+  → TravelRecordVersion  the value they recorded
+  → values differ        → DateConfidence.CONFLICTING on the assessment's input
+                         → CONFLICTING_SOURCE_DATES (§7.8) → INCONSISTENT
+                         → IssueType.CONFLICTING_CLAIMS
+```
+
+**The link is what gives the comparison its authority.** Two values only conflict if
+something says they describe the same trip, and the only thing entitled to say so is the
+user. Without an `EvidenceTravelLink` there is no conflict — just a document and a trip that
+happen to mention different dates.
+
+### 42.2 What this gives up, and it is not nothing
+
+- **A conflict has no durable id.** Nothing can reference "conflict 47" — only the issue row
+  derived from it, whose identity is the type and the affected record.
+- **A conflict that existed and went away leaves no record of itself.** Adopt the document's
+  date and the disagreement is simply gone; the audit trail is the new
+  `TravelRecordVersion` and the `AssessmentResult` that superseded, not a resolved candidate.
+  For the M8 story — *why does this figure say what it says* — the version chain answers it,
+  which is why the trade is worth taking here and might not be later.
+- **`conflict_type` collapses to one case.** §15 lists `VALUE_MISMATCH`, `DATE_MISMATCH`,
+  `OVERLAPPING_TRAVEL`, `DUPLICATE_CLAIM`, `AMBIGUOUS_SOURCE`; M8 detects `DATE_MISMATCH`
+  only, and the others have no representation to be stored in.
+
+### 42.3 What is unchanged
+
+§15's substantive rules all still hold, and the derivation is what enforces them:
+
+- *"AI may identify a conflict. AI cannot choose the trusted value."* — detection is a
+  comparison in Python over two **confirmed** values; no model runs, and an unreviewed claim
+  is not in the comparison's parameter list.
+- *"Resolution that changes trusted state creates a new `FactVersion`."* — read for M8 as: it
+  creates a new versioned input. Adopting the document's date writes a new
+  `TravelRecordVersion` (`entry_source = CONFIRMED_CLAIM`), which is the versioned record the
+  residence rules actually read. The `FactVersion` already exists — it is the thing that was
+  confirmed, and confirming it is what surfaced the conflict.
+
+### 42.4 When to revisit
+
+Build the table when a conflict needs to outlive its cause: a conflict between **two
+documents** (§16) has no travel record to hang an issue on, and a corpus-level question like
+*"how often does the model disagree with what users recorded, and who won"* needs the
+resolved ones. Both are beyond M8.
 
 ## Final Principle
 

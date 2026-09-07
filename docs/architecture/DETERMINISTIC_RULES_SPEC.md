@@ -624,6 +624,19 @@ travel history and is still a trip they may be asked to evidence; suppressing it
 state would make the history's support column silently incomplete. What is window-scoped is
 whether a *questionable date* can distort a total, which is a different question.
 
+**`CONFLICTING` acquired a producer at M8 slice 4 [PRODUCT].** From M3B to M8 this rule's
+conflict detection was reachable only by a test: nothing in the product ever set
+`date_confidence = CONFLICTING`. It is now derived at assessment time, when a **confirmed**
+fact from a document disagrees with the trip that document is attached to
+(EVIDENCE_AND_CLAIM_LIFECYCLE_RFC §42). The rule itself did not change — the detection below
+is exactly the one written at M3B — and `residence.travel_consistency` v2.2.0 declares the
+`CASE_FACT` dependency the new input needs.
+
+§6.1 applies unchanged and is the half most easily dropped: a trip whose derived confidence
+is `CONFLICTING` is **excluded from the trusted total**, and §6.2's sensitivity limitation is
+what tells the user a figure is being held back. Setting the confidence while leaving the
+trip counted would apply half of §6.1 and contradict the other half inside one evaluation.
+
 **M3B scope note [PRODUCT].** At M3B this rule detects conflicts (`CONFLICTING` confidence),
 overlaps (intersecting absent-date sets, which at the time was also how identical-date
 duplicates surfaced — superseded at M7 slice 4b by the dedicated detection above, which

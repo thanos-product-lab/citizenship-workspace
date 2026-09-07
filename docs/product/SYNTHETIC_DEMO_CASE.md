@@ -193,22 +193,40 @@ Stale. Inconsistent and the referee-driven Incomplete require M4 input models.
 
 ## 7. The stale transition  `[demo-critical]`
 
-The scripted sequence that proves immutable-assessment + stale-recalculation. **At
-M3B** it runs as a direct edit of trip 11 (steps 2–3 collapse into one edit); the
-document-upload / extraction / confirm-correction framing is the **M4** version.
+The scripted sequence that proves immutable-assessment + stale-recalculation, and — from
+M8 — that a disputed value is held back rather than silently trusted.
 
 ```
 1. Initial state: trip 11 return = 10 May 2026, EXACT.
    total_absences = 439 (NEAR_THRESHOLD), CURRENT.
-2. (M4) User uploads the booking document; extraction proposes return = 11 May 2026.
-3. User edits (M3B) / CONFIRMS the correction (M4): trip 11 return = 11 May 2026.
-4. A new confirmed TravelRecordVersion is created (old version retained).
-5. Dependent residence results are marked STALE in the same transaction.
-   - total_absences: conclusion still NEAR_THRESHOLD, currency now STALE.
-6. Recalculation runs.
+2. (M8) User uploads the booking document; extraction proposes return = 11 May 2026.
+3. User CONFIRMS the value blind: they read 11 May off the page and type it.
+   - A FactVersion is created. The trip is NOT changed.
+   - Dependent residence results are marked STALE in the review's own transaction.
+4. (M8) Recalculation runs, and the disagreement is now visible:
+   - travel_consistency = INCONSISTENT (CONFLICTING_SOURCE_DATES on trip 11).
+   - Trip 11 is held back from the trusted total (§6.1 excludes CONFLICTING), and the
+     §6.2 sensitivity limitation says so rather than letting the figure move silently.
+5. User adopts the document's date: trip 11 return = 11 May 2026.
+6. A new confirmed TravelRecordVersion is created (old version retained),
+   entry_source = CONFIRMED_CLAIM.
+7. Dependent residence results are marked STALE in the same transaction.
+8. Recalculation runs.
    - new total = 440 (still NEAR_THRESHOLD), currency CURRENT.
    - previous result becomes SUPERSEDED, remains inspectable.
 ```
+
+**Steps 4 and 5 were added at M8 slice 4**, and the reason is worth keeping. The script used
+to go straight from "extraction proposes 11 May" to "user confirms the correction", which
+quietly assumed confirming a *document* and editing a *trip* are one act. They are not:
+confirming says what the page says, and the trip is still whatever the user recorded. The
+gap between them is the conflict, and RULES_SPEC §6.1 is explicit that a `CONFLICTING` date
+is excluded from trusted totals — so there is a real intermediate state in which the figure
+is **held back rather than wrong**, and the product says which. A script that skipped it
+would be demonstrating a product that trusted a disputed date.
+
+At **M3B** the whole sequence collapses to a direct edit of trip 11 (steps 2–7 become one
+edit), because no document, extraction or fact exists yet.
 
 The absence total moves **439 → 440** — a one-day change that does not cross a
 band boundary. This is intentional: it demonstrates that the *conclusion* can be
