@@ -46,16 +46,23 @@ import type { NextConfig } from "next";
  *
  * The warning is the part that has to carry the weight now, so it says what broke, what
  * to set, and where to read the value.
+ *
+ * **`STORAGE_ORIGIN`, deliberately without Next's `NEXT_PUBLIC_` prefix.** It carried one
+ * briefly, and Vercel's dashboard was right to object: that prefix means "inline this
+ * into the client bundle", and nothing in the browser reads this. It is consumed here, in
+ * Node, at build time, to compose a response header. The value is not secret — the bucket
+ * host is in every presigned URL the browser already receives — but a name that advertises
+ * a client-side value it does not have is the kind of small lie that gets copied.
  */
 const FRAME_ORIGIN = (() => {
-  const configured = process.env["NEXT_PUBLIC_STORAGE_ORIGIN"];
+  const configured = process.env["STORAGE_ORIGIN"];
   if (configured) return configured;
   if (process.env.NODE_ENV !== "production") return "http://localhost:9000";
 
   console.warn(
     [
       "",
-      "  ⚠  NEXT_PUBLIC_STORAGE_ORIGIN is unset.",
+      "  ⚠  STORAGE_ORIGIN is unset.",
       "     Falling back to frame-src 'self', so the document preview on the review",
       "     screen will not render. Everything else works, and the Text pane beside it",
       "     still shows what was read out of the document.",

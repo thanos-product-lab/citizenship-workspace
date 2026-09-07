@@ -202,7 +202,7 @@ all four need updating together.
 
 The bucket's origin is a **third** address that has to agree with itself in two places
 from M8: the bucket's CORS policy (which lets the browser *upload*) and Vercel's
-`NEXT_PUBLIC_STORAGE_ORIGIN` (which lets it *frame* the document for review). They fail
+`STORAGE_ORIGIN` (which lets it *frame* the document for review). They fail
 differently and that is the thing to remember — a wrong CORS policy fails the upload
 loudly, and a wrong frame origin shows an empty box with nothing in any log.
 
@@ -300,15 +300,18 @@ whose credentials can create buckets is an application whose credentials can cre
    - `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` = `pk_...`
    - `CLERK_SECRET_KEY` = `sk_...`
    - `NEXT_PUBLIC_API_BASE_URL` = the Railway **API URL** from A.3
-   - `NEXT_PUBLIC_STORAGE_ORIGIN` = the scheme and host of your bucket's **signed URLs**
+   - `STORAGE_ORIGIN` = the scheme and host of your bucket's **signed URLs**
      — see the note below. The build **warns and continues** without it; the review
      screen's document preview is the only thing that stops working.
+     *No `NEXT_PUBLIC_` prefix*: it is read in Node at build time to compose a response
+     header, never inlined into the client bundle, and Vercel's dashboard flags the
+     prefix for exactly that reason.
 4. Set all four for **Production *and* Preview**. A preview deploy builds with
    `NODE_ENV=production` too, so a variable scoped to Production only gets the warning
    on every PR build.
 5. **Deploy**, then note the **Vercel URL**.
 
-### `NEXT_PUBLIC_STORAGE_ORIGIN` — and the trap in it
+### `STORAGE_ORIGIN` — and the trap in it
 
 M8's review screen embeds the user's document in an `<iframe>` so they can read it while
 confirming what a model read out of it. `apps/web/next.config.ts` sets

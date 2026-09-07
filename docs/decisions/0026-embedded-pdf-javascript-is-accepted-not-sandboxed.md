@@ -66,5 +66,5 @@ product is exposed to documents a user did not choose to upload.
 - The preview works for every supported type, which is what the review interaction needs.
 - A hostile PDF can show text inside the workspace. Bounded, not eliminated.
 - `frame-src` must be kept in step with the deployed storage origin
-  (`NEXT_PUBLIC_STORAGE_ORIGIN`); getting it wrong shows an empty frame rather than
+  (`STORAGE_ORIGIN`); getting it wrong shows an empty frame rather than
   failing open.
