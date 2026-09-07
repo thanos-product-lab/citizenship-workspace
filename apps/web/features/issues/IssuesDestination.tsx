@@ -13,6 +13,10 @@ import { formatDateTime } from "@/features/requirements/dates";
 import { REQUIREMENT_TITLES } from "@/features/requirements/groups";
 
 import { groupHeading, type Issue, type IssueGroup } from "./groups";
+import {
+  AdoptionRefused,
+  useAdoptDocumentDates,
+} from "./useAdoptDocumentDates";
 import { useDismissIssue } from "./useDismissIssue";
 import { useIssueQueue } from "./useIssueQueue";
 
@@ -69,6 +73,7 @@ export function IssuesDestination({ caseId }: { caseId: string }): JSX.Element {
   // the refetch its own success triggers — the same trap that swallowed the recheck
   // announcement. A parent that outlives the list is the only safe owner.
   const dismiss = useDismissIssue(caseId);
+  const adopt = useAdoptDocumentDates(caseId);
   const [recheckRequested, setRecheckRequested] = useState(false);
   const recheckBaseline = useRef(openCount);
   const recheckInFlight = useRecalculationInFlight(caseId);
@@ -86,7 +91,13 @@ export function IssuesDestination({ caseId }: { caseId: string }): JSX.Element {
   //
   // The count now only chooses the wording.
   useEffect(() => {
-    if (!recheckRequested || recheckInFlight || isFetching || status === "pending") return;
+    if (
+      !recheckRequested ||
+      recheckInFlight ||
+      isFetching ||
+      status === "pending"
+    )
+      return;
 
     const previous = recheckBaseline.current;
     const cleared = previous - openCount;
@@ -102,12 +113,17 @@ export function IssuesDestination({ caseId }: { caseId: string }): JSX.Element {
 
   return (
     <section aria-labelledby="issues-heading">
-      <h2 id="issues-heading" className="cw-case-data__heading" ref={headingRef} tabIndex={-1}>
+      <h2
+        id="issues-heading"
+        className="cw-case-data__heading"
+        ref={headingRef}
+        tabIndex={-1}
+      >
         Issues
       </h2>
       <p className="cw-case-data__note">
-        Data problems and conclusions awaiting a recheck. Requirement outcomes live under
-        Requirements.
+        Data problems and conclusions awaiting a recheck. Requirement outcomes
+        live under Requirements.
       </p>
 
       {/* One live region for the destination, mounted unconditionally. It lives here
@@ -121,8 +137,9 @@ export function IssuesDestination({ caseId }: { caseId: string }): JSX.Element {
         <>
           <div role="alert" className="cw-overview__unavailable">
             <p>
-              This queue couldn’t be loaded, so we can’t tell you whether anything needs
-              your attention. This is not the same as nothing being wrong.
+              This queue couldn’t be loaded, so we can’t tell you whether
+              anything needs your attention. This is not the same as nothing
+              being wrong.
             </p>
           </div>
           <button
@@ -174,6 +191,22 @@ export function IssuesDestination({ caseId }: { caseId: string }): JSX.Element {
                 setAnnouncement("");
                 setRecheckRequested(false);
               }}
+              adoptState={adopt}
+              onAdopt={(issue) => {
+                adopt.mutate(issue.affected_object_id, {
+                  onSuccess: () => {
+                    // Says what changed *and* what has not. The figures do not move until
+                    // a recalculation runs, and a message that stopped at "updated" would
+                    // let a user read the unchanged total as confirmation that adopting
+                    // the document made no difference.
+                    setAnnouncement(
+                      `The dates from the document were applied to your trip. ` +
+                        `Your totals need working out again.`,
+                    );
+                    setReturnFocus(true);
+                  },
+                });
+              }}
               dismissState={dismiss}
               onDismiss={(issue) => {
                 dismiss.mutate(issue.id, {
@@ -188,7 +221,9 @@ export function IssuesDestination({ caseId }: { caseId: string }): JSX.Element {
             />
           ))}
 
-          {queue.history.length > 0 ? <ResolvedHistory issues={queue.history} /> : null}
+          {queue.history.length > 0 ? (
+            <ResolvedHistory issues={queue.history} />
+          ) : null}
         </>
       ) : null}
     </section>
@@ -217,8 +252,8 @@ function NotRecheckedNote({
   if (stale === 0) return null;
   return (
     <p className="cw-issue-queue__caveat">
-      Some of these were worked out before your last change and have not been rechecked, so
-      what they describe may have moved.
+      Some of these were worked out before your last change and have not been
+      rechecked, so what they describe may have moved.
     </p>
   );
 }
@@ -237,15 +272,15 @@ function SettledStatement({ caseId }: { caseId: string }): JSX.Element {
   if (overview && overview.stale > 0) {
     return (
       <p className="cw-issue-queue__settled">
-        No problems were found in your case data. Some conclusions have not been rechecked
-        since your inputs changed — open Requirements to see which.
+        No problems were found in your case data. Some conclusions have not been
+        rechecked since your inputs changed — open Requirements to see which.
       </p>
     );
   }
   return (
     <p className="cw-issue-queue__settled">
-      Nothing needs your attention. Every conclusion reached so far is current, and no
-      problems were found in your case data.
+      Nothing needs your attention. Every conclusion reached so far is current,
+      and no problems were found in your case data.
     </p>
   );
 }
@@ -257,22 +292,38 @@ function IssueGroupSection({
   onRecheckFailed,
   onDismiss,
   dismissState,
+  onAdopt,
+  adoptState,
 }: {
   caseId: string;
   group: IssueGroup;
   onRecheckRequested: () => void;
   onRecheckFailed: () => void;
   onDismiss: (issue: Issue) => void;
-  dismissState: { isPending: boolean; isError: boolean; variables?: string | undefined };
+  dismissState: {
+    isPending: boolean;
+    isError: boolean;
+    variables?: string | undefined;
+  };
+  onAdopt: (issue: Issue) => void;
+  adoptState: {
+    isPending: boolean;
+    isError: boolean;
+    error: Error | null;
+    variables?: string | undefined;
+  };
 }): JSX.Element {
   const headingId = `issue-group-${group.action_group}`;
   // A processing failure is cleared by the same case-wide recalculation a stale conclusion
   // is, so it does not get a control of its own — it changes what this one is called. It
   // also earns the control on its own: a recalculation can fail on a case with nothing
   // stale, and without this that group would show the failure and no way to retry it.
-  const failed = group.issues.some((issue) => issue.issue_type === "PROCESSING_FAILURE");
+  const failed = group.issues.some(
+    (issue) => issue.issue_type === "PROCESSING_FAILURE",
+  );
   const recheckable =
-    failed || group.issues.some((issue) => issue.issue_type === "STALE_ASSESSMENT");
+    failed ||
+    group.issues.some((issue) => issue.issue_type === "STALE_ASSESSMENT");
 
   return (
     <section className="cw-issue-group" aria-labelledby={headingId}>
@@ -282,7 +333,9 @@ function IssueGroupSection({
         </h3>
         {/* A count, never a fraction: "3 of 9" is a completion measure by another name. */}
         <span className="cw-issue-group__count">
-          {group.issues.length === 1 ? "1 item" : `${group.issues.length} items`}
+          {group.issues.length === 1
+            ? "1 item"
+            : `${group.issues.length} items`}
         </span>
       </div>
 
@@ -314,8 +367,18 @@ function IssueGroupSection({
               hasRecurred={issue.has_recurred}
               affectedLink={affectedLinkFor(caseId, issue)}
               actions={
-                issue.dismissibility === "DISMISSIBLE" ? (
-                  <DismissAction issue={issue} onDismiss={onDismiss} state={dismissState} />
+                issue.issue_type === "CONFLICTING_CLAIMS" ? (
+                  <AdoptAction
+                    issue={issue}
+                    onAdopt={onAdopt}
+                    state={adoptState}
+                  />
+                ) : issue.dismissibility === "DISMISSIBLE" ? (
+                  <DismissAction
+                    issue={issue}
+                    onDismiss={onDismiss}
+                    state={dismissState}
+                  />
                 ) : null
               }
             />
@@ -425,7 +488,10 @@ function RecheckAction({
             reload — the whole point of making the failure durable — there is no alert
             left to supply one. Same hidden-suffix pattern as Dismiss (2.4.6, 2.5.3). */}
         {busy ? null : (
-          <span className="cw-visually-hidden"> — recheck your conclusions</span>
+          <span className="cw-visually-hidden">
+            {" "}
+            — recheck your conclusions
+          </span>
         )}
       </button>
       {/* Deliberately silent about whether anything changed. A server-side failure
@@ -437,8 +503,8 @@ function RecheckAction({
           destination deliberately sets no polite message for this. */}
       {mutation.isError ? (
         <p role="alert" className="cw-case-header__error">
-          That recheck didn’t finish. This list has been refreshed with what the server
-          recorded — anything it did record is shown below.
+          That recheck didn’t finish. This list has been refreshed with what the
+          server recorded — anything it did record is shown below.
         </p>
       ) : null}
     </div>
@@ -456,6 +522,64 @@ function RecheckAction({
  * exactly the cases where the server refuses, which is the one thing a dismissal must not
  * do. The mutation itself is owned by the destination; this renders its state.
  */
+function AdoptAction({
+  issue,
+  onAdopt,
+  state,
+}: {
+  issue: Issue;
+  onAdopt: (issue: Issue) => void;
+  state: {
+    isPending: boolean;
+    isError: boolean;
+    error: Error | null;
+    variables?: string | undefined;
+  };
+}): JSX.Element {
+  const busy = state.isPending && state.variables === issue.affected_object_id;
+  const failed = state.isError && state.variables === issue.affected_object_id;
+  // One at a time, for the reason `DismissAction` records: every card shares one mutation
+  // observer, and starting a second adoption detaches the first — whose success would then
+  // be announced nowhere and whose failure would render no alert.
+  const blocked = state.isPending;
+
+  return (
+    <span className="cw-issue-card__dismiss">
+      <button
+        type="button"
+        className="cw-action"
+        aria-disabled={blocked}
+        onClick={() => (blocked ? undefined : onAdopt(issue))}
+      >
+        {busy ? "Applying…" : "Use the dates from the document"}
+        {/* Several cards can offer this at once, and a screen reader's control list strips
+            the surrounding card. The hidden suffix names the trip without replacing the
+            visible label, so "click Use the dates…" still matches (2.5.3). */}
+        {busy ? null : (
+          <span className="cw-visually-hidden"> for {issue.title}</span>
+        )}
+      </button>
+      {/* The other direction takes no code and no button: if the record is right, the
+          document is not about this trip or the model misread it, and detaching it or
+          rejecting the value are both already commands. Saying so beats a third control
+          that would have to invent a state where two sources disagree and nothing is
+          wrong. */}
+      <span className="cw-issue-card__dismiss-hint">
+        If your record is right, detach the document from this trip or reject
+        the value where you confirmed it.
+      </span>
+      {failed ? (
+        <span role="alert" className="cw-issue-card__dismiss-error">
+          {state.error instanceof AdoptionRefused &&
+          state.error.code === "NO_CONFLICT_TO_RESOLVE"
+            ? "Nothing on this trip disagrees with a document any more, so there was nothing to apply."
+            : `We couldn’t apply those dates to “${issue.title}”. Nothing has changed.`}
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
 function DismissAction({
   issue,
   onDismiss,
@@ -463,7 +587,11 @@ function DismissAction({
 }: {
   issue: Issue;
   onDismiss: (issue: Issue) => void;
-  state: { isPending: boolean; isError: boolean; variables?: string | undefined };
+  state: {
+    isPending: boolean;
+    isError: boolean;
+    variables?: string | undefined;
+  };
 }): JSX.Element {
   const busy = state.isPending && state.variables === issue.id;
   const failed = state.isError && state.variables === issue.id;
@@ -485,7 +613,9 @@ function DismissAction({
         {/* Several cards can offer "Dismiss" at once, and a screen reader's control list
             strips the surrounding card. The hidden suffix names the target without
             replacing the visible label, so "click Dismiss" still matches (2.5.3). */}
-        {busy ? null : <span className="cw-visually-hidden"> {issue.title}</span>}
+        {busy ? null : (
+          <span className="cw-visually-hidden"> {issue.title}</span>
+        )}
       </button>
       {failed ? (
         <span role="alert" className="cw-issue-card__dismiss-error">
@@ -516,7 +646,9 @@ function ResolvedHistory({ issues }: { issues: Issue[] }): JSX.Element {
             <span className="cw-issue-history__title">{issue.title}</span>
             <span>
               {issue.status === "DISMISSED" ? "Dismissed" : "Resolved"}
-              {issue.resolved_at ? ` · ${formatDateTime(issue.resolved_at)}` : ""}
+              {issue.resolved_at
+                ? ` · ${formatDateTime(issue.resolved_at)}`
+                : ""}
             </span>
           </li>
         ))}

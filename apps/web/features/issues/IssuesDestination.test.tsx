@@ -9,11 +9,20 @@ import { renderWithQuery } from "@/test/render";
 
 const get = vi.fn();
 const post = vi.fn();
-const client = { GET: get, POST: post, PUT: vi.fn(), PATCH: vi.fn(), DELETE: vi.fn() };
+const client = {
+  GET: get,
+  POST: post,
+  PUT: vi.fn(),
+  PATCH: vi.fn(),
+  DELETE: vi.fn(),
+};
 vi.mock("@/lib/api", () => ({ useApiClient: () => client }));
 
 import { IssuesDestination } from "./IssuesDestination";
-import { useRecalculate, useRecalculationInFlight } from "@/features/case-workspace/useRecalculate";
+import {
+  useRecalculate,
+  useRecalculationInFlight,
+} from "@/features/case-workspace/useRecalculate";
 
 const CASE = "c1";
 
@@ -27,7 +36,8 @@ function anIssue(overrides: Record<string, unknown> = {}) {
     action_group: "CONFIRM_INFORMATION",
     title: "Recheck Total absences",
     body: "An input behind this conclusion changed, so it has not been rechecked.",
-    impact: "Until it is rechecked, this conclusion may no longer match your case data.",
+    impact:
+      "Until it is rechecked, this conclusion may no longer match your case data.",
     affected_object_type: "Requirement",
     affected_object_id: "residence.total_absences",
     opened_at: "2026-08-20T10:00:00Z",
@@ -40,7 +50,13 @@ function anIssue(overrides: Record<string, unknown> = {}) {
 }
 
 function aQueue(overrides: Record<string, unknown> = {}) {
-  return { case_id: CASE, open_count: 0, groups: [], history: [], ...overrides };
+  return {
+    case_id: CASE,
+    open_count: 0,
+    groups: [],
+    history: [],
+    ...overrides,
+  };
 }
 
 beforeEach(() => {
@@ -48,9 +64,13 @@ beforeEach(() => {
   post.mockReset();
 });
 
-function queueReturns(body: unknown, overview: Record<string, unknown> | null = null) {
+function queueReturns(
+  body: unknown,
+  overview: Record<string, unknown> | null = null,
+) {
   get.mockImplementation((path: string) => {
-    if (path === "/api/v1/cases/{case_id}/issues") return Promise.resolve({ data: body });
+    if (path === "/api/v1/cases/{case_id}/issues")
+      return Promise.resolve({ data: body });
     if (path === "/api/v1/cases/{case_id}/overview") {
       return Promise.resolve({ data: overview ?? { groups: [], stale: 0 } });
     }
@@ -73,7 +93,9 @@ describe("issues destination", () => {
     queueReturns(aQueue());
     renderWithQuery(<IssuesDestination caseId={CASE} />);
 
-    expect(await screen.findByText(/Nothing needs your attention/i)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/Nothing needs your attention/i),
+    ).toBeInTheDocument();
   });
 
   it("never renders a failed fetch as an empty queue", async () => {
@@ -82,9 +104,15 @@ describe("issues destination", () => {
     queueFails();
     renderWithQuery(<IssuesDestination caseId={CASE} />);
 
-    expect(await screen.findByRole("alert")).toHaveTextContent(/couldn’t be loaded/i);
-    expect(screen.queryByText(/Nothing needs your attention/i)).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /try again/i })).toBeInTheDocument();
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      /couldn’t be loaded/i,
+    );
+    expect(
+      screen.queryByText(/Nothing needs your attention/i),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /try again/i }),
+    ).toBeInTheDocument();
   });
 
   it("groups open issues by the action they need, with a real heading", async () => {
@@ -99,7 +127,9 @@ describe("issues destination", () => {
     expect(
       await screen.findByRole("heading", { name: /confirm information/i }),
     ).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: /Recheck Total absences/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: /Recheck Total absences/i }),
+    ).toBeInTheDocument();
   });
 
   it("shows severity as a word, not only a colour", async () => {
@@ -123,8 +153,12 @@ describe("issues destination", () => {
     );
     renderWithQuery(<IssuesDestination caseId={CASE} />);
 
-    expect(await screen.findByText(/has not been rechecked/i)).toBeInTheDocument();
-    expect(screen.getByText(/may no longer match your case data/i)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/has not been rechecked/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/may no longer match your case data/i),
+    ).toBeInTheDocument();
   });
 
   it("never implies the preserved conclusion still holds", async () => {
@@ -149,26 +183,37 @@ describe("issues destination", () => {
       aQueue({
         open_count: 1,
         groups: [
-          { action_group: "CONFIRM_INFORMATION", issues: [anIssue({ has_recurred: true })] },
+          {
+            action_group: "CONFIRM_INFORMATION",
+            issues: [anIssue({ has_recurred: true })],
+          },
         ],
       }),
     );
     renderWithQuery(<IssuesDestination caseId={CASE} />);
 
-    expect(await screen.findByText(/resolved before and has come back/i)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/resolved before and has come back/i),
+    ).toBeInTheDocument();
   });
 
   it("keeps settled issues visible as history rather than deleting them", async () => {
     queueReturns(
       aQueue({
         history: [
-          anIssue({ id: "i9", status: "RESOLVED", resolved_at: "2026-08-20T11:00:00Z" }),
+          anIssue({
+            id: "i9",
+            status: "RESOLVED",
+            resolved_at: "2026-08-20T11:00:00Z",
+          }),
         ],
       }),
     );
     renderWithQuery(<IssuesDestination caseId={CASE} />);
 
-    expect(await screen.findByRole("heading", { name: /settled/i })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { name: /settled/i }),
+    ).toBeInTheDocument();
     expect(screen.getByText(/Resolved/)).toBeInTheDocument();
   });
 
@@ -181,7 +226,9 @@ describe("issues destination", () => {
     );
     renderWithQuery(<IssuesDestination caseId={CASE} />);
 
-    const link = await screen.findByRole("link", { name: /open total absences/i });
+    const link = await screen.findByRole("link", {
+      name: /open total absences/i,
+    });
     expect(link).toHaveAttribute(
       "href",
       "/cases/c1/requirements/residence.total_absences",
@@ -217,7 +264,9 @@ describe("issues destination", () => {
     renderWithQuery(<IssuesDestination caseId={CASE} />);
 
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: /recheck now/i })).toBeInTheDocument(),
+      expect(
+        screen.getByRole("button", { name: /recheck now/i }),
+      ).toBeInTheDocument(),
     );
   });
 });
@@ -235,9 +284,15 @@ describe("issues destination accessibility", () => {
     );
     renderWithQuery(<IssuesDestination caseId={CASE} />);
 
-    await screen.findByRole("heading", { level: 3, name: /confirm information/i });
+    await screen.findByRole("heading", {
+      level: 3,
+      name: /confirm information/i,
+    });
     expect(
-      screen.getByRole("heading", { level: 4, name: /Recheck Total absences/i }),
+      screen.getByRole("heading", {
+        level: 4,
+        name: /Recheck Total absences/i,
+      }),
     ).toBeInTheDocument();
   });
 
@@ -272,7 +327,9 @@ describe("issues destination accessibility", () => {
     renderWithQuery(<IssuesDestination caseId={CASE} />);
 
     await screen.findAllByRole("article");
-    expect(screen.getAllByRole("button", { name: /recheck now/i })).toHaveLength(1);
+    expect(
+      screen.getAllByRole("button", { name: /recheck now/i }),
+    ).toHaveLength(1);
   });
 
   it("mounts the live region before it has anything to say", async () => {
@@ -297,11 +354,16 @@ describe("issues destination accessibility", () => {
     const populated = aQueue({
       open_count: 2,
       groups: [
-        { action_group: "CONFIRM_INFORMATION", issues: [anIssue(), anIssue({ id: "i2" })] },
+        {
+          action_group: "CONFIRM_INFORMATION",
+          issues: [anIssue(), anIssue({ id: "i2" })],
+        },
       ],
     });
     const cleared = aQueue({
-      history: [anIssue({ status: "RESOLVED", resolved_at: "2026-08-20T11:00:00Z" })],
+      history: [
+        anIssue({ status: "RESOLVED", resolved_at: "2026-08-20T11:00:00Z" }),
+      ],
     });
     let recalculated = false;
     get.mockImplementation((path: string) => {
@@ -312,11 +374,15 @@ describe("issues destination accessibility", () => {
     });
     post.mockImplementation(() => {
       recalculated = true;
-      return Promise.resolve({ data: { requirements: [{ conclusion: "SUPPORTED" }] } });
+      return Promise.resolve({
+        data: { requirements: [{ conclusion: "SUPPORTED" }] },
+      });
     });
     renderWithQuery(<IssuesDestination caseId={CASE} />);
 
-    fireEvent.click(await screen.findByRole("button", { name: /recheck now/i }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: /recheck now/i }),
+    );
 
     await waitFor(() =>
       expect(screen.getByText(/2 issues resolved/i)).toBeInTheDocument(),
@@ -341,7 +407,8 @@ describe("issues destination accessibility", () => {
           "The last attempt to recheck your conclusions did not finish. Nothing was " +
           "changed: the figures on your case are still the ones worked out before your " +
           "last edit.",
-        impact: "Any conclusion awaiting a recheck stays out of date until one succeeds.",
+        impact:
+          "Any conclusion awaiting a recheck stays out of date until one succeeds.",
         affected_object_type: "Case",
         affected_object_id: CASE,
         opened_at: "2026-08-20T11:00:00Z",
@@ -354,17 +421,24 @@ describe("issues destination accessibility", () => {
         aQueue({
           open_count: 2,
           groups: [
-            { action_group: "CONFIRM_INFORMATION", issues: [aFailure(), anIssue()] },
+            {
+              action_group: "CONFIRM_INFORMATION",
+              issues: [aFailure(), anIssue()],
+            },
           ],
         }),
       );
       renderWithQuery(<IssuesDestination caseId={CASE} />);
 
       await screen.findAllByRole("article");
-      expect(screen.getByRole("button", { name: /try again/i })).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: /try again/i }),
+      ).toBeInTheDocument();
       expect(screen.queryByRole("button", { name: /recheck now/i })).toBeNull();
       // Still one control for the group: the failure changes its name, not its number.
-      expect(screen.getAllByRole("button", { name: /try again/i })).toHaveLength(1);
+      expect(
+        screen.getAllByRole("button", { name: /try again/i }),
+      ).toHaveLength(1);
     });
 
     it("offers a retry even when nothing else in the group is stale", async () => {
@@ -373,20 +447,26 @@ describe("issues destination accessibility", () => {
       queueReturns(
         aQueue({
           open_count: 1,
-          groups: [{ action_group: "CONFIRM_INFORMATION", issues: [aFailure()] }],
+          groups: [
+            { action_group: "CONFIRM_INFORMATION", issues: [aFailure()] },
+          ],
         }),
       );
       renderWithQuery(<IssuesDestination caseId={CASE} />);
 
       await screen.findByRole("article");
-      expect(screen.getByRole("button", { name: /try again/i })).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: /try again/i }),
+      ).toBeInTheDocument();
     });
 
     it("never reads as reassurance", async () => {
       queueReturns(
         aQueue({
           open_count: 1,
-          groups: [{ action_group: "CONFIRM_INFORMATION", issues: [aFailure()] }],
+          groups: [
+            { action_group: "CONFIRM_INFORMATION", issues: [aFailure()] },
+          ],
         }),
       );
       renderWithQuery(<IssuesDestination caseId={CASE} />);
@@ -394,7 +474,9 @@ describe("issues destination accessibility", () => {
       await screen.findByRole("article");
       // The two claims that must not appear beside a failed recheck.
       expect(screen.queryByText(/Nothing needs your attention/i)).toBeNull();
-      expect(screen.queryByText(/Every conclusion reached so far is current/i)).toBeNull();
+      expect(
+        screen.queryByText(/Every conclusion reached so far is current/i),
+      ).toBeNull();
       // And the one that must: the figures did not move, which is why they are still old.
       expect(
         screen.getByText(/still the ones worked out before your last edit/i),
@@ -412,7 +494,10 @@ describe("issues destination accessibility", () => {
       const after = aQueue({
         open_count: 2,
         groups: [
-          { action_group: "CONFIRM_INFORMATION", issues: [aFailure(), anIssue()] },
+          {
+            action_group: "CONFIRM_INFORMATION",
+            issues: [aFailure(), anIssue()],
+          },
         ],
       });
       let attempted = false;
@@ -428,7 +513,9 @@ describe("issues destination accessibility", () => {
       });
       renderWithQuery(<IssuesDestination caseId={CASE} />);
 
-      fireEvent.click(await screen.findByRole("button", { name: /recheck now/i }));
+      fireEvent.click(
+        await screen.findByRole("button", { name: /recheck now/i }),
+      );
 
       // One announcer, not two: the assertive alert reports the failure, and the polite
       // region stays silent rather than repeating the same fact in different words.
@@ -436,7 +523,9 @@ describe("issues destination accessibility", () => {
         expect(screen.getByRole("alert")).toHaveTextContent(/didn’t finish/i),
       );
       // The refetch brought the durable record in, and the user is looking at it.
-      expect(await screen.findByRole("button", { name: /try again/i })).toBeInTheDocument();
+      expect(
+        await screen.findByRole("button", { name: /try again/i }),
+      ).toBeInTheDocument();
       expect(screen.queryByText(/Recheck finished/i)).toBeNull();
     });
   });
@@ -465,7 +554,9 @@ describe("issues destination accessibility", () => {
           ],
         },
       ],
-      history: [anIssue({ status: "RESOLVED", resolved_at: "2026-08-20T11:00:00Z" })],
+      history: [
+        anIssue({ status: "RESOLVED", resolved_at: "2026-08-20T11:00:00Z" }),
+      ],
     });
     let recalculated = false;
     get.mockImplementation((path: string) => {
@@ -476,14 +567,20 @@ describe("issues destination accessibility", () => {
     });
     post.mockImplementation(() => {
       recalculated = true;
-      return Promise.resolve({ data: { requirements: [{ conclusion: "SUPPORTED" }] } });
+      return Promise.resolve({
+        data: { requirements: [{ conclusion: "SUPPORTED" }] },
+      });
     });
     renderWithQuery(<IssuesDestination caseId={CASE} />);
 
-    fireEvent.click(await screen.findByRole("button", { name: /recheck now/i }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: /recheck now/i }),
+    );
 
     await waitFor(() =>
-      expect(screen.getByText(/Recheck finished\. Nothing was resolved\./i)).toBeInTheDocument(),
+      expect(
+        screen.getByText(/Recheck finished\. Nothing was resolved\./i),
+      ).toBeInTheDocument(),
     );
     await waitFor(() =>
       expect(document.activeElement).toBe(
@@ -512,7 +609,9 @@ describe("issues destination accessibility", () => {
         return Promise.resolve({
           data: aQueue({
             open_count: 1,
-            groups: [{ action_group: "FOR_YOUR_AWARENESS", issues: [dismissible] }],
+            groups: [
+              { action_group: "FOR_YOUR_AWARENESS", issues: [dismissible] },
+            ],
           }),
         });
       }
@@ -521,10 +620,14 @@ describe("issues destination accessibility", () => {
     post.mockImplementation((path: string) => {
       if (path.includes("dismiss")) {
         dismissed = true;
-        return Promise.resolve({ data: { ...dismissible, status: "DISMISSED" } });
+        return Promise.resolve({
+          data: { ...dismissible, status: "DISMISSED" },
+        });
       }
       recalculated = true;
-      return Promise.resolve({ data: { requirements: [{ conclusion: "SUPPORTED" }] } });
+      return Promise.resolve({
+        data: { requirements: [{ conclusion: "SUPPORTED" }] },
+      });
     });
     renderWithQuery(<IssuesDestination caseId={CASE} />);
 
@@ -533,7 +636,9 @@ describe("issues destination accessibility", () => {
     fireEvent.click(await screen.findByRole("button", { name: /^Dismiss/i }));
 
     await waitFor(() =>
-      expect(screen.getByText(/dismissed\. It is listed under Settled\./i)).toBeInTheDocument(),
+      expect(
+        screen.getByText(/dismissed\. It is listed under Settled\./i),
+      ).toBeInTheDocument(),
     );
     expect(screen.queryByText(/Recheck finished/i)).toBeNull();
     expect(recalculated).toBe(false);
@@ -551,9 +656,13 @@ describe("issues destination accessibility", () => {
     post.mockImplementation(() => new Promise(() => {})); // never settles
     renderWithQuery(<IssuesDestination caseId={CASE} />);
 
-    fireEvent.click(await screen.findByRole("button", { name: /recheck now/i }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: /recheck now/i }),
+    );
 
-    expect(await screen.findByText(/Rechecking your conclusions\./i)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/Rechecking your conclusions\./i),
+    ).toBeInTheDocument();
   });
 
   it("names what the group control rechecks, for a control list with no context", async () => {
@@ -568,7 +677,9 @@ describe("issues destination accessibility", () => {
     // The visible label still matches for speech control (2.5.3); the hidden suffix
     // supplies the antecedent "Try again" has none of after a reload.
     expect(
-      await screen.findByRole("button", { name: /recheck now — recheck your conclusions/i }),
+      await screen.findByRole("button", {
+        name: /recheck now — recheck your conclusions/i,
+      }),
     ).toBeInTheDocument();
   });
 
@@ -612,15 +723,13 @@ describe("issues destination accessibility", () => {
     fireEvent.click(screen.getByRole("button", { name: "Recalculate" }));
 
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: /rechecking…/i })).toHaveAttribute(
-        "aria-disabled",
-        "true",
-      ),
+      expect(
+        screen.getByRole("button", { name: /rechecking…/i }),
+      ).toHaveAttribute("aria-disabled", "true"),
     );
-    expect(screen.getByRole("button", { name: "Recalculating…" })).toHaveAttribute(
-      "aria-disabled",
-      "true",
-    );
+    expect(
+      screen.getByRole("button", { name: "Recalculating…" }),
+    ).toHaveAttribute("aria-disabled", "true");
   });
 
   it("does not claim everything is current when conclusions are stale", async () => {
@@ -630,9 +739,13 @@ describe("issues destination accessibility", () => {
     renderWithQuery(<IssuesDestination caseId={CASE} />);
 
     expect(
-      await screen.findByText(/have not been rechecked since your inputs changed/i),
+      await screen.findByText(
+        /have not been rechecked since your inputs changed/i,
+      ),
     ).toBeInTheDocument();
-    expect(screen.queryByText(/Every conclusion reached so far is current/i)).toBeNull();
+    expect(
+      screen.queryByText(/Every conclusion reached so far is current/i),
+    ).toBeNull();
   });
 });
 
@@ -665,7 +778,9 @@ describe("dismissing an issue", () => {
 
     // Two cards, one Dismiss: the control's absence mirrors the server's refusal.
     await screen.findAllByRole("article");
-    expect(screen.getAllByRole("button", { name: /^dismiss/i })).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: /^dismiss/i })).toHaveLength(
+      1,
+    );
   });
 
   it("does not hide the card before the server has agreed", async () => {
@@ -675,15 +790,21 @@ describe("dismissing an issue", () => {
     queueReturns(
       aQueue({
         open_count: 1,
-        groups: [{ action_group: "FOR_YOUR_AWARENESS", issues: [dismissibleIssue()] }],
+        groups: [
+          { action_group: "FOR_YOUR_AWARENESS", issues: [dismissibleIssue()] },
+        ],
       }),
     );
-    post.mockImplementation(() => new Promise((resolve) => (resolveDismiss = resolve)));
+    post.mockImplementation(
+      () => new Promise((resolve) => (resolveDismiss = resolve)),
+    );
     renderWithQuery(<IssuesDestination caseId={CASE} />);
 
     fireEvent.click(await screen.findByRole("button", { name: /^dismiss/i }));
 
-    await waitFor(() => expect(screen.getByText("Dismissing…")).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByText("Dismissing…")).toBeInTheDocument(),
+    );
     expect(screen.getByRole("article", { name: /Japan/i })).toBeInTheDocument();
     resolveDismiss({ data: { id: "i-dismissible", status: "DISMISSED" } });
   });
@@ -691,7 +812,9 @@ describe("dismissing an issue", () => {
   it("announces the dismissal from outside the card it removes", async () => {
     const populated = aQueue({
       open_count: 1,
-      groups: [{ action_group: "FOR_YOUR_AWARENESS", issues: [dismissibleIssue()] }],
+      groups: [
+        { action_group: "FOR_YOUR_AWARENESS", issues: [dismissibleIssue()] },
+      ],
     });
     const cleared = aQueue({
       history: [dismissibleIssue({ status: "DISMISSED" })],
@@ -705,23 +828,31 @@ describe("dismissing an issue", () => {
     });
     post.mockImplementation(() => {
       dismissed = true;
-      return Promise.resolve({ data: { id: "i-dismissible", status: "DISMISSED" } });
+      return Promise.resolve({
+        data: { id: "i-dismissible", status: "DISMISSED" },
+      });
     });
     renderWithQuery(<IssuesDestination caseId={CASE} />);
 
     fireEvent.click(await screen.findByRole("button", { name: /^dismiss/i }));
 
     await waitFor(() =>
-      expect(screen.getByText(/Japan has uncertain dates dismissed/i)).toBeInTheDocument(),
+      expect(
+        screen.getByText(/Japan has uncertain dates dismissed/i),
+      ).toBeInTheDocument(),
     );
-    expect(screen.getByRole("heading", { name: /settled/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: /settled/i }),
+    ).toBeInTheDocument();
   });
 
   it("says the issue is still open when dismissal fails", async () => {
     queueReturns(
       aQueue({
         open_count: 1,
-        groups: [{ action_group: "FOR_YOUR_AWARENESS", issues: [dismissibleIssue()] }],
+        groups: [
+          { action_group: "FOR_YOUR_AWARENESS", issues: [dismissibleIssue()] },
+        ],
       }),
     );
     post.mockResolvedValue({ data: undefined, error: { detail: "nope" } });
@@ -761,7 +892,9 @@ describe("dismissing more than one issue", () => {
     queueReturns(
       aQueue({
         open_count: 2,
-        groups: [{ action_group: "FOR_YOUR_AWARENESS", issues: [first, second] }],
+        groups: [
+          { action_group: "FOR_YOUR_AWARENESS", issues: [first, second] },
+        ],
       }),
     );
     post.mockImplementation(() => new Promise(() => {}));
@@ -771,7 +904,9 @@ describe("dismissing more than one issue", () => {
     expect(buttons).toHaveLength(2);
     fireEvent.click(buttons[0]!);
 
-    await waitFor(() => expect(screen.getByText("Dismissing…")).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByText("Dismissing…")).toBeInTheDocument(),
+    );
     // The other card's control is refused while the first is in flight.
     const stillIdle = screen.getAllByRole("button", { name: /^dismiss/i })[1]!;
     expect(stillIdle).toHaveAttribute("aria-disabled", "true");
@@ -861,7 +996,141 @@ describe("where an issue points", () => {
     );
     renderWithQuery(<IssuesDestination caseId={CASE} />);
 
-    const link = await screen.findByRole("link", { name: "Open your documents" });
+    const link = await screen.findByRole("link", {
+      name: "Open your documents",
+    });
     expect(link).toHaveAttribute("href", `/cases/${CASE}/evidence`);
+  });
+});
+
+describe("resolving a conflict", () => {
+  function aConflict(overrides: Record<string, unknown> = {}) {
+    return anIssue({
+      id: "c1",
+      issue_type: "CONFLICTING_CLAIMS",
+      severity: "ACTION_REQUIRED",
+      dismissibility: "NOT_DISMISSIBLE",
+      action_group: "CONFIRM_INFORMATION",
+      title: "Your trip to Rome and Rome booking give different dates",
+      body: "You recorded returning on 2023-07-01; the document says 2023-07-02.",
+      impact:
+        "While the two disagree, this trip is left out of your confirmed totals, so they read lower than your full history.",
+      affected_object_type: "TravelRecord",
+      affected_object_id: "trip-11",
+      ...overrides,
+    });
+  }
+
+  function withConflict() {
+    queueReturns(
+      aQueue({
+        open_count: 1,
+        groups: [
+          { action_group: "CONFIRM_INFORMATION", issues: [aConflict()] },
+        ],
+      }),
+    );
+  }
+
+  it("offers to take the document's dates, naming the trip off-screen", async () => {
+    withConflict();
+    renderWithQuery(<IssuesDestination caseId={CASE} />);
+
+    const button = await screen.findByRole("button", {
+      name: /Use the dates from the document for Your trip to Rome/,
+    });
+    // The visible label stays "Use the dates from the document" so speech input still
+    // matches it (2.5.3); the trip name is the off-screen half.
+    expect(button.textContent).toContain("Use the dates from the document");
+  });
+
+  it("posts to the trip, not to the issue", async () => {
+    // The command changes a travel record. Addressing it by issue id would make the queue
+    // the owner of a residence write, and the issue is derived — it has no identity the
+    // command should depend on.
+    withConflict();
+    post.mockResolvedValue({ data: { id: "trip-11" } });
+    renderWithQuery(<IssuesDestination caseId={CASE} />);
+
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: /Use the dates from the document/,
+      }),
+    );
+
+    await waitFor(() => expect(post).toHaveBeenCalled());
+    const [path, options] = post.mock.calls[0]!;
+    expect(path).toBe(
+      "/api/v1/cases/{case_id}/travel-records/{travel_record_id}/adopt-document-dates",
+    );
+    expect(options.params.path.travel_record_id).toBe("trip-11");
+    // No body: the disagreement is already determined by the case's own state, and letting
+    // the client name the dates would make this an edit wearing a resolution's name.
+    expect(options.body).toBeUndefined();
+  });
+
+  it("says the totals still need working out", async () => {
+    // Adopting stales the residence results; it does not recalculate them. A message that
+    // stopped at "applied" would let a user read the unchanged total as evidence that
+    // adopting the document made no difference.
+    withConflict();
+    post.mockResolvedValue({ data: { id: "trip-11" } });
+    renderWithQuery(<IssuesDestination caseId={CASE} />);
+
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: /Use the dates from the document/,
+      }),
+    );
+
+    await waitFor(() =>
+      expect(screen.getByText(/need working out again/)).toBeTruthy(),
+    );
+  });
+
+  it("names the two existing ways to keep your own date", async () => {
+    // No third button. A "keep my date" control would need a persisted acknowledged state
+    // whose effect is a case where two sources disagree and the product shows no problem.
+    withConflict();
+    renderWithQuery(<IssuesDestination caseId={CASE} />);
+
+    expect(
+      await screen.findByText(
+        /detach the document from this trip or reject the value/,
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Keep my date/i })).toBeNull();
+  });
+
+  it("offers no Dismiss, because a conflict cannot be set aside", async () => {
+    // MVP §8.11: conflicting claims remain unresolved until the user chooses or provides
+    // another source.
+    withConflict();
+    renderWithQuery(<IssuesDestination caseId={CASE} />);
+
+    await screen.findByRole("button", {
+      name: /Use the dates from the document/,
+    });
+    expect(screen.queryByRole("button", { name: /Dismiss/ })).toBeNull();
+  });
+
+  it("says plainly when the conflict had already gone", async () => {
+    // The queue can be a few seconds stale, so arriving with nothing to do is expected.
+    // "Something went wrong" would send the user looking for a fault that is not there.
+    withConflict();
+    post.mockResolvedValue({
+      error: { code: "NO_CONFLICT_TO_RESOLVE", detail: "nothing to change" },
+      response: { status: 409 },
+    });
+    renderWithQuery(<IssuesDestination caseId={CASE} />);
+
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: /Use the dates from the document/,
+      }),
+    );
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toMatch(/nothing to apply/i);
   });
 });
