@@ -542,6 +542,7 @@ function AdoptAction({
   // observer, and starting a second adoption detaches the first — whose success would then
   // be announced nowhere and whose failure would render no alert.
   const blocked = state.isPending;
+  const hintId = `adopt-hint-${issue.id}`;
 
   return (
     <span className="cw-issue-card__dismiss">
@@ -549,6 +550,13 @@ function AdoptAction({
         type="button"
         className="cw-action"
         aria-disabled={blocked}
+        // The alternative is read *with* the control, not merely printed beside it. A
+        // screen-reader user moving by control hears only the button's name, so without
+        // this they would never learn there is another way to resolve a conflict — and the
+        // one control on offer applies the document, which is the wrong answer whenever
+        // the document is not about this trip. Verbose, and worth it: it is announced at
+        // the moment the user is deciding whether to press.
+        aria-describedby={hintId}
         onClick={() => (blocked ? undefined : onAdopt(issue))}
       >
         {busy ? "Applying…" : "Use the dates from the document"}
@@ -564,7 +572,7 @@ function AdoptAction({
           rejecting the value are both already commands. Saying so beats a third control
           that would have to invent a state where two sources disagree and nothing is
           wrong. */}
-      <span className="cw-issue-card__dismiss-hint">
+      <span className="cw-issue-card__dismiss-hint" id={hintId}>
         If your record is right, detach the document from this trip or reject
         the value where you confirmed it.
       </span>

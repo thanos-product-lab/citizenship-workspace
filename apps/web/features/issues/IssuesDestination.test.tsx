@@ -1088,6 +1088,24 @@ describe("resolving a conflict", () => {
     );
   });
 
+  it("reads the alternative out with the control, not just beside it", async () => {
+    // A screen-reader user moving by control hears only the button's name. Without the
+    // association they never learn another path exists — and the one control on offer
+    // applies the document, which is the wrong answer whenever the document is not about
+    // this trip.
+    withConflict();
+    renderWithQuery(<IssuesDestination caseId={CASE} />);
+
+    const button = await screen.findByRole("button", {
+      name: /Use the dates from the document/,
+    });
+    const describedBy = button.getAttribute("aria-describedby");
+    expect(describedBy).toBeTruthy();
+    expect(document.getElementById(describedBy!)?.textContent).toMatch(
+      /detach the document from this trip or reject the value/,
+    );
+  });
+
   it("names the two existing ways to keep your own date", async () => {
     // No third button. A "keep my date" control would need a persisted acknowledged state
     // whose effect is a case where two sources disagree and the product shows no problem.

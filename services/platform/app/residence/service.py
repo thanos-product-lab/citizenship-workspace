@@ -319,6 +319,17 @@ def adopt_document_dates(
     how a user comes to believe they resolved something — and this one is reachable from a
     queue that may be a few seconds stale.
 
+    **No `expected_revision`, unlike every other travel command**, and that is a decision
+    rather than an omission. The others edit a value the client read, so a revision token
+    is what stops them overwriting an edit made since. This one asks the server to resolve
+    a disagreement the *server* determined: the client sends no dates, and the conflict is
+    re-detected here, so there is no stale client view for a token to protect against.
+
+    Concurrency is handled a layer up instead. `_require_active_writable_case` takes the
+    case row lock for the transaction (ADR-0005 R2), so two adoptions — or an adoption
+    racing an edit — serialise. The second one re-detects, finds the two sources now agree,
+    and gets the 409 above rather than writing a second identical version.
+
     Goes through `_emit_travel`, so dependants are staled in this transaction by the path
     every other travel write already uses. No new staleness mechanism, and none wanted:
     what changed *is* a travel record.

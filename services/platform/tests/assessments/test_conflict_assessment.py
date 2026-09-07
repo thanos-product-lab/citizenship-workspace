@@ -306,8 +306,11 @@ def test_the_queue_names_both_values_and_the_document(api: Api, db_session: Sess
     assert issue["affected_object_id"] == trip_id
     assert "Rome" in issue["title"]
     assert "Rome booking" in issue["title"]
-    assert "2023-07-01" in issue["body"]
-    assert "2023-07-02" in issue["body"]
+    # Formatted, not ISO. `format_date` exists because UI/UX §13.3 says an ISO string in
+    # a sentence reads as machine output, and this card's whole job is making two
+    # human-entered dates comparable.
+    assert "1 July 2023" in issue["body"]
+    assert "2 July 2023" in issue["body"]
 
 
 def test_a_conflict_cannot_be_dismissed(api: Api, db_session: Session) -> None:

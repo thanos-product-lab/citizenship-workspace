@@ -480,8 +480,13 @@ def _conflicting_body(parameters: Parameters) -> str:
         if not isinstance(entry, dict):
             continue
         label = labels.get(str(entry.get("field")), "You recorded")
+        # `format_date`, not the raw parameter. The values arrive as ISO because that is
+        # how they are stored on the limitation, and UI/UX §13.3 is the reason this
+        # function exists at all: an ISO string in a sentence reads as machine output, on
+        # the one card whose job is to make two human-entered dates comparable.
         sentences.append(
-            f"{label} on {entry.get('recorded')}; the document says {entry.get('documented')}."
+            f"{label} on {format_date(entry.get('recorded'))}; "
+            f"the document says {format_date(entry.get('documented'))}."
         )
     return " ".join(sentences) or "This trip and the document attached to it give different dates."
 
