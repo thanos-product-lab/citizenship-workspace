@@ -1,0 +1,75 @@
+M8 slice 4 — the total-absences result explaining a conflict
+============================================================
+
+Captured 7 September 2026 from the canonical synthetic demo case, after the
+amended Italy booking was uploaded, attached to trip 11, and its return date
+confirmed as 11 May 2026 against a record that says 10 May.
+
+This is the intermediate state SYNTHETIC_DEMO_CASE.md §7 was rewritten to
+include: the conflict exists, the trip is held back, and nothing has been
+resolved yet.
+
+Total absences — Near threshold
+
+  434 confirmed days against a threshold of 450
+
+  434 days outside the UK across your five-year qualifying period, from
+  confirmed travel records, against a threshold of 450. Records whose dates a
+  document disputes would add 5 days, bringing the total to 439. Including
+  those, that is close to the standard threshold.
+
+HOW TOTAL ABSENCES WAS WORKED OUT
+  Period measured                                  16 Apr 2022 to 15 Apr 2027
+  Travel records read (every active record)                                12
+  Days outside the UK (from confirmed records only)                  434 days
+  Additional days records with disputed dates would add                5 days
+  Standard threshold                                                 450 days
+
+FACTS USED
+  Proposed application date          15 April 2027            Version 1
+  Return date, confirmed from a document    11 May 2026
+    "You confirmed this from a document. It disagrees with the trip you
+     recorded, so that trip was held back from the confirmed total."
+
+TRAVEL RECORDS USED
+  11 of the 12 travel records this assessment read counted towards the figure.
+  Each record below says whether it did, and why.
+
+  ...
+  Trip to Italy            4 May 2026 to 10 May 2026        Confirmed
+    Confirmed · conflicting dates
+    ✎ Did not count towards the confirmed figure.
+  ...
+
+EVIDENCE USED
+  Document for Italy   Attached   A document you attached to this trip.
+  (one row per active evidence link — the ALL_ACTIVE_EVIDENCE_LINKS fan-out)
+
+LIMITATIONS
+  The dates on this trip conflict between sources, so it is not counted as
+  confirmed.                              review required · affects 1 record
+
+RULE USED
+  RULE VERSION 1.1.0     RULE SET 2026.07.0     STATUS active
+
+
+Why this capture exists
+-----------------------
+
+Every line above except the rule version was wrong before the fix recorded in
+migration `0035`. The page said "All 12 travel records this assessment read were
+confirmed with exact dates, so all of them counted towards the figure" directly
+above a total that had excluded one; it attributed the five-day gap to "records
+you have not confirmed", which the user had just confirmed; it listed the
+disputed trip as "Confirmed · exact dates"; it said "No documents are linked to
+these records. Every figure above rests on dates you entered yourself, not on
+evidence the system has checked"; it named no fact and recorded no limitation.
+
+All of it came from reading the stored `TravelRecordVersion`, which still says
+CONFIRMED with EXACT dates because the conflict is derived, not stored
+(EVIDENCE_AND_CLAIM_LIFECYCLE_RFC §42). A result has to explain itself from what
+it recorded, not from what the rows say today.
+
+Before that, `residence.total_absences` was not even restaled when the fact was
+confirmed: it stood CURRENT at 439 until some unrelated recalculation moved it
+to 434.

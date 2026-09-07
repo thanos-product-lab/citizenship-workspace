@@ -377,3 +377,34 @@ date-shaped rather than for that one sentence.
 The **announcement** cannot be photographed: "Confirmed" and "Corrected" are read into a
 live region, because they are different outcomes and the badge only tells someone who can
 see it.
+
+### M8 slice 4 (conflict, stale, recalculate)
+
+`m8/m8-slice4-conflict-explained.txt` — a terminal-style capture rather than a screenshot,
+because the point is a page's whole explanation surface rather than one control.
+
+The frame is the **intermediate state**: the amended Italy booking is attached to trip 11,
+its return date has been confirmed as 11 May 2026 against a record that says 10 May, and
+nothing has been resolved. `residence.total_absences` reads *434 confirmed days*, the
+disputed trip says *"Confirmed · conflicting dates — Did not count towards the confirmed
+figure"*, and the fact that caused it is named in Facts used. On the demo case the arc is
+439 → **434** → 440, and all three results stay inspectable with their rule version.
+
+What makes this worth keeping is that **every one of those sentences was wrong an hour
+earlier.** The page said *"All 12 travel records this assessment read were confirmed with
+exact dates, so all of them counted towards the figure"* directly above a total that had
+excluded one of them; it blamed the five-day gap on *"records you have not confirmed"*,
+which the user had just confirmed; it printed *"No documents are linked to these records.
+Every figure above rests on dates you entered yourself"* on a result a document had moved;
+and it recorded no limitation at all.
+
+All of it came from reading the stored `TravelRecordVersion` — which still says CONFIRMED
+with EXACT dates, because the conflict is derived rather than stored
+(EVIDENCE_AND_CLAIM_LIFECYCLE_RFC §42). Slice 4 gave a trip a *second* way to fail the §6.1
+trust gate and taught only `residence.travel_consistency` about it. Migration `0035` and
+the resolver change are the correction; the capture is what the correction looks like.
+
+Underneath the copy was the worse half: `residence.total_absences` declared no `CASE_FACT`
+dependency, so confirming the booking left it standing **CURRENT at 439** until some
+unrelated recalculation moved it to 434. Found by driving this page in Chrome after the
+tests were green — the tests were green because two of them asserted the defect.
