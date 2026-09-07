@@ -177,6 +177,37 @@ def attach_evidence(
     return _travel_record_with_coverage(session, case, travel_record_id)
 
 
+@travel_records_router.post(
+    "/{travel_record_id}/adopt-document-dates",
+    response_model=TravelRecordResponse,
+    status_code=status.HTTP_200_OK,
+)
+def adopt_document_dates(
+    travel_record_id: uuid.UUID,
+    case: Annotated[ApplicationCase, Depends(require_case_access)],
+    session: Annotated[Session, Depends(get_tenant_session)],
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+) -> TravelRecordResponse:
+    """Resolve a conflict by taking the attached document's dates as the trip's.
+
+    **No body.** There is nothing for the client to choose: the disagreement is already
+    determined by the case's own state, and letting a caller name the dates would make this
+    an edit wearing a resolution's name — one a client could use to write any date it liked
+    while recording `entry_source = CONFIRMED_CLAIM`.
+
+    200 rather than 201, like `attach_evidence`: what comes back is the trip, which already
+    existed. 409 when nothing is in conflict.
+    """
+    service.adopt_document_dates(
+        session,
+        case=case,
+        user=user,
+        travel_record_id=travel_record_id,
+        expected_revision=None,
+    )
+    return _travel_record_with_coverage(session, case, travel_record_id)
+
+
 @travel_records_router.delete(
     "/{travel_record_id}/evidence/{evidence_item_id}", response_model=TravelRecordResponse
 )

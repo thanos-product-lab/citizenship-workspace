@@ -33,6 +33,7 @@ from app.evidence.domain import utcnow
 from app.requirements.models import DependencyInputKind
 from app.residence.csv_import import ParsedImport, parse_import
 from app.residence.domain import (
+    DateConfidence,
     EntrySource,
     ProposedApplicationDate,
     ProposedApplicationDateChanged,
@@ -45,6 +46,7 @@ from app.residence.domain import (
     TravelRecordRemoved,
     TravelRecordVersion,
     TravelRecordVersionCreated,
+    TravelReviewState,
 )
 from app.residence.repository import (
     ProposedApplicationDateRepository,
@@ -55,6 +57,7 @@ from app.shared.errors import (
     ConcurrencyConflict,
     CsvImportInvalid,
     IllegalTransition,
+    NoConflictToResolve,
     TravelRecordNotFound,
 )
 from app.shared.messaging import DomainEvent
@@ -287,6 +290,112 @@ def edit_travel_record(
     )
     session.refresh(record)
     return TravelRecordOutcome(record=record, version=version)
+
+
+def adopt_document_dates(
+    session: Session,
+    *,
+    case: ApplicationCase,
+    user: CurrentUser,
+    travel_record_id: uuid.UUID,
+    expected_revision: int | None,
+) -> TravelRecordOutcome:
+    """Resolve a conflict in the document's favour: take its dates as the trip's.
+
+    **One new version carrying every conflicting date**, not one per field. A booking whose
+    departure and return both disagree is one decision the user made, and two versions
+    would make the history read as two — with a state in between where half the document
+    had been adopted and the trip agreed with neither source.
+
+    `entry_source = CONFIRMED_CLAIM`, which is the first producer that enum member has had.
+    It is what lets a later reader tell a date the user typed from a date they took off a
+    document they had already confirmed — the same distinction `CSV_IMPORT` exists for.
+
+    `date_confidence = EXACT` and `review_state = CONFIRMED`: the value came from a
+    document the user read and confirmed, so it is as established as anything they typed.
+    The conflict disappears because the two sources now agree, not because it was dismissed.
+
+    **Refuses when nothing is in conflict** (409). An action that silently does nothing is
+    how a user comes to believe they resolved something — and this one is reachable from a
+    queue that may be a few seconds stale.
+
+    Goes through `_emit_travel`, so dependants are staled in this transaction by the path
+    every other travel write already uses. No new staleness mechanism, and none wanted:
+    what changed *is* a travel record.
+    """
+    _require_active_writable_case(session, case)
+    record = _load_record_in_case(session, case, travel_record_id)
+    if record.lifecycle_status is not TravelLifecycleStatus.ACTIVE:
+        raise IllegalTransition("cannot change a removed travel record")
+    _check_record_revision(record, expected_revision)
+
+    current = (
+        TravelRecordRepository.get_version(session, record.current_version_id)
+        if record.current_version_id is not None
+        else None
+    )
+    if current is None:  # pragma: no cover - an active record always has a version
+        raise IllegalTransition("this trip has no dates to change")
+
+    documented = _documented_dates_for(session, case, record.id)
+    if not documented:
+        raise NoConflictToResolve()
+
+    fields = TravelRecordFields(
+        destination_label=current.destination_label,
+        departure_date=documented.get("departure_date", current.departure_date),
+        return_date=documented.get("return_date", current.return_date),
+        date_confidence=DateConfidence.EXACT,
+        review_state=TravelReviewState.CONFIRMED,
+        destination_country_code=current.destination_country_code,
+        notes=current.notes,
+    )
+    version = _build_version(
+        record_id=record.id,
+        fields=fields,
+        version_number=current.version_number + 1,
+        created_by=user.user_id,
+        entry_source=EntrySource.CONFIRMED_CLAIM,
+        supersedes_version_id=current.id,
+    )
+    TravelRecordRepository.add_version(session, version)
+    _advance_record(record, version)
+
+    _emit_travel(
+        session,
+        user,
+        case_id=case.id,
+        event=TravelRecordVersionCreated(
+            aggregate_id=record.id,
+            version_number=version.version_number,
+            date_confidence=version.date_confidence,
+            review_state=version.review_state,
+            entry_source=version.entry_source,
+        ),
+        action="residence.document_dates_adopted",
+        target_id=version.id,
+    )
+    session.refresh(record)
+    return TravelRecordOutcome(record=record, version=version)
+
+
+def _documented_dates_for(
+    session: Session, case: ApplicationCase, travel_record_id: uuid.UUID
+) -> dict[str, date]:
+    """The confirmed document dates that disagree with this trip, by field.
+
+    Detection is `assessments.conflicts` — the same pure comparison the assessment runs, not
+    a second implementation of it. Two implementations would be free to disagree, and the
+    one place that must never happen is between what the queue offers to resolve and what
+    the assessment thinks is in conflict.
+    """
+    from app.assessments.service import detect_case_conflicts
+
+    return {
+        conflict.field: conflict.documented
+        for conflict in detect_case_conflicts(session, case.id)
+        if conflict.travel_record_id == travel_record_id
+    }
 
 
 def remove_travel_record(

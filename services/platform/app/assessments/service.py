@@ -719,6 +719,21 @@ def _gather_trips(
     )
 
 
+def detect_case_conflicts(session: Session, case_id: uuid.UUID) -> list[DateConflict]:
+    """Every disagreement in the case, for a caller that has not gathered trips already.
+
+    Public because the residence module's adopt command needs the same answer the
+    assessment reaches, and two implementations of "what is in conflict" would be free to
+    disagree — with the queue offering to resolve something the assessment does not think
+    is a conflict, or refusing to resolve something it does.
+    """
+    return _detect_conflicts(
+        session,
+        case_id,
+        TravelRecordRepository.list_active_with_current_version(session, case_id),
+    )
+
+
 def _detect_conflicts(
     session: Session,
     case_id: uuid.UUID,

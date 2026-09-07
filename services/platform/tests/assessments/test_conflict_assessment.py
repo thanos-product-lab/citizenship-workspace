@@ -349,3 +349,95 @@ def test_rejecting_the_claim_clears_the_conflict(api: Api, db_session: Session) 
         == ABSENT_DAYS
     )
     assert not _conflicts(api, case_id)
+
+
+def _adopt(api: Api, case_id: str, trip_id: str) -> Any:
+    return api("user_a").post(
+        f"/api/v1/cases/{case_id}/travel-records/{trip_id}/adopt-document-dates"
+    )
+
+
+def test_adopting_the_document_date_resolves_the_conflict_and_moves_the_total(
+    api: Api, db_session: Session
+) -> None:
+    """SYNTHETIC_DEMO_CASE §7, in miniature: the whole sequence the milestone exists to show.
+
+    Confirm → held back → adopt → recalculate → the figure moves and the conclusion does
+    not. The one-day change is the point: `conclusion` and `currency` are separate
+    dimensions (ADR-0001), and a fixture where the band also flipped would conflate them.
+    """
+    case_id, trip_id = _conflicting_case(api, db_session)
+    api("user_a").post(f"/api/v1/cases/{case_id}/assessments/recalculate")
+    before = _detail(api, case_id, "residence.total_absences")
+    assert before["summary_parameters"]["days"] == 0, "the disputed trip was counted"
+
+    adopted = _adopt(api, case_id, trip_id)
+    assert adopted.status_code == 200, adopted.text
+
+    # Staled by the trip write, in that command's own transaction.
+    assert _detail(api, case_id, "residence.total_absences")["currency"] == "STALE"
+
+    api("user_a").post(f"/api/v1/cases/{case_id}/assessments/recalculate")
+    after = _detail(api, case_id, "residence.total_absences")
+
+    # 30, not 29: the trip is a day longer now, and trusted again because nothing disagrees.
+    assert after["summary_parameters"]["days"] == ABSENT_DAYS + 1
+    assert after["currency"] == "CURRENT"
+    assert after["conclusion"] == before["conclusion"], "the conclusion moved; the band should not"
+    assert not _conflicts(api, case_id)
+    assert _detail(api, case_id, "residence.travel_consistency")["conclusion"] == "SUPPORTED"
+
+
+def test_adopting_records_that_the_dates_came_from_a_document(
+    api: Api, db_session: Session
+) -> None:
+    """`EntrySource.CONFIRMED_CLAIM`, whose first producer this is.
+
+    It is what lets a later reader tell a date the user typed from one they took off a
+    document they had already confirmed — and the previous version is retained, so the
+    history says what the trip used to claim.
+    """
+    from app.residence.domain import EntrySource, TravelRecordVersion
+
+    case_id, trip_id = _conflicting_case(api, db_session)
+    _adopt(api, case_id, trip_id)
+
+    db_session.expire_all()
+    versions = sorted(
+        db_session.scalars(
+            select(TravelRecordVersion).where(
+                TravelRecordVersion.travel_record_id == uuid.UUID(trip_id)
+            )
+        ),
+        key=lambda v: v.version_number,
+    )
+
+    assert len(versions) == 2, "the previous version was not retained"
+    assert versions[0].entry_source == EntrySource.MANUAL.value
+    assert versions[0].return_date.isoformat() == RECORDED_RETURN
+    assert versions[1].entry_source == EntrySource.CONFIRMED_CLAIM.value
+    assert versions[1].return_date.isoformat() == "2023-07-02"
+    assert versions[1].supersedes_version_id == versions[0].id
+
+
+def test_adopting_when_nothing_is_in_conflict_is_refused(api: Api, db_session: Session) -> None:
+    """**Mutation-table row 20.** An action that silently does nothing is how a user comes
+    to believe they resolved something — and this one is offered from a queue that can be a
+    few seconds stale, so arriving with nothing to do is expected, not exceptional."""
+    case_id, trip_id = _case_with_trip(api)
+    _attach_document(api, case_id, trip_id)
+
+    refused = _adopt(api, case_id, trip_id)
+
+    assert refused.status_code == 409
+    assert refused.json()["code"] == "NO_CONFLICT_TO_RESOLVE"
+
+
+def test_adopting_twice_is_refused_the_second_time(api: Api, db_session: Session) -> None:
+    """The double-click case, and the reason the refusal is a 409 rather than a silent
+    success: after the first adoption the two sources agree, so there is genuinely nothing
+    left to resolve and saying so is more honest than writing an identical version."""
+    case_id, trip_id = _conflicting_case(api, db_session)
+    assert _adopt(api, case_id, trip_id).status_code == 200
+
+    assert _adopt(api, case_id, trip_id).status_code == 409

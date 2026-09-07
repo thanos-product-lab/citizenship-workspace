@@ -139,6 +139,23 @@ class DocumentNotPreviewable(DomainError):
         super().__init__("this document cannot be shown here yet; it can still be downloaded")
 
 
+class NoConflictToResolve(DomainError):
+    """Nothing about this trip disagrees with a document attached to it.
+
+    A 409, not a 404 or a silent success: the trip is real and the caller's request was
+    well formed, and what is wrong is a state that has moved. The queue this action is
+    offered from can be a few seconds stale, and an action that silently did nothing is how
+    a user comes to believe they resolved something.
+    """
+
+    code = "NO_CONFLICT_TO_RESOLVE"
+
+    def __init__(self) -> None:
+        super().__init__(
+            "nothing on this trip disagrees with a document, so there is nothing to change"
+        )
+
+
 class TooManyCases(DomainError):
     """A user tried to open more cases than they are allowed to hold at once.
 
@@ -348,6 +365,13 @@ def register_exception_handlers(app: FastAPI) -> None:
         return JSONResponse(
             status_code=status.HTTP_409_CONFLICT,
             content={"detail": str(exc), "code": exc.code, "status": exc.status},
+        )
+
+    @app.exception_handler(NoConflictToResolve)
+    async def _no_conflict(_request: Request, exc: NoConflictToResolve) -> JSONResponse:
+        return JSONResponse(
+            status_code=status.HTTP_409_CONFLICT,
+            content={"detail": str(exc), "code": exc.code},
         )
 
     @app.exception_handler(DocumentNotPreviewable)
