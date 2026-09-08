@@ -1,0 +1,69 @@
+M8 — the residence timeline, after the trust gate got one implementation
+=======================================================================
+
+Captured 8 September 2026 from the canonical synthetic demo case, in the state
+SYNTHETIC_DEMO_CASE.md §7 reaches after the amended Italy booking is attached to
+trip 11 and its return date confirmed as 11 May 2026 against a record saying
+10 May.
+
+Residence timeline
+
+  The period being measured
+    Five-year qualifying period   16 April 2022 to 15 April 2027
+    First day tested              16 April 2022 — you were outside the UK on this day.
+    Final twelve months           16 April 2026 to 15 April 2027
+    Proposed application date     15 April 2027
+
+  434 days outside the UK across the qualifying period, and 12 days in the final
+  twelve months, from 12 recorded trips. 1 trip is disputed by a document and is
+  left out of those totals; counting them would give 439 days and 17 days.
+
+  Your trips, earliest first
+    ...
+    Italy    [!] Dates disputed
+             A document you attached gives different dates, so this trip is left
+             out of your confirmed totals. You can resolve it from Issues.
+             4 May 2026 to 10 May 2026                              5 days
+    ...
+
+    Total counted inside the qualifying period                    434 days
+      (screen reader) , the union of your counted trips' days inside 16 April
+      2022 to 15 April 2027. Overlapping days are counted once. 1 trip is
+      disputed by a document and is left out of those totals.
+
+  In the band, the disputed trip is drawn with a hatch — fill:
+  url(#cw-band-disputed) — rather than the solid bar of a counted trip or the
+  muted grey of an unconfirmed one. Three states, three textures, none of them
+  distinguished by hue.
+
+Requirements, same case, same moment:
+
+  residence.total_absences        NEAR_THRESHOLD  CURRENT  trusted 434  prov 439
+  residence.final_year_absences   SUPPORTED       CURRENT  trusted  12  prov  17
+  residence.travel_consistency    INCONSISTENT    CURRENT
+
+
+Why this capture exists
+-----------------------
+
+The two surfaces above are the point. Before this change the timeline read:
+
+  439 days outside the UK across the qualifying period ... from 12 recorded
+  trips.                                  [no mention of anything held back]
+
+  Italy   4 May 2026 to 10 May 2026   5 days      [no flag, counted]
+
+while the Requirements page next door said 434. The timeline decided whether a
+record counted by calling `counts_toward_trusted_total` on the stored row, which
+still reads CONFIRMED with EXACT dates — the conflict is derived, never stored
+(EVIDENCE_AND_CLAIM_LIFECYCLE_RFC §42). One question, two answers, and the
+reassuring one on the more prominent screen.
+
+Migration `0035` could not have reached it. That migration declares rule
+dependencies; a projection is a reader of the trust gate that the rule catalog
+cannot see. See ADR-0028.
+
+The copy is the other half. "Left out of your confirmed totals until you confirm
+its dates" was the only held-back sentence the screen had, and for a disputed
+trip it names a remedy the user already performed and that cannot resolve a
+conflict.

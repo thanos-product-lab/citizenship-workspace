@@ -408,3 +408,27 @@ Underneath the copy was the worse half: `residence.total_absences` declared no `
 dependency, so confirming the booking left it standing **CURRENT at 439** until some
 unrelated recalculation moved it to 434. Found by driving this page in Chrome after the
 tests were green — the tests were green because two of them asserted the defect.
+
+### M8 — the timeline agreeing with the assessment
+
+`m8/m8-timeline-agrees-with-the-assessment.txt` — the same disputed state as the slice-4
+capture, seen from the other surface, with both figures side by side: the timeline reads
+**434 days** and so does `residence.total_absences`.
+
+They did not. The timeline decided whether a record counted by calling
+`counts_toward_trusted_total` on the stored row, which still reads CONFIRMED with EXACT dates
+because the conflict is derived rather than stored. So it counted a trip the assessment was
+holding back and reported 439 next to a Requirements page reading 434 — one question, two
+answers, and the reassuring one on the more prominent screen.
+
+Worth keeping beside the slice-4 capture because it is the *same defect one layer out*, and
+because the thing that found it was not a test. Migration `0035` had just closed the rule-side
+version of this and could not reach it: a projection declares no dependencies and produces no
+results, so the rule catalog — the list ADR-0027 reasoned over — does not contain it. See
+ADR-0028 for the general shape.
+
+The second half is the copy. The screen had one held-back sentence, *"Left out of your
+confirmed totals until you confirm its dates"*, and for a disputed trip that names a remedy
+the user already performed and that cannot resolve a conflict. It now says **Dates disputed**
+and points at Issues. In the band the disputed trip is hatched rather than muted — three
+states, three textures, none distinguished by hue.
