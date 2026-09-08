@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
@@ -15,7 +15,8 @@ import { describe, expect, it } from "vitest";
  * Lives here rather than beside the tokens because `@cw/design-system` has no test runner
  * and adding one for three assertions is a larger change than the assertions are worth.
  */
-const TOKENS = join(process.cwd(), "../../packages/design-system/src/tokens.css");
+const ROOT = join(process.cwd(), "../..");
+const TOKENS = join(ROOT, "packages/design-system/src/tokens.css");
 const tokens = readFileSync(TOKENS, "utf8");
 
 /** What each role resolves to, per theme block, in source order. */
@@ -50,5 +51,74 @@ describe("shell tint", () => {
     const bg = valuesOf("cw-bg");
     expect(sunken[1]).toBe(bg[1]);
     expect(sunken[2]).toBe(bg[2]);
+  });
+});
+
+
+describe("every token referenced is a token that exists", () => {
+  /**
+   * The bug this exists for is invisible to every other kind of test.
+   *
+   * `fill: var(--cw-surface-subtle)` shipped in the timeline band. No such token is
+   * defined. CSS does not treat that as "no fill" — an invalid `var()` computes to
+   * `unset`, and `fill` is an *inherited* property whose initial value is `black`. So the
+   * disputed trip's hatch painted itself on a solid black tile and became the heaviest
+   * mark on the chart, outweighing the presence anchor the case turns on.
+   *
+   * Nothing caught it. `tsc` does not read CSS strings, the linter has no token vocabulary,
+   * jsdom resolves no custom properties so the component tests saw the literal string and
+   * stayed green, and a screenshot would have shown *a* mark and looked plausible. A typo
+   * in a token name is only visible by comparing two files, which is what this does.
+   */
+  const definitions = new Set(
+    [...tokens.matchAll(/(--cw-[a-z0-9-]+)\s*:/g)].map((match) => match[1]!),
+  );
+
+  /** Every `var(--cw-…)` in the app, the design system and the generated-free packages. */
+  function references(): Map<string, string[]> {
+    const found = new Map<string, string[]>();
+    const roots = [
+      join(ROOT, "apps/web/app"),
+      join(ROOT, "apps/web/components"),
+      join(ROOT, "apps/web/features"),
+      join(ROOT, "packages/design-system/src"),
+    ];
+    const walk = (dir: string) => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const full = join(dir, entry.name);
+        if (entry.isDirectory()) {
+          walk(full);
+          continue;
+        }
+        if (!/\.(tsx?|css)$/.test(entry.name)) continue;
+        // tokens.css is the definition site; a token referencing another token there is
+        // resolved by the same set and would otherwise report itself.
+        if (full === TOKENS) continue;
+        const text = readFileSync(full, "utf8");
+        for (const match of text.matchAll(/var\(\s*(--cw-[a-z0-9-]+)\s*([,)])/g)) {
+          // `var(--x, fallback)` is deliberate degradation, not a typo. Only the
+          // no-fallback form asserts the token exists.
+          if (match[2] !== ")") continue;
+          const name = match[1]!;
+          found.set(name, [...(found.get(name) ?? []), full.slice(ROOT.length + 1)]);
+        }
+      }
+    };
+    roots.forEach(walk);
+    return found;
+  }
+
+  it("resolves every var(--cw-…) used without a fallback", () => {
+    const undefinedTokens = [...references()]
+      .filter(([name]) => !definitions.has(name))
+      .map(([name, files]) => `${name} (${[...new Set(files)].join(", ")})`);
+
+    expect(undefinedTokens).toEqual([]);
+  });
+
+  it("found enough references to be checking something", () => {
+    // A guard on the guard: a walk that silently matched nothing would make the assertion
+    // above pass forever. The repo has hundreds; the exact number is not the point.
+    expect(references().size).toBeGreaterThan(30);
   });
 });

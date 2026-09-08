@@ -400,7 +400,12 @@ function PreviewPanel({
         id="app-date-preview-heading"
         ref={headingRef}
         tabIndex={-1}
-        style={{ margin: 0, fontSize: "var(--cw-text-md)" }}
+        // `--cw-text-base`, not `--cw-text-md`: the scale is xs/sm/base/lg/xl and has no
+        // `md`. The undefined token computed to `unset`, and `font-size` inherits, so this
+        // heading has always rendered at the parent's size — which *is* base. Naming the
+        // token it was already resolving to fixes the reference without redesigning the
+        // card. Found by `test/tokens.test.ts`, not by looking.
+        style={{ margin: 0, fontSize: "var(--cw-text-base)" }}
       >
         {isCurrentDate ? "Your current date" : "Preview — not saved"}
       </h4>
