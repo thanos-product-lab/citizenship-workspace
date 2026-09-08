@@ -2056,12 +2056,21 @@
   opacity: 0.75;
 }
 
-/* Unconfirmed records are hatched rather than recoloured. A different hue would be a
-   second meaning carried by colour alone; a different texture survives greyscale, and the
-   table says "Not confirmed" in words either way. */
+/* Records left out of the confirmed totals are muted or hatched rather than recoloured. A
+   different hue would be a second meaning carried by colour alone; a different texture
+   survives greyscale.
+
+   Two reasons, two textures, because there are two remedies. The table names them in words
+   — "Not confirmed" and "Dates disputed" — and it remains the artifact; but drawing both as
+   the same grey bar would let the picture assert a single state the words contradict. */
 .cw-band__trip--unconfirmed {
   fill: var(--cw-text-subtle);
   opacity: 0.45;
+}
+
+.cw-band__trip--disputed {
+  fill: url(#cw-band-disputed);
+  opacity: 0.9;
 }
 
 /* The trip covering the day presence is tested on. Outlined, not filled differently —

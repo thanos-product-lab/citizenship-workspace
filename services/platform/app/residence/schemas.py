@@ -498,12 +498,19 @@ class TimelineTripResponse(BaseModel):
 class TimelineTotalsResponse(BaseModel):
     qualifying_period_days: int
     final_year_days: int
-    #: Counting unconfirmed records too (RULES_SPEC §6.2) — a different sense of
-    #: "provisional" from the simulation's, and named to avoid borrowing that word.
-    qualifying_period_days_including_unconfirmed: int
-    final_year_days_including_unconfirmed: int
+    #: Counting every active record, held back or not (RULES_SPEC §6.2) — a different sense
+    #: of "provisional" from the simulation's, and named to avoid borrowing that word.
+    #:
+    #: Named for *all records* rather than for one reason: since M8 slice 4 a trip can be
+    #: held back because a document disputes its dates as well as because it was never
+    #: confirmed, and `..._including_unconfirmed` described half of what the figure held.
+    qualifying_period_days_including_all_records: int
+    final_year_days_including_all_records: int
     trip_count: int
-    unconfirmed_trip_count: int
+    #: Held back for any reason, and the disputed subset. Two fields because the remedies
+    #: differ — confirming fixes one and cannot fix the other.
+    held_back_trip_count: int
+    conflicted_trip_count: int
 
 
 class TimelineResponse(BaseModel):
@@ -522,6 +529,10 @@ class TimelineResponse(BaseModel):
     final_year_end: date
     presence_anchor: date
     presence_anchor_is_absent: bool
+    #: The same question counting held-back records. Published alongside rather than instead:
+    #: the view states where the user was on this day, and one flag would let it say so
+    #: confidently on the strength of a record the totals are refusing to count.
+    presence_anchor_is_absent_including_all_records: bool
     assessment_is_stale: bool
     totals: TimelineTotalsResponse
     trips: list[TimelineTripResponse]
@@ -536,6 +547,9 @@ class TimelineResponse(BaseModel):
             final_year_end=view.final_year.end,
             presence_anchor=view.presence_anchor,
             presence_anchor_is_absent=view.presence_anchor_is_absent,
+            presence_anchor_is_absent_including_all_records=(
+                view.presence_anchor_is_absent_including_all_records
+            ),
             assessment_is_stale=view.assessment_is_stale,
             totals=TimelineTotalsResponse(**vars(view.totals)),
             trips=[

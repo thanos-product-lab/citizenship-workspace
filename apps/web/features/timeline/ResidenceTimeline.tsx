@@ -78,6 +78,17 @@ function days(count: number): string {
   return count === 1 ? "1 day" : `${count} days`;
 }
 
+/**
+ * Held back because a document disputes its dates, rather than because it was never
+ * confirmed. Both fail the trust gate; only one is fixed by confirming.
+ *
+ * Read from `date_confidence` rather than from a dedicated flag: the server sets it to
+ * CONFLICTING on exactly the trips it excluded, so the two cannot drift apart.
+ */
+function isDisputed(trip: TimelineTrip): boolean {
+  return trip.date_confidence === "CONFLICTING";
+}
+
 /** Why a trip's contribution differs from its length, or null when it does not. */
 function countingNote(trip: TimelineTrip): string | null {
   if (trip.is_outside_window) {
@@ -94,6 +105,38 @@ function countingNote(trip: TimelineTrip): string | null {
     );
   }
   return null;
+}
+
+/**
+ * Why trips are missing from the confirmed totals, named by reason rather than by count.
+ *
+ * This said "N trips are not confirmed" until a trip could also be held back by a document
+ * disputing its dates. A disputed trip *is* confirmed, so the old sentence told a user who
+ * had just confirmed a date that they had not — and the remedy it implies cannot resolve a
+ * conflict.
+ */
+function heldBackClause(totals: Timeline["totals"]): string {
+  const conflicted = totals.conflicted_trip_count;
+  const unconfirmed = totals.held_back_trip_count - conflicted;
+  const trips = (n: number) => (n === 1 ? "1 trip" : `${n} trips`);
+  const are = (n: number) => (n === 1 ? "is" : "are");
+
+  if (conflicted > 0 && unconfirmed > 0) {
+    return (
+      `${trips(unconfirmed)} ${are(unconfirmed)} not confirmed and ` +
+      `${trips(conflicted)} ${are(conflicted)} disputed by a document, so they are left out ` +
+      "of those totals"
+    );
+  }
+  if (conflicted > 0) {
+    return (
+      `${trips(conflicted)} ${are(conflicted)} disputed by a document and ` +
+      `${conflicted === 1 ? "is" : "are"} left out of those totals`
+    );
+  }
+  return `${trips(unconfirmed)} ${are(unconfirmed)} not confirmed and ${
+    unconfirmed === 1 ? "is" : "are"
+  } left out of those totals`;
 }
 
 function TimelineTable({ timeline, caseId }: { timeline: Timeline; caseId: string }) {
@@ -123,9 +166,16 @@ function TimelineTable({ timeline, caseId }: { timeline: Timeline; caseId: strin
             <dd>
               {formatDate(timeline.presence_anchor)}
               <span className="cw-timeline__note">
+                {/* Three states, not two. "You were in the UK" is a claim about where the
+                    user was, and a record held back from the confirmed totals — unconfirmed,
+                    or disputed by a document — is not grounds for making it. The middle case
+                    says what is known and what is not, matching the presence rule's own
+                    INCOMPLETE rather than picking one of its other two answers. */}
                 {timeline.presence_anchor_is_absent
                   ? " — you were outside the UK on this day."
-                  : " — you were in the UK on this day."}
+                  : timeline.presence_anchor_is_absent_including_all_records
+                    ? " — a trip that is left out of your confirmed totals covers this day, so whether you were in the UK is unsettled."
+                    : " — you were in the UK on this day."}
               </span>
             </dd>
           </div>
@@ -152,15 +202,12 @@ function TimelineTable({ timeline, caseId }: { timeline: Timeline; caseId: strin
           qualifying period, and <strong>{days(totals.final_year_days)}</strong> in the final
           twelve months, from {totals.trip_count} recorded{" "}
           {totals.trip_count === 1 ? "trip" : "trips"}.
-          {totals.unconfirmed_trip_count > 0 && (
+          {totals.held_back_trip_count > 0 && (
             <>
               {" "}
-              {totals.unconfirmed_trip_count === 1
-                ? "One trip is not confirmed and is left out of those totals"
-                : `${totals.unconfirmed_trip_count} trips are not confirmed and are left out of those totals`}
-              ; counting them would give{" "}
-              {days(totals.qualifying_period_days_including_unconfirmed)} and{" "}
-              {days(totals.final_year_days_including_unconfirmed)}.
+              {heldBackClause(totals)}; counting them would give{" "}
+              {days(totals.qualifying_period_days_including_all_records)} and{" "}
+              {days(totals.final_year_days_including_all_records)}.
             </>
           )}
         </p>
@@ -222,7 +269,11 @@ function TimelineTable({ timeline, caseId }: { timeline: Timeline; caseId: strin
               </thead>
               <tbody role="rowgroup">
                 {timeline.trips.map((trip) => (
-                  <TripRow key={trip.travel_record_id} trip={trip} />
+                  <TripRow
+                    key={trip.travel_record_id}
+                    trip={trip}
+                    assessmentIsStale={timeline.assessment_is_stale}
+                  />
                 ))}
               </tbody>
               <tfoot role="rowgroup">
@@ -236,10 +287,12 @@ function TimelineTable({ timeline, caseId }: { timeline: Timeline; caseId: strin
                         screen reader needs, since "439 days" alone says nothing about
                         which days or measured how. */}
                     <span className="cw-visually-hidden">
-                      , the union of your confirmed trips’ days inside{" "}
+                      , the union of your counted trips’ days inside{" "}
                       {formatDate(timeline.qualifying_period_start)} to{" "}
                       {formatDate(timeline.qualifying_period_end)}. Overlapping days are
                       counted once.
+                      {totals.held_back_trip_count > 0 &&
+                        ` ${heldBackClause(totals)}.`}
                     </span>
                   </td>
                 </tr>
@@ -252,7 +305,13 @@ function TimelineTable({ timeline, caseId }: { timeline: Timeline; caseId: strin
   );
 }
 
-function TripRow({ trip }: { trip: TimelineTrip }) {
+function TripRow({
+  trip,
+  assessmentIsStale,
+}: {
+  trip: TimelineTrip;
+  assessmentIsStale: boolean;
+}) {
   const note = countingNote(trip);
   return (
     <tr role="row" className={trip.is_outside_window ? "cw-timeline-table__row--outside" : ""}>
@@ -262,18 +321,49 @@ function TripRow({ trip }: { trip: TimelineTrip }) {
           <span className="cw-timeline-table__anchor">Covers the first day tested</span>
         )}
         {/* Only the exception is flagged. Confirmed-and-exact is the ordinary state and
-            labelling every row with it buries the one row that is not. */}
+            labelling every row with it buries the one row that is not.
+
+            Two exceptions now, and they must not share a label. "Confirm its dates" is a
+            dead end for a disputed trip: the user already confirmed them, and confirming
+            again cannot make two sources agree. Sending someone to repeat an action that
+            cannot work is worse than saying nothing. */}
         {!trip.is_trusted && (
           <span className="cw-timeline-table__flag">
-            <StatusBadge
-              colorVar="--cw-status-not-assessed"
-              surfaceVar="--cw-status-not-assessed-surface"
-              glyph="?"
-              label="Not confirmed"
-            />
-            <span className="cw-timeline-table__note">
-              Left out of your confirmed totals until you confirm its dates.
-            </span>
+            {isDisputed(trip) ? (
+              <>
+                <StatusBadge
+                  colorVar="--cw-status-inconsistent"
+                  surfaceVar="--cw-status-inconsistent-surface"
+                  glyph="!"
+                  label="Dates disputed"
+                />
+                <span className="cw-timeline-table__note">
+                  A document you attached gives different dates, so this trip is left out of
+                  your confirmed totals.{" "}
+                  {/* The conflict on this row is derived live; the Issues queue is derived
+                      from the last assessment. Between confirming the document's value and
+                      rechecking, the flag is here and the queue item is not — so sending
+                      the user to Issues would send them somewhere the problem does not yet
+                      appear, and a queue that looks empty reads as a problem that went
+                      away. */}
+                  {assessmentIsStale
+                    ? "Recheck your requirements and it will appear in Issues."
+                    : "You can resolve it from Issues."}
+                </span>
+              </>
+            ) : (
+              <>
+                <StatusBadge
+                  colorVar="--cw-status-not-assessed"
+                  surfaceVar="--cw-status-not-assessed-surface"
+                  glyph="?"
+                  label="Not confirmed"
+                />
+                <span className="cw-timeline-table__note">
+                  Left out of your confirmed totals until you confirm its dates.
+                </span>
+              </>
+            )}
           </span>
         )}
         {trip.overlaps_with.length > 0 && (

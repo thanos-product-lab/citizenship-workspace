@@ -97,6 +97,33 @@ export function TimelineBand({ timeline }: { timeline: Timeline }) {
         aria-hidden="true"
         focusable="false"
       >
+        <defs>
+          {/* A real hatch, so the two held-back reasons are not the same rectangle in a
+              different grey. `--unconfirmed` mutes the fill; a disputed trip is struck
+              through. Both survive greyscale, which a hue pair would not. */}
+          <pattern
+            id="cw-band-disputed"
+            width="6"
+            height="6"
+            patternUnits="userSpaceOnUse"
+            patternTransform="rotate(45)"
+          >
+            {/* `--cw-surface-sunken`, which is also `.cw-band__final-year`'s fill, so the
+                hatch sits on the neutral the chart already uses. An earlier draft named a
+                token that does not exist: `fill` is inherited with initial value `black`,
+                so an invalid `var()` does not fall back to nothing — it paints the tile
+                solid black, making the disputed trip the heaviest mark on the chart. */}
+            <rect width="6" height="6" fill="var(--cw-surface-sunken)" />
+            <line
+              x1="0"
+              y1="0"
+              x2="0"
+              y2="6"
+              stroke="var(--cw-status-inconsistent)"
+              strokeWidth="2.5"
+            />
+          </pattern>
+        </defs>
         {/* The final twelve months, shaded. It has its own threshold (90 days) and its own
             requirement, so it is a region rather than a line. */}
         <rect
@@ -199,7 +226,16 @@ function TripBar({
   const width = Math.max(MIN_BAR_WIDTH, right - left);
   const rise = trip.covers_presence_anchor ? ANCHOR_BAR_RISE : 0;
   const classes = ["cw-band__trip"];
-  if (!trip.is_trusted) classes.push("cw-band__trip--unconfirmed");
+  // Two reasons a trip is held back, drawn differently. Collapsing them into one class
+  // would make the band say "excluded" while hiding which remedy applies — the table
+  // carries the words, but the picture should not flatten a distinction the words draw.
+  if (!trip.is_trusted) {
+    classes.push(
+      trip.date_confidence === "CONFLICTING"
+        ? "cw-band__trip--disputed"
+        : "cw-band__trip--unconfirmed",
+    );
+  }
   if (trip.covers_presence_anchor) classes.push("cw-band__trip--anchor");
 
   return (

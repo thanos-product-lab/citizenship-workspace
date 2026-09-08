@@ -34,14 +34,16 @@ function aTimeline(overrides: Partial<Timeline> = {}): Timeline {
     final_year_end: "2027-04-15",
     presence_anchor: "2022-04-16",
     presence_anchor_is_absent: true,
+    presence_anchor_is_absent_including_all_records: true,
     assessment_is_stale: false,
     totals: {
       qualifying_period_days: 439,
       final_year_days: 17,
-      qualifying_period_days_including_unconfirmed: 439,
-      final_year_days_including_unconfirmed: 17,
+      qualifying_period_days_including_all_records: 439,
+      final_year_days_including_all_records: 17,
       trip_count: 12,
-      unconfirmed_trip_count: 0,
+      held_back_trip_count: 0,
+      conflicted_trip_count: 0,
     },
     trips: [aTrip()],
     ...overrides,
@@ -157,6 +159,22 @@ describe("TimelineBand", () => {
     expect(Number(bar.getAttribute("height"))).toBeGreaterThan(
       Number(plainBar.getAttribute("height")),
     );
+  });
+
+  it("draws a disputed trip differently from an unconfirmed one", () => {
+    // Two reasons a trip is held back, two remedies, so two textures. One class for both
+    // would let the picture say "excluded" while hiding which of the two applies — and the
+    // band is what a sighted user reads first.
+    const { container } = render(
+      <TimelineBand
+        timeline={aTimeline({
+          trips: [aTrip({ is_trusted: false, date_confidence: "CONFLICTING" })],
+        })}
+      />,
+    );
+
+    expect(container.querySelector(".cw-band__trip--disputed")).not.toBeNull();
+    expect(container.querySelector(".cw-band__trip--unconfirmed")).toBeNull();
   });
 
   it("distinguishes an unconfirmed trip by texture, not by hue alone", () => {

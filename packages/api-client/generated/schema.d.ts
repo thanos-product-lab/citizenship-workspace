@@ -2004,6 +2004,8 @@ export interface components {
             presence_anchor: string;
             /** Presence Anchor Is Absent */
             presence_anchor_is_absent: boolean;
+            /** Presence Anchor Is Absent Including All Records */
+            presence_anchor_is_absent_including_all_records: boolean;
             /**
              * Qualifying Period End
              * Format: date
@@ -2020,18 +2022,20 @@ export interface components {
         };
         /** TimelineTotalsResponse */
         TimelineTotalsResponse: {
+            /** Conflicted Trip Count */
+            conflicted_trip_count: number;
             /** Final Year Days */
             final_year_days: number;
-            /** Final Year Days Including Unconfirmed */
-            final_year_days_including_unconfirmed: number;
+            /** Final Year Days Including All Records */
+            final_year_days_including_all_records: number;
+            /** Held Back Trip Count */
+            held_back_trip_count: number;
             /** Qualifying Period Days */
             qualifying_period_days: number;
-            /** Qualifying Period Days Including Unconfirmed */
-            qualifying_period_days_including_unconfirmed: number;
+            /** Qualifying Period Days Including All Records */
+            qualifying_period_days_including_all_records: number;
             /** Trip Count */
             trip_count: number;
-            /** Unconfirmed Trip Count */
-            unconfirmed_trip_count: number;
         };
         /**
          * TimelineTripResponse

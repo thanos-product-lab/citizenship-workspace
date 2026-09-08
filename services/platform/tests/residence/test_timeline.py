@@ -89,11 +89,12 @@ def test_the_totals_match_the_documented_oracle(api: Api, db_session: Session) -
     assert totals["qualifying_period_days"] == 439  # §5 working
     assert totals["final_year_days"] == 17  # trips 11 (5) + 12 (12)
     assert totals["trip_count"] == len(DEMO_TRIPS)
-    assert totals["unconfirmed_trip_count"] == 0
-    # Every record is CONFIRMED + EXACT at this milestone, so the two senses agree and the
+    assert totals["held_back_trip_count"] == 0
+    assert totals["conflicted_trip_count"] == 0
+    # Every record is CONFIRMED + EXACT and undisputed, so the two senses agree and the
     # §6.2 machinery has nothing to act on — the common case it exists to handle.
-    assert totals["qualifying_period_days_including_unconfirmed"] == 439
-    assert totals["final_year_days_including_unconfirmed"] == 17
+    assert totals["qualifying_period_days_including_all_records"] == 439
+    assert totals["final_year_days_including_all_records"] == 17
 
 
 def test_the_anchor_is_reported_as_absent_when_a_trip_covers_it(
@@ -113,7 +114,11 @@ def test_an_unconfirmed_trip_is_marked_untrusted_and_counted_separately(
 ) -> None:
     """RULES_SPEC §6.1: only ACTIVE + CONFIRMED + EXACT enters a trusted total. The trip is
     still shown — hiding it would be its own kind of lie — but it is marked, and its days
-    appear only in the including-unconfirmed figure."""
+    appear only in the all-records figure.
+
+    `conflicted_trip_count` stays 0 here, and that is the assertion doing the work: this trip
+    is held back for the *original* reason, and the two counts have to stay distinguishable
+    or the view cannot tell the user which remedy applies."""
     case_id = str(seed_demo_case(db_session, user_id="user_a"))
     _add_trip(api, case_id, date_confidence="ESTIMATED", destination_label="Maybe")
 
@@ -124,8 +129,40 @@ def test_an_unconfirmed_trip_is_marked_untrusted_and_counted_separately(
 
     totals = body["totals"]
     assert totals["qualifying_period_days"] == 439, "trusted total is unmoved"
-    assert totals["qualifying_period_days_including_unconfirmed"] == 469
-    assert totals["unconfirmed_trip_count"] == 1
+    assert totals["qualifying_period_days_including_all_records"] == 469
+    assert totals["held_back_trip_count"] == 1
+    assert totals["conflicted_trip_count"] == 0
+
+
+def test_a_disputed_trip_is_held_back_and_says_which_reason(api: Api, db_session: Session) -> None:
+    """Domain §44.3 lists `conflicts` among the projection's elements, and this is it.
+
+    The record is CONFIRMED with EXACT dates, so the stored row says it counts. It does not:
+    a confirmed document date disputes it, and §6.1 excludes it. A surface deciding trust
+    from the row alone reports a figure the assessment contradicts, which is what this
+    projection did until the gate moved to one place (ADR-0028).
+    """
+    from tests.residence.test_timeline_matches_assessment import _dispute_the_trip
+
+    case_id = str(seed_demo_case(db_session, user_id="user_a"))
+    trips = api("user_a").get(f"/api/v1/cases/{case_id}/travel-records").json()
+    italy = next(t for t in trips if t["departure_date"] == "2026-05-04")
+    _dispute_the_trip(api, db_session, case_id, str(italy["id"]))
+
+    body = _timeline(api, case_id).json()
+    disputed = next(t for t in body["trips"] if t["travel_record_id"] == italy["id"])
+
+    assert disputed["is_trusted"] is False
+    assert disputed["date_confidence"] == "CONFLICTING"
+    # Unchanged on disk. The conflict is derived, never stored (RFC §42), which is exactly
+    # why a projection reading the row could not see it.
+    assert disputed["review_state"] == "CONFIRMED"
+
+    totals = body["totals"]
+    assert totals["held_back_trip_count"] == 1
+    assert totals["conflicted_trip_count"] == 1, "held back for the disputed reason, not the other"
+    assert totals["qualifying_period_days"] == 434, "439 less the disputed trip's 5 days"
+    assert totals["qualifying_period_days_including_all_records"] == 439
 
 
 def test_overlapping_trips_name_each_other_and_do_not_double_count(

@@ -251,7 +251,7 @@ def evaluate_case(
         route_profile_version_id=profile_version.id,
         application_date_version_id=date_version.id,
     )
-    trips, conflicts = _gather_trips(session, case.id)
+    trips, conflicts = gather_trips(session, case.id)
     version_ids = {trip.travel_record_id: trip.travel_record_version_id for trip in trips}
     residence_inputs = ResidenceAssessmentInputs(
         application_date=application_date,
@@ -693,12 +693,23 @@ def _persist_result(
         )
 
 
-def _gather_trips(
+def gather_trips(
     session: Session, case_id: uuid.UUID
 ) -> tuple[tuple[TripInput, ...], list[DateConflict]]:
     """Every active travel record, flattened to primitives, with the §6.1 trust gate decided
     here (ACTIVE + CONFIRMED + EXACT). The evaluator gets all active trips — trusted totals
     use the gated subset, provisional totals use all — so the sensitivity rule can run.
+
+    **This is the only place the §6.1 gate is decided, and it is public for that reason.**
+    Read models consume it rather than re-deriving trust from the stored row. The residence
+    timeline did re-derive it, calling `counts_toward_trusted_total` directly, and so
+    published a "days from confirmed records" total that disagreed with the assessment's the
+    moment a document disputed a trip — two answers to one question, the reassuring one on
+    the more prominent surface. A projection is a reader the rule catalog cannot see: it
+    declares no dependencies, so no migration could have caught it (ADR-0028).
+
+    Callers outside `assessments` reach this through the module's public surface rather than
+    by importing internals (CLAUDE.md §4).
 
     **A trip a confirmed document disagrees with is overlaid as `CONFLICTING`** (M8 slice 4,
     RFC §42). Two things change together and neither is optional:

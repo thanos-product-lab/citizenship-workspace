@@ -3021,6 +3021,10 @@
             "title": "Presence Anchor Is Absent",
             "type": "boolean"
           },
+          "presence_anchor_is_absent_including_all_records": {
+            "title": "Presence Anchor Is Absent Including All Records",
+            "type": "boolean"
+          },
           "qualifying_period_end": {
             "format": "date",
             "title": "Qualifying Period End",
@@ -3050,6 +3054,7 @@
           "final_year_end",
           "presence_anchor",
           "presence_anchor_is_absent",
+          "presence_anchor_is_absent_including_all_records",
           "assessment_is_stale",
           "totals",
           "trips"
@@ -3059,38 +3064,43 @@
       },
       "TimelineTotalsResponse": {
         "properties": {
+          "conflicted_trip_count": {
+            "title": "Conflicted Trip Count",
+            "type": "integer"
+          },
           "final_year_days": {
             "title": "Final Year Days",
             "type": "integer"
           },
-          "final_year_days_including_unconfirmed": {
-            "title": "Final Year Days Including Unconfirmed",
+          "final_year_days_including_all_records": {
+            "title": "Final Year Days Including All Records",
+            "type": "integer"
+          },
+          "held_back_trip_count": {
+            "title": "Held Back Trip Count",
             "type": "integer"
           },
           "qualifying_period_days": {
             "title": "Qualifying Period Days",
             "type": "integer"
           },
-          "qualifying_period_days_including_unconfirmed": {
-            "title": "Qualifying Period Days Including Unconfirmed",
+          "qualifying_period_days_including_all_records": {
+            "title": "Qualifying Period Days Including All Records",
             "type": "integer"
           },
           "trip_count": {
             "title": "Trip Count",
-            "type": "integer"
-          },
-          "unconfirmed_trip_count": {
-            "title": "Unconfirmed Trip Count",
             "type": "integer"
           }
         },
         "required": [
           "qualifying_period_days",
           "final_year_days",
-          "qualifying_period_days_including_unconfirmed",
-          "final_year_days_including_unconfirmed",
+          "qualifying_period_days_including_all_records",
+          "final_year_days_including_all_records",
           "trip_count",
-          "unconfirmed_trip_count"
+          "held_back_trip_count",
+          "conflicted_trip_count"
         ],
         "title": "TimelineTotalsResponse",
         "type": "object"

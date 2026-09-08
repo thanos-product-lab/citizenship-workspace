@@ -14,21 +14,32 @@ stale, so the view can say plainly that the last assessment was run before these
 changed. Showing a total silently ahead of the conclusions drawn from it is the shape of
 false reassurance this product exists to prevent (CLAUDE.md §2.7).
 
-What is deliberately absent: evidence coverage. Domain §44.3 lists it, and there is no
-evidence model until M7 — a coverage column that could only ever read "none" would make a
-promise the product cannot keep.
+**The trust gate is not decided here.** Trips come from `assessments.service.gather_trips`,
+the one function that applies §6.1, so this surface and the assessment cannot disagree about
+whether a record counted. They did: this module used to call `counts_toward_trusted_total`
+off the stored row, which is blind to the conflict overlay M8 slice 4 added, so a disputed
+trip counted here and was held back there — the same figure, two values, and the reassuring
+one on the more prominent screen (ADR-0028).
+
+What is deliberately absent: evidence coverage. Domain §44.3 lists it alongside `conflicts`,
+which this projection now carries. Coverage is the one element still unbuilt — the evidence
+link exists since M7, but "which of your trips are supported" is a question the product does
+not yet answer anywhere, and a column that could only ever read "none" would make a promise
+it cannot keep.
 """
 
 import uuid
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import date
 
 from sqlalchemy.orm import Session
 
 from app.assessments.repository import AssessmentRepository
+from app.assessments.service import gather_trips
 from app.cases.domain import ApplicationCase
 from app.requirements.domain import Currency
-from app.requirements.evaluation import RESIDENCE_REQUIREMENT_KEYS
+from app.requirements.evaluation import RESIDENCE_REQUIREMENT_KEYS, TripInput
 from app.requirements.rules_core import (
     Window,
     absence_union,
@@ -38,15 +49,8 @@ from app.requirements.rules_core import (
     physical_presence_date,
     qualifying_window,
 )
-from app.residence.domain import (
-    TravelRecord,
-    TravelRecordVersion,
-    counts_toward_trusted_total,
-)
-from app.residence.repository import (
-    ProposedApplicationDateRepository,
-    TravelRecordRepository,
-)
+from app.residence.domain import DateConfidence
+from app.residence.repository import ProposedApplicationDateRepository
 
 
 @dataclass(frozen=True)
@@ -84,12 +88,21 @@ class TimelineTrip:
 class TimelineTotals:
     qualifying_period_days: int
     final_year_days: int
-    #: Counting unconfirmed records too (RULES_SPEC §6.2). Equal to the trusted figure
-    #: when every record is confirmed and exact, which is the canonical case.
-    qualifying_period_days_including_unconfirmed: int
-    final_year_days_including_unconfirmed: int
+    #: Counting every active record, held back or not (RULES_SPEC §6.2). Equal to the trusted
+    #: figure when every record is confirmed, exact and undisputed — the canonical case.
+    #:
+    #: Named for *all records* rather than for one reason. It was
+    #: `..._including_unconfirmed` until a trip could also be held back by a document
+    #: disputing its dates, at which point the name described half of what the figure
+    #: contained.
+    qualifying_period_days_including_all_records: int
+    final_year_days_including_all_records: int
     trip_count: int
-    unconfirmed_trip_count: int
+    #: Left out of the trusted totals for **any** reason, and the disputed subset of that.
+    #: Two fields because they take different remedies: an unconfirmed record is fixed by
+    #: confirming it, a disputed one cannot be — the user already did.
+    held_back_trip_count: int
+    conflicted_trip_count: int
 
 
 @dataclass(frozen=True)
@@ -101,6 +114,14 @@ class TimelineProjection:
     #: Whether the anchor falls inside the *trusted* absent set — the fact the whole
     #: date-simulation interaction exists to move.
     presence_anchor_is_absent: bool
+    #: The same question over every active record, held back or not.
+    #:
+    #: Both are published because one boolean cannot say what the presence rule says. That
+    #: rule has three answers — in the trusted set (NOT_CURRENTLY_SATISFIED), in the
+    #: provisional set only (INCOMPLETE), in neither (SUPPORTED) — and the view turns this
+    #: into "you were in the UK on this day", a claim about where the user was. With one
+    #: flag, a trip held back on a technicality would make that claim confidently.
+    presence_anchor_is_absent_including_all_records: bool
     trips: tuple[TimelineTrip, ...]
     totals: TimelineTotals
     #: The residence conclusions were reached before the records now shown. The figures
@@ -108,10 +129,14 @@ class TimelineProjection:
     assessment_is_stale: bool
 
 
-def _spans(
-    records: list[tuple[TravelRecord, TravelRecordVersion]],
-) -> list[tuple[date, date]]:
-    return [(version.departure_date, version.return_date) for _, version in records]
+def _spans(trips: Iterable[TripInput]) -> list[tuple[date, date]]:
+    return [(trip.departure_date, trip.return_date) for trip in trips]
+
+
+def _is_conflicted(trip: TripInput) -> bool:
+    """Held back because a confirmed document date disputes it, rather than because it was
+    never confirmed. Both fail the §6.1 gate; only one is the user's to fix by confirming."""
+    return trip.date_confidence == DateConfidence.CONFLICTING.value
 
 
 def _residence_results_are_stale(session: Session, case_id: uuid.UUID) -> bool:
@@ -151,39 +176,42 @@ def get_timeline(session: Session, *, case: ApplicationCase) -> TimelineProjecti
     final_year = final_year_window(application_date)
     anchor = physical_presence_date(application_date)
 
-    records = TravelRecordRepository.list_active_with_current_version(session, case.id)
-    trusted_spans = [
-        (v.departure_date, v.return_date) for r, v in records if counts_toward_trusted_total(r, v)
-    ]
-    trusted_absent = absence_union(trusted_spans)
-    all_absent = absence_union(_spans(records))
+    # The gate and the conflict overlay are decided once, in the assessment service. Nothing
+    # below re-derives whether a record counts — it reads `trip.is_trusted`, the same value
+    # the rules read, which is what stops this surface disagreeing with the Requirements one.
+    gathered, _conflicts = gather_trips(session, case.id)
+
+    trusted_absent = absence_union(_spans(t for t in gathered if t.is_trusted))
+    all_absent = absence_union(_spans(gathered))
 
     absent_by_record = {
-        record.id: absent_dates(version_.departure_date, version_.return_date)
-        for record, version_ in records
+        trip.travel_record_id: absent_dates(trip.departure_date, trip.return_date)
+        for trip in gathered
     }
 
     trips = tuple(
         TimelineTrip(
-            travel_record_id=record.id,
-            destination_label=version_.destination_label,
-            departure_date=version_.departure_date,
-            return_date=version_.return_date,
-            date_confidence=version_.date_confidence,
-            review_state=version_.review_state,
-            is_trusted=counts_toward_trusted_total(record, version_),
-            absent_days=len(absent_by_record[record.id]),
-            counted_days=count_in_window(absent_by_record[record.id], qualifying),
-            is_outside_window=count_in_window(absent_by_record[record.id], qualifying) == 0,
-            covers_presence_anchor=anchor in absent_by_record[record.id],
+            travel_record_id=trip.travel_record_id,
+            destination_label=trip.destination_label,
+            departure_date=trip.departure_date,
+            return_date=trip.return_date,
+            date_confidence=trip.date_confidence,
+            review_state=trip.review_state,
+            is_trusted=trip.is_trusted,
+            absent_days=len(absent_by_record[trip.travel_record_id]),
+            counted_days=count_in_window(absent_by_record[trip.travel_record_id], qualifying),
+            is_outside_window=count_in_window(absent_by_record[trip.travel_record_id], qualifying)
+            == 0,
+            covers_presence_anchor=anchor in absent_by_record[trip.travel_record_id],
             overlaps_with=tuple(
-                other.id
-                for other, _ in records
-                if other.id != record.id
-                and absent_by_record[record.id] & absent_by_record[other.id]
+                other.travel_record_id
+                for other in gathered
+                if other.travel_record_id != trip.travel_record_id
+                and absent_by_record[trip.travel_record_id]
+                & absent_by_record[other.travel_record_id]
             ),
         )
-        for record, version_ in records
+        for trip in gathered
     )
 
     return TimelineProjection(
@@ -192,14 +220,16 @@ def get_timeline(session: Session, *, case: ApplicationCase) -> TimelineProjecti
         final_year=final_year,
         presence_anchor=anchor,
         presence_anchor_is_absent=anchor in trusted_absent,
+        presence_anchor_is_absent_including_all_records=anchor in all_absent,
         trips=trips,
         totals=TimelineTotals(
             qualifying_period_days=count_in_window(trusted_absent, qualifying),
             final_year_days=count_in_window(trusted_absent, final_year),
-            qualifying_period_days_including_unconfirmed=count_in_window(all_absent, qualifying),
-            final_year_days_including_unconfirmed=count_in_window(all_absent, final_year),
+            qualifying_period_days_including_all_records=count_in_window(all_absent, qualifying),
+            final_year_days_including_all_records=count_in_window(all_absent, final_year),
             trip_count=len(trips),
-            unconfirmed_trip_count=sum(1 for trip in trips if not trip.is_trusted),
+            held_back_trip_count=sum(1 for trip in gathered if not trip.is_trusted),
+            conflicted_trip_count=sum(1 for trip in gathered if _is_conflicted(trip)),
         ),
         assessment_is_stale=_residence_results_are_stale(session, case.id),
     )

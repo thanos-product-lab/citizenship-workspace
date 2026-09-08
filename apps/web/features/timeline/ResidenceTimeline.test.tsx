@@ -39,14 +39,16 @@ function aTimeline(overrides: Record<string, unknown> = {}) {
     final_year_end: "2027-04-15",
     presence_anchor: "2022-04-16",
     presence_anchor_is_absent: true,
+    presence_anchor_is_absent_including_all_records: true,
     assessment_is_stale: false,
     totals: {
       qualifying_period_days: 439,
       final_year_days: 17,
-      qualifying_period_days_including_unconfirmed: 439,
-      final_year_days_including_unconfirmed: 17,
+      qualifying_period_days_including_all_records: 439,
+      final_year_days_including_all_records: 17,
       trip_count: 12,
-      unconfirmed_trip_count: 0,
+      held_back_trip_count: 0,
+      conflicted_trip_count: 0,
     },
     trips: [aTrip()],
     ...overrides,
@@ -179,8 +181,12 @@ describe("ResidenceTimeline", () => {
   it("distinguishes an unconfirmed record without relying on colour", async () => {
     get.mockResolvedValue({
       data: aTimeline({
-        totals: { ...aTimeline().totals, unconfirmed_trip_count: 1,
-          qualifying_period_days_including_unconfirmed: 469 },
+        totals: {
+          ...aTimeline().totals,
+          held_back_trip_count: 1,
+          conflicted_trip_count: 0,
+          qualifying_period_days_including_all_records: 469,
+        },
         trips: [aTrip({ is_trusted: false, date_confidence: "ESTIMATED" })],
       }),
       error: undefined,
@@ -191,8 +197,79 @@ describe("ResidenceTimeline", () => {
     expect(within(row).getByText("Not confirmed")).toBeInTheDocument();
     expect(row).toHaveTextContent(/left out of your confirmed totals/i);
     // And the totals say what leaving it out costs, rather than silently excluding it.
-    expect(screen.getByText(/left out of those totals/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/left out of those totals/i).length).toBeGreaterThan(0);
     expect(screen.getByText(/counting them would give 469 days/i)).toBeInTheDocument();
+  });
+
+  it("does not tell someone to confirm dates they already confirmed", async () => {
+    // A disputed trip is CONFIRMED and still held back: a document attached to it gives
+    // different dates. "Until you confirm its dates" is a dead end here — the user did, and
+    // doing it again cannot make two sources agree.
+    get.mockResolvedValue({
+      data: aTimeline({
+        totals: {
+          ...aTimeline().totals,
+          held_back_trip_count: 1,
+          conflicted_trip_count: 1,
+          qualifying_period_days_including_all_records: 449,
+        },
+        trips: [aTrip({ is_trusted: false, date_confidence: "CONFLICTING" })],
+      }),
+      error: undefined,
+    });
+    render(<ResidenceTimeline caseId="c1" />);
+
+    const row = (await screen.findByText("Spain")).closest("tr")!;
+    expect(within(row).getByText("Dates disputed")).toBeInTheDocument();
+    expect(row).toHaveTextContent(/a document you attached gives different dates/i);
+    expect(row).toHaveTextContent(/resolve it from issues/i);
+    expect(row).not.toHaveTextContent(/until you confirm its dates/i);
+    expect(within(row).queryByText("Not confirmed")).not.toBeInTheDocument();
+
+    // The totals sentence names the reason too, rather than calling it unconfirmed.
+    expect(screen.getAllByText(/disputed by a document/i).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/1 trip is not confirmed/i)).not.toBeInTheDocument();
+  });
+
+  it("does not send the user to Issues before the queue has the conflict in it", async () => {
+    // The trip row derives its conflict live; the Issues queue derives from the last
+    // assessment. Between confirming the document's value and rechecking, the flag is on
+    // this row and the queue item does not exist yet — so "resolve it from Issues" sends
+    // someone to a page where the problem is not, and an empty queue reads as a problem
+    // that went away.
+    get.mockResolvedValue({
+      data: aTimeline({
+        assessment_is_stale: true,
+        totals: { ...aTimeline().totals, held_back_trip_count: 1, conflicted_trip_count: 1 },
+        trips: [aTrip({ is_trusted: false, date_confidence: "CONFLICTING" })],
+      }),
+      error: undefined,
+    });
+    render(<ResidenceTimeline caseId="c1" />);
+
+    const row = (await screen.findByText("Spain")).closest("tr")!;
+    expect(row).toHaveTextContent(/recheck your requirements and it will appear in issues/i);
+    expect(row).not.toHaveTextContent(/you can resolve it from issues/i);
+  });
+
+  it("will not claim the user was in the UK on a day only a held-back trip covers", async () => {
+    // `presence_anchor_is_absent` is false because the covering trip is excluded from the
+    // trusted set — but "you were in the UK on this day" is a claim about where someone was,
+    // and a trip being held back is not grounds for making it.
+    get.mockResolvedValue({
+      data: aTimeline({
+        presence_anchor_is_absent: false,
+        presence_anchor_is_absent_including_all_records: true,
+        totals: { ...aTimeline().totals, held_back_trip_count: 1, conflicted_trip_count: 1 },
+        trips: [aTrip({ is_trusted: false, date_confidence: "CONFLICTING" })],
+      }),
+      error: undefined,
+    });
+    const { container } = render(<ResidenceTimeline caseId="c1" />);
+    await screen.findByRole("table");
+
+    expect(container).not.toHaveTextContent(/you were in the UK on this day/i);
+    expect(container).toHaveTextContent(/whether you were in the UK is unsettled/i);
   });
 
   it("names an overlap without implying it inflated a total", async () => {
@@ -236,7 +313,7 @@ describe("ResidenceTimeline", () => {
     const table = await screen.findByRole("table");
     const total = within(table).getByRole("rowheader", { name: /total counted/i }).closest("tr")!;
     expect(within(total).getByText("439 days")).toBeInTheDocument();
-    expect(total).toHaveTextContent(/union of your confirmed trips/i);
+    expect(total).toHaveTextContent(/union of your counted trips/i);
     expect(total).toHaveTextContent(/overlapping days are counted once/i);
   });
 
