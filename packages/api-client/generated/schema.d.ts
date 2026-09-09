@@ -2164,6 +2164,10 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /** Is Disputed By Document */
+            is_disputed_by_document: boolean;
+            /** Is Trusted */
+            is_trusted: boolean;
             /** Lifecycle Status */
             lifecycle_status: string;
             /** Notes */

@@ -268,3 +268,71 @@ def test_the_two_surfaces_agree_once_the_conflict_is_resolved(
     _assert_surfaces_agree(timeline, requirements)
     assert timeline["totals"]["held_back_trip_count"] == 0
     assert timeline["totals"]["conflicted_trip_count"] == 0
+
+
+def test_the_travel_records_api_says_a_disputed_trip_is_not_trusted(
+    api: Api, db_session: Session
+) -> None:
+    """The fourth reader, closed at the boundary rather than in the client.
+
+    The Case data page computed `review_state === "CONFIRMED" && date_confidence ===
+    "EXACT"` in TypeScript. That was the §6.1 gate, and it was right until a confirmed
+    document date could dispute a trip — the stored row still reads EXACT/CONFIRMED because
+    the conflict is derived and never written (RFC §42), so the page showed a held-back trip
+    as plainly "Confirmed", on the page where the user had just attached the document.
+
+    Asserted here rather than only in the component test because the fix is that the *API*
+    decides: a client cannot re-derive what it is handed.
+    """
+    case_id, trip_id = _case_with_trip(api)
+    _dispute_the_trip(api, db_session, case_id, trip_id)
+
+    row = next(
+        r
+        for r in api("user_a").get(f"/api/v1/cases/{case_id}/travel-records").json()
+        if r["id"] == trip_id
+    )
+
+    assert row["is_trusted"] is False
+    assert row["is_disputed_by_document"] is True
+    # The ingredients are unchanged, and must be: `date_confidence` is the value the user
+    # entered, and the edit form offers it back to them. Overwriting it here would put a
+    # state in that form which they never chose.
+    assert row["date_confidence"] == "EXACT"
+    assert row["review_state"] == "CONFIRMED"
+
+
+def test_an_ordinary_confirmed_trip_is_trusted_and_not_disputed(
+    api: Api, db_session: Session
+) -> None:
+    """The other half of the gate, so the field cannot be hardcoded false."""
+    case_id, trip_id = _case_with_trip(api)
+
+    row = next(
+        r
+        for r in api("user_a").get(f"/api/v1/cases/{case_id}/travel-records").json()
+        if r["id"] == trip_id
+    )
+
+    assert row["is_trusted"] is True
+    assert row["is_disputed_by_document"] is False
+
+
+def test_adopting_the_document_dates_returns_a_trusted_record(
+    api: Api, db_session: Session
+) -> None:
+    """The command's own response, not just the next list read.
+
+    Every response path carries the decision because `TravelRecordOutcome.of` computes it,
+    so a client acting on the command's answer sees the same thing a refetch would.
+    """
+    case_id, trip_id = _case_with_trip(api)
+    _dispute_the_trip(api, db_session, case_id, trip_id)
+
+    adopted = api("user_a").post(
+        f"/api/v1/cases/{case_id}/travel-records/{trip_id}/adopt-document-dates", json={}
+    )
+
+    assert adopted.status_code == 200
+    assert adopted.json()["is_trusted"] is True
+    assert adopted.json()["is_disputed_by_document"] is False

@@ -46,14 +46,33 @@ interface Trust {
   glyph: string;
 }
 
-// A record is trusted only when confirmed AND its dates are exact (the M3B gate); any
-// other combination is surfaced as "Uncertain" so unconfirmed records stay visibly
-// distinct (§8.4). Status is carried by badge text + glyph, never colour alone.
-// Uncertain is deliberately neutral, not amber: amber ("near threshold") is a rules
-// concept, and an unconfirmed input is not a rules state — borrowing that hue would
-// imply a meaning M3A does not compute.
+// Whether a record counts is **read, not computed**. This function used to derive the
+// §6.1 gate here — `review_state === "CONFIRMED" && date_confidence === "EXACT"` — which
+// was right until a confirmed document date could dispute a trip: the stored row still
+// says EXACT/CONFIRMED, because the conflict is derived and never written, so this table
+// showed a held-back trip as plainly "Confirmed" on the page where the user had just
+// attached the document (ADR-0028). The server now sends the decision.
+//
+// Status is carried by badge text + glyph, never colour alone. Uncertain is deliberately
+// neutral, not amber: amber ("near threshold") is a rules concept, and an unconfirmed
+// input is not a rules state — borrowing that hue would imply a meaning M3A does not
+// compute. Disputed *is* allowed the inconsistent hue, because two sources disagreeing is
+// a finding about the data rather than a threshold verdict.
 function trust(r: Travel): Trust {
-  const confirmed = r.review_state === "CONFIRMED" && r.date_confidence === "EXACT";
+  const confirmed = r.is_trusted;
+  if (r.is_disputed_by_document) {
+    return {
+      confirmed,
+      label: "Dates disputed",
+      // Names the remedy's location, not the remedy: the issue queue owns the two values
+      // and the choice between them, and duplicating that here would be a second place to
+      // keep in step.
+      detail: "A document you attached gives different dates",
+      colorVar: "--cw-status-inconsistent",
+      surfaceVar: "--cw-status-inconsistent-surface",
+      glyph: "!",
+    };
+  }
   const detail =
     r.review_state !== "CONFIRMED"
       ? "Marked uncertain"

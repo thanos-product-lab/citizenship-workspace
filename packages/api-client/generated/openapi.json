@@ -3356,6 +3356,14 @@
             "title": "Id",
             "type": "string"
           },
+          "is_disputed_by_document": {
+            "title": "Is Disputed By Document",
+            "type": "boolean"
+          },
+          "is_trusted": {
+            "title": "Is Trusted",
+            "type": "boolean"
+          },
           "lifecycle_status": {
             "title": "Lifecycle Status",
             "type": "string"
@@ -3416,6 +3424,8 @@
           "entry_source",
           "notes",
           "lifecycle_status",
+          "is_trusted",
+          "is_disputed_by_document",
           "revision",
           "created_at",
           "updated_at"

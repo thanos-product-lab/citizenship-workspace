@@ -31,6 +31,12 @@ function aRecord(overrides: Record<string, unknown> = {}) {
     notes: null,
     lifecycle_status: "ACTIVE",
     supporting_evidence_item_ids: [],
+    // The server's decision, not a restatement of the two fields above. A fixture that
+    // derived this from `review_state`/`date_confidence` would re-implement in the test
+    // exactly the logic the component stopped implementing — and would have stayed green
+    // through the bug this replaced.
+    is_trusted: true,
+    is_disputed_by_document: false,
     revision: 2,
     created_at: "2026-07-30T00:00:00Z",
     updated_at: "2026-07-30T00:00:00Z",
@@ -97,12 +103,49 @@ describe("TravelHistory", () => {
     expect(await screen.findByText(/no trips recorded yet/i)).toBeInTheDocument();
   });
 
+  it("does not call a disputed trip confirmed just because the stored fields say so", async () => {
+    // The exact shape of the bug: `review_state: CONFIRMED` and `date_confidence: EXACT`,
+    // which is what the row on disk says, because the conflict is derived and never
+    // written. Deriving trust from those two fields — which this component used to do —
+    // renders a held-back trip as "Confirmed" with a tick, on the page where the user
+    // attached the document that disputes it.
+    get.mockResolvedValue({
+      data: [
+        aRecord({
+          id: "t1",
+          destination_label: "Italy",
+          review_state: "CONFIRMED",
+          date_confidence: "EXACT",
+          is_trusted: false,
+          is_disputed_by_document: true,
+        }),
+      ],
+      error: undefined,
+    });
+    render(<TravelHistory caseId="c1" />);
+
+    const row = (await screen.findByText("Italy")).closest("tr")!;
+    expect(within(row).getByText("Dates disputed")).toBeInTheDocument();
+    expect(row).toHaveTextContent(/a document you attached gives different dates/i);
+    expect(within(row).queryByText("Confirmed")).not.toBeInTheDocument();
+  });
+
   it("flags only uncertain trips by text, leaving confirmed trips clean", async () => {
     get.mockResolvedValue({
       data: [
         aRecord({ id: "t1", destination_label: "Spain" }),
-        aRecord({ id: "t2", destination_label: "Italy", review_state: "UNCERTAIN" }),
-        aRecord({ id: "t3", destination_label: "France", date_confidence: "ESTIMATED" }),
+        aRecord({
+          id: "t2",
+          destination_label: "Italy",
+          review_state: "UNCERTAIN",
+          is_trusted: false,
+        }),
+        aRecord({
+          id: "t3",
+          destination_label: "France",
+          date_confidence: "ESTIMATED",
+          is_trusted: false,
+        }),
       ],
       error: undefined,
     });

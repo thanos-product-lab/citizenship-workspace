@@ -47,6 +47,7 @@ from app.residence.domain import (
     TravelRecordVersion,
     TravelRecordVersionCreated,
     TravelReviewState,
+    counts_toward_trusted_total,
 )
 from app.residence.repository import (
     ProposedApplicationDateRepository,
@@ -193,14 +194,62 @@ def _check_revision(root: ProposedApplicationDate, expected: int | None) -> None
 
 @dataclass(frozen=True)
 class TravelRecordOutcome:
+    """One travel record, with the §6.1 trust decision already made.
+
+    `is_trusted` is carried rather than left to the caller, and that is the whole point of
+    this type. The web client used to compute `review_state === "CONFIRMED" &&
+    date_confidence === "EXACT"` for itself, which was correct until a confirmed document
+    date could dispute a trip — the stored row still reads EXACT/CONFIRMED, because the
+    conflict is derived and never written (RFC §42), so the client showed a held-back trip
+    as plainly "Confirmed" on the very page where the document was attached (ADR-0028).
+
+    A caller given the ingredients will eventually recombine them. This gives the answer.
+    """
+
     record: TravelRecord
     version: TravelRecordVersion
+    #: The §6.1 gate: ACTIVE + CONFIRMED + EXACT, **and** undisputed.
+    is_trusted: bool
+    #: Held back because a confirmed document date disagrees with it, rather than because
+    #: it was never confirmed. Published separately because the two take different
+    #: remedies, and `date_confidence` cannot say it — that field is the value the *user*
+    #: entered, and it has to stay that way or the edit form would offer a state they
+    #: never chose.
+    is_disputed_by_document: bool
+
+    @classmethod
+    def of(
+        cls,
+        record: TravelRecord,
+        version: TravelRecordVersion,
+        disputed: frozenset[uuid.UUID] = frozenset(),
+    ) -> "TravelRecordOutcome":
+        return cls(
+            record=record,
+            version=version,
+            is_trusted=counts_toward_trusted_total(record, version) and record.id not in disputed,
+            is_disputed_by_document=record.id in disputed,
+        )
+
+
+def disputed_record_ids(session: Session, *, case_id: uuid.UUID) -> frozenset[uuid.UUID]:
+    """Trips a confirmed document date disagrees with, from the assessment's own detector.
+
+    Imported lazily for the reason `_documented_dates_for` does it: `assessments.service`
+    imports this module, and the detection has to be the same one the assessment runs or
+    the two surfaces are free to disagree again — which is the defect this exists to close.
+    """
+    from app.assessments.conflicts import conflicted_record_ids
+    from app.assessments.service import detect_case_conflicts
+
+    return conflicted_record_ids(detect_case_conflicts(session, case_id))
 
 
 def list_travel_records(session: Session, *, case: ApplicationCase) -> list[TravelRecordOutcome]:
     """Active travel records with their current version, chronological (MVP §8.4)."""
+    disputed = disputed_record_ids(session, case_id=case.id)
     return [
-        TravelRecordOutcome(record=record, version=version)
+        TravelRecordOutcome.of(record, version, disputed)
         for record, version in TravelRecordRepository.list_active_with_current_version(
             session, case.id
         )
@@ -240,7 +289,7 @@ def add_travel_record(
         target_id=version.id,
     )
     session.refresh(record)
-    return TravelRecordOutcome(record=record, version=version)
+    return TravelRecordOutcome.of(record, version, disputed_record_ids(session, case_id=case.id))
 
 
 def edit_travel_record(
@@ -289,7 +338,7 @@ def edit_travel_record(
         target_id=version.id,
     )
     session.refresh(record)
-    return TravelRecordOutcome(record=record, version=version)
+    return TravelRecordOutcome.of(record, version, disputed_record_ids(session, case_id=case.id))
 
 
 def adopt_document_dates(
@@ -387,7 +436,7 @@ def adopt_document_dates(
         target_id=version.id,
     )
     session.refresh(record)
-    return TravelRecordOutcome(record=record, version=version)
+    return TravelRecordOutcome.of(record, version, disputed_record_ids(session, case_id=case.id))
 
 
 def _documented_dates_for(
@@ -451,7 +500,7 @@ def remove_travel_record(
     assert record.current_version_id is not None  # a removed record retains its final version
     version = TravelRecordRepository.get_version(session, record.current_version_id)
     assert version is not None
-    return TravelRecordOutcome(record=record, version=version)
+    return TravelRecordOutcome.of(record, version, disputed_record_ids(session, case_id=case.id))
 
 
 def validate_csv_import(session: Session, *, case: ApplicationCase, content: str) -> ParsedImport:
@@ -478,6 +527,11 @@ def import_travel_records(
         raise CsvImportInvalid(ImportValidationResponse.from_parsed(parsed).model_dump(mode="json"))
 
     outcomes: list[TravelRecordOutcome] = []
+    # Imported rows are new, so none can be disputed — nothing is attached to them yet.
+    # Read once anyway rather than passing an empty set: a hardcoded "cannot be disputed"
+    # is a claim that goes stale the moment import learns to attach a document, and it
+    # would go stale silently.
+    disputed = disputed_record_ids(session, case_id=case.id)
     uow = UnitOfWork(session, actor_id=user.user_id)
     for fields in parsed.valid_fields:
         record = TravelRecord.start(case_id=case.id)
@@ -505,7 +559,7 @@ def import_travel_records(
             target_type="TravelRecord",
             target_id=version.id,
         )
-        outcomes.append(TravelRecordOutcome(record=record, version=version))
+        outcomes.append(TravelRecordOutcome.of(record, version, disputed))
     # One invalidation for the whole batch, not one per row: the affected set is identical
     # for every travel write, and staling a result twice would only reset its reason code.
     invalidate_for_input_change(

@@ -142,10 +142,7 @@ def list_travel_records(
     # One coverage read for the whole list rather than one per trip: twelve trips would
     # otherwise be twelve queries for a column the user reads at a glance.
     coverage = links.coverage_for_case(session, case_id=case.id)
-    return [
-        TravelRecordResponse.from_domain(o.record, o.version, coverage.get(o.record.id, ()))
-        for o in outcomes
-    ]
+    return [TravelRecordResponse.from_domain(o, coverage.get(o.record.id, ())) for o in outcomes]
 
 
 @travel_records_router.post(
@@ -241,9 +238,7 @@ def _travel_record_with_coverage(
     if outcome is None:  # pragma: no cover - the command already resolved this record
         raise TravelRecordNotFound()
     coverage = links.coverage_for_case(session, case_id=case.id)
-    return TravelRecordResponse.from_domain(
-        outcome.record, outcome.version, coverage.get(outcome.record.id, ())
-    )
+    return TravelRecordResponse.from_domain(outcome, coverage.get(outcome.record.id, ()))
 
 
 @travel_records_router.post(
@@ -256,7 +251,7 @@ def add_travel_record(
     user: Annotated[CurrentUser, Depends(get_current_user)],
 ) -> TravelRecordResponse:
     outcome = service.add_travel_record(session, case=case, user=user, fields=_fields(body))
-    return TravelRecordResponse.from_domain(outcome.record, outcome.version)
+    return TravelRecordResponse.from_domain(outcome)
 
 
 @travel_records_router.patch("/{travel_record_id}", response_model=TravelRecordResponse)
@@ -275,7 +270,7 @@ def edit_travel_record(
         fields=_fields(body),
         expected_revision=body.expected_revision,
     )
-    return TravelRecordResponse.from_domain(outcome.record, outcome.version)
+    return TravelRecordResponse.from_domain(outcome)
 
 
 @travel_records_router.delete("/{travel_record_id}", response_model=TravelRecordResponse)
@@ -293,7 +288,7 @@ def remove_travel_record(
         travel_record_id=travel_record_id,
         expected_revision=expected_revision,
     )
-    return TravelRecordResponse.from_domain(outcome.record, outcome.version)
+    return TravelRecordResponse.from_domain(outcome)
 
 
 @travel_records_router.post("/import/validate", response_model=ImportValidationResponse)
@@ -318,5 +313,5 @@ def commit_travel_import(
     outcomes = service.import_travel_records(session, case=case, user=user, content=body.content)
     return ImportCommitResponse(
         imported_count=len(outcomes),
-        records=[TravelRecordResponse.from_domain(o.record, o.version) for o in outcomes],
+        records=[TravelRecordResponse.from_domain(o) for o in outcomes],
     )

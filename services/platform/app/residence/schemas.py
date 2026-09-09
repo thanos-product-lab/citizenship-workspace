@@ -9,7 +9,7 @@ M3B rules concern, deliberately not enforced at this input boundary.
 import uuid
 from collections.abc import Sequence
 from datetime import date, datetime
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -31,11 +31,12 @@ from app.residence.domain import (
     DateConfidence,
     ProposedApplicationDate,
     ProposedApplicationDateVersion,
-    TravelRecord,
-    TravelRecordVersion,
     TravelReviewState,
 )
 from app.residence.timeline import TimelineProjection
+
+if TYPE_CHECKING:  # the service imports nothing from here today, and this keeps it that way
+    from app.residence.service import TravelRecordOutcome
 from app.shared.dates import MAX_ENTERED_DATE, MIN_ENTERED_DATE
 
 #: Kept as names because the save and the preview must bound the application date
@@ -141,6 +142,19 @@ class TravelRecordResponse(BaseModel):
     #: judged sense: nothing has read these documents to decide whether they support the
     #: trip, and nothing does until M8.
     supporting_evidence_item_ids: list[uuid.UUID] = []
+    #: Whether this record counts towards the confirmed totals — the §6.1 gate, **decided
+    #: here** rather than left to the client.
+    #:
+    #: `date_confidence` and `review_state` above are the ingredients, and they are still
+    #: published because the edit form needs the value the user actually entered. They are
+    #: no longer sufficient to decide trust: a confirmed document date can dispute a trip,
+    #: and that is derived at read time and never written to the row (RFC §42). A client
+    #: recombining the ingredients gets the answer that was right before M8 slice 4.
+    is_trusted: bool
+    #: Why, when the reason is one the ingredients cannot show. An unconfirmed or estimated
+    #: record explains itself from the fields above; a disputed one looks identical to a
+    #: counted one, so it says so.
+    is_disputed_by_document: bool
     revision: int
     created_at: datetime
     updated_at: datetime
@@ -148,12 +162,20 @@ class TravelRecordResponse(BaseModel):
     @classmethod
     def from_domain(
         cls,
-        record: TravelRecord,
-        version: TravelRecordVersion,
+        outcome: "TravelRecordOutcome",
         supporting_evidence_item_ids: Sequence[uuid.UUID] = (),
     ) -> "TravelRecordResponse":
+        """Built from the whole outcome, not from `(record, version)`.
+
+        Taking the outcome is what makes the trust decision impossible to omit: there is no
+        overload that accepts the two ORM rows and leaves `is_trusted` to be worked out
+        later, so a new response path cannot quietly publish the ingredients alone.
+        """
+        record, version = outcome.record, outcome.version
         return cls(
             supporting_evidence_item_ids=list(supporting_evidence_item_ids),
+            is_trusted=outcome.is_trusted,
+            is_disputed_by_document=outcome.is_disputed_by_document,
             id=record.id,
             case_id=record.case_id,
             version_number=version.version_number,
