@@ -32,23 +32,22 @@ gate that the rule catalog cannot see, so no amount of dependency completeness r
 
 ## Decision
 
-**`gather_trips` is public, and it is the only place the §6.1 gate is decided *in Python*.**
-Anything needing to know whether a record counts consumes its `TripInput`s rather than
-re-deriving trust from the row. `residence.timeline` now does.
+**`gather_trips` is public, and it is the only place the §6.1 gate is decided.** Anything
+needing to know whether a record counts consumes its `TripInput`s rather than re-deriving
+trust from the row. `residence.timeline` now does.
 
-**One reader is knowingly outside that claim**, and the qualifier above exists to keep this
-ADR honest rather than aspirational. `apps/web/features/timeline/TravelHistory.tsx:56` — the
-Case data page's travel table — computes `review_state === "CONFIRMED" && date_confidence ===
-"EXACT"` in TypeScript, from `TravelRecordResponse`, which serves the **stored** version. A
-disputed trip's stored confidence is still `EXACT` (RFC §42), so that table shows it as plain
-"Confirmed" with no flag — on the very page where the user attached the document. It is also
-a calculation re-derived client-side, which CLAUDE.md §8 forbids independently of this.
+**The client is no longer allowed to decide either.** `apps/web/features/timeline/
+TravelHistory.tsx` computed `review_state === "CONFIRMED" && date_confidence === "EXACT"` in
+TypeScript, from a response that serves the **stored** version — so on the Case data page a
+disputed trip read as plain "Confirmed", on the page where the user had just attached the
+document. `TravelRecordResponse` now carries `is_trusted` and `is_disputed_by_document`, and
+`TravelRecordOutcome.of` computes them on every path that builds one, so a new response route
+cannot publish the ingredients alone.
 
-The durable fix is for the API to publish the decision rather than the ingredients — an
-`is_trusted` on `TravelRecordResponse` — so the client cannot re-derive it. That is its own
-change: it touches a second surface's copy (the existing "Uncertain" label is the wrong word
-for a disputed trip, the same defect this change fixed on the timeline) and a different test
-suite. Tracked, not forgotten.
+`date_confidence` and `review_state` are still published, deliberately: they are the values
+the *user* entered, and the edit form offers them back. Overwriting `date_confidence` with the
+derived `CONFLICTING` would put a state in that form which nobody chose. The stored fields
+stay honest about the past; the two new fields answer the question.
 
 `counts_toward_trusted_total` stays where it is and keeps its name — it is the *predicate*,
 and `gather_trips` is the only correct way to apply it, because only `gather_trips` also
@@ -98,13 +97,16 @@ the last assessment. Removing the figure would remove the reason the surface exi
 
 ## The general shape
 
-Three times now the same defect: a value that used to be derivable from a stored row stopped
-being derivable, and a reader that still derived it kept answering with yesterday's rule.
-Slice 4 found it in three rules; this found it in a projection; the review of this change
-found it in a React component. When a predicate acquires a second input, **every place that
-computes it must be enumerated** — and the rule catalog is not that list, because not every
-reader is a rule, and not every reader is even in the same language.
+Three times the same defect: a value that used to be derivable from a stored row stopped being
+derivable, and a reader that still derived it kept answering with yesterday's rule. Slice 4
+found it in three rules; this found it in a projection; the review of this change found it in
+a React component. When a predicate acquires a second input, **every place that computes it
+must be enumerated** — and the rule catalog is not that list, because not every reader is a
+rule, and not every reader is even in the same language.
 
-The pattern in each case was a caller reading the *ingredients* (`review_state`,
+The pattern each time was a caller reading the *ingredients* (`review_state`,
 `date_confidence`) instead of the *decision*. The lasting fix is not vigilance, it is to stop
-publishing ingredients where a decision will do.
+publishing ingredients where a decision will do — which is why the fix here is a field on the
+response and a factory that fills it, rather than a corrected expression in one component.
+Three readers were found by three different means: a mutation table, a browser walkthrough,
+and a reviewer. None was found by the type system, because every one of them type-checked.

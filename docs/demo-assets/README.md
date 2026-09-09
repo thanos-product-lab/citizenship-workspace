@@ -432,3 +432,21 @@ confirmed totals until you confirm its dates"*, and for a disputed trip that nam
 the user already performed and that cannot resolve a conflict. It now says **Dates disputed**
 and points at Issues. In the band the disputed trip is hatched rather than muted — three
 states, three textures, none distinguished by hue.
+
+### M8 — the Case data table, after the client stopped deciding
+
+`m8/m8-case-data-shows-the-dispute.txt` — the third and last surface, and the one where the
+gap was most pointed: the disputed trip rendered as plain "Confirmed", with no flag, sitting
+directly beside the document that disputes it, on the page where the user attached it.
+
+`TravelHistory.tsx` computed `review_state === "CONFIRMED" && date_confidence === "EXACT"` in
+TypeScript. That *was* the §6.1 gate, and it was right until a confirmed document date could
+dispute a trip — after which the stored row a client can see stopped being enough to answer
+the question.
+
+Worth keeping as the third frame in a set. Slice 4 found this defect in three rules, a browser
+walkthrough found it in the timeline projection, a reviewer found it here; **none of the three
+was caught by the type system, because all three type-checked.** The fix that ends the
+sequence is not a corrected expression but a changed signature: `TravelRecordResponse` carries
+`is_trusted`, `from_domain` takes the whole outcome, and publishing the ingredients without
+the decision is now a type error rather than a review finding.

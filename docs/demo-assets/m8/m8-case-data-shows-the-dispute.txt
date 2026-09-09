@@ -1,0 +1,55 @@
+M8 — the Case data travel table, after the client stopped deciding
+=================================================================
+
+Captured 9 September 2026 on the canonical synthetic demo case, in the state
+SYNTHETIC_DEMO_CASE.md §7 reaches once the amended Italy booking is attached to
+trip 11 and its return date confirmed as 11 May 2026 against a record saying
+10 May.
+
+Case data → Travel history
+
+  Canada        1 Sep 2025 to 28 Oct 2025    Canada travel document
+  Spain         1 Feb 2026 to 25 Mar 2026    Spain travel document
+  Italy         4 May 2026 to 10 May 2026    Italy travel document
+    [!] Dates disputed                       italy_booking_amended_return
+    A document you attached gives
+    different dates
+  United States 16 May 2026 to 29 May 2026   United States travel document
+
+The disputed row sits directly beside the document that disputes it, which is the
+point: this is the page where the user attached it.
+
+
+What it looked like before
+--------------------------
+
+  Italy         4 May 2026 to 10 May 2026    Italy travel document
+                                             italy_booking_amended_return
+
+No flag at all. `TravelHistory.tsx` computed the §6.1 trust gate in TypeScript —
+
+    const confirmed = r.review_state === "CONFIRMED" && r.date_confidence === "EXACT";
+
+— from a response that serves the **stored** version. A disputed trip's stored
+row still reads CONFIRMED with EXACT dates, because the conflict is derived and
+never written (EVIDENCE_AND_CLAIM_LIFECYCLE_RFC §42). So the expression returned
+true, and "Confirmed is the quiet default", so the row rendered clean while the
+assessment and the timeline both held that trip back.
+
+This was the third instance of one defect: a predicate acquired a second input
+and a reader that still derived it kept answering with yesterday's rule. Slice 4
+found it in three rules, the browser walkthrough found it in the timeline
+projection, and the trust-model reviewer found it here. None was caught by the
+type system — all three type-checked.
+
+The fix is not a corrected expression. `TravelRecordResponse` now carries
+`is_trusted` and `is_disputed_by_document`, and `TravelRecordOutcome.of` computes
+them on every path that builds one, so the client is handed the decision and has
+nothing left to re-derive. `from_domain` takes the outcome rather than
+`(record, version)`, so a new response route cannot publish the ingredients alone
+— that is a type error now, not a review finding.
+
+`date_confidence` and `review_state` are still published, deliberately. They are
+what the *user* entered, and the edit form offers them back; overwriting
+`date_confidence` with the derived CONFLICTING would put a state in that form
+which nobody chose.
