@@ -221,6 +221,35 @@ DOCUMENTS: dict[str, list[str]] = {
         "",
         "Do not send further copies of your documents.",
     ],
+    # The held-out case for classify_document.v2's IMMIGRATION_STATUS condition.
+    #
+    # v2 was written against the acknowledgement fixture below, so that fixture passing
+    # proves only that the prompt addresses the example it was written for. This document
+    # tests the same principle - Home Office correspondence about indefinite leave that
+    # grants nothing - through a route v2 does not enumerate. v2 lists "acknowledges an
+    # application, requests documents, confirms a fee, schedules an appointment, defers a
+    # decision, or refuses one". A withdrawal at the applicant's request is none of those,
+    # and it is still not a grant.
+    #
+    # Deliberately not a refusal, even though a refusal is the more obvious non-grant:
+    # v2 names refusals, so a refusal fixture would be checking whether the model can read
+    # a list back. The value of a held-out case is entirely in not being on the list.
+    "classifier/ukvi_application_withdrawn.pdf": [
+        "UK VISAS AND IMMIGRATION",
+        "",
+        "Application closed",
+        "",
+        "Applicant:        Amara Okonkwo",
+        "Our reference:    ILR/2025/551907",
+        "Date:             4 November 2025",
+        "",
+        "You asked us to withdraw your application for indefinite leave to remain.",
+        "We have closed your case and no decision has been made on it. Your",
+        "application fee is not refundable at this stage.",
+        "",
+        "Your documents will be returned to the address we hold for you. If you",
+        "wish to apply again you will need to submit a new application.",
+    ],
     # AMBIGUOUS, and specifically ambiguous *between two supported categories* — which is
     # what the category means ("could reasonably be more than one"), as distinct from
     # UNSUPPORTED, which means none of them.

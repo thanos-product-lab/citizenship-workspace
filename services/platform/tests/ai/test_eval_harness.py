@@ -431,10 +431,17 @@ def test_every_prompt_version_still_resolves_including_superseded_ones() -> None
     for version in PromptVersion:
         assert SystemPrompt(version).text.strip(), f"{version.value} resolved to nothing"
 
-    superseded = SystemPrompt(PromptVersion.EXTRACT_TRAVEL_V1).text
-    assert "3 April or 3 March" in superseded, (
-        "v1 has been edited. Runs recorded under it would now resolve to text they were "
-        "not made with — including the mistake that is the reason v2 exists."
+    # Each superseded version is pinned by the very text its successor exists to change.
+    # A generic "it still loads" check would pass on a file someone had quietly rewritten.
+    assert "3 April or 3 March" in SystemPrompt(PromptVersion.EXTRACT_TRAVEL_V1).text, (
+        "extract_travel.v1 has been edited. Runs recorded under it would now resolve to "
+        "text they were not made with — including the mistake that is why v2 exists."
+    )
+    classify_v1 = SystemPrompt(PromptVersion.CLASSIFY_DOCUMENT_V1).text
+    assert "Condition:" not in classify_v1, (
+        "classify_document.v1 has acquired v2's conditions. v1 described categories and "
+        "left the qualifier inside the description, which is why a letter saying 'no "
+        "decision has been made' was classified as a grant of status."
     )
 
 

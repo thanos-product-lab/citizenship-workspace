@@ -73,6 +73,12 @@ class PromptVersion(StrEnum):
 
     PROVIDER_PROBE_V1 = "provider_probe.v1"
     CLASSIFY_DOCUMENT_V1 = "classify_document.v1"
+    #: v1 described each category; v2 gives each a *condition* and says that subject
+    #: matter is not the test. v1 already contained the words "confirming a grant of
+    #: status", and the classifier still called a UKVI letter saying "no decision has been
+    #: made" an IMMIGRATION_STATUS document — a qualifying clause inside a description is
+    #: not a condition a reader has to check.
+    CLASSIFY_DOCUMENT_V2 = "classify_document.v2"
     EXTRACT_TRAVEL_V1 = "extract_travel.v1"
     #: v1 is kept, not replaced. `ModelRun.prompt_version` names it on every call already
     #: made, and a version that resolves to different text than it did when recorded is a

@@ -87,7 +87,7 @@ REGISTRY: dict[Capability, CapabilityConfig] = {
         # with a representative corpus (AI_EVALUATION_PLAN §22), not to a registry
         # edit — this is the baseline, not a claim that nothing better exists.
         model="gpt-4o-mini",
-        prompt_version=PromptVersion.CLASSIFY_DOCUMENT_V1,
+        prompt_version=PromptVersion.CLASSIFY_DOCUMENT_V2,
         schema_version="classifier.v1",
     ),
     Capability.TRAVEL_RECORD_EXTRACTOR: CapabilityConfig(
