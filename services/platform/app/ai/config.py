@@ -93,7 +93,7 @@ REGISTRY: dict[Capability, CapabilityConfig] = {
     Capability.TRAVEL_RECORD_EXTRACTOR: CapabilityConfig(
         capability=Capability.TRAVEL_RECORD_EXTRACTOR,
         model="gpt-4o-mini",
-        prompt_version=PromptVersion.EXTRACT_TRAVEL_V1,
+        prompt_version=PromptVersion.EXTRACT_TRAVEL_V2,
         schema_version="travel.v1",
     ),
     Capability.PROVIDER_PROBE: CapabilityConfig(

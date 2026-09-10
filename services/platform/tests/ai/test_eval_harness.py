@@ -415,6 +415,38 @@ def test_the_rate_is_broken_down_by_risk_and_capability() -> None:
 # --- what the first measured run taught -----------------------------------------
 
 
+def test_every_prompt_version_still_resolves_including_superseded_ones() -> None:
+    """A `ModelRun` records `prompt_version` as a string. Every value it can hold must keep
+    resolving to the text it named when recorded, or the provenance is a dangling pointer.
+
+    So a prompt change adds a version and leaves the old file alone. This is the same rule
+    as `RuleVersion`: `extract_travel.v1` is superseded, not deleted, because runs made
+    under it are still on record.
+    """
+    from app.ai.prompts import PromptVersion, SystemPrompt
+
+    # Through `SystemPrompt`, the only sanctioned way to obtain prompt text, rather than
+    # the private registry behind it — a test that reached past the accessor would keep
+    # passing if the accessor broke.
+    for version in PromptVersion:
+        assert SystemPrompt(version).text.strip(), f"{version.value} resolved to nothing"
+
+    superseded = SystemPrompt(PromptVersion.EXTRACT_TRAVEL_V1).text
+    assert "3 April or 3 March" in superseded, (
+        "v1 has been edited. Runs recorded under it would now resolve to text they were "
+        "not made with — including the mistake that is the reason v2 exists."
+    )
+
+
+def test_the_superseded_travel_prompt_is_not_the_active_one() -> None:
+    from app.ai.config import REGISTRY
+    from app.ai.domain import Capability
+    from app.ai.prompts import PromptVersion
+
+    active = REGISTRY[Capability.TRAVEL_RECORD_EXTRACTOR].prompt_version
+    assert active is PromptVersion.EXTRACT_TRAVEL_V2
+
+
 def test_an_ambiguity_fixture_document_does_not_resolve_its_own_ambiguity() -> None:
     """The defect the first measured run actually found — in the fixture, not the model.
 

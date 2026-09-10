@@ -74,6 +74,15 @@ class PromptVersion(StrEnum):
     PROVIDER_PROBE_V1 = "provider_probe.v1"
     CLASSIFY_DOCUMENT_V1 = "classify_document.v1"
     EXTRACT_TRAVEL_V1 = "extract_travel.v1"
+    #: v1 is kept, not replaced. `ModelRun.prompt_version` names it on every call already
+    #: made, and a version that resolves to different text than it did when recorded is a
+    #: provenance claim the file no longer supports.
+    #:
+    #: v2 corrects the worked example: v1 said `03/04/2025` "may mean 3 April or 3 March",
+    #: which is not how month-first reading works — it is 4 March, and both the day and the
+    #: month move between the two readings. An instruction whose illustration is wrong is a
+    #: weaker instruction than one with no illustration.
+    EXTRACT_TRAVEL_V2 = "extract_travel.v2"
 
 
 def _load(version: PromptVersion) -> str:
