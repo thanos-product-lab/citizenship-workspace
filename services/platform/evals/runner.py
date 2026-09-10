@@ -314,6 +314,9 @@ def main() -> int:
     print(f"\nTravelRecordExtractor — {len(travel_fixtures)} fixtures")
     travel = run_travel_extractor(travel_fixtures)
 
+    # Local, not top-level: `graders` imports `Fixture` from this module, so a runtime
+    # import in either direction is a cycle. The `TYPE_CHECKING` block above covers the
+    # annotations; this covers the construction.
     from evals.graders import Report
 
     report = Report(classifier.results + travel.results)
@@ -327,9 +330,54 @@ def main() -> int:
         print("  an absent one. The suite does not pass with any fixture unmeasured.")
     for failure in report.high_risk_failures:
         print(f"  HIGH-RISK FAILURE  {failure.fixture.id}: {failure.detail}")
+
+    _print_false_reassurance(report)
+
     print()
     print("gate:", "PASS" if report.gate_passed else "FAIL")
+    for note in report.gate_notes:
+        print(f"  {note}")
     return 0 if report.gate_passed else 1
+
+
+def _print_false_reassurance(report: "Report") -> None:
+    """The headline safety metric, printed with everything needed to read it honestly.
+
+    That means the denominator, the breakdowns §11 asks for, and the abstention count
+    beside it — a false-reassurance rate falling while abstentions rise is a model getting
+    quieter rather than safer, and one number cannot say so.
+
+    Printed even when it is zero, and *especially* then: §19's discipline is that the
+    number is reported when it is bad, which is worth nothing unless it is also reported
+    when it is good and therefore trusted.
+    """
+    rate = report.false_reassurance_rate
+    print()
+    if rate is None:
+        print("false-reassurance rate: not measured (no fixture produced output)")
+        return
+
+    measured = len(report.measured)
+    print(
+        f"false-reassurance rate: {rate:.1%}  "
+        f"({len(report.false_reassurances)} of {measured} measured)"
+    )
+    print(
+        f"  unnecessary abstentions: {len(report.unnecessary_abstentions)} "
+        "(wrong, but the output signalled it — not counted above)"
+    )
+    if report.unmeasured:
+        print(f"  read with care: {report.unmeasured} fixture(s) produced no output at all")
+
+    for label, attribute in (("risk", "risk"), ("capability", "capability")):
+        parts = [
+            f"{group} {bad}/{total}"
+            for group, (bad, total) in report.false_reassurance_by(attribute).items()
+        ]
+        print(f"  by {label}: {'  '.join(parts)}")
+
+    for result in report.false_reassurances:
+        print(f"  FALSE REASSURANCE  {result.fixture.id}: {result.detail}")
 
 
 if __name__ == "__main__":

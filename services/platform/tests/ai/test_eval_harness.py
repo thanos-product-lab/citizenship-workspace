@@ -239,3 +239,174 @@ def test_a_forbidden_date_hidden_in_a_timestamp_is_still_found() -> None:
 
     assert result.verdict is Verdict.FAIL
     assert "2026-05-10" in result.forbidden_found
+
+
+# --- the false-reassurance rate (AI_EVALUATION_PLAN §11) --------------------------
+
+
+def test_a_confident_wrong_date_is_a_false_reassurance() -> None:
+    """The metric's whole reason for existing: a value asserted where none was determined.
+
+    `03/04/2025` is 3 April or 4 March depending on convention and the document settles
+    neither. A model that picks one has produced a date a person would confirm without
+    looking — the premise blind confirmation rests on, inverted.
+    """
+    from evals.graders import FailureMode, Verdict, grade_travel
+
+    result = grade_travel(
+        _fixture(expected={"journeys.0.departure.iso": None}),
+        {"journeys": [{"departure": {"as_written": "03/04/2025", "iso": "2025-04-03"}}]},
+    )
+
+    assert result.verdict is Verdict.FAIL
+    assert result.failure_mode is FailureMode.ASSERTED_WRONG
+    assert result.is_false_reassurance is True
+
+
+def test_abstaining_where_a_value_existed_is_wrong_but_not_a_false_reassurance() -> None:
+    """The asymmetry the metric turns on, and the reason it is not one minus the pass rate.
+
+    The date was legible and the model said it could not read it. That is a failure — §13's
+    unnecessary abstention — and it is *not* false reassurance: the field arrives empty, the
+    user is sent to look, and blind confirmation catches it. Counting it in the headline
+    number would make that number rise when the model becomes more cautious.
+    """
+    from evals.graders import FailureMode, Verdict, grade_travel
+
+    result = grade_travel(
+        _fixture(expected={"journeys.0.departure.iso": "2026-05-04"}),
+        {"journeys": [{"departure": {"as_written": "04 May 2026", "iso": None}}]},
+    )
+
+    assert result.verdict is Verdict.FAIL, "still a failure"
+    assert result.failure_mode is FailureMode.ABSTAINED
+    assert result.is_false_reassurance is False
+
+
+def test_a_forbidden_value_is_always_a_false_reassurance() -> None:
+    """`must_not_extract` lists the plausible wrong answers *this* document invites. Finding
+    one means the model committed to a trap rather than declining it."""
+    from evals.graders import FailureMode, grade_travel
+
+    result = grade_travel(
+        _fixture(
+            expected={"journeys.0.arrival_return.iso": "2026-05-11"},
+            must_not_extract={"any_date": ["2026-05-10"]},
+        ),
+        {"journeys": [{"arrival_return": {"as_written": "10 May 2026", "iso": "2026-05-10"}}]},
+    )
+
+    assert result.failure_mode is FailureMode.ASSERTED_WRONG
+    assert result.is_false_reassurance is True
+
+
+def test_one_invented_field_is_not_redeemed_by_others_abstaining() -> None:
+    """The worst mode across the fields, not the first or the last one found."""
+    from evals.graders import FailureMode, grade_travel
+
+    result = grade_travel(
+        _fixture(
+            expected={
+                "journeys.0.departure.iso": "2026-05-04",
+                "journeys.0.arrival_return.iso": None,
+            }
+        ),
+        {
+            "journeys": [
+                {
+                    "departure": {"as_written": "04 May 2026", "iso": None},
+                    "arrival_return": {"as_written": "??", "iso": "2026-05-11"},
+                }
+            ]
+        },
+    )
+
+    assert result.failure_mode is FailureMode.ASSERTED_WRONG
+
+
+def test_forcing_a_category_onto_an_ambiguous_document_is_a_false_reassurance() -> None:
+    """The classifier's half. Forcing a category is how a document gets its fields read out
+    under the wrong schema, which is the failure `AMBIGUOUS` exists to make avoidable."""
+    from evals.graders import Verdict, grade_classification
+
+    forced = grade_classification(
+        _fixture(capability="DocumentClassifier", expected={"category": "AMBIGUOUS"}),
+        {"category": "TRAVEL_SUPPORT", "confidence": 0.9, "reasoning": "looks like a booking"},
+    )
+    assert forced.is_false_reassurance is True
+
+    # And the reverse: refusing to classify something classifiable is an abstention.
+    refused = grade_classification(
+        _fixture(capability="DocumentClassifier", expected={"category": "TRAVEL_SUPPORT"}),
+        {"category": "AMBIGUOUS", "confidence": 0.2, "reasoning": "cannot tell"},
+    )
+    assert refused.verdict is Verdict.FAIL
+    assert refused.is_false_reassurance is False
+
+
+def test_a_passing_fixture_has_no_failure_mode() -> None:
+    from evals.graders import grade_travel
+
+    result = grade_travel(
+        _fixture(expected={"journeys.0.departure.iso": "2026-05-04"}),
+        {"journeys": [{"departure": {"as_written": "04 May 2026", "iso": "2026-05-04"}}]},
+    )
+
+    assert result.failure_mode is None
+    assert result.is_false_reassurance is False
+
+
+def test_the_rate_is_none_rather_than_zero_when_nothing_was_measured() -> None:
+    """A rate of zero over zero measurements is the most reassuring number this suite could
+    print and the least earned — the failure the metric is named after, committed by the
+    instrument that measures it. The M8 spike did exactly this: reported the model correctly
+    abstaining when every call had failed on a 429."""
+    from evals.graders import Report, grade_travel
+
+    unmeasured = Report([grade_travel(_fixture(), None)])
+
+    assert unmeasured.false_reassurance_rate is None
+    assert unmeasured.unmeasured == 1
+
+
+def test_the_rate_counts_only_asserted_failures_over_measured_outputs() -> None:
+    from evals.graders import Report, grade_travel
+
+    asserted = grade_travel(
+        _fixture(id="a", expected={"journeys.0.departure.iso": None}),
+        {"journeys": [{"departure": {"as_written": "03/04/2025", "iso": "2025-04-03"}}]},
+    )
+    abstained = grade_travel(
+        _fixture(id="b", expected={"journeys.0.departure.iso": "2026-05-04"}),
+        {"journeys": [{"departure": {"as_written": "04 May 2026", "iso": None}}]},
+    )
+    passed = grade_travel(
+        _fixture(id="c", expected={"journeys.0.departure.iso": "2026-05-04"}),
+        {"journeys": [{"departure": {"as_written": "04 May 2026", "iso": "2026-05-04"}}]},
+    )
+    report = Report([asserted, abstained, passed, grade_travel(_fixture(id="d"), None)])
+
+    # Three measured, one of them a false reassurance. The unmeasured fixture is in neither
+    # side of the ratio — this module's rule, and the reason 1/3 is not 1/4.
+    assert report.false_reassurance_rate == pytest.approx(1 / 3)
+    assert len(report.unnecessary_abstentions) == 1
+    assert report.unmeasured == 1
+
+
+def test_the_rate_is_broken_down_by_risk_and_capability() -> None:
+    """§11 requires both; §12 says why — a gain on low-risk metadata must not hide a
+    regression on high-risk dates."""
+    from evals.graders import Report, grade_travel
+
+    high = grade_travel(
+        _fixture(id="h", risk="HIGH", expected={"journeys.0.departure.iso": None}),
+        {"journeys": [{"departure": {"as_written": "03/04/2025", "iso": "2025-04-03"}}]},
+    )
+    low = grade_travel(
+        _fixture(id="l", risk="LOW", expected={"journeys.0.departure.iso": "2026-05-04"}),
+        {"journeys": [{"departure": {"as_written": "04 May 2026", "iso": "2026-05-04"}}]},
+    )
+    report = Report([high, low])
+
+    assert report.false_reassurance_by("risk") == {"HIGH": (1, 1), "LOW": (0, 1)}
+    assert report.false_reassurance_by("capability") == {"TravelRecordExtractor": (1, 2)}
