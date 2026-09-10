@@ -466,8 +466,12 @@ def test_an_ambiguity_fixture_document_does_not_resolve_its_own_ambiguity() -> N
 
     from app.evidence import extraction
 
-    fixtures = [f for f in load_fixtures() if "ambiguous" in f.tags]
-    assert fixtures, "no ambiguous fixture left to protect"
+    # Selected on `date_format`, the tag that means "written as ambiguous numerals", not
+    # on `ambiguous` — which the corpus also uses for a document whose *category* is
+    # undetermined and whose dates are perfectly clear. This test checks date arithmetic,
+    # so it selects the fixtures that have ambiguous dates.
+    fixtures = [f for f in load_fixtures() if "date_format" in f.tags]
+    assert fixtures, "no ambiguous-date fixture left to protect"
 
     for fixture in fixtures:
         text = extraction.extract(fixture.document_path.read_bytes()).content
@@ -485,3 +489,68 @@ def test_an_ambiguity_fixture_document_does_not_resolve_its_own_ambiguity() -> N
                 "its two dates — that number tells a careful reader which convention "
                 "applies, so the fixture no longer tests ambiguity"
             )
+
+
+def test_both_classifier_abstentions_have_a_fixture() -> None:
+    """`UNSUPPORTED` and `AMBIGUOUS` are the classifier's two ways of declining, and
+    *"correct abstention is a success"* (§3.2) is the claim they exist to make good.
+
+    Until these fixtures, every classifier fixture expected a real category. So the
+    capability's whole refusal surface was unmeasured, and the false-reassurance rate was
+    reported over a corpus where the model was never handed a document it should decline —
+    a safety metric that had not seen the case it exists to measure.
+
+    Asserted over the enum rather than as a count, so a third way of declining added to
+    `ClassifiedCategory` arrives here without a fixture and fails, instead of arriving
+    silently.
+    """
+    from app.ai.classifier import ClassifiedCategory
+
+    declining = {ClassifiedCategory.UNSUPPORTED.value, ClassifiedCategory.AMBIGUOUS.value}
+    expected = {
+        str(f.expected.get("category"))
+        for f in load_fixtures()
+        if f.capability == "DocumentClassifier"
+    }
+
+    assert declining <= expected, f"no fixture expects {sorted(declining - expected)}"
+
+
+def test_every_supported_category_also_has_a_fixture() -> None:
+    """The other half. An abstention corpus that only tested refusal would reward a model
+    that refused everything, which §13's unnecessary-abstention metric exists to catch —
+    but a metric is a poor substitute for having the fixtures."""
+    from app.ai.classifier import ClassifiedCategory
+
+    supported = {
+        c.value
+        for c in ClassifiedCategory
+        if c not in (ClassifiedCategory.UNSUPPORTED, ClassifiedCategory.AMBIGUOUS)
+    }
+    expected = {
+        str(f.expected.get("category"))
+        for f in load_fixtures()
+        if f.capability == "DocumentClassifier"
+    }
+
+    assert supported <= expected, f"no fixture expects {sorted(supported - expected)}"
+
+
+def test_the_unsupported_fixture_is_not_one_of_the_prompt_s_own_examples() -> None:
+    """A fixture built from an example the instruction already names tests whether the
+    model can read its instructions back, which it can. The prompt lists a bank statement,
+    a payslip and a tenancy agreement; the fixture has to be something else to be worth
+    running."""
+    from app.ai.prompts import PromptVersion, SystemPrompt
+    from app.evidence import extraction
+
+    prompt = SystemPrompt(PromptVersion.CLASSIFY_DOCUMENT_V1).text.casefold()
+    named_in_prompt = ("bank statement", "payslip", "tenancy agreement")
+    assert all(example in prompt for example in named_in_prompt), (
+        "the prompt's examples changed; update this test rather than weakening it"
+    )
+
+    fixture = next(f for f in load_fixtures() if f.expected.get("category") == "UNSUPPORTED")
+    text = extraction.extract(fixture.document_path.read_bytes()).content.casefold()
+    for example in named_in_prompt:
+        assert example not in text, f"{fixture.id} is built from a prompt example: {example!r}"

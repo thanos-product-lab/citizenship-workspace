@@ -191,6 +191,73 @@ DOCUMENTS: dict[str, list[str]] = {
     # resolve it under a mild instruction (0/3 abstentions) and does not under a
     # forceful one (3/3) - which is exactly why the deterministic normaliser rather
     # than the prompt is what the product relies on. See AI_SPIKE_FINDINGS.md.
+    # UNSUPPORTED, and deliberately not one of the prompt's own examples.
+    #
+    # `classify_document` already names a bank statement, a payslip and a tenancy
+    # agreement as UNSUPPORTED, so a fixture built from one of those would test whether
+    # the model can read its own instructions back. This is UKVI correspondence about
+    # indefinite leave to remain — the exact subject matter IMMIGRATION_STATUS covers —
+    # that confirms no grant of anything. The category is for correspondence "confirming
+    # a grant of status"; an acknowledgement of receipt confirms receipt.
+    #
+    # It is the misclassification with teeth. Called IMMIGRATION_STATUS, this document
+    # goes to a claim extractor looking for a grant date it does not contain, and the
+    # nearest date on the page is the day the application was received.
+    "classifier/ukvi_application_acknowledgement.pdf": [
+        "UK VISAS AND IMMIGRATION",
+        "",
+        "Application acknowledgement",
+        "",
+        "Applicant:        Amara Okonkwo",
+        "Our reference:    ILR/2026/774213",
+        "Received:         18 February 2026",
+        "",
+        "We are writing to confirm that we have received your application for",
+        "indefinite leave to remain, together with your supporting documents.",
+        "",
+        "No decision has been made on your application. We will write to you again",
+        "once your application has been considered. You do not need to contact us",
+        "in the meantime.",
+        "",
+        "Do not send further copies of your documents.",
+    ],
+    # AMBIGUOUS, and specifically ambiguous *between two supported categories* — which is
+    # what the category means ("could reasonably be more than one"), as distinct from
+    # UNSUPPORTED, which means none of them.
+    #
+    # A pass notification from a test centre is either an English language result or a
+    # Life in the UK result, and nothing here says which. Both are real categories with
+    # real extractors, so forcing a choice sends the document to one of two schemas on a
+    # coin toss. Sparse rather than damaged: the text is perfectly legible and still does
+    # not determine the answer.
+    #
+    # First draft of this document was tilted and the tilt was invisible to me. It was
+    # titled "TEST RESULT NOTIFICATION" and closed with "Keep this notification. A
+    # replacement cannot be issued" — both of which echo the real Life in the UK pass
+    # notification, which is called a notification and warns that no replacement can be
+    # issued. The classifier answered LIFE_IN_THE_UK, and on that wording it had a case.
+    # A fixture asserting "nothing says which" cannot contain phrasing borrowed from one
+    # of the candidates.
+    "classifier/bare_test_pass_notification.pdf": [
+        "RESULT SLIP",
+        "",
+        "Candidate:        A. OKONKWO",
+        "Candidate ID:     TC-88214",
+        "",
+        "Test date:        12 March 2024",
+        "Result:           PASS",
+        "",
+        "Centre:           Manchester Test Centre 04",
+        "Invigilator ID:   MTC-0447",
+        "Slip reference:   RS-2024-031288",
+        "",
+        # Padding to clear the corpus's 200-character floor, and chosen as carefully as
+        # the rest: generic administrative wording that appears in neither candidate's
+        # real paperwork. Removing the tilted lines dropped this document to 194 chars,
+        # and the cheap fix — lowering the floor — would have weakened a guard that
+        # exists so a fixture cannot be a near-empty page.
+        "This slip confirms the result recorded for the candidate named above.",
+    ],
     "travel/ambiguous_numeric_dates.pdf": [
         "COASTLINE HOLIDAYS",
         "Travel Confirmation",
