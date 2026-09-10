@@ -202,10 +202,25 @@ DOCUMENTS: dict[str, list[str]] = {
         "Return date:           09/04/2025",
         "",
         "Destination:           Nice, France",
-        "Accommodation:         Hotel Bellevue, 6 nights",
+        "Accommodation:         Hotel Bellevue",
         "",
         "No month is written in words anywhere on this confirmation.",
     ],
+    # Why there is no night count here, and why there was.
+    #
+    # This document read "Accommodation: Hotel Bellevue, 6 nights" until the first
+    # measured eval run. That detail settled the convention it was written to leave open:
+    # 3 April to 9 April is exactly 6 days, and 4 March to 9 April is 36, so day-first was
+    # the only reading consistent with the page. The extractor answered 2025-04-09 and was
+    # marked a false reassurance for it — wrongly. `extract_travel` explicitly permits
+    # settling the convention when "the same document elsewhere settles" it, and the model
+    # did precisely that.
+    #
+    # The fixture, not the model, was the defect: it asserted that nothing determined the
+    # date while quietly providing something that did. A corroborating detail is the most
+    # natural thing in the world to add when writing a realistic booking, and it is the
+    # last thing an ambiguity fixture can afford. Anything added here has to be checked
+    # against the dates for arithmetic that resolves them.
 }
 
 

@@ -410,3 +410,46 @@ def test_the_rate_is_broken_down_by_risk_and_capability() -> None:
 
     assert report.false_reassurance_by("risk") == {"HIGH": (1, 1), "LOW": (0, 1)}
     assert report.false_reassurance_by("capability") == {"TravelRecordExtractor": (1, 2)}
+
+
+# --- what the first measured run taught -----------------------------------------
+
+
+def test_an_ambiguity_fixture_document_does_not_resolve_its_own_ambiguity() -> None:
+    """The defect the first measured run actually found — in the fixture, not the model.
+
+    `ambiguous_numeric_dates.pdf` read "Accommodation: Hotel Bellevue, 6 nights". Its dates
+    are 03/04/2025 and 09/04/2025: six days apart read day-first, thirty-six read
+    month-first. So the night count settled the convention the document was written to
+    leave open, the extractor answered 2025-04-09 on that evidence, and the suite recorded
+    a false reassurance against a model that had reasoned correctly.
+
+    A corroborating detail is the most natural thing to add when writing a realistic
+    booking and the last thing this fixture can afford. Checking by eye is what failed, so
+    this checks the arithmetic: neither reading's day-gap may appear as a number anywhere
+    in the text.
+    """
+    import re
+    from datetime import date
+
+    from app.evidence import extraction
+
+    fixtures = [f for f in load_fixtures() if "ambiguous" in f.tags]
+    assert fixtures, "no ambiguous fixture left to protect"
+
+    for fixture in fixtures:
+        text = extraction.extract(fixture.document_path.read_bytes()).content
+        numeric = re.findall(r"\b(\d{2})/(\d{2})/(\d{4})\b", text)
+        assert len(numeric) >= 2, f"{fixture.id}: expected a pair of slashed dates"
+
+        (d1, m1, y1), (d2, m2, y2) = numeric[0], numeric[1]
+        day_first = (date(int(y2), int(m2), int(d2)) - date(int(y1), int(m1), int(d1))).days
+        month_first = (date(int(y2), int(d2), int(m2)) - date(int(y1), int(d1), int(m1))).days
+
+        present = {int(n) for n in re.findall(r"\b\d+\b", text)}
+        for gap, reading in ((day_first, "day-first"), (month_first, "month-first")):
+            assert gap not in present, (
+                f"{fixture.id}: the text contains {gap}, which is the {reading} gap between "
+                "its two dates — that number tells a careful reader which convention "
+                "applies, so the fixture no longer tests ambiguity"
+            )
