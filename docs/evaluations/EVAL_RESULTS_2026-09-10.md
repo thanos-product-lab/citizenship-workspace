@@ -1,5 +1,13 @@
 # Eval run — 10 September 2026
 
+> **Superseded by `EVAL_RESULTS_2026-09-10b.md`, and kept deliberately.** The failure
+> recorded below was a defect in the fixture, not in the model: the document stated a night
+> count whose arithmetic resolved the ambiguity it was written to preserve, so the extractor
+> was marked wrong for reasoning correctly. This file is left as written because a
+> measurement that turned out to be measuring the wrong thing is worth keeping next to the
+> one that corrected it — deleting it would leave the corpus looking as though it had always
+> been sound.
+
 First run that computes the **false-reassurance rate**. Provider: OpenAI,
 `gpt-4o-mini` for all three capabilities. Total spend $0.0015 across 9 calls.
 

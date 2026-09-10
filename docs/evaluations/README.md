@@ -17,3 +17,8 @@ bad. Honest evaluation reporting is part of the portfolio signal.
 - `EVAL_RESULTS_2026-09-10.md` — first measured false-reassurance rate: **11.1%
   (1 of 9)**, the one failure being the ambiguous-date fixture that tests the
   premise blind confirmation rests on. Gate FAIL.
+- `EVAL_RESULTS_2026-09-10b.md` — **0.0% (0 of 9)**, gate PASS. The first run's
+  failure was a defect in that fixture, not in the model: the document stated a
+  night count whose arithmetic resolved the ambiguity it was written to
+  preserve. Both runs are kept. A corrected measurement does not delete the
+  measurement it corrects.
