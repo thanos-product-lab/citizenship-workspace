@@ -17,6 +17,10 @@ bad. Honest evaluation reporting is part of the portfolio signal.
 - `EVAL_RESULTS_2026-09-10.md` — first measured false-reassurance rate: **11.1%
   (1 of 9)**, the one failure being the ambiguous-date fixture that tests the
   premise blind confirmation rests on. Gate FAIL.
+- `EVAL_RESULTS_2026-09-10d.md` — **0.0% (0 of 12)**, gate PASS, under
+  `classify_document.v2`. The two documents that failed at 18.2% are byte-identical;
+  only the prompt changed. Includes a held-out fixture the prompt was not written
+  against, which is what makes the zero mean anything. **Current.**
 - `EVAL_RESULTS_2026-09-10c.md` — **18.2% (2 of 11)**, gate FAIL, after adding the
   two classifier abstention fixtures. The 0.0% below was measured over a corpus
   where `UNSUPPORTED` and `AMBIGUOUS` had no fixture at all; given one each, the
