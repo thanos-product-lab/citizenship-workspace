@@ -57,8 +57,18 @@ class Capability(StrEnum):
 
     PROVIDER_PROBE = "PROVIDER_PROBE"
     DOCUMENT_CLASSIFIER = "DocumentClassifier"
-    DOCUMENT_CLAIM_EXTRACTOR = "DocumentClaimExtractor"
     TRAVEL_RECORD_EXTRACTOR = "TravelRecordExtractor"
+    ENGLISH_LANGUAGE_EXTRACTOR = "EnglishLanguageExtractor"
+    LIFE_IN_UK_EXTRACTOR = "LifeInUkExtractor"
+    # `DOCUMENT_CLAIM_EXTRACTOR` was here and is gone (ADR-0029). The roadmap names one
+    # `DocumentClaimExtractor` for three document kinds, and it cannot be one member:
+    # `invoke` resolves the prompt from `REGISTRY[capability]`, so one capability is one
+    # prompt, and these documents need different schemas and different instructions.
+    #
+    # Removed rather than left in place because it was never in the registry, so it was
+    # never invocable, so no `ModelRun` can name it. An enum member for a capability that
+    # will not exist is a promise the code does not keep. The immigration-status extractor
+    # is deferred, not cancelled — see the ADR for what it needs first.
 
 
 class ModelRunStatus(StrEnum):

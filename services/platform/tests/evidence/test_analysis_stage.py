@@ -15,7 +15,15 @@ from sqlalchemy.orm import Session
 from app.ai.classifier import ClassificationOutput, ClassifiedCategory
 from app.ai.domain import ModelRun, ModelRunStatus
 from app.ai.extraction_run import ExtractionRun, ExtractionRunStatus
-from app.ai.extractors import ExtractedDate, Journey, TravelExtraction
+from app.ai.extractors import (
+    CefrLevel,
+    EnglishLanguageExtraction,
+    ExtractedDate,
+    Journey,
+    LifeInUkExtraction,
+    TestOutcome,
+    TravelExtraction,
+)
 from app.ai.fake import FakeProvider, failed, succeeded
 from app.evidence.domain import EvidenceItem, EvidenceProcessingStatus
 from tests.conftest import Api
@@ -29,9 +37,17 @@ def _answering(
 ) -> FakeProvider:
     """A provider scripted for however many calls this category triggers.
 
-    A `TRAVEL_SUPPORT` classification is followed by an extraction from M8 slice 3a, so
-    these providers script two answers where they used to script one. `extract=False`
-    covers the tests that want the extraction step to fail or never happen.
+    A classification is followed by an extraction for every category that has an
+    extractor, so these providers script two answers where they used to script one.
+    `extract=False` covers the tests that want the extraction step to fail or never
+    happen.
+
+    From slice 5 that is three categories rather than one, and the second response has to
+    match the schema the *dispatch* will choose — `FakeProvider` replays answers in order
+    and `invoke` validates each against the schema it was called with, so scripting a
+    `TravelExtraction` for an English-language document fails validation rather than
+    quietly passing. Keyed off the same category the dispatch reads, so the two cannot
+    drift.
     """
     responses: list[object] = [
         succeeded(
@@ -40,6 +56,29 @@ def _answering(
             )
         )
     ]
+    if extract and category is ClassifiedCategory.ENGLISH_LANGUAGE:
+        responses.append(
+            succeeded(
+                EnglishLanguageExtraction(
+                    candidate_name="Amara Okonkwo",
+                    test_provider="Trinity College London",
+                    cefr_level=CefrLevel.B1,
+                    overall_result=TestOutcome.PASS,
+                    date_of_test=ExtractedDate(as_written="12 September 2025", iso="2025-09-12"),
+                )
+            )
+        )
+    if extract and category is ClassifiedCategory.LIFE_IN_THE_UK:
+        responses.append(
+            succeeded(
+                LifeInUkExtraction(
+                    candidate_name="Amara Okonkwo",
+                    unique_reference="LUK-2025-0607-559143",
+                    overall_result=TestOutcome.PASS,
+                    test_date=ExtractedDate(as_written="7 June 2025", iso="2025-06-07"),
+                )
+            )
+        )
     if extract and category is ClassifiedCategory.TRAVEL_SUPPORT:
         responses.append(
             succeeded(
@@ -112,7 +151,13 @@ def test_the_users_own_category_is_never_changed_by_the_classifier(
 ) -> None:
     """The document is uploaded as TRAVEL_SUPPORT and the model says it is an English
     test. The disagreement is recorded; the user's choice stands. Slice 3b shows them
-    both and lets the person decide — this slice must not decide for them."""
+    both and lets the person decide — this slice must not decide for them.
+
+    Note which one the *extractor* follows: the classifier's verdict, not the uploader's
+    category. That is the whole reason `ExtractorKey` is a separate type from
+    `EvidenceCategory` — the schema a document is read under comes from the constrained
+    model output, and `item.category` stays the user's own answer about their own file.
+    """
     item_id = _uploaded(api, "user_a", content=_fixture())
     before = _item(db_session, item_id).category
 
@@ -121,8 +166,15 @@ def test_the_users_own_category_is_never_changed_by_the_classifier(
     )
 
     assert _item(db_session, item_id).category == before == "TRAVEL_SUPPORT"
-    (run,) = _runs(db_session, item_id)
-    assert run.classified_category == "ENGLISH_LANGUAGE"
+    # Two runs from slice 5, not one: ENGLISH_LANGUAGE has an extractor now, so the
+    # classification is followed by a read. Only the classifier's run names a category
+    # (`ck_extraction_runs_category_matches_status`, migration 0031).
+    runs = _runs(db_session, item_id)
+    classifier_run = next(r for r in runs if r.classified_category)
+    assert classifier_run.classified_category == "ENGLISH_LANGUAGE"
+    assert [r.capability for r in runs if not r.classified_category] == [
+        "EnglishLanguageExtractor"
+    ], "the classifier's verdict chose the extractor, not the uploader's category"
 
 
 def test_a_model_verdict_of_unsupported_does_not_dead_end_the_document(

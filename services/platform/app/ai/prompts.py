@@ -89,6 +89,8 @@ class PromptVersion(StrEnum):
     #: month move between the two readings. An instruction whose illustration is wrong is a
     #: weaker instruction than one with no illustration.
     EXTRACT_TRAVEL_V2 = "extract_travel.v2"
+    EXTRACT_ENGLISH_LANGUAGE_V1 = "extract_english_language.v1"
+    EXTRACT_LIFE_IN_UK_V1 = "extract_life_in_uk.v1"
 
 
 def _load(version: PromptVersion) -> str:

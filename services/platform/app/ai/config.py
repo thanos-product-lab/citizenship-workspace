@@ -96,6 +96,18 @@ REGISTRY: dict[Capability, CapabilityConfig] = {
         prompt_version=PromptVersion.EXTRACT_TRAVEL_V2,
         schema_version="travel.v1",
     ),
+    Capability.ENGLISH_LANGUAGE_EXTRACTOR: CapabilityConfig(
+        capability=Capability.ENGLISH_LANGUAGE_EXTRACTOR,
+        model="gpt-4o-mini",
+        prompt_version=PromptVersion.EXTRACT_ENGLISH_LANGUAGE_V1,
+        schema_version="english.v1",
+    ),
+    Capability.LIFE_IN_UK_EXTRACTOR: CapabilityConfig(
+        capability=Capability.LIFE_IN_UK_EXTRACTOR,
+        model="gpt-4o-mini",
+        prompt_version=PromptVersion.EXTRACT_LIFE_IN_UK_V1,
+        schema_version="life_in_uk.v1",
+    ),
     Capability.PROVIDER_PROBE: CapabilityConfig(
         capability=Capability.PROVIDER_PROBE,
         # The cheapest capable model: this call exists to prove the wiring, and

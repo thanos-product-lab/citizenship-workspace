@@ -53,6 +53,19 @@ from app.evidence.domain import (
 
 _log = structlog.get_logger()
 
+#: Which extractor reads each category, once the classifier has chosen it.
+#:
+#: Immigration status is absent deliberately (ADR-0029): its documents propose the same
+#: three answers the user typed at onboarding, and nothing compares a confirmed fact
+#: against the route profile — so reading them would create disagreements the product
+#: cannot see. A missing key means the document classifies and settles without claims,
+#: which is honest; a wrong key would mean claims nobody can reconcile.
+EXTRACTORS: dict[ClassifiedCategory, extraction_service.DocumentExtractor] = {
+    ClassifiedCategory.TRAVEL_SUPPORT: extraction_service.extract_travel,
+    ClassifiedCategory.ENGLISH_LANGUAGE: extraction_service.extract_english_language,
+    ClassifiedCategory.LIFE_IN_THE_UK: extraction_service.extract_life_in_uk,
+}
+
 
 #: How many times one delivery may attempt the same document before it is declared
 #: unreadable. Counts *all* attempts, including redeliveries caused by a worker being
@@ -539,12 +552,17 @@ def _analyse(
 
     at = utcnow()
     extractable = outcome.category is not None and outcome.category in EXTRACTABLE
-    if extractable and outcome.category is ClassifiedCategory.TRAVEL_SUPPORT:
-        # The classifier chose the schema; now the extractor reads under it. Only
-        # `TRAVEL_SUPPORT` today — the other three land in slice 5 — and a category the
+    extractor = EXTRACTORS.get(outcome.category) if outcome.category is not None else None
+    if extractable and extractor is not None:
+        # The classifier chose the schema; now the extractor reads under it. A category the
         # classifier abstained on selects nothing, which is what `EXTRACTABLE` excluding
         # UNSUPPORTED and AMBIGUOUS is for: a document nobody could classify cannot have
         # its fields read out under a guess.
+        #
+        # `EXTRACTABLE` is still checked, and not merely implied by `EXTRACTORS` having a
+        # key. The two maps answer different questions — may this category be read at all,
+        # and by which extractor — and collapsing them would mean adding an extractor
+        # silently granted its category extraction rights.
         return _propose(
             session,
             provider,
@@ -556,6 +574,7 @@ def _analyse(
             found=found,
             detected=detected,
             trace_id=trace_id,
+            extractor=extractor,
         )
 
     if outcome.produced_an_answer:
@@ -636,8 +655,14 @@ def _propose(
     found: extraction.ExtractedText,
     detected: str | None,
     trace_id: str | None,
+    extractor: extraction_service.DocumentExtractor,
 ) -> ProcessingOutcome:
     """Read the document's fields, and put what the model proposed in front of a person.
+
+    Takes the extractor rather than choosing one: the choice belongs to the caller, which
+    is where the classifier's constrained output is in scope. A function that both decided
+    which schema to read under *and* did the reading would be one edit away from deciding
+    on something the document said.
 
     **`AWAITING_CONFIRMATION` gets a producer here**, and M7 shipped it unreachable
     rather than faked precisely so that this moment would be the first time a user sees
@@ -650,7 +675,7 @@ def _propose(
     every other state less believable.
     """
     settings = get_settings()
-    outcome = extraction_service.extract_travel(
+    outcome = extractor(
         provider or get_provider(),
         session,
         case_id=item.case_id,

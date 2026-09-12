@@ -24,6 +24,8 @@ import uuid
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+from pydantic import BaseModel
+
 if TYPE_CHECKING:
     # Imported for typing only: `graders` imports `Fixture` from here, so a runtime
     # import in either direction would be a cycle.
@@ -75,6 +77,17 @@ class ManifestProblems:
 
 
 _RISKS = {"HIGH", "MEDIUM", "LOW"}
+
+#: Capabilities this harness can actually call. A manifest capability outside this set is
+#: reported as not run rather than omitted — see the deferred loop in `main`.
+_RUNNABLE = frozenset(
+    {
+        "DocumentClassifier",
+        "TravelRecordExtractor",
+        "EnglishLanguageExtractor",
+        "LifeInUkExtractor",
+    }
+)
 
 #: Every key a manifest row may carry. `document_type` is descriptive metadata the
 #: loader does not model; it is listed so it is accepted deliberately rather than
@@ -204,6 +217,80 @@ def run_travel_extractor(fixtures: list[Fixture]) -> "Report":
     return Report(results)
 
 
+def run_flat_extractor(fixtures: list[Fixture], *, capability_name: str) -> "Report":
+    """Run one of the flat claim extractors over its fixtures.
+
+    Calls `invoke` directly rather than `extraction_service`, exactly as
+    `run_travel_extractor` does, and for a reason worth stating: `invoke` already resolves
+    the prompt and the output schema from `REGISTRY[capability]`, so this *is* the prompt
+    and schema the product uses. What the service adds on top is quota accounting, an
+    `ExtractionRun` row and claim creation — persistence the harness has no business doing.
+    A first draft went through the service and died on a foreign key, which was the right
+    answer arriving as an error.
+
+    Grades the model's output, not the claims it becomes: a claim is created only for a
+    field the document stated, so grading claims would conflate "the model read it wrong"
+    with "the document did not say", and the fixtures distinguish those deliberately.
+    """
+    from app.ai.domain import Capability
+    from app.ai.extractors import (
+        MAX_INPUT_CHARACTERS,
+        EnglishLanguageExtraction,
+        LifeInUkExtraction,
+    )
+    from app.ai.factory import get_provider
+    from app.ai.provider import DocumentText
+    from app.ai.service import AiBudget, AiDeadlineExceeded, invoke
+    from app.ai.spend import SpendCeilingReached
+    from app.core.config import get_settings
+    from app.evidence import extraction
+    from evals.graders import FixtureResult, Report, Verdict, grade_claim_fields
+
+    schemas: dict[str, tuple[Capability, type[BaseModel]]] = {
+        "EnglishLanguageExtractor": (
+            Capability.ENGLISH_LANGUAGE_EXTRACTOR,
+            EnglishLanguageExtraction,
+        ),
+        "LifeInUkExtractor": (Capability.LIFE_IN_UK_EXTRACTOR, LifeInUkExtraction),
+    }
+    capability, output_schema = schemas[capability_name]
+
+    settings = get_settings()
+    results = []
+    for fixture in fixtures:
+        text = extraction.extract(fixture.document_path.read_bytes()).content
+        try:
+            result = invoke(
+                get_provider(),
+                capability=capability,
+                document=DocumentText(text[:MAX_INPUT_CHARACTERS]),
+                output_schema=output_schema,
+                budget=AiBudget(seconds=settings.ai_task_deadline_seconds),
+                settings=settings,
+            )
+        except (SpendCeilingReached, AiDeadlineExceeded) as refusal:
+            # UNMEASURED, not FAIL, and the run continues. This module's whole discipline
+            # is that an absent measurement is not a low score — and a ceiling reached
+            # halfway through would otherwise propagate out of `main` and discard every
+            # result already collected, which is the same information loss in a louder
+            # form.
+            results.append(FixtureResult(fixture, Verdict.UNMEASURED, f"{type(refusal).__name__}"))
+            print(f"  ---- {fixture.id:44s} not measured: {type(refusal).__name__}")
+            continue
+        output = (
+            json.loads(result.parsed.model_dump_json())
+            if result.succeeded and result.parsed
+            else None
+        )
+        graded = grade_claim_fields(fixture, output)
+        marker = {Verdict.PASS: "ok  ", Verdict.FAIL: "FAIL", Verdict.UNMEASURED: "----"}[
+            graded.verdict
+        ]
+        print(f"  {marker} {fixture.id:44s} {graded.detail}")
+        results.append(graded)
+    return Report(results)
+
+
 def run_classifier(fixtures: list[Fixture]) -> "Report":
     """Run the real DocumentClassifier over the classifier fixtures.
 
@@ -223,6 +310,12 @@ def run_classifier(fixtures: list[Fixture]) -> "Report":
     settings = get_settings()
     # The quota check reads `extraction_runs`, and the harness writes none: its runs are
     # constructed to be graded and never persisted, so every fixture starts from zero.
+    #
+    # Closed in a `finally`, which is not housekeeping. An earlier version of this leaked
+    # the session, and because the quota query opens a transaction the connection sat
+    # `idle in transaction` holding a row lock — which blocked the test suite's per-test
+    # `TRUNCATE extracted_claims` for twenty minutes and presented as two different
+    # unrelated tests erroring on each run.
     session = get_sessionmaker()()
     results = []
     for fixture in fixtures:
@@ -314,12 +407,29 @@ def main() -> int:
     print(f"\nTravelRecordExtractor — {len(travel_fixtures)} fixtures")
     travel = run_travel_extractor(travel_fixtures)
 
+    # Results accumulated directly rather than a list of `Report`s: `Report` is imported
+    # inside this function (the cycle noted at the top of the module), so naming it in an
+    # annotation here is a reference before assignment.
+    flat_results = []
+    for capability_name in ("EnglishLanguageExtractor", "LifeInUkExtractor"):
+        selected = [f for f in fixtures if f.capability == capability_name]
+        print(f"\n{capability_name} — {len(selected)} fixtures")
+        flat_results.extend(run_flat_extractor(selected, capability_name=capability_name).results)
+
+    # Named rather than silently skipped. A capability with fixtures and no runner is a
+    # corpus whose totals overstate what was measured, and the first eval run of this
+    # milestone was a lesson in how easily an unmeasured area reads as a clean one.
+    deferred = sorted({f.capability for f in fixtures} - _RUNNABLE)
+    for capability_name in deferred:
+        count = sum(1 for f in fixtures if f.capability == capability_name)
+        print(f"\n{capability_name} — {count} fixtures, NOT RUN (capability not built)")
+
     # Local, not top-level: `graders` imports `Fixture` from this module, so a runtime
     # import in either direction is a cycle. The `TYPE_CHECKING` block above covers the
     # annotations; this covers the construction.
     from evals.graders import Report
 
-    report = Report(classifier.results + travel.results)
+    report = Report(classifier.results + travel.results + flat_results)
 
     print()
     print(f"passed {report.passed}  failed {report.failed}  unmeasured {report.unmeasured}")

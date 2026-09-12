@@ -1,8 +1,15 @@
-"""TravelRecordExtractor: what a booking says about a journey.
+"""The extraction schemas: what a document says about itself.
 
-Architecture RFC §19's third capability, and the first that proposes values a user can
-confirm into facts. Everything the classifier could get wrong was routing; everything
-this can get wrong reaches a person as a proposal about their own travel.
+`TravelRecordExtractor` (Architecture RFC §19's third capability) plus the two test-result
+extractors added in slice 5. Everything the classifier could get wrong was routing;
+everything these can get wrong reaches a person as a proposal about their own case.
+
+**One schema per document kind, chosen before the call.** The classifier's constrained
+output picks the extractor, so a document never influences the schema used to read it.
+That is also why these are separate `Capability` members rather than one: `invoke`
+resolves the prompt from `REGISTRY[capability]`, so one capability is one prompt, and
+§3.2's finding — a date rule in a shared block made the *classifier* answer AMBIGUOUS
+about dates — is the standing reason not to merge prompt text.
 
 **Every date is two fields.** `as_written` is verbatim; `iso` is the model's reading and
 is null whenever the document does not determine one. `iso` is then *ignored* — the
@@ -18,6 +25,8 @@ nowhere to put the answer.
 `2026-05-11T18:40:00Z` from an unconstrained `str` and the schema was at fault rather
 than the model (§3.3).
 """
+
+from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -76,6 +85,89 @@ TRAVEL_FIELDS: dict[str, ClaimType] = {
     "booking_reference": ClaimType.TRAVEL_BOOKING_REFERENCE,
     "traveller_name": ClaimType.TRAVEL_TRAVELLER_NAME,
 }
+
+
+class TestOutcome(StrEnum):
+    """Whether the candidate passed the test the document reports.
+
+    An enum, not a `str`, and that is doing two jobs. §3.3: an unconstrained `str` is an
+    open question, and open questions get answered in ways nobody intended. And it is the
+    authority guard — a document instructing the model to mark the applicant eligible has
+    nowhere to put the answer, because this field accepts two words and neither of them is
+    about the applicant. It reports the *test*.
+    """
+
+    PASS = "PASS"
+    FAIL = "FAIL"
+
+
+class CefrLevel(StrEnum):
+    """The CEFR scale, closed. A level is the one field on an English certificate that a
+    rule will eventually compare against a threshold, so "B1 (Pass)" or "b1" arriving as
+    free text would push the parsing somewhere it cannot be versioned."""
+
+    A1 = "A1"
+    A2 = "A2"
+    B1 = "B1"
+    B2 = "B2"
+    C1 = "C1"
+    C2 = "C2"
+
+
+class EnglishLanguageExtraction(BaseModel):
+    """What an English-language certificate says. `extra="forbid"` (MVP §8.10).
+
+    Every field is optional except the date, which is always the two-field `ExtractedDate`
+    — absent is `as_written: null`, which is different from present-but-unreadable and the
+    review queue needs to tell them apart.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    candidate_name: str | None = Field(default=None, max_length=200)
+    test_provider: str | None = Field(default=None, max_length=200)
+    cefr_level: CefrLevel | None = None
+    overall_result: TestOutcome | None = None
+    #: When the test was *taken*. A certificate carries several dates and this is the one
+    #: a rule would read; see the prompt for why the issue date is not it.
+    date_of_test: ExtractedDate
+
+
+class LifeInUkExtraction(BaseModel):
+    """What a Life in the UK pass notification says. `extra="forbid"`."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    candidate_name: str | None = Field(default=None, max_length=200)
+    #: The unique reference that identifies the *result*, which a notification carries
+    #: alongside a booking reference that identifies the appointment.
+    unique_reference: str | None = Field(default=None, max_length=100)
+    overall_result: TestOutcome | None = None
+    test_date: ExtractedDate
+
+
+#: Same contract as `TRAVEL_FIELDS`: schema field name → the claim type it proposes. A
+#: field added to a schema without an entry here is a `KeyError` where claims are built,
+#: not a value that silently never reaches review.
+#:
+#: The claim types are namespaced by category (`english.`, `life_in_uk.`), which is what
+#: makes a cross-wired entry checkable rather than merely unlikely — see
+#: `test_every_field_in_both_schemas_maps_to_a_claim_type`.
+ENGLISH_FIELDS: dict[str, ClaimType] = {
+    "candidate_name": ClaimType.ENGLISH_CANDIDATE_NAME,
+    "test_provider": ClaimType.ENGLISH_PROVIDER,
+    "cefr_level": ClaimType.ENGLISH_CEFR_LEVEL,
+    "overall_result": ClaimType.ENGLISH_OVERALL_RESULT,
+    "date_of_test": ClaimType.ENGLISH_TEST_DATE,
+}
+
+LIFE_IN_UK_FIELDS: dict[str, ClaimType] = {
+    "candidate_name": ClaimType.LIFE_IN_UK_CANDIDATE_NAME,
+    "unique_reference": ClaimType.LIFE_IN_UK_UNIQUE_REFERENCE,
+    "overall_result": ClaimType.LIFE_IN_UK_OVERALL_RESULT,
+    "test_date": ClaimType.LIFE_IN_UK_TEST_DATE,
+}
+
 
 #: How much of the document the extractor sees. Larger than the classifier's window
 #: because a booking's return leg can sit well below the fold, and a truncated read

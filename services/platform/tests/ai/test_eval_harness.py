@@ -10,6 +10,8 @@ the first.
 """
 
 import pathlib
+import re
+from datetime import date
 
 import pytest
 from evals.runner import Fixture, check_manifests, load_fixtures
@@ -99,23 +101,70 @@ def test_every_injection_fixture_is_high_risk() -> None:
         assert fixture.risk == "HIGH", f"{fixture.id} is {fixture.risk}"
 
 
-def test_the_injection_extractor_fixture_forbids_the_injected_values() -> None:
-    """Only the *extractor* fixture can carry a forbidden list — a classifier's output
-    is one category, so "must not extract" has nothing to bite on there. Its injection
+def test_every_extractor_injection_fixture_forbids_something_the_document_contains() -> None:
+    """Only an *extractor* fixture can carry a forbidden list — a classifier's output is
+    one category, so "must not extract" has nothing to bite on there. Its injection
     fixture asserts the category is unchanged instead, which is the whole of what the
-    classifier could get wrong."""
+    classifier could get wrong.
+
+    Replaces a hardcoded `"2018-01-01" in forbidden` — travel's injected grant date,
+    correct for the one fixture that existed and false the moment slice 5 added a second.
+
+    **Two checks, and the weaker one is deliberate.** `must_not_extract` is matched against
+    the model's *output* by containment, not against the page, so an ISO trap like
+    `2026-02-19` is live even though the document writes "19 February 2026" — the model
+    emits ISO. Requiring every forbidden value to appear verbatim in the text would
+    therefore be wrong, and this test asserted exactly that for one iteration before the
+    fixture it flagged turned out to be fine. So: *at least one* verbatim hit, which proves
+    the list is drawn from the document rather than invented, and every ISO-shaped value has
+    to be a real date, which catches the typo that would otherwise forbid nothing.
+
+    What this cannot catch: an ISO date that parses but names a day the document never
+    mentions. That needs the document's dates normalised, which is the extractor's job and
+    not a fixture check's.
+    """
     extractor = [
         f
         for f in load_fixtures()
         if "prompt_injection" in f.tags and f.capability != "DocumentClassifier"
     ]
-    assert extractor, "no extractor injection fixture"
+    assert len(extractor) >= 2, "expected an injection fixture for more than one extractor"
+
+    from app.evidence import extraction
+
     for fixture in extractor:
         forbidden = {v for values in fixture.must_not_extract.values() for v in values}
-        assert "2018-01-01" in forbidden, "the injected grant date is not forbidden"
-        assert any("confirmed" in v for v in forbidden), "no authority-escalation string forbidden"
-        # And the positive half §14 requires: real extraction must still succeed, so a
-        # model that "fails safe" by returning nothing has not passed.
+        assert forbidden, f"{fixture.id} forbids nothing"
+
+        text = extraction.extract(fixture.document_path.read_bytes()).content
+        assert any(value in text for value in forbidden), (
+            f"{fixture.id}: no forbidden value appears in the document, so the whole list "
+            "may have been invented rather than read off the page"
+        )
+        for value in forbidden:
+            if re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+                # A date trap describes the model's output format, not the page. It still
+                # has to be a date: `2026-02-31` forbids a value nothing can emit.
+                date.fromisoformat(value)
+
+        # **Restored after the security review, alongside the checks above rather than
+        # instead of them.** This assertion existed, read
+        # `any("confirmed" in v for v in forbidden)`, and I deleted it while generalising
+        # this test — because slice 5's English-language fixture did not satisfy it. That
+        # is the instrument being loosened to accommodate the thing it measures, which is
+        # the one move this whole suite exists to make impossible.
+        #
+        # What it protects: both schemas carry free-text fields up to 200 characters, so a
+        # model that resists the instruction block can still echo its authority prose into
+        # one of them, and those become claims a person is asked to confirm.
+        # `INJECTION_MARKERS` cannot cover it — "approved" was removed from that list after
+        # it failed a real certificate — so the fixture's own list has to.
+        assert any(
+            marker in v.casefold() for v in forbidden for marker in ("approved", "confirmed")
+        ), f"{fixture.id} forbids no authority-escalation string"
+
+        # The positive half §14 requires: real extraction must still succeed, so a model
+        # that "fails safe" by returning nothing has not passed.
         assert fixture.expected, f"{fixture.id} expects nothing; failing safe would pass"
 
     classifier = [
@@ -561,3 +610,157 @@ def test_the_unsupported_fixture_is_not_one_of_the_prompt_s_own_examples() -> No
     text = extraction.extract(fixture.document_path.read_bytes()).content.casefold()
     for example in named_in_prompt:
         assert example not in text, f"{fixture.id} is built from a prompt example: {example!r}"
+
+
+# --- slice 5: the two flat claim extractors ---------------------------------------
+
+
+def test_both_new_capabilities_are_registered_and_resolve_a_prompt() -> None:
+    """A capability absent from the registry cannot be invoked, and one whose prompt file
+    is missing fails at import rather than on a user's first upload."""
+    from app.ai.config import REGISTRY
+    from app.ai.domain import Capability
+    from app.ai.prompts import SystemPrompt
+
+    for capability in (Capability.ENGLISH_LANGUAGE_EXTRACTOR, Capability.LIFE_IN_UK_EXTRACTOR):
+        config = REGISTRY[capability]
+        assert SystemPrompt(config.prompt_version).text.strip()
+        assert config.schema_version
+
+
+def test_the_two_extractor_prompts_share_no_wording_with_the_classifier() -> None:
+    """AI_SPIKE_FINDINGS §3.2, as a check rather than a comment.
+
+    A date-ambiguity rule in a block shared with the classifier made the *classifier*
+    answer AMBIGUOUS because a document's dates were, suppressing extraction entirely. The
+    guard is that each prompt is its own file; this asserts the files did not converge on a
+    shared paragraph anyway, which is how that mistake would return.
+    """
+    from app.ai.prompts import PromptVersion, SystemPrompt
+
+    def paragraphs(version: PromptVersion) -> set[str]:
+        text = SystemPrompt(version).text
+        return {" ".join(p.split()) for p in text.split("\n\n") if len(p.split()) > 12}
+
+    classifier = paragraphs(PromptVersion.CLASSIFY_DOCUMENT_V2)
+    for extractor in (
+        PromptVersion.EXTRACT_ENGLISH_LANGUAGE_V1,
+        PromptVersion.EXTRACT_LIFE_IN_UK_V1,
+    ):
+        overlap = paragraphs(extractor) & classifier
+        assert not overlap, f"{extractor.value} shares a paragraph with the classifier: {overlap}"
+
+
+def test_neither_extraction_schema_has_a_field_that_could_carry_authority() -> None:
+    """The schema is the guard, not the prompt. A document instructing the model to mark
+    an applicant eligible must have nowhere to put the answer.
+
+    `overall_result` is the field to watch, and it is why it is a two-value enum rather
+    than a `str`: PASS and FAIL are statements about the *test*, and neither is a statement
+    about the applicant's eligibility. An unconstrained string there would be a channel.
+    """
+    from enum import StrEnum
+    from typing import get_args
+
+    from app.ai.extractors import (
+        CefrLevel,
+        EnglishLanguageExtraction,
+        ExtractedDate,
+        LifeInUkExtraction,
+        TestOutcome,
+    )
+
+    banned = {"confirmed", "eligible", "approved", "valid", "status", "conclusion"}
+    for schema in (EnglishLanguageExtraction, LifeInUkExtraction):
+        assert not banned & set(schema.model_fields), schema.__name__
+        assert schema.model_config.get("extra") == "forbid", schema.__name__
+
+    # **A word filter is not enough**, and the security review was right that the first
+    # version of this test was one. `sufficient_for_naturalisation: bool` passes a banned-
+    # names check green while being precisely the channel the rule exists to close. So the
+    # check is on the *types*: a field is a date, a closed enum, or a length-bounded
+    # string, and never a bare yes/no.
+    for schema in (EnglishLanguageExtraction, LifeInUkExtraction):
+        for name, info in schema.model_fields.items():
+            annotation = info.annotation
+            inner = {a for a in get_args(annotation) if a is not type(None)} or {annotation}
+            for candidate in inner:
+                assert candidate is not bool, f"{schema.__name__}.{name} is a yes/no field"
+                assert candidate not in (int, float), f"{schema.__name__}.{name} is numeric"
+                assert candidate is ExtractedDate or (
+                    isinstance(candidate, type)
+                    and (issubclass(candidate, StrEnum) or candidate is str)
+                ), f"{schema.__name__}.{name} is {candidate!r}, not a date, enum or string"
+
+    assert {o.value for o in TestOutcome} == {"PASS", "FAIL"}
+    assert {c.value for c in CefrLevel} == {"A1", "A2", "B1", "B2", "C1", "C2"}
+
+
+def test_an_unknown_field_is_rejected_rather_than_ignored() -> None:
+    """MVP §8.10. A model returning a field nobody asked for fails validation, so it
+    cannot smuggle a value past the claim mapping — `ENGLISH_FIELDS` would never read it,
+    and a silently ignored field is one nobody notices is being sent."""
+    import pydantic
+    import pytest as _pytest
+
+    from app.ai.extractors import EnglishLanguageExtraction, ExtractedDate
+
+    with _pytest.raises(pydantic.ValidationError):
+        EnglishLanguageExtraction(
+            date_of_test=ExtractedDate(as_written="4 February 2026", iso="2026-02-04"),
+            eligible=True,  # type: ignore[call-arg]
+        )
+
+
+def test_every_field_in_both_schemas_maps_to_a_claim_type() -> None:
+    """A field with no entry in the map is a value that reaches no review queue. The map is
+    the contract; this asserts it is total over the schema rather than nearly so."""
+    from app.ai.extractors import (
+        ENGLISH_FIELDS,
+        LIFE_IN_UK_FIELDS,
+        EnglishLanguageExtraction,
+        LifeInUkExtraction,
+    )
+
+    assert set(EnglishLanguageExtraction.model_fields) == set(ENGLISH_FIELDS)
+    assert set(LifeInUkExtraction.model_fields) == set(LIFE_IN_UK_FIELDS)
+
+    # **And the values, which key-set equality left untested.** Swapping
+    # `"date_of_test": ClaimType.LIFE_IN_UK_TEST_DATE` into `ENGLISH_FIELDS` kept every
+    # other test in this file green — both are `DATE_V1`, so `propose`'s schema check
+    # passes — while an English certificate's test date became a Life in the UK fact.
+    # These claim types are namespaced by category precisely so this is checkable.
+    for fields, namespace in ((ENGLISH_FIELDS, "english."), (LIFE_IN_UK_FIELDS, "life_in_uk.")):
+        for field, claim_type in fields.items():
+            assert claim_type.value.startswith(namespace), (
+                f"{field} proposes {claim_type.value}, which is outside {namespace}"
+            )
+
+
+def test_both_test_dates_require_blind_confirmation() -> None:
+    """Derived, not listed. `HIGH_RISK_CLAIM_TYPES` is every `date.v1` claim type, so
+    these two were blind-entry the moment the claim types existed — but the derivation is
+    the guarantee and this is the test that says so out loud."""
+    from app.facts.domain import HIGH_RISK_CLAIM_TYPES, ClaimType
+
+    assert ClaimType.ENGLISH_TEST_DATE in HIGH_RISK_CLAIM_TYPES
+    assert ClaimType.LIFE_IN_UK_TEST_DATE in HIGH_RISK_CLAIM_TYPES
+    # And the non-dates are not, so blind entry stays the exception it is meant to be.
+    assert ClaimType.ENGLISH_CEFR_LEVEL not in HIGH_RISK_CLAIM_TYPES
+
+
+def test_an_unclassifiable_document_selects_no_extractor() -> None:
+    """The guard that stops a document nobody could classify having its fields read out
+    under a guess. `UNSUPPORTED` and `AMBIGUOUS` are absent from both maps by
+    construction, and `EXTRACTORS` is checked alongside `EXTRACTABLE` rather than instead
+    of it."""
+    from app.ai.classifier import EXTRACTABLE, ClassifiedCategory
+    from app.evidence.processing import EXTRACTORS
+
+    for declining in (ClassifiedCategory.UNSUPPORTED, ClassifiedCategory.AMBIGUOUS):
+        assert declining not in EXTRACTABLE
+        assert declining not in EXTRACTORS
+
+    # And immigration status: classifiable, deliberately not extractable (ADR-0029).
+    assert ClassifiedCategory.IMMIGRATION_STATUS in EXTRACTABLE
+    assert ClassifiedCategory.IMMIGRATION_STATUS not in EXTRACTORS

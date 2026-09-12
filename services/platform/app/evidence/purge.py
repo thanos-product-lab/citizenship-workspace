@@ -139,7 +139,8 @@ def _tombstone(
     - the extracted text row, deleted outright. There is no minimal non-sensitive version
       of a document's text; the text *is* the document.
     - `extraction_runs.input_hash` — the same argument as `checksum`, one table over.
-      It is SHA-256 over the first 6,000 characters of the extracted text, so anyone with
+      It is SHA-256 over the text the capability was sent — up to `MAX_INPUT_CHARACTERS`,
+      which is 20,000 for an extractor and smaller for the classifier — so anyone with
       database access could hash a document they suspect and confirm it was uploaded
       here. Added in M8 slice 2 and missed by that slice; caught by both reviews.
     - `extraction_runs.classification_reasoning` — model-authored prose *about* the
