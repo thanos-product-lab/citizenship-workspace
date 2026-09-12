@@ -389,7 +389,20 @@ export function DocumentReview({
                     entered={state.entered}
                     onEnteredChange={(entered) => patch(claim.id, { entered })}
                     onSubmit={() =>
-                      void decide(claim, {
+                      void (function submit() {
+                        // An empty blind field is not a date the server failed to read —
+                        // it is a form that was not filled in, and posting it produced
+                        // "that date could be read more than one way" about nothing at
+                        // all. Answered here rather than at the boundary because the
+                        // server genuinely cannot tell an empty string from an unreadable
+                        // one, and only the client knows the user simply has not typed yet.
+                        if (claim.requires_blind_entry && !state.entered.trim()) {
+                          patch(claim.id, {
+                            error: "Type the date as the document writes it, then save.",
+                          });
+                          return;
+                        }
+                        void decide(claim, {
                         claimId: claim.id,
                         // A blind field sends only what was typed: there is no field in
                         // the request for asserting which decision it was, so the server
@@ -402,7 +415,8 @@ export function DocumentReview({
                                 enteredValue: state.entered,
                               }
                             : { decision: "CONFIRM" as const }),
-                      })
+                        });
+                      })()
                     }
                     onReject={(reasonCode) =>
                       void decide(claim, {

@@ -321,7 +321,11 @@ describe("when the server refuses", () => {
     post.mockResolvedValue({
       error: {
         code: "UNREADABLE_ENTERED_VALUE",
-        detail: "that date could be read more than one way.",
+        // The server's real copy, kept in step: it states the policy rather than
+        // claiming the input was ambiguous, because `30/09/2025` is not.
+        detail:
+          "this field only accepts a date written with the month's name — the day, the " +
+          "month and the year — or the form YYYY-MM-DD.",
       },
       response: { status: 422 },
     });
@@ -334,10 +338,27 @@ describe("when the server refuses", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
     const error = await screen.findByRole("alert");
-    expect(error.textContent).toMatch(/more than one way/);
+    expect(error.textContent).toMatch(/only accepts a date written/);
     expect(input).toHaveAttribute("aria-invalid", "true");
     expect(input.getAttribute("aria-describedby")).toContain("error");
     expect(input).toHaveValue("03/04/2025");
+  });
+
+  it("does not ask the server to read a date nobody typed", async () => {
+    // Saving an empty blind field posted `entered_value: ""`, which the server could only
+    // answer with its unreadable-date refusal — so a form that had not been filled in was
+    // told its date could be read more than one way. There was no date.
+    //
+    // Guarded on the client because the server genuinely cannot tell an empty string from
+    // an unreadable one; only the client knows the user has not typed yet.
+    render();
+
+    await screen.findByLabelText(/Return date, as the document writes it/);
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    const error = await screen.findByRole("alert");
+    expect(error.textContent).toMatch(/type the date as the document writes it/i);
+    expect(post).not.toHaveBeenCalled();
   });
 
   it("stops offering to decide a claim someone else already decided", async () => {

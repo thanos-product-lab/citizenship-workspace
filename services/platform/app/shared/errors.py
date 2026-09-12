@@ -95,9 +95,25 @@ class UnreadableEnteredValue(DomainError):
 
     def __init__(self, value: str) -> None:
         self.value = value
+        # **States the policy, never a fact about the input**, and that is the second
+        # correction to this string.
+        #
+        # It read "that date could be read more than one way", which is a claim about what
+        # the user typed — and it was false for most of the values that reach here.
+        # `30/09/2025` has exactly one reading, because 30 is not a month; it is refused
+        # because `_UNAMBIGUOUS_FORMATS` is an allowlist of *formats* and all-numeric dates
+        # are not on it. An empty field reached the same message, which is falser still:
+        # there was no date to read one way or several.
+        #
+        # Found by driving the screen during the M8 gate, like the "for example 11 May
+        # 2026" mistake above. A product whose whole claim is that it does not assert
+        # things it cannot support should not tell someone their unambiguous date was
+        # ambiguous.
         super().__init__(
-            "that date could be read more than one way. Write the month's name — the "
-            "day, the month and the year — or use the form YYYY-MM-DD."
+            "this field only accepts a date written with the month's name — the day, the "
+            "month and the year — or the form YYYY-MM-DD. Dates written only in numbers "
+            "are refused, because the same three numbers mean different days in different "
+            "countries."
         )
 
 

@@ -245,6 +245,35 @@ def test_an_ambiguous_entry_is_refused_with_a_format_that_works(
     assert "month" in body["detail"]
 
 
+def test_the_refusal_does_not_claim_an_unambiguous_date_was_ambiguous(
+    api: Api, db_session: Session
+) -> None:
+    """`30/09/2025` has exactly one reading — 30 is not a month — and is still refused,
+    because `_UNAMBIGUOUS_FORMATS` is an allowlist of formats and all-numeric dates are not
+    on it. That policy is deliberate: the field asks for the date *as the document writes
+    it*, and a document that writes "30 September 2025" has not written slashes.
+
+    What was not deliberate is the message. It read "that date could be read more than one
+    way" — a claim about the input, and a false one here. A product whose entire thesis is
+    that it does not assert what it cannot support should not tell someone their
+    unambiguous date was ambiguous.
+
+    So the refusal states the *policy* and its reason, and this asserts it no longer makes
+    a claim about the value it just rejected.
+    """
+    case_id, claim = _case_with_claim(api, db_session)
+
+    body = _review(api, case_id, claim.id, entered_value="30/09/2025").json()
+
+    assert body["code"] == "UNREADABLE_ENTERED_VALUE"
+    detail = body["detail"].lower()
+    assert "read more than one way" not in detail, "still asserts the input was ambiguous"
+    assert "could be read" not in detail
+    # And it still says what to do, which is the half a refusal has to earn.
+    assert "yyyy-mm-dd" in detail
+    assert "month" in detail
+
+
 def test_a_high_risk_claim_can_still_be_rejected_outright(api: Api, db_session: Session) -> None:
     """ "This date is not in this document" is a real answer, and demanding a typed value
     for it would force someone to invent one."""
