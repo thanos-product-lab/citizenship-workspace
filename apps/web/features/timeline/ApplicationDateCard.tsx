@@ -172,13 +172,47 @@ export function ApplicationDateCard({ caseId }: { caseId: string }) {
     inputRef.current?.focus();
   }
 
-  function handleSave() {
-    if (busy || !preview) return;
+  function handleSave(candidate?: string) {
+    // `candidate` is passed when there is no preview to save from — the first date on a
+    // case. Otherwise the preview's own date is used, so what gets saved is exactly what
+    // was previewed rather than whatever the input happens to hold now.
+    const applicationDate = preview?.candidate_application_date ?? candidate;
+    if (busy || !applicationDate) return;
     setAwaitingSave(true);
     save.mutate({
-      applicationDate: preview.candidate_application_date,
+      applicationDate,
       expectedRevision: current.data?.revision ?? null,
     });
+  }
+
+  /**
+   * Selecting the first date is a different action from previewing a change, and this
+   * card offered only the second.
+   *
+   * A preview compares the case as it stands against the case at another date. With no
+   * date selected there is no "as it stands", so `simulate_application_date` answers 409
+   * — correctly; it says a half-comparison is worse than a refusal. But the Save control
+   * lives *inside* the preview result, so no preview meant no save, and this card is the
+   * only place in the app that can set an application date. A newly created case could
+   * not be given one at all.
+   *
+   * It survived because every walkthrough used the seeded demo case, which is created
+   * with a date already selected.
+   */
+  const isFirstDate = current.isSuccess && !currentDate;
+
+  function handleSubmit(event: React.FormEvent) {
+    event.preventDefault();
+    if (isFirstDate) {
+      if (!value) {
+        setInvalid(true);
+        inputRef.current?.focus();
+        return;
+      }
+      handleSave(value);
+      return;
+    }
+    handlePreview(event);
   }
 
   const busy = simulate.isPending || save.isPending || awaitingSave;
@@ -223,7 +257,7 @@ export function ApplicationDateCard({ caseId }: { caseId: string }) {
       )}
 
       {current.isSuccess && (
-        <form onSubmit={handlePreview} style={{ marginTop: "var(--cw-space-4)" }}>
+        <form onSubmit={handleSubmit} style={{ marginTop: "var(--cw-space-4)" }}>
           <Field
             id="app-date"
             label="Application date"
@@ -266,7 +300,16 @@ export function ApplicationDateCard({ caseId }: { caseId: string }) {
             }}
           >
             <button type="submit" aria-disabled={busy} style={buttonStyle}>
-              {simulate.isPending ? "Previewing…" : "Preview this date"}
+              {/* Two actions, one control, chosen by whether there is anything to compare
+                  against. "Preview" on a case with no date names something the server
+                  cannot do. */}
+              {isFirstDate
+                ? busy
+                  ? "Saving…"
+                  : "Save this date"
+                : simulate.isPending
+                  ? "Previewing…"
+                  : "Preview this date"}
             </button>
             {value !== currentDate && currentDate && !preview && (
               <button type="button" onClick={handleCancel} style={linkButtonStyle}>
@@ -566,8 +609,12 @@ function PreviewPanel({
           flexWrap: "wrap",
         }}
       >
+        {/* `() => onSave()`, not `onSave`: the handler now takes an optional candidate date
+            for the first-date path, and passing it bare hands it the click event instead.
+            Harmless here only because a preview exists in this branch and wins the `??` —
+            which is the kind of safety that stops being true quietly. */}
         {!isCurrentDate && (
-          <button type="button" onClick={onSave} aria-disabled={busy} style={buttonStyle}>
+          <button type="button" onClick={() => onSave()} aria-disabled={busy} style={buttonStyle}>
             {busy ? "Saving…" : `Save ${formatDate(preview.candidate_application_date)}`}
           </button>
         )}

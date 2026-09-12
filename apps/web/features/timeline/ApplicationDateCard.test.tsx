@@ -563,3 +563,67 @@ describe("ApplicationDateCard", () => {
     expect(await screen.findByText(/no date selected yet/i)).toBeInTheDocument();
   });
 });
+
+
+describe("a case with no application date yet", () => {
+  // Its own reset: the block above has one, and a sibling `describe` does not inherit it.
+  // Without this the mocks carry over and `post.mock.calls` still holds the previous
+  // test's SELECT — so the "refuses an empty date" assertion fails on a call it did not
+  // make, which reads as a product bug rather than a test one.
+  beforeEach(() => {
+    get.mockReset();
+    post.mockReset();
+    get.mockResolvedValue({ data: null, error: undefined });
+  });
+
+  /**
+   * The first-run dead end, found by driving a freshly created case during the M8 gate.
+   *
+   * This card is the only place in the app that can set an application date, and its only
+   * action was "Preview this date". A preview compares the case as it stands against the
+   * case at another date, so with nothing selected the server answers 409 —
+   * `CASE_NOT_ASSESSABLE`, correctly, because a half-comparison is worse than a refusal.
+   * But the Save control lives inside the preview result, so no preview meant no save, and
+   * a new case could never be given a date at all.
+   *
+   * It survived every walkthrough because they all used the seeded demo case, which is
+   * created with a date already selected.
+   */
+  it("offers to save the date directly rather than preview it", async () => {
+    get.mockResolvedValue({ data: null, error: undefined });
+    render(<ApplicationDateCard caseId="c1" />);
+
+    const button = await screen.findByRole("button", { name: "Save this date" });
+    expect(screen.queryByRole("button", { name: /preview this date/i })).not.toBeInTheDocument();
+    expect(screen.getByText("No date selected yet.")).toBeInTheDocument();
+    expect(button).toBeInTheDocument();
+  });
+
+  it("selects the date without simulating first", async () => {
+    get.mockResolvedValue({ data: null, error: undefined });
+    post.mockResolvedValue({ data: aDate({ application_date: "2026-10-01" }), error: undefined });
+    render(<ApplicationDateCard caseId="c1" />);
+
+    // Exact string, not a regex: /application date/i also matches the card heading
+    // "Proposed application date", and the failure reads as "no value setter".
+    const input = await screen.findByLabelText("Application date");
+    fireEvent.change(input, { target: { value: "2026-10-01" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save this date" }));
+
+    await waitFor(() => expect(post).toHaveBeenCalled());
+    const paths = post.mock.calls.map((call) => call[0]);
+    expect(paths).toContain(SELECT);
+    expect(paths).not.toContain(SIMULATE);
+  });
+
+  it("still refuses an empty date rather than posting one", async () => {
+    get.mockResolvedValue({ data: null, error: undefined });
+    render(<ApplicationDateCard caseId="c1" />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Save this date" }));
+
+    expect(await screen.findByText("Enter a valid date.")).toBeInTheDocument();
+    expect(post.mock.calls.map((call) => call[0])).not.toContain(SELECT);
+  });
+});
+
