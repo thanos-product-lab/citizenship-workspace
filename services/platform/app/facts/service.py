@@ -108,7 +108,9 @@ def _require_reviewable_document(session: Session, claim: ExtractedClaim) -> Non
         raise ClaimNotFound()
 
 
-def _invalidate_dependents(session: Session, uow: UnitOfWork, *, case: ApplicationCase) -> None:
+def _invalidate_dependents(
+    session: Session, uow: UnitOfWork, *, case: ApplicationCase, claim_type: str
+) -> None:
     """Mark results that declare a `CASE_FACT` dependency stale, in this transaction.
 
     **The seam slice 3a shipped without.** `DependencyInputKind.CASE_FACT` existed and
@@ -121,12 +123,36 @@ def _invalidate_dependents(session: Session, uow: UnitOfWork, *, case: Applicati
     holds the case lock, so nothing can interleave between the fact landing and its
     dependants going stale.
 
-    Blunt, like every other invalidation here: it names the input *kind*, and
-    `invalidate_for_input_change` decides which rules declared it. A confirmed English test
-    date will stale `residence.travel_consistency` under this until fact types are
-    dependency-scoped — a cost paid in one unnecessary recalculation, against the cost of a
-    conclusion nobody restaled.
+    **Scoped by claim type, and this is a correction.** It used to fire for every claim
+    type, with a docstring costing that at "a confirmed English test date will stale
+    `residence.travel_consistency`". That was written when one rule declared `CASE_FACT`;
+    migration `0035` made it four, and slice 5 made English test dates a thing a user can
+    actually confirm. Measured on a real case: confirming one staled all four residence
+    conclusions and left five issues open, for an input no residence rule can read.
+
+    Two reasons that is not the over-fire ADR-0027 accepted. That one was *within* the set
+    of facts a residence rule reads — six fields of one booking, all of which could move a
+    total. This crosses a group boundary: a knowledge-group fact staling residence is the
+    cross-group noise ADR-0014 deleted blunt invalidation to remove, and CLAUDE.md §9's
+    *"changing an unrelated input does not invalidate an unrelated assessment"* is broken
+    literally rather than approximately. It also corrupts the *reason*: an
+    already-STALE result keeps its first `stale_reason_code`, so a later trip edit would
+    still be explained to the user as "you confirmed a value on one of your documents".
+
+    **Derived, not listed.** The filter is `conflicts.TRAVEL_DATE_CLAIM_TYPES` — the same
+    set `_detect_conflicts` uses to decide which facts an assessment reads at all. A rule
+    that starts reading a different case-fact type without widening that set is caught by
+    `test_every_result_the_conflict_moves_was_staled_first`, which asserts over real
+    recalculations that nothing moved without being staled.
+
+    The knowledge rules are unaffected when they arrive at M9: RULES_SPEC §7.9/§7.10 has
+    them reading `KNOWLEDGE_RECORD`, a different input kind, not `CASE_FACT`.
     """
+    from app.assessments.conflicts import TRAVEL_DATE_CLAIM_TYPES
+
+    if claim_type not in TRAVEL_DATE_CLAIM_TYPES:
+        return
+
     invalidate_for_input_change(
         session,
         uow,
@@ -262,7 +288,7 @@ def review(
         # A rejection stales too. It cannot *create* a conflict, but it can end one: the
         # claim stops being a confirmed value, so a trip held back because of it is trusted
         # again. Skipping this would leave the figure held back until an unrelated edit.
-        _invalidate_dependents(session, uow, case=case)
+        _invalidate_dependents(session, uow, case=case, claim_type=claim.claim_type)
         _emit(uow, case, claim, record, fact_version=None)
         uow.commit()
         return ReviewOutcome(claim=claim, decision=record, fact_version=None)
@@ -296,7 +322,7 @@ def review(
         else ClaimStatus.CONFIRMED.value
     )
     _settle_document_if_done(session, case=case, claim=claim)
-    _invalidate_dependents(session, uow, case=case)
+    _invalidate_dependents(session, uow, case=case, claim_type=claim.claim_type)
     _emit(uow, case, claim, record, fact_version=version)
     uow.commit()
 

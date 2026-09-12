@@ -617,3 +617,105 @@ def test_the_result_explains_itself_without_calling_the_trip_unconfirmed(
     assert [limitation["code"] for limitation in detail["limitations"]] == [
         "CONFLICTING_SOURCE_DATES"
     ]
+
+
+def test_confirming_a_knowledge_fact_stales_no_residence_conclusion(
+    api: Api, db_session: Session
+) -> None:
+    """The mirror of `test_every_result_the_conflict_moves_was_staled_first`, and the
+    over-fire it could not see.
+
+    That test asserts nothing *moved* without being staled. This asserts nothing was staled
+    that could not move. Both are needed: one catches a conclusion standing over a changed
+    input, the other catches four conclusions marked "not rechecked" because a user
+    confirmed an English certificate — which no residence rule can read.
+
+    Measured before the fix: confirming an `english.test_date` staled all four residence
+    conclusions and left five issues open. CLAUDE.md §9 — *changing an unrelated input does
+    not invalidate an unrelated assessment* — broken literally, not approximately. And the
+    stale *reason* with it: an already-STALE result keeps its first reason code, so a later
+    trip edit would still be explained as "you confirmed a value on one of your documents".
+    """
+    case_id, _ = _case_with_trip(api)
+    item_id = _attach_document(api, case_id, trip_id=_case_with_trip(api)[1])
+    api("user_a").post(f"/api/v1/cases/{case_id}/assessments/recalculate")
+
+    currency_before = {
+        row["requirement_key"]: row["currency"]
+        for row in api("user_a").get(f"/api/v1/cases/{case_id}/requirements").json()
+    }
+
+    claim_id = _propose_knowledge(db_session, case_id, item_id)
+    api("user_a").post(
+        f"/api/v1/cases/{case_id}/claims/{claim_id}/review",
+        json={"entered_value": "12 September 2025"},
+    )
+
+    currency_after = {
+        row["requirement_key"]: row["currency"]
+        for row in api("user_a").get(f"/api/v1/cases/{case_id}/requirements").json()
+    }
+    staled = {
+        k for k, v in currency_after.items() if v == "STALE" and currency_before[k] != "STALE"
+    }
+
+    assert staled == set(), (
+        f"confirming an english.test_date staled {sorted(staled)} — no residence rule can "
+        "read a knowledge fact, so nothing should have moved"
+    )
+
+
+def _propose_knowledge(session: Session, case_id: str, item_id: str) -> uuid.UUID:
+    """A pending `english.test_date` claim, built through the domain like `_propose`.
+
+    A different claim *type* is the whole point: the invalidation is scoped by type now, so
+    the test has to use one outside `TRAVEL_DATE_CLAIM_TYPES` to exercise the scoping at all.
+    """
+    from app.ai.domain import Capability
+    from app.ai.extraction_run import ExtractionRun, ExtractionRunStatus
+    from app.evidence.domain import (
+        PIPELINE_VERSION,
+        EvidenceFile,
+        EvidenceProcessingRun,
+        ProcessingRunStatus,
+    )
+    from app.facts.domain import ClaimType, ExtractedClaim
+    from app.facts.values import ProposedValue, ValueSchema
+
+    item = uuid.UUID(item_id)
+    file = session.scalar(select(EvidenceFile).where(EvidenceFile.evidence_item_id == item))
+    assert file is not None
+    processing = EvidenceProcessingRun(
+        evidence_item_id=item,
+        evidence_file_id=file.id,
+        status=ProcessingRunStatus.SUCCEEDED.value,
+        pipeline_version=PIPELINE_VERSION,
+        completed_at=datetime.now(UTC),
+        idempotency_key=f"knowledge-{uuid.uuid4()}",
+    )
+    session.add(processing)
+    session.flush()
+    run = ExtractionRun.record(
+        case_id=uuid.UUID(case_id),
+        evidence_item_id=item,
+        evidence_file_id=file.id,
+        processing_run_id=processing.id,
+        capability=Capability.ENGLISH_LANGUAGE_EXTRACTOR.value,
+        status=ExtractionRunStatus.SUCCEEDED,
+        input_text="a certificate",
+        started_at=datetime.now(UTC),
+    )
+    session.add(run)
+    session.flush()
+    claim = ExtractedClaim.propose(
+        case_id=uuid.UUID(case_id),
+        evidence_item_id=item,
+        evidence_file_id=file.id,
+        extraction_run_id=run.id,
+        claim_type=ClaimType.ENGLISH_TEST_DATE,
+        value=ProposedValue(schema=ValueSchema.DATE_V1, raw="12 September 2025", model_iso=None),
+    )
+    session.add(claim)
+    session.flush()
+    session.commit()
+    return claim.id
