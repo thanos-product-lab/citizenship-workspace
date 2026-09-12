@@ -17,6 +17,10 @@ bad. Honest evaluation reporting is part of the portfolio signal.
 - `EVAL_RESULTS_2026-09-10.md` — first measured false-reassurance rate: **11.1%
   (1 of 9)**, the one failure being the ambiguous-date fixture that tests the
   premise blind confirmation rests on. Gate FAIL.
+- `EVAL_RESULTS_2026-09-11.md` — **0.0% (0 of 16)**, gate PASS, with the two new
+  claim extractors (ADR-0029). Records that the injection fixture graded no authority
+  channel until the security review caught it, and that four of this milestone's eval
+  failures were defects in the harness rather than the model. **Current.**
 - `EVAL_RESULTS_2026-09-10d.md` — **0.0% (0 of 12)**, gate PASS, under
   `classify_document.v2`. The two documents that failed at 18.2% are byte-identical;
   only the prompt changed. Includes a held-out fixture the prompt was not written

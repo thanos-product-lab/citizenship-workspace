@@ -272,6 +272,8 @@ TravelRecordExtractor
 ConflictCandidateDetector
 ```
 
+> **Amended by ADR-0029.** `DocumentClaimExtractor` is a family of three capabilities, not one: `ImmigrationStatusExtractor`, `EnglishLanguageExtractor` and `LifeInUkExtractor`. One `Capability` resolves to one prompt and one schema version, so three document kinds cannot share a member. The last two are built (M8 slice 5); immigration status is deferred until a confirmed fact can be compared against the route profile.
+
 Capabilities receive only necessary context and cannot mutate cases,
 create facts, recalculate assessments, dismiss issues, or access
 unrelated evidence.

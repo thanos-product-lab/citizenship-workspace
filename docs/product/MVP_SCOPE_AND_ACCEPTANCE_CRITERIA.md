@@ -761,6 +761,8 @@ The MVP includes these narrow capabilities:
 - `TravelRecordExtractor`
 - `ConflictCandidateDetector`
 
+> **Amended by ADR-0029.** `DocumentClaimExtractor` is a family of three capabilities, not one: `ImmigrationStatusExtractor`, `EnglishLanguageExtractor` and `LifeInUkExtractor`. One `Capability` resolves to one prompt and one schema version, so three document kinds cannot share a member. The last two are built (M8 slice 5); immigration status is deferred until a confirmed fact can be compared against the route profile.
+
 ### Optional AI capabilities (not in the plan of record)
 
 `GuidanceExplainer` and `IssueSummariser` are deferred to M9 and are the first

@@ -1,0 +1,93 @@
+M8 slice 5 — an English-language certificate read, proposed and confirmed
+=========================================================================
+
+Captured 11 September 2026 on the canonical synthetic demo case. Uploaded
+`trinity_ise_b1_clean.pdf` as "English language"; no other input.
+
+Pipeline, from the database:
+
+  evidence_items.processing_status   AWAITING_CONFIRMATION
+  extraction_runs                   DocumentClassifier        SUCCEEDED
+                                    EnglishLanguageExtractor  SUCCEEDED
+
+  extracted_claims
+    english.candidate_name   Amara Okonkwo           PENDING_REVIEW
+    english.cefr_level       B1                      PENDING_REVIEW
+    english.overall_result   PASS                    PENDING_REVIEW
+    english.provider         TRINITY COLLEGE LONDON  PENDING_REVIEW
+    english.test_date        12 September 2025       PENDING_REVIEW
+
+Confirm what we read — trinity_ise_b1_clean
+
+  5 of 5 values still need your decision.
+
+  Candidate name    AI proposed   Amara Okonkwo            [Confirm] [Correct] [This is wrong]
+  Cefr level        AI proposed   B1                       [Confirm] [Correct] [This is wrong]
+  Overall result    AI proposed   PASS                     [Confirm] [Correct] [This is wrong]
+  Provider          AI proposed   TRINITY COLLEGE LONDON   [Confirm] [Correct] [This is wrong]
+  Test date         AI proposed
+                    Test date, as the document writes it
+                    Type it as the document writes it. Use the month's name — day,
+                    month, year — or the form YYYY-MM-DD. A slashed date such as
+                    03/04/2025 can be read two ways, so it is refused.
+                    [            empty            ]  [Save] [This is wrong]
+
+**The test date is an empty box and no code was written to make it one.**
+`HIGH_RISK_CLAIM_TYPES` is derived from `SCHEMA_FOR_CLAIM_TYPE` — every `date.v1`
+claim type — so `english.test_date` required blind confirmation the moment the
+claim type existed. A hand-kept list would have needed remembering; a derivation
+did not. The four non-date fields show their proposals, because blind entry is
+the exception and the review queue should not make every field a typing exercise.
+
+The document preview beside it shows both dates, which is the point of the split
+view:
+
+    Date of test:   12 September 2025
+    Date of issue:  30 September 2025
+
+The issue date is `must_not_extract` on this fixture. A reviewer typing what they
+read has the trap in front of them.
+
+After typing "12 September 2025" and pressing Save:
+
+  claim_review_decisions   review_mode  BLIND_ENTRY
+                           decision     CONFIRM        <- derived by the server
+  case_facts               english.test_date   scope_key ''
+  fact_versions            version 1  2025-09-12  USER_CONFIRMED_AI_CLAIM
+
+`CONFIRM` rather than `CORRECT` because what was typed matched what the model
+read — the server compares and decides, and the user was never shown the value
+to agree with. `scope_key` is empty: this is a case-level fact, one English test
+result per case, which is what makes a second certificate a new *version* rather
+than a second fact (ADR-0029 records what that leaves unhandled).
+
+
+The invalidation fix, verified on the same case
+-----------------------------------------------
+
+Assessment run to a clean baseline, then a second English claim confirmed:
+
+  before   9 CURRENT   0 STALE
+  after    9 CURRENT   0 STALE
+
+Before the trust review this was not the behaviour. `_invalidate_dependents`
+fired `CASE_FACT` for every claim type, and migration `0035` had put that
+dependency on four residence rules — so confirming an English certificate marked
+`total_absences`, `final_year_absences`, `physical_presence_start_date` and
+`travel_consistency` as not-rechecked, for an input no residence rule can read.
+The reviewer measured it; this is the same scenario after scoping the
+invalidation by claim type.
+
+It also corrupted the *reason*: an already-STALE result keeps its first
+`stale_reason_code`, so a later trip edit would still have been explained to the
+user as "you confirmed or changed a value on one of your documents".
+
+
+Known rough edge visible in the frame
+-------------------------------------
+
+"Cefr level". The five new claim types have no entry in `FIELD_LABELS`, so they
+fall through `humanise`, and both `english.test_date` and `life_in_uk.test_date`
+would render as "Test date" on a document carrying either. Cosmetic, on the one
+screen that is the trust boundary. Not fixed here; recorded rather than left to
+be noticed.

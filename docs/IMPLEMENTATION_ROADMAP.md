@@ -589,6 +589,10 @@ Immigration status · English-language test · Life in the UK · travel booking.
 `DocumentClassifier` · `DocumentClaimExtractor` · `TravelRecordExtractor` ·
 `ConflictCandidateDetector`
 
+> **Amended by ADR-0029.** `DocumentClaimExtractor` is a family of three capabilities, not one: `ImmigrationStatusExtractor`, `EnglishLanguageExtractor` and `LifeInUkExtractor`. One `Capability` resolves to one prompt and one schema version, so three document kinds cannot share a member. The last two are built (M8 slice 5); immigration status is deferred until a confirmed fact can be compared against the route profile.
+>
+> `ConflictCandidateDetector` was also not built as an AI capability: M8 detects conflicts deterministically (EVIDENCE_AND_CLAIM_LIFECYCLE_RFC §42), because a model proposing a conflict would put a judgement where directive 2 requires determinism.
+
 ## Domain Scope
 
 `ExtractionRun` · `ExtractedClaim` · `ClaimReviewDecision` · `CaseFact` ·

@@ -450,3 +450,19 @@ was caught by the type system, because all three type-checked.** The fix that en
 sequence is not a corrected expression but a changed signature: `TravelRecordResponse` carries
 `is_trusted`, `from_domain` takes the whole outcome, and publishing the ingredients without
 the decision is now a type error rather than a review finding.
+
+### M8 slice 5 — the third and fourth document kinds
+
+`m8/m8-slice5-english-certificate-review.txt` — an English-language certificate uploaded,
+classified, read by `EnglishLanguageExtractor`, and its five fields proposed as untrusted
+claims. Three of the four supported categories now go end to end.
+
+The frame worth reading is the review queue: four fields show the model's proposal, and the
+**test date is an empty box** — because `HIGH_RISK_CLAIM_TYPES` is derived from the value
+schema rather than listed, so a new `date.v1` claim type is blind-entry the moment it
+exists. No code was written to make that true for these two capabilities.
+
+It also carries the verification for the trust review's headline finding: before the fix,
+confirming an English certificate staled four residence conclusions for an input no
+residence rule can read. Same case after scoping the invalidation by claim type: nine
+CURRENT, nothing staled.

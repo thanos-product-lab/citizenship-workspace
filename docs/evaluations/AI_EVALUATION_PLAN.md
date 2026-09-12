@@ -182,6 +182,8 @@ AMBIGUOUS
 
 ## 4.2 DocumentClaimExtractor
 
+> **Amended by ADR-0029.** This section describes a family of three capabilities. A manifest row's `capability:` value is the specific one — `EnglishLanguageExtractor`, `LifeInUkExtractor` or `ImmigrationStatusExtractor` — never `DocumentClaimExtractor`, which names no registry entry and cannot be invoked. The eval report breaks down by capability, and §12 is the reason the three are not averaged together: the immigration extractor is HIGH risk and the other two are MEDIUM.
+
 ### Purpose
 
 Extract schema-defined fields from a supported evidence document.
