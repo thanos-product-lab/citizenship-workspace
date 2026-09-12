@@ -1521,3 +1521,154 @@ the right place for it but worth knowing when reading the client.
 
 Four mutations, all red: dropping the profile bounds (2 red), the travel bounds, the CSV
 range check, and turning `ge` into `gt` to catch an off-by-one on the one date nobody tries.
+
+---
+
+## M8 gate — what the walkthrough found
+
+Three defects and one workflow hazard, all found within minutes of a human driving a case
+the seed does not create. None of the defects was found by 1114 backend tests, 381 frontend
+tests, four reviewer passes or a green eval suite. That is the gate earning its place, and
+it is worth writing down *why* they were invisible before deciding what to do about them.
+
+**The common cause: every automated check and every walkthrough I ran used the seeded demo
+case, with the stack healthy.** `just seed` creates a case that is already active, already
+has an application date, and already has twelve travel records. The first two defects are
+only reachable on a case that does not — which is every case a real user will ever create —
+and the third needed a component to be down, which nothing automated arranges.
+
+Two of the three are fixed or half fixed here; the rest is listed below with what it would
+take, because a gate is allowed to pass with gaps it can articulate and not with gaps it
+has not noticed.
+
+### 1. A new case could not be given an application date at all — **fixed**
+
+`ApplicationDateCard` is the only place in the product that can set an application date.
+Its only action was *Preview this date*, and the Save control lives **inside** the preview
+result. A preview compares the case as it stands against a candidate date, so with nothing
+selected `simulate_application_date` answers 409 `CASE_NOT_ASSESSABLE` — correctly; its
+docstring says a half-comparison is worse than a refusal. No preview, therefore no save,
+therefore no date, therefore no assessment, no timeline, no requirements.
+
+The API was right and the UI was wrong, which is the pleasant version of this discovery.
+
+Fixed: with no date selected the control reads *Save this date* and selects directly;
+once a date exists it returns to *Preview this date*, because choosing a first value and
+previewing a change are different actions. Three tests, mutation-checked.
+
+### 2. A past application date is accepted and silently believed — **half fixed**
+
+Set on 12 September 2026 to 10 January 2026. The result:
+
+```
+residence.total_absences        SUPPORTED   window 2021-01-11 → 2026-01-10
+residence.final_year_absences   SUPPORTED   window 2025-01-11 → 2026-01-10
+```
+
+A five-year window that closed eight months earlier, every requirement green. The product
+reported readiness for a submission date that had gone, and excluded the last eight months
+of travel from the calculation without saying so. This is the false-reassurance shape the
+whole product exists to prevent, produced by an input with no floor.
+
+**Half fixed, and the unfixed half is the more interesting one.** The card's `min` is now
+today, which stops a *new* bad selection. It does nothing for a saved date that drifts into
+the past, which happens to every case eventually — including the seeded demo case, whose
+2027-04-15 becomes past in April 2027.
+
+**Deliberately not fixed with schema validation.** A `ge=today` on the select and simulate
+schemas would reject cases nobody touched, purely because time passed, and would break on
+a calendar boundary rather than a code change. `app/shared/dates.py` already makes this
+argument about its own bounds: a plausibility judgement in schema validation is invisible
+to the rules spec and versioned by nothing. Drift is the ordinary passage of time, not a
+user error, and refusing to load a case over it would be the wrong answer twice.
+
+**Outstanding:** a derived limitation and issue — *your proposed application date has
+passed* — computed at assessment time like every other conflict in this milestone. That is
+a rules change: new condition, rule-version bump, migration, and a RULES_SPEC amendment,
+since the spec currently says nothing about whether a proposed date may be in the past.
+CLAUDE.md §8 puts it behind plan mode. Its own slice, not a gate-buffer fix.
+
+### 3. Upload and processing are silent to sighted users — **outstanding**
+
+Uploading a document announces *"Uploading …"* then *"… uploaded. Reading will start
+shortly."* into an `aria-live` region that is `cw-visually-hidden`. Nothing appears on
+screen. The comment beside that third message already concedes it: *"this third copy was
+missed, and it is the only one no sighted user ever sees."* Reading then takes around
+twenty seconds, during which the screen says nothing at all.
+
+**The suggested fix was to redirect to `/review` after upload, and that was declined.**
+Worth recording the reasoning, because the instinct is a common one:
+
+- Processing is asynchronous. Redirecting on upload success arrives at a review screen
+  before any claim exists.
+- Redirecting *later*, when the worker finishes, moves the page under someone seconds
+  after they acted. WCAG 2.2 3.2.x wants context changes on request.
+- Uploading several documents in a row is the ordinary case, and a redirect after each
+  one fights it.
+- The library is a queue: every row carries its own state and `AWAITING_CONFIRMATION`
+  already renders a review link. A redirect is the shape for synchronous work.
+
+**Outstanding instead:** make the upload progress visible rather than announced-only,
+give the new row a legible reading state for those twenty seconds, and make the existing
+review link prominent at the moment there is something to review. One open question first
+— whether the row updates live or only on refetch — which decides whether that is a copy
+change or a polling change.
+
+#### 3b. And the same silence when processing never starts
+
+Exercised by accident, which is the best way to exercise a failure path. The worker had
+been stopped and not restarted, so an uploaded document sat at `UPLOADED` reading
+**"Uploaded · Not read yet"** — indefinitely, with no elapsed time, no progress, and no
+eventual "this has not started". A document that will be read in fifteen seconds and a
+document that will never be read are **indistinguishable on screen**.
+
+Restarting the worker moved it to `AWAITING_CONFIRMATION` and the review link appeared.
+
+Two things worth separating, because the obvious fix is the wrong one:
+
+- **The absent review link was correct.** At `UPLOADED` nothing has been read, so there is
+  nothing to review; an always-visible link would open a review screen with no claims on
+  it. The first instinct — "there is no way to reach /review, add a link" — would have
+  papered over the real problem with a worse one.
+- **The silence is the defect.** This is finding 3 one state further along and the more
+  serious half: silence meaning *working* and silence meaning *broken* look the same. The
+  product's whole claim is that it does not let a user believe something that is not so,
+  and "your document is being read" is exactly what an unchanging row implies.
+
+The shape of the fix is the same as 3 — a legible in-progress state — plus a timeout that
+says so when nothing has happened for long enough. `RETRYABLE_STATUSES` and the retry
+control already exist for a *failed* run; what has no surface is a run that never began.
+
+### 4. A workflow hazard, not a product defect — **for the next milestone**
+
+Recorded because it cost real time here and will recur otherwise.
+
+`just test-be` truncates the same Postgres the compose stack serves. Over this session the
+full suite wiped the development database three times, once destroying a case that was
+mid-walkthrough. Compounding it: the suite must be run with the worker stopped (an outbox
+guard fails the run otherwise), and a worker left stopped afterwards is what produced 3b —
+uploads that silently never process, which then reads as a product bug.
+
+The combination turns a routine verification into a broken environment: data gone, worker
+down, and the next thing anyone does looks broken for reasons unrelated to the code.
+
+Three habits that would have avoided all of it, in order of value:
+
+1. **Do not run the full backend suite while someone is driving the UI.** Targeted
+   subdirectories are enough during a walkthrough.
+2. **Restart the worker in the same breath as stopping it** — `docker compose start worker`
+   belongs immediately after the suite, not whenever it is next noticed.
+3. **Reseed after any full-suite run** before returning to the browser.
+
+The durable fix is a separate test database, which is a change to `conftest.py` and the
+justfile rather than a habit. Worth doing before M9, since M9's walkthroughs will be longer
+and the seeded case is now load-bearing for four milestones' worth of demo assets.
+
+### What this says about the verification, not just the product
+
+The seeded fixture made the happy path look complete. Two of these are unreachable on a
+case that already has a date, and I only ever drove one that did. A third needed the
+worker to be down, which no test arranges and no walkthrough of mine had tried. A demo seed is a
+convenience for demonstrating; it is not a substitute for creating a case the way a user
+creates one, and the gate's walkthrough rule — *drive it yourself, as a user would* — is
+the thing that caught it.
