@@ -38,7 +38,9 @@ RECORDED_RETURN = "2023-07-01"
 ABSENT_DAYS = 29
 
 
-def _case_with_trip(api: Api) -> tuple[str, str]:
+def _case_with_trip(
+    api: Api, *, departs: str = DEPARTURE, returns: str = RECORDED_RETURN
+) -> tuple[str, str]:
     case_id = str(api("user_a").post("/api/v1/cases", json={"title": "Conflict"}).json()["id"])
     api("user_a").put(f"/api/v1/cases/{case_id}/route-profile", json=SUPPORTED_ANSWERS)
     api("user_a").post(f"/api/v1/cases/{case_id}/route-profile/confirm", json={})
@@ -52,8 +54,8 @@ def _case_with_trip(api: Api) -> tuple[str, str]:
             f"/api/v1/cases/{case_id}/travel-records",
             json={
                 "destination_label": "Rome",
-                "departure_date": DEPARTURE,
-                "return_date": RECORDED_RETURN,
+                "departure_date": departs,
+                "return_date": returns,
                 "date_confidence": "EXACT",
                 "review_state": "CONFIRMED",
             },
@@ -154,6 +156,21 @@ def _propose(session: Session, case_id: str, item_id: str, *, raw: str) -> uuid.
     session.flush()
     session.commit()
     return claim.id
+
+
+def _dispute(api: Api, session: Session, case_id: str, trip_id: str) -> None:
+    """Attach a booking to this trip and confirm a return date that disagrees with it.
+
+    `_conflicting_case` does the same for its own fixed trip; this takes the trip as an
+    argument so a test can place the disputed trip where it needs it — over the presence
+    anchor, for instance.
+    """
+    item_id = _attach_document(api, case_id, trip_id)
+    claim_id = _propose(session, case_id, item_id, raw="2 July 2023")
+    api("user_a").post(
+        f"/api/v1/cases/{case_id}/claims/{claim_id}/review",
+        json={"entered_value": "2 July 2023"},
+    )
 
 
 def _detail(api: Api, case_id: str, key: str) -> dict[str, Any]:
@@ -719,3 +736,93 @@ def _propose_knowledge(session: Session, case_id: str, item_id: str) -> uuid.UUI
     session.flush()
     session.commit()
     return claim.id
+
+
+def test_no_requirement_calls_a_disputed_trip_confirmed_or_unconfirmed(
+    api: Api, db_session: Session
+) -> None:
+    """The two surfaces the slice-4 fix missed, asserted over *every* requirement.
+
+    `residence.total_absences` was corrected to report a held-back trip honestly. Two rules
+    were not, and the reason is worth keeping: the held-back set was read off the
+    `CONFLICTING_SOURCE_DATES` limitation, which is deliberately **window-scoped** — an
+    out-of-window conflict cannot move a figure, so the issue queue should not raise one.
+    `physical_presence_start_date` emits that limitation only on its INCOMPLETE branch and
+    `final_year_absences` window-scopes it, so both wrote the fact link and then rendered
+    the disputed trip as "Confirmed · exact dates", counting, beside a total that excluded
+    it.
+
+    Written over every requirement rather than the three that read trip trust, so a rule
+    that starts linking travel records later cannot reintroduce it quietly.
+    """
+    case_id, _ = _conflicting_case(api, db_session)
+    api("user_a").post(f"/api/v1/cases/{case_id}/assessments/recalculate")
+
+    for row in api("user_a").get(f"/api/v1/cases/{case_id}/requirements").json():
+        detail = _detail(api, case_id, row["requirement_key"])
+        disputed = [
+            t
+            for t in detail["travel_inputs"]
+            if (t["input_version_id"] and t["label"].endswith("Rome"))
+            or "conflicting" in (t["detail"] or "")
+        ]
+        for trip in disputed:
+            assert trip["counts_as_confirmed"] is False, (
+                f"{row['requirement_key']} says the disputed trip counted"
+            )
+            assert "conflicting dates" in trip["detail"], (
+                f"{row['requirement_key']} describes it as {trip['detail']!r}"
+            )
+
+        # And no result may describe a confirmed record as unconfirmed. The user typed
+        # that date; being told they did not, and sent to confirm it again, is a remedy
+        # that cannot work.
+        #
+        # **Unconditional, and the first version of this was not.** It only asserted when
+        # the text already said "document disputes" — so removing that wording removed the
+        # check along with it, and the mutation passed. A guard conditioned on the string
+        # it is guarding tests nothing. The assertion is safe to make unconditionally here
+        # because this fixture's only held-back record is the disputed one: nothing on the
+        # case is merely unconfirmed, so the phrase has no honest use.
+        text = " ".join(
+            [detail["summary"]["text"] if detail["summary"] else ""]
+            + [limitation["text"] for limitation in detail["limitations"]]
+        ).lower()
+        assert "you have not confirmed" not in text, (
+            f"{row['requirement_key']} calls a disputed record unconfirmed: {text!r}"
+        )
+        assert "not confirmed" not in text, (
+            f"{row['requirement_key']} says 'not confirmed' of a confirmed record: {text!r}"
+        )
+
+
+def test_the_presence_rule_does_not_tell_you_to_confirm_a_date_you_confirmed(
+    api: Api, db_session: Session
+) -> None:
+    """`PRESENCE_UNCERTAIN`, on a case where the disputed trip covers the anchor.
+
+    Needs its own fixture, and finding that out is the point. The sweeping test above runs
+    on `_conflicting_case`, whose trip is 1 June to 1 July 2023 — nowhere near the 16 April
+    2022 anchor — so the presence rule never reaches its INCOMPLETE branch there and the
+    sentence under test is never rendered. Mutating the wording left that test green.
+
+    A test that cannot reach the code it names is worth less than no test, because it reads
+    as coverage. This one departs on the 10th and returns on the 25th so the anchor falls
+    inside the trip's absent set (exclusive of both travel days, RULES_SPEC §5.1).
+    """
+    case_id, trip_id = _case_with_trip(api, departs="2022-04-10", returns="2022-04-25")
+    _dispute(api, db_session, case_id, trip_id)
+    api("user_a").post(f"/api/v1/cases/{case_id}/assessments/recalculate")
+
+    detail = _detail(api, case_id, "residence.physical_presence_start_date")
+    assert detail["conclusion"] == "INCOMPLETE", "the fixture no longer reaches this branch"
+
+    text = " ".join(
+        [detail["summary"]["text"]] + [limitation["text"] for limitation in detail["limitations"]]
+    ).lower()
+    assert "a document disputes" in text, f"the reason is not named: {text!r}"
+    assert "you have not confirmed" not in text, (
+        f"tells the user to confirm a date they confirmed: {text!r}"
+    )
+    # And the remedy: "until it is confirmed" is a dead end for a record that is confirmed.
+    assert "until it is confirmed" not in text, f"offers a remedy that cannot work: {text!r}"

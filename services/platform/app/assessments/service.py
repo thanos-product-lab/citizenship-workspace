@@ -289,29 +289,6 @@ def evaluate_case(
     )
 
 
-def _disputed_versions(result: AssessmentResult) -> frozenset[uuid.UUID]:
-    """The travel-record versions this result held back over a conflicting document date.
-
-    Read off the result's own `CONFLICTING_SOURCE_DATES` limitation rather than re-derived
-    from today's rows: a superseded result has to keep explaining itself in the terms that
-    were true when it ran (directive 3), and by the time someone reads it the conflict may
-    have been resolved.
-
-    Ids that do not parse are dropped rather than raised on. This feeds an explanation, and a
-    malformed id in stored JSON should cost the reader one row of detail, not the page.
-    """
-    disputed: set[uuid.UUID] = set()
-    for limitation in result.limitations:
-        if not isinstance(limitation, dict) or limitation.get("code") != "CONFLICTING_SOURCE_DATES":
-            continue
-        for raw in limitation.get("affected_input_ids") or ():
-            try:
-                disputed.add(uuid.UUID(str(raw)))
-            except ValueError:
-                continue
-    return frozenset(disputed)
-
-
 def _run_trusted_assessment(
     session: Session, *, case: ApplicationCase, user: CurrentUser
 ) -> tuple[AssessmentRun, int]:
@@ -612,9 +589,7 @@ def get_requirement_detail(
 
     if current is not None:
         links = AssessmentRepository.list_input_links(session, current.id)
-        inputs = resolve_input_links(
-            session, links, disputed_version_ids=_disputed_versions(current)
-        )
+        inputs = resolve_input_links(session, links)
         rule = RequirementCatalogRepository.get_rule_version(session, current.rule_version_id)
     else:
         # No result yet: there are no inputs to show, but the requirement still has a rule

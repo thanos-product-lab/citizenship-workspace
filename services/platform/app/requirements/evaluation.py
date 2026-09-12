@@ -559,13 +559,34 @@ def _evidence_links(links: tuple["EvidenceLinkInput", ...]) -> tuple[InputLinkSp
 
 
 def _travel_links(trips: tuple[TripInput, ...]) -> tuple[InputLinkSpec, ...]:
-    # Every active travel record the rule read is linked (the ALL_ACTIVE_TRAVEL_RECORDS
-    # dependency), trusted or not — the rule reads all of them to compute both totals.
+    """Every active travel record the rule read (the ALL_ACTIVE_TRAVEL_RECORDS dependency),
+    trusted or not — the rule reads all of them to compute both totals.
+
+    **A disputed trip is linked as `CONTRADICTING`, and that is how the result records
+    which trips it held back.** The role vocabulary already had the word; nothing needed
+    inventing.
+
+    It replaces reading the held-back set off the `CONFLICTING_SOURCE_DATES` limitation,
+    which was wrong for a reason worth keeping: that limitation is deliberately
+    *window-scoped*, because an out-of-window conflict cannot move a figure and the issue
+    queue should not raise one. So `physical_presence_start_date` — which emits it only on
+    its INCOMPLETE branch — and `final_year_absences` wrote the fact link and then rendered
+    the disputed trip as "Confirmed · exact dates", counting, on the same page as a total
+    that had excluded it.
+
+    Two questions, two homes: the limitation says *what to tell the user about*, the link
+    says *how this input contributed to this result*. The second is per-result and
+    unscoped, which is what an explanation needs.
+    """
     return tuple(
         InputLinkSpec(
             LinkInputKind.TRAVEL_RECORD_VERSION,
             trip.travel_record_version_id,
-            contribution_role=ContributionRole.CONTEXTUAL,
+            contribution_role=(
+                ContributionRole.CONTRADICTING
+                if _is_conflicted(trip)
+                else ContributionRole.CONTEXTUAL
+            ),
         )
         for trip in trips
     )
@@ -579,6 +600,18 @@ def _uncertain_ids(trips: tuple[TripInput, ...]) -> tuple[str, ...]:
     return tuple(str(t.travel_record_version_id) for t in trips if not t.is_trusted)
 
 
+def _is_conflicted(trip: TripInput) -> bool:
+    """Held back because a confirmed document date disputes it.
+
+    One spelling of the literal, because there were three and they are load-bearing in
+    different ways: one decides a limitation, one decides a provenance role, one decides a
+    consistency verdict. `date_confidence` is carried as a raw string rather than the
+    `DateConfidence` enum so this module does not import the residence domain — which is
+    exactly the arrangement that makes a typo silent.
+    """
+    return trip.date_confidence == "CONFLICTING"
+
+
 def _conflicted(trips: Iterable[TripInput]) -> tuple[TripInput, ...]:
     """The trips held back over a disputed date rather than an unconfirmed one.
 
@@ -590,7 +623,7 @@ def _conflicted(trips: Iterable[TripInput]) -> tuple[TripInput, ...]:
     prevent, and it is why this distinction is drawn in every rule that reads `is_trusted`,
     not only in `residence.travel_consistency`.
     """
-    return tuple(t for t in trips if t.date_confidence == "CONFLICTING")
+    return tuple(t for t in trips if _is_conflicted(t))
 
 
 def _conflict_limitation(trips: Iterable[TripInput]) -> tuple[Limitation, ...]:
@@ -619,6 +652,9 @@ def _threshold_conclusion(
     band_fn: Callable[[int], Band],
     capped_summary_code: str,
     uncertain_ids: tuple[str, ...],
+    *,
+    conflicted_count: int,
+    unconfirmed_count: int,
 ) -> tuple[Conclusion, str, tuple[Limitation, ...]]:
     """Band the trusted total, then apply the §6.2 sensitivity rule: if the trusted total is
     satisfied/near but the provisional total (uncertain records included) would band worse,
@@ -643,6 +679,12 @@ def _threshold_conclusion(
                 message_parameters={
                     "trusted_days": trusted_total,
                     "provisional_days": provisional_total,
+                    # Why the records were held back, not just how many days they carry.
+                    # Without these the sentence said "records you have not confirmed" of a
+                    # record the user *had* confirmed and a document then disputed — and it
+                    # pointed at confirming as the remedy, which cannot resolve a conflict.
+                    "conflicted_record_count": conflicted_count,
+                    "unconfirmed_record_count": unconfirmed_count,
                 },
                 affected_input_ids=uncertain_ids,
             )
@@ -717,11 +759,19 @@ def _evaluate_physical_presence(inputs: ResidenceAssessmentInputs) -> EvaluatedR
         *_evidence_links(inputs.evidence_links),
         *_fact_links(inputs.date_conflicts),
     )
-    params: dict[str, object] = {"physical_presence_date": anchor.isoformat()}
     # Scoped to the anchor, not the whole window: this rule asks one question about one day.
     covering_anchor = tuple(
         t for t in inputs.trips if not t.is_trusted and anchor in absence_union(_spans([t]))
     )
+    covering_conflicted = len(_conflicted(covering_anchor))
+    params: dict[str, object] = {
+        "physical_presence_date": anchor.isoformat(),
+        # Which reason held the covering record back, for the same purpose as on the
+        # absence rules: the sentence must not tell someone to confirm a date they already
+        # confirmed and a document then disputed.
+        "conflicted_record_count": covering_conflicted,
+        "unconfirmed_record_count": len(covering_anchor) - covering_conflicted,
+    }
 
     if anchor in trusted_union:
         # The resolving date is searched over the *trusted* absent union only: an unconfirmed
@@ -752,7 +802,11 @@ def _evaluate_physical_presence(inputs: ResidenceAssessmentInputs) -> EvaluatedR
         limitation = Limitation(
             code=_UNCONFIRMED_LIMITATION,
             severity=LimitationSeverity.REVIEW_REQUIRED,
-            message_parameters={"physical_presence_date": anchor.isoformat()},
+            message_parameters={
+                "physical_presence_date": anchor.isoformat(),
+                "conflicted_record_count": covering_conflicted,
+                "unconfirmed_record_count": len(covering_anchor) - covering_conflicted,
+            },
             affected_input_ids=_uncertain_ids(inputs.trips),
         )
         return EvaluatedResult(
@@ -787,9 +841,6 @@ def _evaluate_absence_total(
     trusted_spans = _spans(t for t in inputs.trips if t.is_trusted)
     trusted_total = count_in_window(absence_union(trusted_spans), w)
     provisional_total = count_in_window(absence_union(_spans(inputs.trips)), w)
-    conclusion, summary_code, limitations = _threshold_conclusion(
-        trusted_total, provisional_total, band_fn, capped_summary_code, _uncertain_ids(inputs.trips)
-    )
     # Held back *by this window*. A trip whose absent days all fall outside it contributes
     # nothing to either total, so naming it would attach a problem to a figure it did not
     # move — the same window-scoping §7.8 applies to its own conflict detection.
@@ -799,6 +850,15 @@ def _evaluate_absence_total(
         if count_in_window(absence_union(_spans([t])), w) > 0 and not t.is_trusted
     )
     conflicted = _conflicted(in_window)
+    conclusion, summary_code, limitations = _threshold_conclusion(
+        trusted_total,
+        provisional_total,
+        band_fn,
+        capped_summary_code,
+        _uncertain_ids(inputs.trips),
+        conflicted_count=len(conflicted),
+        unconfirmed_count=len(in_window) - len(conflicted),
+    )
     params: dict[str, object] = {
         "days": trusted_total,
         "provisional_days": provisional_total,
@@ -862,7 +922,7 @@ def _evaluate_travel_consistency(inputs: ResidenceAssessmentInputs) -> Evaluated
 
     # CONFLICTING is window-scoped to match UNCERTAIN (RULES_SPEC §7.8): an out-of-window
     # conflict cannot affect the assessment, so it is not surfaced as an inconsistency.
-    conflicting = [t for t in trips if t.date_confidence == "CONFLICTING" and _in_window(t)]
+    conflicting = [t for t in trips if _is_conflicted(t) and _in_window(t)]
     if conflicting:
         in_window_records = {t.travel_record_id for t in conflicting}
         limitations.append(

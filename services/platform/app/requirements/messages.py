@@ -235,9 +235,9 @@ SUMMARY_TEMPLATES: dict[str, _Template] = {
         "qualifying period."
     ),
     "PRESENCE_UNCERTAIN": lambda p: (
-        "A travel record you have not confirmed covers "
+        f"{_covering_record(p)} covers "
         f"{format_date(p.get('physical_presence_date'))}, the first day of your "
-        "qualifying period. Until it is confirmed, presence on that day is unresolved."
+        f"qualifying period. {_covering_remedy(p)}"
     ),
     "PRESENCE_NOT_SUPPORTED": lambda p: (
         "Your confirmed travel records place you outside the UK on "
@@ -356,20 +356,47 @@ SUMMARY_TEMPLATES: dict[str, _Template] = {
 # --- limitation codes -------------------------------------------------------
 
 
+def _covering_record(p: Parameters) -> str:
+    """How to describe the record covering the presence anchor, by why it is held back."""
+    if (_int(p, "conflicted_record_count") or 0) > 0:
+        return "A travel record whose dates a document disputes"
+    return "A travel record you have not confirmed"
+
+
+def _covering_remedy(p: Parameters) -> str:
+    """What the user can actually do about it.
+
+    "Until it is confirmed" is a dead end for a disputed record: it *is* confirmed, and
+    confirming again changes nothing. The remedy is choosing between the two sources.
+    """
+    if (_int(p, "conflicted_record_count") or 0) > 0:
+        return "Until that disagreement is resolved, presence on that day is unresolved."
+    return "Until it is confirmed, presence on that day is unresolved."
+
+
 def _unconfirmed_records(p: Parameters) -> str:
     """One code, two parameter shapes, because two rules raise it: the absence rules pass
     `trusted_days`/`provisional_days`, physical presence passes `physical_presence_date`.
-    Branch on what is present rather than assuming either."""
+    Branch on what is present rather than assuming either.
+
+    Both branches name *why* a record is held back, via `_held_back_records`. The summary
+    sentence was corrected for this when the counts were added; this limitation and
+    `PRESENCE_UNCERTAIN` were not, so a user who had just confirmed a date was told by the
+    same result that they had not — and sent to confirm it again, which cannot resolve a
+    conflict between two sources.
+    """
     trusted = _int(p, "trusted_days")
     provisional = _int(p, "provisional_days")
+    held_back = _held_back_records(p)
     if trusted is not None and provisional is not None:
         return (
-            f"Your confirmed records total {_days(trusted)}. Including records you have "
-            f"not confirmed would make it {provisional}, which lands in a different band."
+            f"Your confirmed records total {_days(trusted)}. Including "
+            f"{held_back[0].lower()}{held_back[1:]} would make it {provisional}, which "
+            "lands in a different band."
         )
     if p.get("physical_presence_date"):
         return (
-            "A travel record you have not confirmed covers "
+            f"{_covering_record(p)} covers "
             f"{format_date(p.get('physical_presence_date'))}, so presence on the first "
             "day of your qualifying period is unresolved."
         )

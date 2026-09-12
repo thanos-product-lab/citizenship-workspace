@@ -35,7 +35,7 @@ from app.assessments.domain import AssessmentInputLink
 from app.evidence.domain import EvidenceTravelLink
 from app.facts.domain import CaseFact, FactVersion
 from app.facts.values import SourceMethod
-from app.requirements.evaluation import LinkInputKind
+from app.requirements.evaluation import ContributionRole, LinkInputKind
 from app.requirements.messages import format_date
 from app.residence.domain import (
     DateConfidence,
@@ -106,35 +106,30 @@ FACT_TYPE_LABELS: dict[str, str] = {
 }
 
 
-def resolve_input_links(
-    session: Session,
-    links: list[AssessmentInputLink],
-    *,
-    disputed_version_ids: frozenset[uuid.UUID] = frozenset(),
-) -> list[ResolvedInput]:
+def resolve_input_links(session: Session, links: list[AssessmentInputLink]) -> list[ResolvedInput]:
     """Resolve each link, preserving the order the result recorded them in.
 
-    `disputed_version_ids` are the travel-record versions **this result** held back over a
-    conflicting document date. They have to be passed in, because the conflict is derived
-    rather than stored (RFC §42): the row on disk still says CONFIRMED with EXACT dates, so
-    a resolver reading it alone reports a trip as counting when the figure beside it proves
-    it did not. That is how the total-absences page came to say "all 12 travel records ...
-    counted towards the figure" directly above a total that had excluded one of them.
+    **Whether a trip was held back is read off the link itself**, via
+    `contribution_role == CONTRADICTING`. The conflict is derived rather than stored
+    (RFC §42), so the row on disk still says CONFIRMED with EXACT dates and a resolver
+    reading it alone reports a trip as counting when the figure beside it proves it did
+    not — which is how the total-absences page came to say "all 12 travel records …
+    counted towards the figure" above a total that had excluded one.
 
-    The set comes from the result's own `CONFLICTING_SOURCE_DATES` limitation, so a
-    superseded result still explains itself in the terms that were true when it ran — which
-    re-deriving the conflict from today's rows would not.
+    An earlier fix passed the set in, derived from the result's `CONFLICTING_SOURCE_DATES`
+    limitation. That was wrong in a way the link is not: the limitation is deliberately
+    window-scoped, so two rules wrote the fact link and still rendered the trip as
+    counting. The link is written per result by every rule that reads trips, carries no
+    window, and is already the thing that records how an input contributed.
     """
-    return [_resolve(session, link, disputed_version_ids) for link in links]
+    return [_resolve(session, link) for link in links]
 
 
-def _resolve(
-    session: Session, link: AssessmentInputLink, disputed: frozenset[uuid.UUID] = frozenset()
-) -> ResolvedInput:
+def _resolve(session: Session, link: AssessmentInputLink) -> ResolvedInput:
     if link.input_kind == LinkInputKind.APPLICATION_DATE_VERSION.value:
         return _resolve_application_date(session, link)
     if link.input_kind == LinkInputKind.TRAVEL_RECORD_VERSION.value:
-        return _resolve_travel_record(session, link, disputed)
+        return _resolve_travel_record(session, link)
     if link.input_kind == LinkInputKind.ROUTE_PROFILE_VERSION.value:
         return _resolve_route_profile(session, link)
     if link.input_kind == LinkInputKind.EVIDENCE_LINK.value:
@@ -243,9 +238,7 @@ def _resolve_application_date(session: Session, link: AssessmentInputLink) -> Re
     )
 
 
-def _resolve_travel_record(
-    session: Session, link: AssessmentInputLink, disputed: frozenset[uuid.UUID] = frozenset()
-) -> ResolvedInput:
+def _resolve_travel_record(session: Session, link: AssessmentInputLink) -> ResolvedInput:
     found = TravelRecordRepository.get_record_for_version(session, link.input_version_id)
     if found is None:
         return _unavailable(link, label="Travel record")
@@ -255,7 +248,8 @@ def _resolve_travel_record(
     removed = record.lifecycle_status is TravelLifecycleStatus.REMOVED
     # One definition of the §6.1 gate, shared with the assessment service. It includes the
     # ACTIVE check, which is what stops a removed record reporting as counting.
-    counts = counts_toward_trusted_total(record, version) and link.input_version_id not in disputed
+    disputed = link.contribution_role == ContributionRole.CONTRADICTING.value
+    counts = counts_toward_trusted_total(record, version) and not disputed
 
     return ResolvedInput(
         input_kind=link.input_kind,
@@ -271,7 +265,7 @@ def _resolve_travel_record(
                 # and currency apart; this keeps *what the row says* and *what the rule made
                 # of it* apart in the same spirit — the record is genuinely confirmed, and
                 # this result genuinely did not count it.
-                "CONFLICTING" if link.input_version_id in disputed else version.date_confidence
+                "CONFLICTING" if disputed else version.date_confidence
             ),
         ),
         version_number=version.version_number,
