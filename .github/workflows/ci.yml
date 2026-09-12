@@ -64,7 +64,13 @@ jobs:
       CW_EXPECT_MINIO: "1"
       # Pinned rather than `latest`: an image tag that moves is an image tag that can
       # vanish, which is exactly how this job first broke.
-      MINIO_VERSION: RELEASE.2025-09-07T16-13-09Z
+      #
+      # The registry is part of the pin now, and that is the second lesson. Pinning the tag
+      # did not help when `docker.io/minio/minio` stopped serving *any* tag in September
+      # 2026 — "repository does not exist or may require 'docker login'". A local `just up`
+      # kept working on a year-old cached layer, so the failure was CI-only and looked like
+      # a CI problem rather than an upstream one.
+      MINIO_IMAGE: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v9.0.0
@@ -77,6 +83,11 @@ jobs:
       # moved everything to `bitnamilegacy/` in 2025). Starting it here keeps the
       # official image, a pinned tag, and a readiness check we control.
       #
+      # Two registries have now dropped this image out from under the build. Both times the
+      # symptom was the same and the cause was upstream, so: `docker-compose.yml` must carry
+      # the identical reference including the registry, and a mismatch between them is what
+      # `test_the_compose_and_ci_minio_images_match` exists to catch.
+      #
       # The storage security tests are the only place that can assert a bucket is
       # private, that a URL expires, or that a deleted object is gone — the in-process
       # fake cannot. `CW_EXPECT_MINIO` below makes their absence a failure, not a skip,
@@ -86,7 +97,7 @@ jobs:
           docker run -d --name minio -p 9000:9000 \
             -e MINIO_ROOT_USER=minioadmin \
             -e MINIO_ROOT_PASSWORD=minioadmin \
-            minio/minio:${{ env.MINIO_VERSION }} server /data
+            ${{ env.MINIO_IMAGE }} server /data
           for attempt in $(seq 1 30); do
             if curl -sf -o /dev/null http://localhost:9000/minio/health/live; then
               echo "MinIO ready after ${attempt} attempt(s)"

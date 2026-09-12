@@ -28,10 +28,22 @@ services:
       retries: 10
 
   minio:
-    # Pinned to the same release CI runs. `latest` on both sides looks like agreement and
-    # is not: the two resolve whenever each last pulled, so a storage behaviour can differ
-    # between a green local run and a red CI one with nothing in the diff to explain it.
-    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
+    # Pinned to the same release CI runs, **registry included**. `latest` on both sides
+    # looks like agreement and is not: the two resolve whenever each last pulled, so a
+    # storage behaviour can differ between a green local run and a red CI one with nothing
+    # in the diff to explain it.
+    #
+    # `quay.io` rather than Docker Hub since September 2026. `docker.io/minio/minio` stopped
+    # being publicly pullable — the whole repository, not one tag: `docker pull
+    # minio/minio:latest` answers "repository does not exist or may require 'docker login'".
+    # Locally that was invisible, because the image had been in the layer cache for a year;
+    # CI pulls fresh every run, so it broke there and only there. Same digest on quay, which
+    # is a registry MinIO publishes to itself.
+    #
+    # Second time an upstream registry has moved under this file — the first was Bitnami,
+    # recorded in `ci.yml`. Hence the registry is written out rather than relying on the
+    # default, so the next move is a one-line diff in a place someone will look.
+    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: minioadmin
