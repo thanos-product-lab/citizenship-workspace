@@ -15,7 +15,7 @@ import {
   useSaveApplicationDate,
   useSimulateApplicationDate,
 } from "./useApplicationDate";
-import { yearsFromTodayISO } from "./dates";
+import { todayISO, yearsFromTodayISO } from "./dates";
 import {
   Field,
   buttonStyle,
@@ -26,9 +26,18 @@ import {
   secondaryButtonStyle,
 } from "@/components/ui";
 
-// Typo-guard bounds (see dates.ts). The proposed date is often future, so the window
-// leans forward; both ends are generous enough never to reject a real planned date.
-const MIN_DATE = yearsFromTodayISO(-20);
+// Today, not a typo-guard offset. A *proposed* application date is a plan to submit, and
+// a plan cannot be for a day that has gone: the qualifying period ends on the application
+// date, so a past one measures a five-year window that closed months ago and reports
+// SUPPORTED against it — telling someone they are ready for a submission they can no
+// longer make. Found during the M8 gate on a case set to 10 January 2026 with the window
+// running 11 Jan 2021 to 10 Jan 2026, eight months stale, everything green.
+//
+// Deliberately **only the floor**, and only here. `TravelRecordForm` keeps the -20y bound
+// because travel is historical by nature. And this stops a *new* bad selection; it cannot
+// help a saved date that drifts into the past as time passes, which needs a derived
+// signal in the rules rather than an input attribute — see RULES_SPEC.
+const MIN_DATE = todayISO();
 const MAX_DATE = yearsFromTodayISO(10);
 
 /**

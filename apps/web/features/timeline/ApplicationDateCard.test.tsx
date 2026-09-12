@@ -627,3 +627,47 @@ describe("a case with no application date yet", () => {
   });
 });
 
+
+describe("the application date is a plan, not a record", () => {
+  beforeEach(() => {
+    get.mockReset();
+    post.mockReset();
+    get.mockResolvedValue({ data: aDate(), error: undefined });
+  });
+
+  /**
+   * Found during the M8 gate. The card accepted 10 January 2026 on 12 September 2026, and
+   * the assessment obligingly measured a qualifying period of 11 Jan 2021 to 10 Jan 2026 —
+   * a window that closed eight months earlier — then reported every requirement SUPPORTED.
+   * Ready, for a submission date that had gone.
+   *
+   * The floor is on the input rather than the schema on purpose. A `ge=today` on the API
+   * would reject cases whose saved date merely *drifted* into the past, which is the
+   * ordinary passage of time and not a user error — the seeded demo case would fail
+   * validation in April 2027. `shared/dates.py` makes the same argument about its own
+   * bounds: a plausibility judgement in schema validation is invisible to the rules spec
+   * and versioned by nothing.
+   *
+   * So this covers the half an input attribute can cover — a new selection — and the
+   * drifted case is a derived signal in the rules, tracked separately.
+   */
+  it("will not offer a date earlier than today", async () => {
+    render(<ApplicationDateCard caseId="c1" />);
+
+    const input = (await screen.findByLabelText("Application date")) as HTMLInputElement;
+    const today = new Date();
+    const expected = new Date(today.getTime() - today.getTimezoneOffset() * 60_000)
+      .toISOString()
+      .slice(0, 10);
+
+    expect(input.min).toBe(expected);
+    expect(input.min <= input.max).toBe(true);
+  });
+
+  it("still allows a date years ahead, because a plan is allowed to be distant", async () => {
+    render(<ApplicationDateCard caseId="c1" />);
+
+    const input = (await screen.findByLabelText("Application date")) as HTMLInputElement;
+    expect(Number(input.max.slice(0, 4))).toBeGreaterThan(new Date().getFullYear());
+  });
+});
