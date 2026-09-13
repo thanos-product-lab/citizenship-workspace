@@ -128,6 +128,23 @@ class ApplicationCase(Base):
         self._lifecycle_status = LifecycleStatus.DELETION_PENDING.value
         self.deletion_requested_at = at
 
+    def mark_deleted(self, *, at: datetime) -> None:
+        """DELETION_PENDING → DELETED, once the case's content is actually gone.
+
+        Written by the **purge** alone, and only from `DELETION_PENDING`, so a case is
+        never `DELETED` while its rows and its objects are still there. That ordering is
+        the same one `EvidenceItem.mark_deleted` enforces one aggregate down, and for the
+        same reason: `DELETED` is a claim about the world, not a label.
+
+        There is no path back (§52). `IllegalTransition` from any other state makes a
+        redelivered purge safe — the second pass finds `DELETED` and returns before
+        reaching this.
+        """
+        if self.lifecycle_status is not LifecycleStatus.DELETION_PENDING:
+            raise IllegalTransition(f"cannot delete a case in {self.lifecycle_status} state")
+        self._lifecycle_status = LifecycleStatus.DELETED.value
+        self.updated_at = at
+
     def set_current_application_date(self, proposed_application_date_id: uuid.UUID) -> None:
         """Point the case at its current proposed-application-date aggregate.
 

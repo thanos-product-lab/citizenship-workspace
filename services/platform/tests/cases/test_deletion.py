@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.cases import service
 from app.cases.domain import ApplicationCase, CaseMembership, LifecycleStatus
+from app.shared import outbox
 from app.shared.db import get_sessionmaker
 from app.shared.records import DomainEventRecord, OutboxEventRecord
 from app.shared.tenant import set_tenant
@@ -53,6 +54,31 @@ def test_delete_queues_a_deletion_event_and_outbox_row(api: Api, db_session: Ses
         .where(OutboxEventRecord.event_type == "CaseDeletionRequested")
     )
     assert outbox == 1
+
+
+def test_the_deletion_event_is_relayed_to_the_purge_task(api: Api, db_session: Session) -> None:
+    """The wiring, end to end through the real relay.
+
+    Asserted here rather than by reading `HANDLERS`, because a map is data and a test that
+    reads it proves only that it was read. What matters is that pressing delete causes the
+    purge task to be dispatched — which for eight milestones it did not:
+    `CaseDeletionRequested` sat in `NO_CONSUMER` and the relay marked it published having
+    dispatched nothing, so the case stayed `DELETION_PENDING` for ever with every row and
+    every object in place.
+    """
+    case_id = _create_case(api, "user_a")
+    api("user_a").delete(f"/api/v1/cases/{case_id}")
+
+    dispatched: list[tuple[str, dict[str, object]]] = []
+    outcome = outbox.relay_batch(db_session, lambda task, kwargs: dispatched.append((task, kwargs)))
+
+    # Not `declined == 0`: creating the case emitted `CaseCreated`, which is in
+    # `NO_CONSUMER` and correctly declined in the same batch. What matters is that the
+    # deletion event is not the declined one.
+    assert "CaseDeletionRequested" in outcome.event_types
+    purges = [kwargs for task, kwargs in dispatched if task == "worker.case.purge"]
+    assert len(purges) == 1, f"expected one case purge, got {dispatched}"
+    assert purges[0]["aggregate_id"] == case_id
 
 
 def test_writes_are_blocked_once_deletion_is_pending(api: Api) -> None:

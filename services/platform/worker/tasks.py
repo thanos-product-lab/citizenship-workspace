@@ -22,6 +22,7 @@ from celery import Task
 from celery.exceptions import MaxRetriesExceededError, SoftTimeLimitExceeded
 from sqlalchemy.orm import Session
 
+from app.cases import purge as case_purge
 from app.core.storage import StorageError, get_storage
 from app.evidence import processing, purge
 from app.evidence.domain import ProcessingFailureCode
@@ -30,8 +31,10 @@ from app.shared.db import get_sessionmaker
 from app.shared.tenant import set_tenant
 from worker.celery_app import celery_app
 from worker.context import (
+    CaseNoLongerPresent,
     CaseNoLongerWritable,
     EvidenceNoLongerPresent,
+    case_scoped_task,
     case_task,
     resolve_evidence_owner,
     tenant_scoped,
@@ -326,3 +329,87 @@ def purge_evidence(
         structlog.contextvars.unbind_contextvars("trace_id")
 
     return {"purged": outcome.purged, "reason": outcome.reason}
+
+
+@tenant_scoped
+@celery_app.task(bind=True, name="worker.case.purge", max_retries=MAX_RETRIES)
+def purge_case(
+    self: Task,
+    *,
+    outbox_event_id: str,
+    aggregate_id: str,
+    trace_id: str | None = None,
+    **_: Any,
+) -> dict[str, object]:
+    """Destroy a deleted case (§51.2 steps 4-8).
+
+    The relay's third consumer, and the one that finishes the sentence `request_deletion`
+    started. Until this existed `CaseDeletionRequested` sat in `NO_CONSUMER`: the API
+    returned 200, the case vanished from every list, writes were blocked — and the rows and
+    the objects stayed where they were, for ever. The user was told their case was deleted
+    and the only true part was that they could no longer see it.
+
+    No idempotency key, for the same reason as `purge_evidence`: object deletion is
+    idempotent in S3, the row deletes are `DELETE ... WHERE` over rows a second pass will
+    not find, and `purge.purge_case` reads the lifecycle state and returns `already_purged`
+    on redelivery before touching anything.
+    """
+    case_id = uuid.UUID(aggregate_id)
+    structlog.contextvars.bind_contextvars(trace_id=trace_id)
+
+    try:
+        with case_scoped_task(case_id) as ctx:
+            outcome = case_purge.purge_case(
+                ctx.session,
+                get_storage(),
+                case_id=case_id,
+                trace_id=trace_id,
+            )
+    except CaseNoLongerPresent:
+        # No row at all — not even a tombstone. Nothing to destroy and nothing to record.
+        return {"purged": False, "reason": "case_absent"}
+    except StorageError as exc:
+        # Transient by assumption: an unreachable store, not a refused delete. The case
+        # stays DELETION_PENDING — unreachable to its owner, content not yet destroyed —
+        # which is the honest incomplete state and the reason `mark_deleted` runs last.
+        # Retrying is safe because deleting an absent key is a no-op and every row delete
+        # is scoped by a predicate a second pass re-evaluates.
+        _log.warning("case.purge_deferred", case_id=aggregate_id, trace_id=trace_id)
+        try:
+            raise self.retry(
+                exc=exc, countdown=_BACKOFF_BASE ** (self.request.retries + 1)
+            ) from exc
+        except MaxRetriesExceededError:
+            # The last attempt is the interesting one, exactly as for evidence. Past here
+            # nothing retries, and the user cannot see the case at all — so this line is
+            # the only record that content they asked to destroy is still in the bucket.
+            _log.error(
+                "case.purge_abandoned",
+                case_id=aggregate_id,
+                retries=self.request.retries,
+                trace_id=trace_id,
+            )
+            raise
+    finally:
+        # Unbind, or a prefork child stamps this trace_id on whatever it picks up next.
+        structlog.contextvars.unbind_contextvars("trace_id")
+
+    _log.info(
+        "task.case.purge",
+        case_id=str(case_id),
+        outbox_event_id=outbox_event_id,
+        purged=outcome.purged,
+        reason=outcome.reason,
+        objects_deleted=outcome.objects_deleted,
+        rows_deleted=outcome.rows_deleted,
+        events_deleted=outcome.events_deleted,
+        trace_id=trace_id,
+    )
+    return {
+        "purged": outcome.purged,
+        "reason": outcome.reason,
+        "objects_deleted": outcome.objects_deleted,
+        "rows_deleted": outcome.rows_deleted,
+        "events_deleted": outcome.events_deleted,
+        "model_runs_scrubbed": outcome.model_runs_scrubbed,
+    }

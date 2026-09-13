@@ -83,6 +83,12 @@ class EvidenceNoLongerPresent(Exception):
     cannot be reprocessed. Same reasoning as above — not a failure, nothing to retry."""
 
 
+class CaseNoLongerPresent(Exception):
+    """No such case row at all. Distinct from `CaseNoLongerWritable`, which is a case that
+    exists and is closing: this one has no tombstone either, so there is nothing to purge
+    and nothing to record. Not a failure, nothing to retry."""
+
+
 @dataclass(frozen=True)
 class TaskContext:
     """What a task gets once its tenant is established."""
@@ -117,6 +123,79 @@ def resolve_evidence_owner(
         raise EvidenceNoLongerPresent(str(evidence_item_id))
     owner, case_id, lifecycle = row
     return str(owner), case_id, str(lifecycle)
+
+
+@dataclass(frozen=True)
+class CaseTaskContext:
+    """What a case-level task gets. No `evidence_item_id`: the whole case is the subject."""
+
+    session: Session
+    case_id: uuid.UUID
+    owner_user_id: str
+
+
+def resolve_case_owner(session: Session, case_id: uuid.UUID) -> tuple[str, str]:
+    """The second ownership oracle, and it exists because the first one cannot answer this.
+
+    `resolve_evidence_owner` reaches the case *through* an evidence row. A case purge is
+    handed a case id and may have no evidence rows left to reach through — a case whose
+    documents were each deleted individually has tombstones or nothing at all — so joining
+    through evidence would resolve to no row and the purge would report the case absent and
+    return successfully. Every record in it would survive, and the logs would calmly say
+    there was nothing there.
+
+    Same construction as 0017 for the same reason (migration 0036): `SECURITY DEFINER`
+    because this runs *before* a tenant exists and so cannot be policed by RLS, `SET
+    search_path = public` so the names cannot be shadowed, `EXECUTE` granted to the
+    application role alone.
+    """
+    row = session.execute(
+        text("SELECT owner_user_id, lifecycle_status FROM case_owner(:id)"),
+        {"id": case_id},
+    ).first()
+    if row is None:
+        raise CaseNoLongerPresent(str(case_id))
+    owner, lifecycle = row
+    return str(owner), str(lifecycle)
+
+
+@contextmanager
+def case_scoped_task(
+    case_id: uuid.UUID,
+    *,
+    sessions: sessionmaker[Session] | None = None,
+) -> Iterator[CaseTaskContext]:
+    """Open a session and establish the tenant from the case row itself.
+
+    **There is no `allow_terminal_case` and there is no gate on lifecycle state**, which is
+    the difference from `case_task` and is deliberate. Every caller of this is destroying a
+    case the user asked to be rid of, so a terminal state is the precondition rather than
+    the obstacle — the purge itself refuses anything that is not `DELETION_PENDING`, which
+    is the check that matters and is made against the aggregate rather than against a
+    string here.
+
+    A purged case has `owner_user_id = ''`. That is not a tenant, and on redelivery the
+    purge returns `already_purged` before touching a row — but `set_tenant('')` would still
+    be a nonsense assertion to make, so the empty owner is refused as absent instead.
+    """
+    factory = sessions or get_sessionmaker()
+    with factory() as session:
+        owner, _lifecycle = resolve_case_owner(session, case_id)
+        if not owner:
+            raise CaseNoLongerPresent(str(case_id))
+
+        set_tenant(session, owner)
+        try:
+            yield CaseTaskContext(session=session, case_id=case_id, owner_user_id=owner)
+        finally:
+            # Same ordering as `case_task`, for the same reason: `clear_tenant` issues SQL,
+            # so on a session needing rollback it would raise from the `finally` and replace
+            # the in-flight exception with a `PendingRollbackError`.
+            try:
+                session.rollback()
+                clear_tenant(session)
+            except Exception:
+                _log.warning("worker.tenant_clear_failed", case_id=str(case_id))
 
 
 @contextmanager

@@ -55,6 +55,11 @@ HANDLERS: dict[str, str] = {
     # acquisition and the at-least-once contract were all built for validation, and
     # deletion reuses every part without new plumbing.
     "EvidenceDeleted": "worker.evidence.purge",
+    # The third consumer, and the one that finishes what `request_deletion` starts. This
+    # name lived in `NO_CONSUMER` below from M2 until the release slice, with a comment
+    # assigning the work to M11 — so for eight milestones a deleted case was a case its
+    # owner could no longer see, with every row and every object still in place.
+    "CaseDeletionRequested": "worker.case.purge",
 }
 
 #: Event types with no consumer, and never a mistake. Each is a fact worth recording in
@@ -105,13 +110,6 @@ NO_CONSUMER: frozenset[str] = frozenset(
         # whole consequence: the claim leaves the review queue because the queue reads
         # `PENDING_REVIEW`, and no asynchronous work follows an offer nobody can take.
         "ClaimInvalidated",
-        # *Case* deletion (Domain §51.2), which is not evidence deletion and does not
-        # share its consumer. Its eight steps — cancelling tasks, deleting every
-        # case-scoped record, retaining a non-identifying audit — are M11 per the roadmap.
-        # An earlier note here said this consumer "arrives with evidence deletion in slice
-        # 5", which was wrong about the milestone and would have had someone wire a
-        # document purge to a case-wide one.
-        "CaseDeletionRequested",
     }
 )
 
