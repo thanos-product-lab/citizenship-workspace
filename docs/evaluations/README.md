@@ -1,5 +1,9 @@
 # Evaluations
 
+**Start with [`EVAL_REPORT.md`](EVAL_REPORT.md)** — the summary across all runs, including
+what the corpus does not cover. The files below are the per-run records it draws on.
+
+
 - `AI_EVALUATION_PLAN.md` — capability fixtures, grading logic, regression
   thresholds, release gates. Blocking document for M8.
 - `AI_SPIKE_FINDINGS.md` — what the M8 throwaway spike measured, and the three
