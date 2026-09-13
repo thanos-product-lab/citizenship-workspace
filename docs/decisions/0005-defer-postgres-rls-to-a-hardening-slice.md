@@ -77,7 +77,7 @@ that cannot pass today.
 - **`email` from the JWT must never be persisted** — `CurrentUser` carries it but it
   is currently never stored, logged, or placed in a payload. Keep it out of
   `safe_metadata` and log lines as the code grows.
-- **Terminal purge (`CompleteCaseDeletion`) is deferred (Slice 4)** — M2's `DELETE`
+- **Terminal purge (`CompleteCaseDeletion`) is deferred (Slice 4)** — *resolved in the release slice by [ADR-0030](0030-the-purge-holds-the-tenant-and-borrows-privilege-twice.md); it was deferred past Slice 4 and past M11 both, and shipped on 13 September 2026* — M2's `DELETE`
   moves the case to `DELETION_PENDING` and emits `CaseDeletionRequested` to the
   outbox; it does **not** yet hard-delete case-scoped records or stored files. The
   purge belongs to the milestone that builds the outbox worker (and matters only once
