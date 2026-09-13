@@ -13,6 +13,13 @@ import { afterEach, beforeEach, expect } from "vitest";
  * actually found was of the second kind. This is here to stop the mechanical ones reaching
  * a human reviewer, so the human time goes where it is the only thing that works: the
  * keyboard pass and the greyscale check.
+ *
+ * And it is scoped to a *component*, not a page. These destinations render an `<h2>` as
+ * their top heading because the `<h1>` belongs to the route layout above them, so a
+ * component-level run cannot see document-wide heading order, landmark uniqueness, or a
+ * duplicate id contributed by a sibling. Those need the page, which means Playwright —
+ * recorded here rather than implied away, because a green matcher is otherwise easy to
+ * read as more coverage than it is.
  */
 expect.extend(toHaveNoViolations);
 

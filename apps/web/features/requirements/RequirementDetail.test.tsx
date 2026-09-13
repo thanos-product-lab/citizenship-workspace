@@ -1,6 +1,7 @@
 import "@testing-library/jest-dom/vitest";
 
 import { screen, waitFor, within } from "@testing-library/react";
+import { axe } from "jest-axe";
 
 import { renderWithQuery as render } from "@/test/render";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -560,5 +561,24 @@ describe("RequirementDetail", () => {
     await waitFor(() =>
       expect(screen.getByRole("heading", { name: "Total absences" })).toBeInTheDocument(),
     );
+  });
+
+/**
+ * The automated floor for this flow (release slice, accessibility pass).
+ *
+ * axe finds the mechanical failures — an unlabelled control, a broken ARIA reference, a
+ * heading level skipped, a contrast pair below ratio. It cannot find the ones this project
+ * has actually shipped: a label that told a user to act before the screen to act on
+ * existed, a live region overwritten 38ms after it was written, a status distinguished only
+ * by hue. Those come from the keyboard and greyscale passes. This stops the mechanical ones
+ * reaching them.
+ */
+  it("has no axe violations", async () => {
+    get.mockResolvedValue({ data: aDetail() });
+    const { container } = render(
+      <RequirementDetail caseId="c1" requirementKey="residence.total_absences" />,
+    );
+    await screen.findByRole("heading", { name: "Total absences", level: 1 });
+    expect(await axe(container)).toHaveNoViolations();
   });
 });

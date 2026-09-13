@@ -1,6 +1,7 @@
 import "@testing-library/jest-dom/vitest";
 
 import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { axe } from "jest-axe";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { JSX } from "react";
@@ -1150,5 +1151,31 @@ describe("resolving a conflict", () => {
 
     const alert = await screen.findByRole("alert");
     expect(alert.textContent).toMatch(/nothing to apply/i);
+  });
+
+/**
+ * The automated floor for this flow (release slice, accessibility pass).
+ *
+ * axe finds the mechanical failures — an unlabelled control, a broken ARIA reference, a
+ * heading level skipped, a contrast pair below ratio. It cannot find the ones this project
+ * has actually shipped: a label that told a user to act before the screen to act on
+ * existed, a live region overwritten 38ms after it was written, a status distinguished only
+ * by hue. Those come from the keyboard and greyscale passes. This stops the mechanical ones
+ * reaching them.
+ */
+  it("has no axe violations", async () => {
+    queueReturns(
+      aQueue({
+        open_count: 1,
+        groups: [{ action_group: "CONFIRM_INFORMATION", issues: [anIssue()] }],
+      }),
+    );
+    const { container } = renderWithQuery(<IssuesDestination caseId={CASE} />);
+    // Wait for the queue's own content, not just the section heading. The heading renders
+    // before the fetch resolves, so settling on it leaves a query in flight — and axe's
+    // traversal is slow enough for that resolution to land mid-assertion as an un-acted
+    // React update, which this suite turns into a failure.
+    await screen.findByText(anIssue().title);
+    expect(await axe(container)).toHaveNoViolations();
   });
 });

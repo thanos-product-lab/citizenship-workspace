@@ -1,6 +1,7 @@
 import "@testing-library/jest-dom/vitest";
 
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { axe } from "jest-axe";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { renderWithQuery } from "@/test/render";
@@ -825,5 +826,30 @@ describe("what a keyboard and a screen reader get", () => {
     expect(link).toHaveAttribute("href", "https://store.example/doc.pdf?sig=x");
     // A signed URL must not reach a `Referer` header (threat model §6.4).
     expect(link).toHaveAttribute("rel", "noreferrer");
+  });
+
+/**
+ * The automated floor for this flow (release slice, accessibility pass).
+ *
+ * axe finds the mechanical failures — an unlabelled control, a broken ARIA reference, a
+ * heading level skipped, a contrast pair below ratio. It cannot find the ones this project
+ * has actually shipped: a label that told a user to act before the screen to act on
+ * existed, a live region overwritten 38ms after it was written, a status distinguished only
+ * by hue. Those come from the keyboard and greyscale passes. This stops the mechanical ones
+ * reaching them.
+ */
+  it("has no axe violations", async () => {
+    const { container } = render();
+    // Settle on the review control itself rather than a heading: this panel's headings
+    // belong to the route layout, and waiting on anything that renders before the claims
+    // arrive leaves a query in flight — axe's traversal is slow enough for that resolution
+    // to land mid-assertion as an un-acted React update, which this suite fails on.
+    await screen.findByLabelText(/Return date, as the document writes it/);
+    // `iframes: false` because this panel embeds the user's document in a frame and axe
+    // tries to message into it, which jsdom has no channel for. The exclusion is honest
+    // rather than convenient: the frame's content is an uploaded document — untrusted data
+    // this product deliberately does not control or audit — so the thing being checked
+    // here is the review surface around it, which is the part we wrote.
+    expect(await axe(container, { iframes: false })).toHaveNoViolations();
   });
 });
