@@ -79,6 +79,38 @@ export function TravelRecordForm({
     setOrderError(false);
   }
 
+  /**
+   * Setting the departure date seeds an empty return date with the same day.
+   *
+   * **Why this is not the anchoring the product spends so much effort preventing.** Blind
+   * entry exists because a *machine's* reading, shown beside an empty box, is a value a
+   * person will type out instead of reading the page. The risk is deferring to the
+   * machine. Here the only value on offer is one the user typed thirty seconds earlier, in
+   * a field about their own history, with no document and no proposal in sight.
+   *
+   * **Why seeding the value rather than setting `min`.** The reported problem was that the
+   * return picker opens on *today*, five years of clicking from a trip in 2021. A `min`
+   * does not move it — an empty date input opens at today whenever today is in range — and
+   * it actively breaks the error path, because a value below `min` is `rangeUnderflow` and
+   * the browser then refuses the submit itself, replacing this app's bound message with a
+   * native bubble. A picker opens at its *value*, so seeding is both the thing that works
+   * and the thing that changes nothing about validation.
+   *
+   * **What it costs, stated rather than buried.** `required` no longer catches a forgotten
+   * return date — an omission becomes a one-day trip instead of a refusal. Accepted
+   * because such a trip is legible in the table immediately afterwards ("12 Dec 2021 to
+   * 12 Dec 2021"), and a wrong value the user can see beats a right value they never
+   * reached.
+   */
+  function setDeparture(value: string) {
+    setValues((prev) => ({
+      ...prev,
+      departure_date: value,
+      return_date: prev.return_date === "" ? value : prev.return_date,
+    }));
+    setOrderError(false);
+  }
+
   function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     if (values.departure_date && values.return_date && values.departure_date > values.return_date) {
@@ -113,7 +145,7 @@ export function TravelRecordForm({
           min={MIN_DATE}
           max={MAX_DATE}
           className="cw-date-input"
-          onChange={(e) => set("departure_date", e.target.value)}
+          onChange={(e) => setDeparture(e.target.value)}
           style={inputStyle}
         />
       </Field>
@@ -129,6 +161,13 @@ export function TravelRecordForm({
           type="date"
           value={values.return_date}
           required
+          // **Deliberately not `min={values.departure_date}`**, which is the obvious thing
+          // and is wrong here. A `min` the value falls below makes the field
+          // `rangeUnderflow`, so the browser blocks submission itself — our bound,
+          // focus-managed "Return date can’t be before the departure date." never renders
+          // and the user gets an unstyled native bubble instead. The existing test caught
+          // it immediately. The ordering check belongs in `handleSubmit`, where it can
+          // produce a message this app controls, and on the server after that.
           min={MIN_DATE}
           max={MAX_DATE}
           className="cw-date-input"

@@ -56,6 +56,33 @@ const ANNOUNCE_AFTER_FOCUS_MS = 150;
  * is not a fixed pipeline, and `AWAITING_CONFIRMATION` has no producer until M8. A stepper
  * would draw stages this build cannot reach.
  */
+/**
+ * The label for the review link, or `null` where there is nothing to review.
+ *
+ * Two states, two different sentences, because they are different acts. At
+ * `AWAITING_CONFIRMATION` there is work: values have been proposed and none of them is
+ * true yet. Once confirmed there is no work and there is still something to see — the
+ * document, what the model read out of it, and which of those readings the user accepted
+ * or corrected. That is the provenance of a trusted fact, and directive 5 is the reason it
+ * has to stay reachable.
+ *
+ * **This is the walkthrough finding.** The link rendered only at `AWAITING_CONFIRMATION`,
+ * so confirming a document removed the only route to the page recording what was
+ * confirmed. `DocumentReview` never guarded on status — the page kept working the whole
+ * time; only the way in disappeared.
+ *
+ * The absence at `UPLOADED` is deliberate and stays. Nothing has been read there, so a
+ * link would open a review screen with no claims on it — the M8 gate note makes exactly
+ * this point about "there is no way to reach /review, add a link" being the wrong fix.
+ */
+function reviewLinkLabel(status: string): string | null {
+  if (status === "AWAITING_CONFIRMATION") return "Confirm what we read";
+  // `PARTIALLY_COMPLETED` included: a document some of whose fields could not be read is
+  // one whose reading a user most wants to inspect, not least.
+  if (status === "COMPLETED" || status === "PARTIALLY_COMPLETED") return "See what we read";
+  return null;
+}
+
 export function EvidenceDestination({ caseId }: { caseId: string }): JSX.Element {
   const { data, status, refetch, isFetching } = useEvidence(caseId);
   const headingRef = useRef<HTMLHeadingElement>(null);
@@ -576,15 +603,15 @@ function EvidenceTable({
                     rather than a button: it is a navigation to a page with its own URL,
                     and a keyboard user opening it in a new tab should get the review
                     screen rather than nothing. */}
-                {item.processing_status === "AWAITING_CONFIRMATION" ? (
+                {reviewLinkLabel(item.processing_status) ? (
                   <Link
                     href={`/cases/${caseId}/evidence/${item.id}/review`}
                     style={{ ...linkButtonStyle, display: "inline-block", marginTop: "var(--cw-space-1)" }}
                   >
-                    Confirm what we read
+                    {reviewLinkLabel(item.processing_status)}
                     {/* The document's name is in the accessible name, not on screen: a
-                        column of identical "Confirm what we read" links is unusable from a
-                        links list, and repeating the name visually in every row is noise. */}
+                        column of identical links is unusable from a links list, and
+                        repeating the name visually in every row is noise. */}
                     <span className="cw-visually-hidden"> from {item.display_name}</span>
                   </Link>
                 ) : null}

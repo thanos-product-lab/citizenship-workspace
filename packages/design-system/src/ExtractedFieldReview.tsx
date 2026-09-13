@@ -335,13 +335,22 @@ function Open({
       {typing ? (
         <div className="cw-field-review__entry">
           <label className="cw-field-review__entry-label" htmlFor={id}>
-            {blind
-              ? `${label}, as the document writes it`
-              : `${label}, corrected`}
-            {/* Off-screen, because the journey is already a visible heading above the
-                group — but a heading in a `div` is no distinction at all in forms mode,
-                where the two blind date inputs of a two-leg booking had
-                character-identical names. */}
+            {/* The field's name is already a heading directly above this, so repeating it
+                visually gave every card the same words twice — "Departure date" then
+                "Departure date, as the document writes it", with the hint below opening
+                "Type it as the document writes it" for a third time. The walkthrough
+                called the result overwhelming and was right.
+                It is repeated *accessibly*, though, because the two are different
+                problems: a screen-reader user meets the control without the heading beside
+                it, and a two-leg booking renders two blind date inputs whose names would
+                otherwise be character-identical. So the name stays whole and only the
+                visible half is trimmed — reading as a continuation of the heading rather
+                than a restatement of it. */}
+            <span className="cw-visually-hidden">{label}, </span>
+            {blind ? "as the document writes it" : "corrected"}
+            {/* Off-screen for the same reason: the journey is already a visible heading
+                above the group, and a heading in a `div` is no distinction at all in forms
+                mode. */}
             {context ? (
               <span className="cw-visually-hidden">, {context}</span>
             ) : null}

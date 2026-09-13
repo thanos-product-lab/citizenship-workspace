@@ -77,10 +77,15 @@ const REJECTION_OPTIONS: readonly RejectionOption[] = [
  *
  * The slashed form stays, because it is the one being refused rather than offered, and
  * naming it is what stops the refusal reading as arbitrary.
+ *
+ * The opening sentence — "Type it as the document writes it" — is gone. It said what the
+ * field's own label says, directly under the field's own label, which is how three lines
+ * of chrome accumulated above one empty box. What is left is the part the label cannot
+ * carry: which formats are accepted, and why the slashed one is not.
  */
 const DATE_HINT =
-  "Type it as the document writes it. Use the month's name — day, month, year — or the " +
-  "form YYYY-MM-DD. A slashed date such as 03/04/2025 can be read two ways, so it is refused.";
+  "Use the month's name — day, month, year — or the form YYYY-MM-DD. A slashed date such " +
+  "as 03/04/2025 can be read two ways, so it is refused.";
 
 interface FieldState {
   entered: string;

@@ -1343,6 +1343,32 @@
   color: var(--cw-text-muted);
 }
 
+/* The getting-started list on a case nothing has assessed yet. Numbered, because the
+   steps are genuinely ordered: the qualifying period is measured back from the
+   application date, so travel entered first has no window to sit in. `decimal` markers
+   are kept rather than restyled — the sequence is the information. */
+.cw-overview__start {
+  margin: 0;
+  padding-left: var(--cw-space-5);
+  display: grid;
+  gap: var(--cw-space-3);
+  max-width: 60ch;
+  line-height: var(--cw-leading-normal);
+  color: var(--cw-text-muted);
+}
+
+.cw-overview__start li::marker {
+  color: var(--cw-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The link carries the action, so it reads at full strength against the muted sentence
+   explaining it. */
+.cw-overview__start a {
+  color: var(--cw-text);
+  font-weight: var(--cw-weight-medium);
+}
+
 .cw-case-header__stale {
   display: flex;
   align-items: flex-start;

@@ -77,9 +77,61 @@ export function CaseOverviewPanel({ overview }: { overview: Overview }): JSX.Ele
         <p className="cw-overview__empty">No requirements are catalogued for this route yet.</p>
       )}
 
+      <GettingStarted overview={overview} />
+
       <PriorityActions overview={overview} busiestGroupKey={busiest?.group_key ?? null} />
 
       <AssessmentGroups overview={overview} />
+    </section>
+  );
+}
+
+/**
+ * What to do on a case nothing has assessed yet.
+ *
+ * **The walkthrough finding.** A new case read "This case hasn't been assessed yet", then
+ * six group rows each saying "not yet assessed", and offered nothing else. Every word of
+ * it was true and none of it told the user what to do — `priority_actions` is derived from
+ * assessment results, so a case with no results has none, and the screen degraded from a
+ * page that leads with the next action into a status readout.
+ *
+ * Shown **only** while nothing has been assessed. The moment there are results,
+ * `PriorityActions` is the answer to "what now" and two competing answers would be worse
+ * than the one that was missing.
+ *
+ * It states what the assessment needs and where to go, and claims nothing about any
+ * requirement. That boundary is the point: the engine decides what a case concludes, and
+ * this is navigation — the one thing the client is entitled to know, because it is about
+ * this app's own shape rather than about the user's case.
+ */
+function GettingStarted({ overview }: { overview: Overview }): JSX.Element | null {
+  const assessed = overview.conclusion_counts.reduce((total, c) => total + c.count, 0);
+  if (assessed > 0) return null;
+
+  const data = `/cases/${overview.case_id}/data`;
+
+  return (
+    <section className="cw-actions" aria-labelledby="getting-started-heading">
+      <h3 id="getting-started-heading">Start here</h3>
+      {/* Ordered, because these genuinely are in sequence: the qualifying period is
+          measured backwards from the application date, so travel entered before there is a
+          date has no window to be measured against. */}
+      <ol className="cw-overview__start">
+        {overview.application_date === null ? (
+          <li>
+            <a href={data}>Set the date you plan to apply</a>. Every residence check is
+            measured against the five years ending on it.
+          </li>
+        ) : null}
+        <li>
+          <a href={data}>Add the periods you spent outside the UK</a>, or import them from a
+          spreadsheet.
+        </li>
+        <li>
+          Then choose <strong>Recalculate</strong> above. Nothing is assessed until you ask
+          for it, and you can change your answers and ask again.
+        </li>
+      </ol>
     </section>
   );
 }

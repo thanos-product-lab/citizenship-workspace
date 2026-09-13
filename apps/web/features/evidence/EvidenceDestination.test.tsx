@@ -171,15 +171,50 @@ describe("EvidenceDestination", () => {
     expect(link).toHaveAttribute("href", `/cases/${CASE_ID}/evidence/ev-1/review`);
   });
 
-  it("offers no review link for a document with nothing to confirm", async () => {
-    // The other half of the same rule. A COMPLETED document has been read and has nothing
-    // outstanding, so a link inviting confirmation would name work that does not exist —
-    // the same defect as an imperative label with no control, from the other direction.
+  it("keeps the reading reachable after confirmation, without naming work", async () => {
+    // Two rules meeting, and the release-slice walkthrough found where they collided.
+    //
+    // The first is unchanged: a COMPLETED document has nothing outstanding, so a link
+    // inviting *confirmation* would name work that does not exist — the same defect as an
+    // imperative label with no control, from the other direction.
+    //
+    // The second is what the row was getting wrong. Confirming removed the link entirely,
+    // so the page recording what a user confirmed — the document, what the model read, and
+    // which readings were accepted or corrected — became unreachable the moment it became
+    // the provenance of a trusted fact. `DocumentReview` never guarded on status; only the
+    // way in disappeared.
     get.mockResolvedValue({ data: aLibrary([anItem({ processing_status: "COMPLETED" })]) });
     renderWithQuery(<EvidenceDestination caseId={CASE_ID} />);
 
     const row = within(await screen.findByRole("row", { name: /Athens booking/ }));
     expect(row.queryByRole("link", { name: /Confirm what we read/ })).toBeNull();
+
+    const link = row.getByRole("link", { name: /See what we read from Athens booking/ });
+    expect(link).toHaveAttribute("href", `/cases/${CASE_ID}/evidence/ev-1/review`);
+  });
+
+  it("keeps it reachable for a partly-read document too", async () => {
+    // A document some of whose fields could not be read is the one whose reading a user
+    // most wants to inspect, not least.
+    get.mockResolvedValue({
+      data: aLibrary([anItem({ processing_status: "PARTIALLY_COMPLETED" })]),
+    });
+    renderWithQuery(<EvidenceDestination caseId={CASE_ID} />);
+
+    const row = within(await screen.findByRole("row", { name: /Athens booking/ }));
+    expect(row.getByRole("link", { name: /See what we read/ })).toBeTruthy();
+  });
+
+  it("offers no route to the review screen before anything has been read", async () => {
+    // The deliberate absence, and it stays. At UPLOADED nothing has been read, so the link
+    // would open a review screen with no claims on it. The M8 gate note makes exactly this
+    // point: "there is no way to reach /review, add a link" was the wrong fix, because the
+    // missing link was correct and the silence beside it was the defect.
+    get.mockResolvedValue({ data: aLibrary([anItem({ processing_status: "UPLOADED" })]) });
+    renderWithQuery(<EvidenceDestination caseId={CASE_ID} />);
+
+    const row = within(await screen.findByRole("row", { name: /Athens booking/ }));
+    expect(row.queryByRole("link", { name: /what we read/ })).toBeNull();
   });
 
   it("says why a document was refused, not only that it was", async () => {

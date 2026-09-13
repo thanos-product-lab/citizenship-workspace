@@ -1,6 +1,6 @@
 import "@testing-library/jest-dom/vitest";
 
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { axe } from "jest-axe";
 import { describe, expect, it } from "vitest";
 
@@ -360,5 +360,65 @@ describe("CaseOverviewPanel", () => {
   it("has no axe violations", async () => {
     const { container } = render(<CaseOverviewPanel overview={anOverview()} />);
     expect(await axe(container)).toHaveNoViolations();
+  });
+
+  describe("a case nothing has assessed yet", () => {
+    /**
+     * The walkthrough finding. The screen said "This case hasn't been assessed yet", then
+     * six group rows each repeating "not yet assessed", and stopped — every word true and
+     * none of it a next step, because `priority_actions` derives from results and a case
+     * with no results has none.
+     */
+    function anUnassessedOverview(overrides: Record<string, unknown> = {}) {
+      return anOverview({
+        conclusion_counts: [],
+        needs_attention: 0,
+        not_yet_assessed: 15,
+        priority_actions: [],
+        application_date: null,
+        ...overrides,
+      });
+    }
+
+    it("tells the user where to start", () => {
+      render(<CaseOverviewPanel overview={anUnassessedOverview()} />);
+
+      const start = screen.getByRole("region", { name: "Start here" });
+      expect(within(start).getByRole("link", { name: /Set the date you plan to apply/ }))
+        .toHaveAttribute("href", "/cases/c1/data");
+      expect(within(start).getByRole("link", { name: /periods you spent outside the UK/ }))
+        .toHaveAttribute("href", "/cases/c1/data");
+    });
+
+    it("stops offering the application date once the case has one", () => {
+      render(<CaseOverviewPanel overview={anUnassessedOverview({ application_date: "2027-04-15" })} />);
+
+      const start = screen.getByRole("region", { name: "Start here" });
+      expect(within(start).queryByRole("link", { name: /Set the date you plan to apply/ })).toBeNull();
+      expect(within(start).getByRole("link", { name: /periods you spent outside the UK/ })).toBeTruthy();
+    });
+
+    it("orders the steps, because the window is measured back from the date", () => {
+      // A list, not a set of cards: travel entered before there is an application date has
+      // no qualifying period to sit in, so the sequence is the information.
+      render(<CaseOverviewPanel overview={anUnassessedOverview()} />);
+      const items = within(screen.getByRole("region", { name: "Start here" })).getAllByRole("listitem");
+      expect(items).toHaveLength(3);
+      expect(items[0]).toHaveTextContent(/Set the date you plan to apply/);
+    });
+
+    it("disappears the moment anything has been assessed", () => {
+      // Two answers to "what now" is worse than the one that was missing: once there are
+      // results, `Needs your attention` is the answer.
+      render(<CaseOverviewPanel overview={anOverview()} />);
+      expect(screen.queryByRole("region", { name: "Start here" })).toBeNull();
+    });
+
+    it("still shows no score, fraction or percentage", () => {
+      // The rule the empty state must not quietly break: "15 not yet assessed" beside
+      // three steps is a count and a sequence, never progress through them.
+      const { container } = render(<CaseOverviewPanel overview={anUnassessedOverview()} />);
+      expect(container.textContent).not.toMatch(/%|\d+\s*\/\s*\d+|\bof 15\b/);
+    });
   });
 });

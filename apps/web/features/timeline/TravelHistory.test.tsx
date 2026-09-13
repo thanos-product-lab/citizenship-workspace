@@ -232,6 +232,35 @@ describe("TravelHistory", () => {
     expect(screen.getByRole("button", { name: /^edit$/i })).toHaveFocus();
   });
 
+  it("seeds an empty return date from the departure date, so the picker opens there", async () => {
+    // The walkthrough finding: a native date picker opens on *today* when the field is
+    // empty, so recording a trip from 2021 meant five years of clicking. A picker opens at
+    // its value, so the value is what has to move. `min` does not — and breaks the bound
+    // error message, which the test below would catch.
+    get.mockResolvedValue({ data: [], error: undefined });
+    render(<TravelHistory caseId="c1" />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /add a trip/i }));
+    const ret = screen.getByLabelText("Return date") as HTMLInputElement;
+    expect(ret.value).toBe("");
+
+    fireEvent.change(screen.getByLabelText("Departure date"), { target: { value: "2021-12-10" } });
+    expect(ret.value).toBe("2021-12-10");
+  });
+
+  it("does not overwrite a return date the user already set", async () => {
+    // Seeding is a convenience for an empty field, never a correction of a filled one:
+    // editing a trip's departure must not silently move its return.
+    get.mockResolvedValue({ data: [], error: undefined });
+    render(<TravelHistory caseId="c1" />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /add a trip/i }));
+    fireEvent.change(screen.getByLabelText("Return date"), { target: { value: "2022-01-05" } });
+    fireEvent.change(screen.getByLabelText("Departure date"), { target: { value: "2021-12-10" } });
+
+    expect((screen.getByLabelText("Return date") as HTMLInputElement).value).toBe("2022-01-05");
+  });
+
   it("rejects a client-side reversed date range before calling the server", async () => {
     get.mockResolvedValue({ data: [], error: undefined });
     render(<TravelHistory caseId="c1" />);
