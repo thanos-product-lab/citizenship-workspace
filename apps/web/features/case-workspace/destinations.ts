@@ -1,4 +1,15 @@
 /**
+ * The `<main>` landmark's id, and the skip link's target.
+ *
+ * Here rather than beside either of them because they live on opposite sides of a client
+ * boundary — the link is rendered by the route layout (a server component, so that it is
+ * the first tabbable in the document) and the landmark by `CaseChrome` (a client
+ * component). A shared constant is what stops the two drifting into a link that points at
+ * nothing.
+ */
+export const MAIN_LANDMARK_ID = "case-main";
+
+/**
  * The case workspace's destinations, in navigation order.
  *
  * A list rather than hard-coded markup, because the set grows on a known schedule and

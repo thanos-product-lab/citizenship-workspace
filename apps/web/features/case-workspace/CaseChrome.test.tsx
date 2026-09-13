@@ -18,6 +18,7 @@ vi.mock("@/features/onboarding/RouteOnboarding", () => ({
 }));
 
 import { CaseChrome } from "./CaseChrome";
+import { MAIN_LANDMARK_ID } from "./destinations";
 
 function aCase(overrides: Record<string, unknown>) {
   return {
@@ -141,5 +142,35 @@ describe("CaseChrome", () => {
     await waitFor(() => expect(screen.getByText(/scheduled for deletion/i)).toBeInTheDocument());
     // Focus lands on the pending heading, not lost to <body> with the unmounted button.
     expect(screen.getByRole("heading", { name: "My case" })).toHaveFocus();
+  });
+
+  it("gives the main landmark the skip link's target and makes it focusable", async () => {
+    // WCAG 2.4.1. The link itself is a static anchor in the route layout — the half that
+    // can silently break is this one: the id it points at, and whether focus can land
+    // there. `tabIndex={-1}` is what stops the classic half-working skip link, where the
+    // browser scrolls to the landmark, leaves focus at the top of the document, and the
+    // next Tab returns to the navigation the user just asked to skip.
+    mockCase({ lifecycle_status: "ACTIVE", current_phase: "BUILDING_CASE" });
+    render(<CaseChrome caseId="c1">page</CaseChrome>);
+
+    const main = await screen.findByRole("main");
+    expect(main).toHaveAttribute("id", MAIN_LANDMARK_ID);
+    expect(main).toHaveAttribute("tabindex", "-1");
+  });
+
+  it("keeps the landmark outside the persistent header", async () => {
+    // "Skip to main content" has to skip the header and the navigation, or it skips
+    // nothing worth skipping. `<main>` therefore wraps the destination only.
+    mockCase({ lifecycle_status: "ACTIVE", current_phase: "BUILDING_CASE" });
+    render(<CaseChrome caseId="c1">page</CaseChrome>);
+
+    // Wait for the case, not for the landmark: `ContentShell` wraps every branch, so
+    // `<main>` is present while the fetch is still in flight — deliberately, so the
+    // landmark exists on the loading and error paths too, not only the happy one.
+    await screen.findByRole("heading", { name: "My case" });
+
+    const main = screen.getByRole("main");
+    expect(main).not.toContainElement(screen.getByRole("navigation", { name: "Case navigation" }));
+    expect(main).toHaveTextContent("page");
   });
 });

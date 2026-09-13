@@ -1338,6 +1338,44 @@
   color: var(--cw-text-muted);
 }
 
+/* --- Skip link (WCAG 2.4.1) ------------------------------------------------ */
+
+/* Off-screen until focused, then a real control in the top-left corner.
+   `clip-path` rather than `display: none` or `visibility: hidden`, both of which remove
+   the element from the tab order entirely — a skip link nobody can reach is the usual way
+   this gets shipped broken. */
+.cw-skip-link {
+  position: absolute;
+  top: var(--cw-space-2);
+  left: var(--cw-space-2);
+  z-index: 100;
+  padding: var(--cw-space-2) var(--cw-space-4);
+  border: 1px solid var(--cw-border-strong);
+  border-radius: var(--cw-radius-md);
+  background: var(--cw-surface);
+  color: var(--cw-text);
+  font-weight: var(--cw-weight-medium);
+  text-decoration: none;
+  /* Hidden without leaving the document flow or the tab order. */
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.cw-skip-link:focus-visible,
+.cw-skip-link:focus {
+  clip-path: none;
+}
+
+/* The landmark takes focus from the link, and must not then draw a ring around the whole
+   page — `tabIndex={-1}` makes it programmatically focusable, not a control. */
+.cw-shell__main:focus {
+  outline: none;
+}
+
+.cw-shell__main:focus-visible {
+  box-shadow: none;
+}
+
 .cw-overview__empty {
   margin: var(--cw-space-4) 0 0;
   color: var(--cw-text-muted);

@@ -10,6 +10,7 @@ import { useApiClient } from "@/lib/api";
 import { caseKeys } from "@/lib/queries";
 
 import { CaseHeader } from "./CaseHeader";
+import { MAIN_LANDMARK_ID } from "./destinations";
 import { DeleteCaseControl } from "./DeleteCaseControl";
 
 type Case = components["schemas"]["CaseResponse"];
@@ -22,10 +23,14 @@ type Case = components["schemas"]["CaseResponse"];
  * Every lifecycle branch below renders through here, so a not-found and a full workspace
  * sit on the same column and the landmark exists on every path rather than only the happy
  * one.
+ *
+ * `tabIndex={-1}` so the skip link can move focus here. Without it the browser scrolls to
+ * the landmark and leaves focus at the top of the document, so the next Tab returns to the
+ * navigation the user just asked to skip — the classic half-working skip link.
  */
 function ContentShell({ children }: { children: ReactNode }): JSX.Element {
   return (
-    <main className="cw-shell__main">
+    <main className="cw-shell__main" id={MAIN_LANDMARK_ID} tabIndex={-1}>
       <div className="cw-shell__inner">{children}</div>
     </main>
   );
