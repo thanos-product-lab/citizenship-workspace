@@ -1,6 +1,20 @@
 import "@testing-library/jest-dom/vitest";
 
-import { afterEach, beforeEach } from "vitest";
+import { toHaveNoViolations } from "jest-axe";
+import { afterEach, beforeEach, expect } from "vitest";
+
+/**
+ * `expect(await axe(container)).toHaveNoViolations()`.
+ *
+ * **A floor, not the pass.** Automated rules catch on the order of a third of WCAG
+ * failures — they find a missing accessible name and cannot find a name that is wrong, a
+ * focus order that makes no sense, a live region that announces at the wrong moment, or a
+ * status distinguished only by hue. Every defect the accessibility reviews in this project
+ * actually found was of the second kind. This is here to stop the mechanical ones reaching
+ * a human reviewer, so the human time goes where it is the only thing that works: the
+ * keyboard pass and the greyscale check.
+ */
+expect.extend(toHaveNoViolations);
 
 /**
  * jsdom implements no layout, so it has no `scrollIntoView`. Calling it is correct in the
