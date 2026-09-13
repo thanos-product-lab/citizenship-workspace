@@ -53,7 +53,7 @@ that agreement is the point, so check it when regenerating either set.
 ### Regenerating
 
 ```bash
-just seed <your-clerk-user-id>          # after your last `just test-be`, which truncates
+just seed <your-clerk-user-id>          # the suite has its own database and no longer wipes this one
 just recalc <case-id> <your-user-id>    # -> 439
 # screenshot the overview and the requirement detail
 just edit-trip <case-id> 2026-05-04 2026-05-11 <your-user-id>   # -> STALE
@@ -222,7 +222,7 @@ at 200% zoom, which is the usual way a chart quietly fails the zoom requirement.
 ### Regenerating
 
 ```bash
-just seed <your-clerk-user-id>          # after your last `just test-be`, which truncates
+just seed <your-clerk-user-id>          # the suite has its own database and no longer wipes this one
 just recalc <case-id> <your-user-id>    # -> 439, presence NOT_CURRENTLY_SATISFIED
 
 # the simulation: /cases/<id>/data, set 20/04/2027, Preview this date,

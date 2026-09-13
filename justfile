@@ -34,6 +34,12 @@ typecheck:
 test: test-fe test-be
 
 # Backend tests (pytest: unit + integration + property-based).
+#
+# The suite runs against its own database — `<your database>_test`, created on first run
+# by `services/platform/conftest.py` — not the one `just up` serves the app. Before that
+# it truncated the development database, which wiped a case mid-walkthrough during the M8
+# gate. It also means the worker no longer has to be stopped for a run: it is pointed at
+# the development database and cannot see rows the tests write.
 test-be:
     cd services/platform && uv run pytest
 

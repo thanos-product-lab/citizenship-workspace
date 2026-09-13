@@ -1664,6 +1664,18 @@ The durable fix is a separate test database, which is a change to `conftest.py` 
 justfile rather than a habit. Worth doing before M9, since M9's walkthroughs will be longer
 and the seeded case is now load-bearing for four milestones' worth of demo assets.
 
+> **Fixed in the release slice (13 September 2026).** `services/platform/conftest.py` — a
+> rootdir conftest, loaded before the suite's own — derives `<database>_test` from the
+> configured URL, creates it on first run, and writes it back to `DATABASE_URL` so Alembic
+> and the app resolve to it too. It reads through `Settings` rather than `os.environ`
+> because `DATABASE_URL` usually lives in `.env`, where the environment cannot see it.
+>
+> Verified rather than assumed: a seeded case survived the full 1114-test suite, and the
+> suite ran with the worker **up** — the second habit ("restart the worker in the same
+> breath as stopping it") is now unnecessary, because the worker is pointed at the
+> development database and cannot see rows the tests write. `_no_live_relay` stays, with a
+> changed job: it used to police the habit, and now it checks the separation is holding.
+
 ### What this says about the verification, not just the product
 
 The seeded fixture made the happy path look complete. Two of these are unreachable on a

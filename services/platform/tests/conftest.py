@@ -52,6 +52,7 @@ if os.environ.get("ALLOW_LIVE_AI_IN_TESTS") != "1":
 # refusal that was entirely correct and told us nothing about date simulation.
 os.environ.setdefault("MAX_CASES_PER_USER", "10000")
 
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import Engine, create_engine, event, text
@@ -129,18 +130,22 @@ def _generated_fixtures() -> None:
 def _no_live_relay(_schema: None) -> Iterator[None]:
     """Fail if something outside this suite is publishing our outbox rows.
 
-    `docker compose up` runs a worker — which carries its own scheduler — pointed at the
-    same local Postgres the
-    tests use. Beat relays every unpublished `outbox_events` row it finds — including the
-    ones tests write — so a live worker silently processes test fixtures mid-run. What it
-    looks like from inside the suite is a row count changing between two assertions with
-    no code path between them that could have changed it: `test_simulation`'s "simulating
-    changes nothing about the case" failed on `evidence_processing_runs: 0 -> 11` while
-    the only thing running was a loop of read-only date simulations.
+    A worker carries its own scheduler, and beat relays every unpublished
+    `outbox_events` row it can see — including the ones tests write. What that looks like
+    from inside the suite is a row count changing between two assertions with no code
+    path between them that could have changed it: `test_simulation`'s "simulating changes
+    nothing about the case" failed on `evidence_processing_runs: 0 -> 11` while the only
+    thing running was a loop of read-only date simulations.
 
-    That cost a real diagnosis, and it gets worse rather than better: the canonical seed
-    now uploads eleven documents, so every test touching it hands a live relay eleven
-    tasks.
+    **What this guard is for changed when the suite got its own database.**
+    `_isolate_the_test_database` points the tests at `<database>_test`, and the compose
+    worker at the development database, so the ordinary arrangement can no longer collide
+    and the suite no longer has to be run with the worker stopped. This now checks that
+    the separation is actually holding — a worker sharing `DATABASE_URL` with the suite,
+    a `TEST_DATABASE_NAME` set to the development database, a second test run in
+    parallel — rather than policing a habit. It is cheap and it fails with a sentence,
+    which is the right trade for a condition whose symptom is otherwise a row count that
+    moved on its own.
 
     **Checked at session start, not at the end**, and the first attempt got that wrong.
     Every test truncates `outbox_events` in teardown, so a sentinel planted at the start
@@ -181,7 +186,10 @@ def _no_live_relay(_schema: None) -> Iterator[None]:
         pytest.fail(
             "an outbox row was relayed by something outside this suite, so a live worker "
             "is processing test fixtures. Results from this session cannot be trusted. "
-            "Run `docker compose stop worker` and try again."
+            "The suite has its own database, so this means something is sharing it: check "
+            "that no other process points DATABASE_URL at "
+            f"{get_settings().database_url.rsplit('/', 1)[-1]!r}, and that TEST_DATABASE_NAME "
+            "is unset."
         )
     yield
 
