@@ -3,7 +3,7 @@
 **Date:** 19 September 2026 · **Scope:** MVP §15's thirty seven gate items and §16's twelve
 done conditions · **Build:** `de95f0b`, equal to `origin/main`
 
-**Result: 31 pass, 3 partial, 3 gaps.** The three gaps are the demo video, the case study
+**Result: 31 pass, 3 partial, 3 gaps.** (§16 condition 8 has since moved to pass.) The three gaps are the demo video, the case study
 and the preparation summary. Two of those are writing rather than engineering. The third is
 outside the plan of record.
 
@@ -41,12 +41,11 @@ Rules held to while writing it:
 | Error and recovery states are implemented | **Pass** | `m6-slice4-failed-recalculation.gif` and `m7-slice5-failed-deletion.gif`, both captured against deliberately broken paths. |
 | The product does not resemble a default shadcn dashboard | **Pass** | It cannot: shadcn and Radix are not installed. `apps/web/package.json` lists Clerk, TanStack Query, Next and React, plus the workspace's own `@cw/design-system`. See the note below. |
 
-**A stack deviation worth an ADR.** `CLAUDE.md` §3 names Radix and shadcn/ui as the
-component layer. Neither is a dependency. What exists instead is a hand built design system
-of domain components with its own tokens. The result serves the gate better than the
-documented stack would have, but the documents and the code disagree, and §0 says the
-documents win until someone changes them. This needs a short ADR recording the substitution
-rather than leaving the RFC describing a library that was never used.
+**A stack deviation, since recorded.** `CLAUDE.md` §3 and the architecture RFC named Radix
+and shadcn/ui as the component layer. Neither is a dependency and neither ever was. Closed
+by ADR-0031, which records the substitution, what it bought, and what it cost: the modal
+shell's focus trap is ours to test, and Radix would have supplied a correct one. Both
+documents are amended.
 
 ## Engineering gate
 
@@ -117,7 +116,7 @@ never goes in a query string.
 | 5 | AI proposed values require explicit confirmation | **Pass** |
 | 6 | Fact changes create stale assessments and new immutable results | **Pass** |
 | 7 | At least four document categories can be processed or safely rejected | **Pass**. Three go end to end; immigration status is classified and safely handled without an extractor (ADR-0029). The classifier also has fixtures for declining, covering unsupported and ambiguous. |
-| 8 | Core screens meet the accessibility and responsive standard | **Partial**. `ACCESSIBILITY_PASS.md`: five flows audited, skip link added, two findings open. Reflow at 320px and 200% zoom is unverified. |
+| 8 | Core screens meet the accessibility and responsive standard | **Pass**. `ACCESSIBILITY_PASS.md`: five flows audited, skip link added, both findings now closed. Reflow measured at 320px and 640px across seven destinations, which found and fixed a real overflow on the Evidence page. |
 | 9 | The full demo flow works reliably in the deployed environment | **Partial**. Driven once end to end after the CSP and CORS fixes. One clean run is evidence; it is not yet reliability. |
 | 10 | CI, observability, security controls and evaluation reporting are operational | **Partial**. CI, security controls and evaluation reporting yes. Observability is structured logging with a per request trace id and nothing else: no OpenTelemetry and no Sentry, both of which `CLAUDE.md` §3 names. |
 | 11 | All explicit quality gates pass | **No**, by this audit |
@@ -130,11 +129,10 @@ Ordered by what blocks the story rather than by effort.
 1. **Record the demo video.** The largest remaining gap and the one a reviewer meets first.
 2. **Write the case study.** Yours. The evidence is assembled.
 3. **Confirm CI is green on `de95f0b`.** One look at the Actions tab.
-4. **Finish the accessibility work**: reflow at 320px and 200% zoom, and the `h1` decision on
-   requirement detail.
-5. **Add the ADR for the design system substitution**, so the RFC stops describing Radix and
-   shadcn as the component layer.
-6. **Finish `KNOWN_LIMITATIONS.md`.** Three of about eighteen entries are written.
+4. ~~Finish the accessibility work.~~ Done: reflow measured and one overflow fixed, the
+   `h1` resolved.
+5. ~~Add the ADR for the design system substitution.~~ ADR-0031.
+6. ~~Finish `KNOWN_LIMITATIONS.md`.~~ Twenty entries.
 
 Not blocking, and worth saying out loud in the case study rather than fixing: the
 preparation summary, observability beyond structured logs, and cross checking extracted
@@ -142,9 +140,11 @@ values other than dates.
 
 ## What this audit could not verify
 
-- **Reflow at 320 CSS px and 200% zoom.** The browser tab's layout viewport would not follow
-  a window resize, so the check could not be driven. Static evidence is good and is not the
-  same as having looked.
+- **The review split view at 320px.** Every other destination was measured. This one
+  detaches the renderer when nested in a probe frame, because it embeds the document viewer
+  and that ends up two PDF frames deep. Verified from its CSS instead, which handles the
+  case deliberately: `minmax(0, 1fr)` with a comment naming this exact failure, a `60rem`
+  breakpoint collapsing to one column, and `width: 100%` on the frame.
 - **The CI run status** for this build, for want of the GitHub CLI here.
 - **Deployed reliability over time.** The demo has been driven correctly once since the CSP
   and CORS fixes.

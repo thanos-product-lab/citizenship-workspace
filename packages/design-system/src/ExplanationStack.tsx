@@ -31,8 +31,10 @@ export function ExplanationStack({ children }: { children: ReactNode }): JSX.Ele
 export interface ExplanationLayerProps {
   /** The layer name, e.g. "Facts used". Rendered as a real heading. */
   title: string;
-  /** Heading level. Defaults to 2: these sections are the top-level divisions of the
-      detail page, matching how the case page structures its own sections. */
+  /** Heading level. Defaults to 3: the requirement title above these is an `h2`, because
+      the case title in the persistent header is the page's `h1`. The layers are divisions
+      *of the requirement*, so nesting one deeper is what the outline actually describes.
+      They were `h2` while the requirement title was a second `h1` on the page. */
   headingLevel?: 2 | 3;
   /** Stable id so the heading can label the section. */
   id: string;
@@ -46,7 +48,7 @@ export interface ExplanationLayerProps {
 export function ExplanationLayer({
   title,
   id,
-  headingLevel = 2,
+  headingLevel = 3,
   note,
   emptyMessage,
   children,

@@ -121,8 +121,9 @@ guidelines. If a task appears to require breaking one, stop and raise it.
 > PostgreSQL + private object storage.** One deployable backend, strong internal
 > module boundaries. See `docs/architecture/` (Technical Architecture RFC).
 
-- **Frontend:** Next.js (App Router) · TypeScript · React · Tailwind · Radix ·
-  shadcn/ui (owned, not default-looking) · TanStack Query (server state) ·
+- **Frontend:** Next.js (App Router) · TypeScript · React · Tailwind (layout
+  utilities only) · a hand-built design system of domain components, **not** Radix or
+  shadcn (ADR-0031) · TanStack Query (server state) ·
   React Hook Form + Zod (forms) · D3 utilities + SVG (timeline) · PDF.js ·
   Motion/Framer · Vitest · Testing Library · Playwright.
 - **Backend:** Python · FastAPI · Pydantic · SQLAlchemy 2 · Alembic · Celery ·

@@ -157,8 +157,8 @@ This separation is central to the product's trust model.
 | Language | TypeScript |
 | UI runtime | React |
 | Styling | Tailwind CSS |
-| Accessible primitives | Radix UI |
-| Component foundation | shadcn/ui, customised and owned |
+| Accessible primitives | hand built (ADR-0031, was Radix UI) |
+| Component foundation | `@cw/design-system` (ADR-0031, was shadcn/ui) |
 | Server state | TanStack Query |
 | Form state | React Hook Form |
 | Client validation | Zod |
@@ -579,7 +579,10 @@ Do not introduce Redux by default.
 
 ### 10.4 Design System
 
-Use shadcn/ui and Radix primitives as accessible implementation foundations.
+> **Amended by [ADR-0031](../decisions/0031-the-design-system-replaced-radix-and-shadcn.md).**
+> Neither shadcn/ui nor Radix was ever installed. The components below were built directly,
+> along with the primitives under them. The ADR records what that bought, and what it cost:
+> the modal shell's focus trap is ours to test, and Radix would have supplied a correct one.
 
 The product must not visually resemble a default shadcn dashboard.
 
@@ -1599,8 +1602,6 @@ Next.js
 React
 TypeScript
 Tailwind CSS
-Radix UI
-shadcn/ui
 TanStack Query
 React Hook Form
 Zod

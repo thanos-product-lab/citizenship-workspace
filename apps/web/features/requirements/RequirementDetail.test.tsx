@@ -88,11 +88,16 @@ describe("RequirementDetail", () => {
 
   it("renders every layer of the explanation stack as a real heading", async () => {
     // UI/UX §7.3: the stack is the domain model rendered, and the document outline is the
-    // explanation structure — not a set of disclosure widgets.
+    // explanation structure, not a set of disclosure widgets.
+    //
+    // `h3` under the requirement's `h2`. Both moved down one during the release slice,
+    // because the case title in the persistent header is the page's `h1` and this was the
+    // only destination that added a second. The layers are divisions of the requirement,
+    // so nesting them under it is what the outline actually describes.
     get.mockResolvedValue({ data: aDetail() });
     render(<RequirementDetail caseId="c1" requirementKey="residence.total_absences" />);
 
-    await screen.findByRole("heading", { name: "Total absences", level: 1 });
+    await screen.findByRole("heading", { name: "Total absences", level: 2 });
     for (const layer of [
       "Why this assessment was made",
       "Facts used",
@@ -102,7 +107,7 @@ describe("RequirementDetail", () => {
       "Limitations",
       "Next action",
     ]) {
-      expect(screen.getByRole("heading", { name: layer, level: 2 })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: layer, level: 3 })).toBeInTheDocument();
     }
   });
 
@@ -578,7 +583,7 @@ describe("RequirementDetail", () => {
     const { container } = render(
       <RequirementDetail caseId="c1" requirementKey="residence.total_absences" />,
     );
-    await screen.findByRole("heading", { name: "Total absences", level: 1 });
+    await screen.findByRole("heading", { name: "Total absences", level: 2 });
     expect(await axe(container)).toHaveNoViolations();
   });
 });

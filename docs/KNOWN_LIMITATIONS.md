@@ -465,34 +465,39 @@ available for a real case.
 
 ## Not verified by anybody yet
 
-### 19. Reflow at 320 CSS px and 200% zoom is unverified
+### 19. The review split view is the one screen whose reflow was never measured
 
-**Status:** not checked · **See:** `security/ACCESSIBILITY_PASS.md`
+**Status:** verified by reading rather than by looking · **See:** `security/ACCESSIBILITY_PASS.md`
 
-WCAG 1.4.10 and 1.4.4. The check could not be driven because the browser tab's layout viewport
-would not follow a window resize, so this is recorded as unverified rather than passed.
+Every other destination was measured at 320px and at 640px by loading it in a frame of that
+width, which is a genuine viewport because media queries evaluate against the frame. Six
+were clean and one, the Evidence page, was not; that overflow is fixed.
 
-Static evidence is good. There are seven `max-width: 34rem` breakpoints across the component
-sheet, and the two widest surfaces scroll themselves rather than the document, with a comment
-citing 1.4.10's data table exception by name. None of that is the same as having looked.
+The review split view could not be probed. It embeds the user's document in an iframe, so a
+probe frame puts a PDF viewer two levels deep and the renderer detaches every time.
 
-**Closing it** is one manual pass at 320px and at 200% zoom on the timeline and the review
-split view, which are the two widest layouts.
+Verified from its CSS instead, which handles this case deliberately: `minmax(0, 1fr)` with a
+comment naming this exact failure, a `60rem` breakpoint that collapses to one column well
+before either test width, and `width: 100%` on the frame. A single full-width column cannot
+overflow, so the deduction is sound. It is still a deduction.
+
+**Closing it** means one manual look at that screen on a narrow window, which takes a minute
+and needs a person.
 
 ---
 
-### 20. The requirement detail has two level one headings
+### 20. The requirement detail's heading levels moved, and the wider question is open
 
-**Status:** open decision · **See:** `security/ACCESSIBILITY_PASS.md`
+**Status:** the defect is fixed, the better option was not taken
 
-Every destination renders the case title as `h1` and its own subject as `h2`, except the
-requirement detail, which makes the requirement title a second `h1`.
+The requirement detail rendered two level one headings, the case title and the requirement
+title. It now renders the requirement title as `h2` and the explanation stack's layers as
+`h3`, which matches every other destination.
 
-Not a strict AA failure. HTML5 permits it and axe does not flag it. It is a document outline
-defect and the one inconsistency across six screens.
+The option not taken is the more correct one. The case title is persistent chrome in a
+banner, so arguably each destination's subject should be the `h1`: the overview's readiness
+headline, the timeline's title, the requirement's name. As it stands, a screen reader user
+jumping by level one always lands on the case name and never on what the page is about.
 
-Two ways to resolve it and they point in opposite directions. Demote the page subject, which
-is consistent and cheap but costs the design intent that the explanation stack's layers are
-the page's top level sections. Or stop the case title being a heading at all, since it is
-persistent chrome, which is better information architecture and touches six destinations and
-their tests. Left open because it is a judgement about the whole workspace.
+Rejected on cost rather than on principle. It touches six destinations and their tests,
+which is a refactor rather than a fix, and no success criterion requires it.

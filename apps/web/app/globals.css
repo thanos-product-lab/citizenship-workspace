@@ -98,6 +98,16 @@ a:hover {
   font: inherit;
   color: var(--cw-text-muted);
   max-width: 100%;
+  /* `min-width: 0` is the one doing the work, and `max-width: 100%` above cannot do it.
+     A file input's intrinsic width is its button plus "No file chosen", and a grid item
+     defaults to `min-width: auto`, so that intrinsic width becomes a floor for the whole
+     upload card. The card then sizes the grid track, and a percentage max-width resolves
+     against a parent that is already too wide.
+
+     Measured at a 320px viewport: the Evidence page scrolled sideways, 369px of content
+     in a 320px window, which is WCAG 1.4.10. Every other destination reflowed cleanly, so
+     this one control was the entire failure. */
+  min-width: 0;
 }
 .cw-file-input::file-selector-button {
   margin-right: var(--cw-space-3);

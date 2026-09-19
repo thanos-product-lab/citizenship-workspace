@@ -44,9 +44,14 @@ export function AssessmentSummary({
   return (
     <header className="cw-assessment">
       <div className="cw-assessment__head">
-        <h1 className="cw-assessment__title" ref={titleRef} tabIndex={-1}>
+        {/* `h2`, not `h1`. The case title in the persistent header is the page's `h1` on
+            every destination, and this page was the only one that added a second. Two
+            level one headings is not an AA failure on its own, and it does break the
+            document outline: a screen reader user jumping by level found two page titles
+            and no way to tell which described the thing they had opened. */}
+        <h2 className="cw-assessment__title" ref={titleRef} tabIndex={-1}>
           {title}
-        </h1>
+        </h2>
         <RequirementStatus conclusion={conclusion} currency={currency} />
       </div>
 
