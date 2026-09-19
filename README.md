@@ -139,6 +139,9 @@ the top.
 
 If you are here to look rather than to run it:
 
+- [`docs/architecture/ARCHITECTURE_OVERVIEW.md`](docs/architecture/ARCHITECTURE_OVERVIEW.md),
+  three diagrams: what runs where, the path model output takes before it can affect
+  anything, and how a write becomes background work.
 - [`docs/decisions/`](docs/decisions/), every significant decision with the alternative
   it rejected. ADR-0001 (conclusion and currency are separate) and ADR-0014
   (selective invalidation) are the two that shape everything else.
