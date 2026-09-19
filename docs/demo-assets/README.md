@@ -10,6 +10,10 @@ Naming: `m<N>-<slug>.<ext>`, e.g. `m3b-stale-recalculation.mp4`.
 
 Synthetic data only. Review every asset before it becomes public.
 
+[`VIDEO_SHOT_LIST.md`](VIDEO_SHOT_LIST.md) maps these assets onto the M12 video, names the
+one thing each shot has to make a viewer understand, and lists the three captures that do
+not exist yet.
+
 ## M3B (Rules and assessments)
 
 M3B is backend-only — the assessment workspace UI is M4 — so its assets are terminal
