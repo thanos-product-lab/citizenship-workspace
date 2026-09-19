@@ -131,9 +131,9 @@ asynchronous processing; document classification and extraction behind human con
 and case deletion that actually destroys the data.
 
 Not built: the preparation summary, guidance source versioning, and an extractor for
-immigration status documents. [`docs/KNOWN_LIMITATIONS.md`](docs/KNOWN_LIMITATIONS.md)
-records the gaps and the reason each was left. It is still being filled in, and says so at
-the top.
+immigration status documents. [`docs/KNOWN_LIMITATIONS.md`](docs/KNOWN_LIMITATIONS.md) has
+twenty entries covering those and the rest, each with the reason it was left and what
+closing it would take.
 
 ## Worth reading first
 
