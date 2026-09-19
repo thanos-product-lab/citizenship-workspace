@@ -1684,3 +1684,134 @@ worker to be down, which no test arranges and no walkthrough of mine had tried. 
 convenience for demonstrating; it is not a substitute for creating a case the way a user
 creates one, and the gate's walkthrough rule — *drive it yourself, as a user would* — is
 the thing that caught it.
+
+---
+
+## Release slice (M11 core + M12 core)
+
+Sixteen commits over 13 to 19 September 2026. Roadmap §7.2: the project must be shippable
+before it is extended, so this ran the moment M8 landed and started no new milestone.
+
+**It was meant to be verification and assembly.** It found nine defects, three of them in
+work the tests already covered and one that had been live for eight milestones.
+
+### What it was for
+
+Two things the roadmap pulls forward from M11 and M12: the evaluation, security and
+accessibility hardening, and the portfolio artefacts. The rule held throughout was that a
+gate item passes on a test, a file or an observation, never on a plan or an ADR.
+
+### What was broken, and had been for some time
+
+**Case deletion never completed.** `CaseDeletionRequested` sat in `NO_CONSUMER` from M2.
+`DELETE /cases/{id}` moved the case to `DELETION_PENDING`, blocked writes and hid it from
+every read, and then nothing happened, for ever. The user was told their case was deleted
+and the only true part was that they could no longer see it.
+
+It is now built (ADR-0030) and verified against the running stack rather than only in
+tests: 11 objects gone from MinIO, 166 rows, 80 events and 22 output hashes scrubbed. The
+tombstone keeps the route key and the timestamps and nothing that names anybody.
+
+**The deployment was serving the documentation's example as a security header.**
+`frame-src 'self' https://<your-bucket>.s3.<your-region>.amazonaws.com`, angle brackets
+included, so the review screen's document frame was refused in production. Exactly the
+failure `DEPLOYMENT.md` warns is quiet: the user gets an empty box on the one screen whose
+whole task is reading that document, and nothing appears in any log.
+
+**The test suite truncated the development database.** Known since the M8 gate, where it
+destroyed a case mid-walkthrough, and carried as a habit rather than a fix. The suite now
+runs against its own database, created on first run. A consequence nobody predicted: the
+worker no longer has to be stopped for a run, which removes the second half of the hazard,
+because a worker stopped for tests and left stopped is what produced the M8 silent-upload
+finding.
+
+**A real person's name was in the repository.** The UI/UX design document carried an actual
+name inside a mockup of the document review screen, presented as an extracted name beside a
+test result and a level. Directive 9 and a named Security Gate item, found by the audit
+rather than by review.
+
+### What the walkthrough found
+
+Driving the deployed demo produced four defects in one session, none of which any test
+caught:
+
+1. Confirming a document removed the only route to the page recording what was confirmed.
+   `DocumentReview` never guarded on status, so the page worked the whole time and only the
+   way in disappeared.
+2. A new case stated "This case hasn't been assessed yet" and offered no next step, because
+   `priority_actions` derives from results and a case with no results has none.
+3. The return date picker opened on today, five years from a trip in 2021.
+4. Three lines of chrome above one empty box on the review screen, with "as the document
+   writes it" appearing twice and the field name twice.
+
+### My own mistakes, which are the useful part
+
+**A fix that broke the thing it was meant to help.** For the date picker I set
+`min={values.departure_date}`, which is the obvious move and is wrong: a value below `min`
+makes the field `rangeUnderflow`, so the browser blocks submission itself and the app's own
+bound, focus-managed error never renders. An existing test caught it on the first run. The
+real fix was smaller, because a picker opens at its *value* and not at its `min`.
+
+**A test that passed for the wrong reason, mine, found by mutation.** The case purge has
+twenty four hand-written predicates, so I wrote a bystander test. Substituting `1 = 1` for
+the `evidence_items` predicate, a mutation that would destroy every evidence item in the
+database, **passed**. RLS had absorbed it, because my bystander was another *tenant's* case.
+The bystander is now a second case owned by the same user, where only the predicate stands
+between the purge and the user's other rows. Fixing that exposed three more survivors,
+because seeding alone populates eleven of twenty four tables and an unscoped predicate on an
+empty table destroys nothing anyone can notice.
+
+**A diagram that said the opposite of what it meant.** The trust path had a dotted arrow
+from `ExtractedClaim` to the rules engine labelled "never". Rendered, it looked like an
+ordinary arrow arriving at the rules engine. Replaced with an explicit trust boundary, which
+says the same thing by structure: there is no arrow across it because there is no code path
+across it.
+
+**Two claims I made that were wrong.** The eval report said latency was not recorded; it is,
+on every `model_run`, and measuring it closed a gate item. And I nearly repeated ADR-0014's
+note that its dependency gap is unreachable because every requirement has one rule version.
+Four requirements now have more than one, `residence.travel_consistency` is on its fourth,
+and what actually covers the gap today is ADR-0022's blunt staling rather than the reason
+the ADR gives.
+
+### Gate evidence
+
+**31 of 37 quality gate items pass, 3 partial, 3 gaps.** `RELEASE_GATE_AUDIT.md`.
+
+The three gaps are the demo video, the case study and the preparation summary. Two are
+writing rather than engineering; the third is M10 and outside the plan of record.
+
+Measured rather than asserted during the audit:
+
+- **PII in logs.** An AST pass over every `_log` call found 67 distinct field names, all
+  identifiers, counts, enums and booleans. Then 276,952 lines of real API and worker output,
+  covering document processing, searched for the case's names, filenames, booking reference,
+  document text, checksums, JWTs and signed URLs. Zero hits.
+- **Model latency and cost.** p50 927ms, p95 2837ms, max 3051ms, $0.0169 over 98 successful
+  runs.
+- **Storage.** The live bucket answers an unauthenticated GET with `403 AccessDenied`, and
+  the CORS preflight returns 200 for POST and GET from the Vercel origin and nothing else.
+- **Tests.** 1128 backend (up from 1114), 417 frontend (up from 401), 21 property. Lint,
+  `ruff format --check`, mypy strict and tsc strict all clean. The OpenAPI client
+  regenerates with no drift.
+
+### What it produced
+
+The gate audit, twenty known limitations, an architecture overview with three rendered
+diagrams, the eval report, the accessibility pass, the local demo script, the video shot
+list, and a README that no longer says the build stopped at M6.
+
+### The pattern worth carrying forward
+
+Every defect above came from one of three places, and none of them was a failing test.
+
+**Driving it.** Four from one walkthrough, on a case the seed does not create.
+
+**Looking at the artefact rather than the source.** The placeholder CSP, the real name, the
+diagram whose arrow read backwards. All three were visible the moment somebody rendered or
+grepped the thing itself instead of reading the code that produces it.
+
+**Mutation testing my own tests.** Four assertions that passed against a deliberately broken
+implementation. The one that would have destroyed every evidence item in the database is the
+one to remember, because the test looked completely reasonable and was measuring the wrong
+mechanism.
