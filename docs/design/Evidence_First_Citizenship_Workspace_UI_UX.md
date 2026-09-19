@@ -711,7 +711,7 @@ Name mismatch
 Document preview              Extracted information
 
                                Name
-                               Athanasios Kaloudis
+                               Amara Okonkwo
                                [ Confirm ] [ Correct ]
 
                                Result
