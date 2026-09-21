@@ -300,7 +300,7 @@ def test_confirming_the_dates_resolves_the_issue(api: Api) -> None:
 
 def test_dismissing_hides_an_issue_without_deleting_it(api: Api) -> None:
     case_id = _case(api)
-    _trip(api, case_id, "2021-01-10", "2021-02-10", label="Japan", confidence="ESTIMATED")
+    _trip(api, case_id, "2027-06-10", "2027-07-10", label="Japan", confidence="ESTIMATED")
     _recalc(api, case_id)
     issue = _of_type(_queue(api, case_id), "UNCERTAIN_TRAVEL_DATE")[0]
 
@@ -318,7 +318,7 @@ def test_dismissing_hides_an_issue_without_deleting_it(api: Api) -> None:
 
 def test_a_dismissed_issue_stays_dismissed_while_its_cause_persists(api: Api) -> None:
     case_id = _case(api)
-    _trip(api, case_id, "2021-01-10", "2021-02-10", label="Japan", confidence="ESTIMATED")
+    _trip(api, case_id, "2027-06-10", "2027-07-10", label="Japan", confidence="ESTIMATED")
     _recalc(api, case_id)
     issue = _of_type(_queue(api, case_id), "UNCERTAIN_TRAVEL_DATE")[0]
     api("user_a").post(f"/api/v1/cases/{case_id}/issues/{issue['id']}/dismiss")
@@ -335,7 +335,7 @@ def test_a_dismissed_issue_reopens_when_its_cause_goes_and_returns(api: Api) -> 
     """Dismissal is a judgement about this episode, not a standing waiver on the cause.
     Now reachable through the API, where before it could only be driven directly."""
     case_id = _case(api)
-    _trip(api, case_id, "2021-01-10", "2021-02-10", label="Japan", confidence="ESTIMATED")
+    _trip(api, case_id, "2027-06-10", "2027-07-10", label="Japan", confidence="ESTIMATED")
     _recalc(api, case_id)
     issue = _of_type(_queue(api, case_id), "UNCERTAIN_TRAVEL_DATE")[0]
     api("user_a").post(f"/api/v1/cases/{case_id}/issues/{issue['id']}/dismiss")
@@ -395,16 +395,19 @@ def test_an_issue_reshapes_when_its_cause_changes_shape(api: Api) -> None:
     date that is now holding a figure back.
     """
     case_id = _case(api)
-    _trip(api, case_id, "2021-01-10", "2021-02-10", label="Japan", confidence="ESTIMATED")
+    _trip(api, case_id, "2027-06-10", "2027-07-10", label="Japan", confidence="ESTIMATED")
     _recalc(api, case_id)
     before = _of_type(_queue(api, case_id), "UNCERTAIN_TRAVEL_DATE")[0]
     assert before["dismissibility"] == "DISMISSIBLE"
 
     # Move the application date so the same trip now sits inside the qualifying period.
+    # The trip sits *after* the first window and the date moves forward to reach it, rather
+    # than an old trip being reached by moving the date back: `ApplicationDateInPast` now
+    # refuses a date that has already passed, so a backwards move ages out of the future.
     current = api("user_a").get(f"/api/v1/cases/{case_id}/application-dates").json()
     api("user_a").post(
         f"/api/v1/cases/{case_id}/application-dates/select",
-        json={"application_date": "2025-06-01", "expected_revision": current["revision"]},
+        json={"application_date": "2028-06-01", "expected_revision": current["revision"]},
     )
     _recalc(api, case_id)
 
@@ -419,7 +422,7 @@ def test_a_dismissal_does_not_survive_the_issue_becoming_serious(api: Api) -> No
     """The user set the issue aside *as it was presented*. Presented differently, it is a
     different judgement, and the dismissal is spent."""
     case_id = _case(api)
-    _trip(api, case_id, "2021-01-10", "2021-02-10", label="Japan", confidence="ESTIMATED")
+    _trip(api, case_id, "2027-06-10", "2027-07-10", label="Japan", confidence="ESTIMATED")
     _recalc(api, case_id)
     issue = _of_type(_queue(api, case_id), "UNCERTAIN_TRAVEL_DATE")[0]
     api("user_a").post(f"/api/v1/cases/{case_id}/issues/{issue['id']}/dismiss")
@@ -428,7 +431,7 @@ def test_a_dismissal_does_not_survive_the_issue_becoming_serious(api: Api) -> No
     current = api("user_a").get(f"/api/v1/cases/{case_id}/application-dates").json()
     api("user_a").post(
         f"/api/v1/cases/{case_id}/application-dates/select",
-        json={"application_date": "2025-06-01", "expected_revision": current["revision"]},
+        json={"application_date": "2028-06-01", "expected_revision": current["revision"]},
     )
     _recalc(api, case_id)
 

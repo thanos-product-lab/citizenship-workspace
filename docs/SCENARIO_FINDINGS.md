@@ -1057,7 +1057,7 @@ does not move the phase; REQUIRES_JUDGEMENT and everything more severe does."
 
 ### 12. A past application date is blocked only by the browser, not by the API
 
-**Status:** outstanding · found running scenario 11
+**Status:** **half fixed**, 21 September 2026 · found running scenario 11
 **Affects:** `KNOWN_LIMITATIONS.md` entry 11, and the application-date boundary
 **Severity:** entry 11 reads as though the product blocks new past selections. Only the
 client does.
@@ -1098,3 +1098,31 @@ than letting it pass silently into a qualifying period nobody intended. And amen
 say where the block actually lives.
 
 The case was restored to 30 June 2027 and recalculated afterwards.
+
+**How the first half was closed.** `residence.service._require_not_already_past` raises
+`ApplicationDateInPast` (422, `APPLICATION_DATE_IN_PAST`, carrying `today`) when the date
+being *selected* has already passed. Verified against the same call that found it: the
+request that previously returned 200 now returns 422 and the stored date is untouched, while
+a future date and today both still return 200.
+
+The guard is on the command rather than the schema, because entry 11's objection to a
+`ge=today` value constraint is right — it would refuse to read back a case nobody touched,
+purely because a calendar boundary went by. A drifted date therefore still reads back, and
+`test_a_date_that_drifted_into_the_past_is_still_read_back` asserts it, so the guard cannot
+be mistaken for a full fix.
+
+**The second half is proposed, not built.** It needs a rules-spec entry before any code, per
+the `new-rule` skill's first step, and the spec currently says nothing about whether a
+proposed date may be in the past. Drafted as **ADR-0032**, which also names the problem entry
+11 missed: staleness here is event-driven, so a limitation "computed at assessment time" never
+reaches a case nobody recalculates — which is exactly the case it is meant to protect. Three
+ways to close that are laid out there; the choice is not one to make in a commit message.
+
+**What it cost, which is the interesting part.** Three existing tests selected dates that had
+aged into the past and started failing. Two were incidental and were reshaped to reach a trip
+by moving the date *forward*, which also makes them durable. The third,
+`test_a_date_move_that_flips_an_upstream_conclusion_stales_the_composite`, could not be: its
+flip needs the date to move backwards across the applicant's 18th birthday, and the applicant
+must already be 18 for the case to activate. The guard makes its scenario unreachable. It now
+pins the clock with a docstring saying exactly that — the closure is still worth proving, and
+its trigger is no longer a path anybody can walk.

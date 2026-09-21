@@ -5,6 +5,8 @@ domain objects can raise intent (`ConcurrencyConflict`, `IllegalTransition`)
 without importing HTTP concerns.
 """
 
+from datetime import date
+
 from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 
@@ -195,6 +197,38 @@ class TooManyCases(DomainError):
         super().__init__(
             f"you already have {held} cases, which is the maximum of {limit}. "
             "Delete a case you have finished with to open another."
+        )
+
+
+class ApplicationDateInPast(DomainError):
+    """Someone tried to *select* an application date that has already passed.
+
+    A proposed application date is a forward-looking planning intention, and the whole
+    five-year qualifying period is measured back from it, so a date in the past measures
+    a window that has already closed. `KNOWN_LIMITATIONS.md` entry 11 records what that
+    produced: every requirement green against travel that fell silently outside the
+    window, which is the false-reassurance shape §2.7 calls the most important thing to
+    get right.
+
+    **This guards the command, not the value.** Entry 11 rejects a `ge=today` constraint
+    on the schema, and that rejection is right: a type-level rule would refuse to *read
+    back* a case nobody touched, purely because time passed. Selecting is different —
+    it only ever happens because somebody chose a date just now, and refusing a choice
+    that is already stale on arrival costs an untouched case nothing.
+
+    It therefore closes exactly half of entry 11. A date that was future when chosen and
+    has since drifted into the past is untouched by this, and cannot be fixed here: it
+    needs a derived limitation the rules spec does not yet describe.
+    """
+
+    code = "APPLICATION_DATE_IN_PAST"
+
+    def __init__(self, application_date: date, today: date) -> None:
+        self.application_date = application_date
+        self.today = today
+        super().__init__(
+            f"{application_date.isoformat()} has already passed. "
+            "Choose the date you plan to apply, which has to be today or later."
         )
 
 
@@ -420,6 +454,18 @@ def register_exception_handlers(app: FastAPI) -> None:
             # refusing without saying what would be accepted is a dead end.
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             content={"detail": str(exc), "code": exc.code},
+        )
+
+    @app.exception_handler(ApplicationDateInPast)
+    async def _application_date_in_past(
+        _request: Request, exc: ApplicationDateInPast
+    ) -> JSONResponse:
+        return JSONResponse(
+            # 422, like `UnreadableEnteredValue`: the date is a well-formed date and the
+            # domain cannot plan against it. `today` is in the body so the client can say
+            # what the earliest acceptable date is rather than guessing at the rule.
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            content={"detail": str(exc), "code": exc.code, "today": exc.today.isoformat()},
         )
 
     @app.exception_handler(TooManyCases)

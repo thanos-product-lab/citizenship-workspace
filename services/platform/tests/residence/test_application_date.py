@@ -8,11 +8,11 @@ value is stored as a DATE with self-contained provenance in the event.
 """
 
 from collections.abc import Callable
-from datetime import date
+from datetime import date, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from app.cases.domain import ApplicationCase
@@ -59,6 +59,79 @@ def test_get_returns_null_before_a_date_is_selected(api: Api) -> None:
     resp = api("user_a").get(_url(case_id))
     assert resp.status_code == 200
     assert resp.json() is None
+
+
+def test_a_date_that_has_already_passed_is_refused(api: Api) -> None:
+    """`KNOWN_LIMITATIONS.md` 11, the half that is a plain defect.
+
+    The entry says "the date field now refuses a past date, so a *new* bad selection cannot
+    be made". That was true of the field and not of the product: `min` on an `<input>` is a
+    client-side courtesy, and the command behind it took anything. Selecting 15 January 2020
+    returned 200 and became the confirmed date, after which the five-year window ran
+    2015 to 2020 and every trip fell outside it — eight requirements SUPPORTED with a total
+    absence figure of zero, which is the false-reassurance shape §2.7 exists to prevent.
+
+    Dates are relative on purpose. A fixture like `"2020-01-15"` tests nothing about the
+    rule, only about the year the suite happens to run in.
+    """
+    case_id = _active_case(api, "user_a")
+    yesterday = date.today() - timedelta(days=1)
+
+    resp = api("user_a").post(
+        _url(case_id) + "/select", json={"application_date": yesterday.isoformat()}
+    )
+
+    assert resp.status_code == 422
+    body = resp.json()
+    assert body["code"] == "APPLICATION_DATE_IN_PAST"
+    assert body["today"] == date.today().isoformat()
+    assert "has already passed" in body["detail"]
+    assert api("user_a").get(_url(case_id)).json() is None, "the refusal still wrote a version"
+
+
+def test_applying_today_is_a_real_intention_and_is_allowed(api: Api) -> None:
+    """The boundary. Today is not in the past, and a qualifying period ending today is a
+    window that closes today rather than one that has closed."""
+    case_id = _active_case(api, "user_a")
+    today = date.today()
+
+    resp = api("user_a").post(
+        _url(case_id) + "/select", json={"application_date": today.isoformat()}
+    )
+
+    assert resp.status_code == 200
+    assert resp.json()["application_date"] == today.isoformat()
+
+
+def test_a_date_that_drifted_into_the_past_is_still_read_back(
+    api: Api, db_session: Session
+) -> None:
+    """The half this does **not** close, asserted so nobody mistakes one for the other.
+
+    Entry 11's objection to a `ge=today` schema rule is that it would refuse a case nobody
+    touched, purely because a calendar boundary went by. The guard lives on the command for
+    exactly that reason, and this is the proof: a stored date that has since passed still
+    reads back, and the case is still usable.
+
+    Closing the drift half needs a derived limitation the rules spec does not yet describe.
+    When it exists, this test should start asserting the limitation rather than being
+    deleted — the date must still be *readable*, it just must not be silently believed.
+    """
+    case_id = _active_case(api, "user_a")
+    api("user_a").post(_url(case_id) + "/select", json={"application_date": "2027-04-15"})
+
+    # Drift, without going through the command: the row is what a case looks like once the
+    # date it was given has passed.
+    version = db_session.scalars(select(ProposedApplicationDateVersion)).one()
+    db_session.execute(
+        update(ProposedApplicationDateVersion)
+        .where(ProposedApplicationDateVersion.id == version.id)
+        .values(application_date=date.today() - timedelta(days=30))
+    )
+    db_session.commit()
+
+    body = api("user_a").get(_url(case_id)).json()
+    assert body["application_date"] == (date.today() - timedelta(days=30)).isoformat()
 
 
 def test_selecting_a_date_creates_the_current_version(api: Api) -> None:

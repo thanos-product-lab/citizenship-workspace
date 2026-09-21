@@ -317,16 +317,29 @@ Setting an application date in the past produced every requirement green against
 window that had already closed, with the last months of travel silently outside it. That is
 the false reassurance shape the product exists to prevent.
 
-The date field now refuses a past date, so a *new* bad selection cannot be made. It does
-nothing for a saved date that drifts into the past, which happens to every case eventually,
-including the seeded demo case when April 2027 arrives.
+A *new* bad selection cannot be made. It does nothing for a saved date that drifts into the
+past, which happens to every case eventually, including the seeded demo case when April 2027
+arrives.
 
-**Deliberately not fixed with schema validation.** A `ge=today` rule would reject cases nobody
-touched, purely because time passed, and would break on a calendar boundary rather than a code
-change. **Closing it** means a derived limitation and issue computed at assessment time like
-every other conflict, which is a rules change with a version bump, a migration, and an
-amendment to the rules spec, since the spec currently says nothing about whether a proposed
-date may be in the past.
+**This entry used to say the date field closed the first half, and that was wrong.** The
+field's `min` attribute was the whole enforcement, and `POST /application-dates/select`
+accepted 15 January 2020 with a 200 — found by scenario 11 of the walkthrough, recorded as
+finding 12. A control that lives only in a React component is not a control. The command now
+raises `ApplicationDateInPast` (422, `APPLICATION_DATE_IN_PAST`), so the first half is closed
+by the product rather than by the browser.
+
+**Still deliberately not fixed with schema validation.** A `ge=today` rule would reject cases
+nobody touched, purely because time passed, and would break on a calendar boundary rather than
+a code change. The guard is on the *command* for exactly that reason: it only ever fires on a
+date somebody is choosing right now, and a stored date that has since passed still reads back
+(`test_a_date_that_drifted_into_the_past_is_still_read_back`).
+
+**Closing the remaining half** means a derived limitation and issue computed at assessment
+time like every other conflict, which is a rules change with a version bump, a migration, and
+an amendment to the rules spec, since the spec currently says nothing about whether a proposed
+date may be in the past. Drafted as **ADR-0032**, including the part this entry did not
+account for: staleness here is event-driven, so a limitation computed at assessment time still
+never reaches a case nobody recalculates, which is the case it exists to protect.
 
 ---
 

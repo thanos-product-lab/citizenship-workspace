@@ -17,7 +17,7 @@ correct behaviour, not a defect.
 """
 
 from collections.abc import Callable
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 import pytest
@@ -30,6 +30,7 @@ from sqlalchemy.orm import Session
 from app.assessments.domain import AssessmentInputLink, AssessmentResult
 from app.requirements.domain import Currency
 from app.requirements.models import RequirementDefinition
+from app.residence import service as residence_service
 
 pytestmark = [pytest.mark.integration, pytest.mark.property]
 
@@ -257,7 +258,7 @@ def test_adding_a_trip_stales_everything_it_moves(api: Api, db_session: Session)
 
 
 def test_a_date_move_that_flips_an_upstream_conclusion_stales_the_composite(
-    api: Api, db_session: Session
+    api: Api, db_session: Session, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The composition edge, caught by behaviour rather than by declaration.
 
@@ -275,7 +276,21 @@ def test_a_date_move_that_flips_an_upstream_conclusion_stales_the_composite(
     purely because the conclusion it composes moved. Remove the composition closure and this
     test fails while every declaration-based test still passes — which is the whole reason
     this file resolves nothing from declarations.
+
+    **The clock is pinned, and that is a statement about the product rather than a
+    convenience.** The flip needs the application date to move *backwards* across the
+    applicant's 18th birthday, and the applicant must already be 18 for the case to activate
+    at all — so the second date is necessarily in the past, and `ApplicationDateInPast` now
+    refuses it. There is no arrangement of a real clock that reaches this state: the only
+    input the composite reads which a date can move is `route.adult_applicant`, and after
+    activation nothing else about the route profile is editable.
+
+    So the closure is still worth proving and its trigger is no longer user-reachable. Pinning
+    says exactly that: this exercises the mechanism, not a path anybody can walk. If a future
+    slice gives the composite an input that a *forward* date move can flip, this test should
+    be rewritten around it and the pin dropped.
     """
+    monkeypatch.setattr(residence_service, "utcnow", lambda: datetime(2026, 1, 1, tzinfo=UTC))
     case_id = str(api("user_a").post("/api/v1/cases", json={"title": "My case"}).json()["id"])
     api("user_a").put(
         f"/api/v1/cases/{case_id}/route-profile",

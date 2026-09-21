@@ -54,6 +54,7 @@ from app.residence.repository import (
     TravelRecordRepository,
 )
 from app.shared.errors import (
+    ApplicationDateInPast,
     CaseNotActive,
     ConcurrencyConflict,
     CsvImportInvalid,
@@ -82,6 +83,27 @@ def get_current(session: Session, *, case: ApplicationCase) -> ApplicationDateOu
     return ApplicationDateOutcome(root=root, version=version)
 
 
+def _require_not_already_past(application_date: date) -> None:
+    """Refuse a date that had already passed when it was chosen.
+
+    **Read `ApplicationDateInPast` before moving this.** It belongs to the command and
+    not to `residence/schemas.py`, whose docstring declines a future/past constraint at
+    the input boundary for a reason that still holds: a type-level rule would refuse to
+    read back a case nobody touched, purely because a calendar boundary went by. This
+    only ever fires on a date somebody is choosing right now.
+
+    Today is allowed. Applying today is a real intention, and the qualifying period it
+    measures ends today rather than in a window that has closed.
+
+    The clock is read here rather than anywhere further in, because everything below
+    `requirements/` is a pure function of its inputs by design — no evaluator reads a
+    clock, which is what makes a result reproducible from its recorded input versions.
+    """
+    today = utcnow().date()
+    if application_date < today:
+        raise ApplicationDateInPast(application_date, today)
+
+
 def select_application_date(
     session: Session,
     *,
@@ -91,6 +113,7 @@ def select_application_date(
     expected_revision: int | None,
 ) -> ApplicationDateOutcome:
     _require_active_writable_case(session, case)
+    _require_not_already_past(application_date)
 
     root = ProposedApplicationDateRepository.get_current_for_case(session, case.id)
     event: DomainEvent
