@@ -10,9 +10,11 @@ import ast
 import inspect
 import pathlib
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 import pytest
+from hypothesis import given
+from hypothesis import strategies as st
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -34,6 +36,7 @@ from app.facts.values import (
     SourceMethod,
     ValueSchema,
     normalise,
+    parse_entered_date,
 )
 from app.shared.tenant import APP_ROLE
 
@@ -333,6 +336,55 @@ def test_the_normaliser_ignores_what_the_model_said() -> None:
         schema=ValueSchema.DATE_V1, raw="11 May 2026", model_iso="2018-01-01"
     )
     assert normalise(unambiguous) == "2026-05-11", "the model's wrong iso was used"
+
+
+@given(
+    st.dates(min_value=date(1900, 1, 1), max_value=date(2100, 12, 31)),
+    st.integers(min_value=0, max_value=23),
+    st.integers(min_value=0, max_value=59),
+)
+@pytest.mark.property
+def test_a_clock_time_beside_a_date_never_changes_what_is_read(
+    day: date, hour: int, minute: int
+) -> None:
+    """Appending a time to an unambiguous date does not change the date that is read.
+
+    The property the blind-entry comparison rests on. `_resolve` decides CONFIRM against
+    CORRECT by comparing the normaliser's reading of the document with the user's typed
+    date, so the two sides have to agree about what a written date means whatever the
+    document chose to print next to it. When they disagreed, agreement stopped meaning
+    agreement.
+
+    Both readers are checked, because they are only interchangeable while they stay
+    symmetric.
+    """
+    clock = f"{hour:02d}:{minute:02d}"
+    for fmt in ("%Y-%m-%d", "%d %B %Y", "%d %b %Y"):
+        written = day.strftime(fmt)
+        bare = ProposedValue(schema=ValueSchema.DATE_V1, raw=written, model_iso=None)
+        timed = ProposedValue(schema=ValueSchema.DATE_V1, raw=f"{written}  {clock}", model_iso=None)
+
+        assert normalise(bare) == day.isoformat()
+        assert normalise(timed) == normalise(bare), f"the time changed the reading of {written!r}"
+        assert parse_entered_date(f"{written} {clock}") == day
+
+
+@given(st.integers(min_value=1, max_value=12), st.integers(min_value=0, max_value=59))
+@pytest.mark.property
+def test_a_time_never_rescues_a_date_whose_order_is_unknowable(
+    day_or_month: int, minute: int
+) -> None:
+    """The other half: stripping the clock must not make an ambiguous date readable.
+
+    `03/04/2025` names two different days depending on whose convention applies, and a
+    time beside it settles nothing. Dropping the time is allowed to remove a reason to
+    refuse that was never about ambiguity; it is not allowed to remove this one.
+    """
+    written = f"{day_or_month:02d}/04/2025"
+    for raw in (written, f"{written} 18:{minute:02d}", f"{written}, 18:{minute:02d}"):
+        proposal = ProposedValue(schema=ValueSchema.DATE_V1, raw=raw, model_iso="2025-04-03")
+        assert normalise(proposal) is None
+        assert parse_entered_date(raw) is None
 
 
 def test_a_claim_cannot_be_born_confirmed() -> None:

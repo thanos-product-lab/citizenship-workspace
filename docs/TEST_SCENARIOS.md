@@ -12,6 +12,10 @@ Some scenarios are expected to look broken. Those are marked **documented limita
 name the entry in `KNOWN_LIMITATIONS.md`. If one of them behaves *better* than described,
 that is also a finding: the document is out of date.
 
+**Write down what you find.** Defects found by running these go in
+`SCENARIO_FINDINGS.md`, one section per scenario, not in `KNOWN_LIMITATIONS.md`, which is
+for gaps that were decided rather than discovered.
+
 ## Setup
 
 ```bash
@@ -23,6 +27,18 @@ cd services/platform && uv run python evals/fixtures/make_documents.py  # eval d
 
 Sign in at `http://localhost:3000/sign-in`. The root path returns 404 to a cold tab, which
 is the Clerk dev instance and not a bug.
+
+**Check which API is answering before you start.**
+
+```bash
+lsof -nP -iTCP:8000 -sTCP:LISTEN
+```
+
+`just up` starts an `api` container and `just api` runs a local `uvicorn --reload`, and both
+bind port 8000. The local one picks up a source change; the container does not — it has no
+`--reload` and no source volume, so it serves whatever was baked into its image. With both
+running, which one answers the browser is not yours to choose, and the symptom is a code
+change that appears to do nothing. Run one of them, not both.
 
 Test documents land in `services/platform/tests/fixtures/documents/`. They are gitignored,
 so generate them before starting.
@@ -101,21 +117,31 @@ one thing the onboarding gate exists to prevent.
 
 **Why:** it demonstrates that the thresholds are real and that a conclusion is not a guess.
 
-Use the seeded case (`just seed <your-clerk-user-id>`), which sits at **439 days, near
-threshold**.
+Use a freshly seeded case (`just seed <your-clerk-user-id>`).
 
-1. Note trip 11: Italy, out 4 May 2026, back 10 May 2026, contributing 5 days.
-2. Edit its return date to **22 May 2026**, making it 17 days.
+0. A new seed is **not assessed**. Open Requirements and choose **Run assessment**. The
+   header's Update assessment button does not exist yet, which is why this step names a
+   different control. Confirm the case now reads **439 days, near threshold**.
+1. Note the Spain trip: out 1 February 2026, back 25 March 2026, contributing 51 days.
+2. Edit its return date to **6 April 2026**, making it 63 days.
 3. Recalculate.
 
 **Expected:** total absences **451 days**, and the conclusion moves from near threshold to
-**requires judgement**. 439 minus 5 plus 17.
+**requires judgement**. 439 minus 51 plus 63.
 
 Requires judgement rather than not satisfied is the point: 451 is over the guidance figure
 and inside the range where the Home Office may exercise discretion, so the product escalates
 instead of refusing.
 
 4. Open the requirement and read the calculation. It should name the records it counted.
+
+**Why this trip and not trip 11.** An earlier version of this scenario extended trip 11
+(Italy, 4 to 10 May 2026) to 22 May and expected 451. That is wrong. Trip 12 is the United
+States, 16 to 29 May 2026, so the extended Italy trip overlaps it, and absent days are the
+**cardinality of a union**, not a sum (`DETERMINISTIC_RULES_SPEC.md` §173). The five shared
+days, 17 to 21 May, are counted once. The real answer is **446**, and two
+`OVERLAPPING_TRAVEL` issues are raised. The Spain trip has no neighbour, so its 12 extra
+days land whole. See `SCENARIO_FINDINGS.md` finding 4.
 
 ---
 

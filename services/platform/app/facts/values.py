@@ -44,6 +44,7 @@ unambiguously produces `None` **whatever the model returned**, which is what mak
 deterministic normaliser the defence rather than defence in depth.
 """
 
+import re
 import uuid
 from dataclasses import dataclass
 from datetime import date, datetime
@@ -161,6 +162,29 @@ _UNAMBIGUOUS_FORMATS = (
     "%d %B, %Y",
 )
 
+#: A clock time written after a date, which a booking confirmation almost always does:
+#: `11 May 2026  18:40`. The time is not part of the value — the claim is a date — but
+#: leaving it attached made `strptime` reject the whole string, so an unambiguous date
+#: read None for a reason that had nothing to do with ambiguity, and every correctly
+#: typed travel date was recorded as a correction rather than a confirmation.
+#:
+#: A colon is required, so this can never eat part of a date: no format above contains
+#: one, and neither does any month name. A separator is required too, so the pattern
+#: cannot bite into a bare `%Y-%m-%d`. Anything it does not recognise is left in place
+#: and refused exactly as before — in particular `03/04/2025 18:40` loses its time and is
+#: still ambiguous, so it still reads None.
+_TRAILING_TIME = re.compile(
+    r"[\s,]+(?:at\s+)?\d{1,2}:\d{2}(?::\d{2})?\s*(?:[ap]\.?m\.?)?\s*$",
+    re.IGNORECASE,
+)
+
+
+def _without_trailing_time(text: str) -> str:
+    """`text` with a trailing clock time removed. Shared by the two readers below so they
+    keep accepting exactly the same set of written dates, which is the property the
+    blind-entry comparison depends on."""
+    return _TRAILING_TIME.sub("", text).strip()
+
 
 def normalise(value: ProposedValue) -> str | None:
     """The deterministic reading of a written value, or None when there is not one.
@@ -173,11 +197,15 @@ def normalise(value: ProposedValue) -> str | None:
     Returns None for an ambiguous date, and that is a *result*, not a failure. The claim
     is still created, still shown, and still reviewable; the human reads the document —
     where the month names and the booking's own logic are — and enters what it means.
+
+    A trailing clock time is dropped first (`_TRAILING_TIME`): `11 May 2026 18:40` names
+    one calendar date and nothing about it is ambiguous, so refusing it would be refusing
+    for the wrong reason.
     """
     if value.schema is ValueSchema.TEXT_V1:
         return " ".join(value.raw.split()) or None
 
-    text = value.raw.strip()
+    text = _without_trailing_time(value.raw.strip())
     for fmt in _UNAMBIGUOUS_FORMATS:
         try:
             return datetime.strptime(text, fmt).date().isoformat()
@@ -189,13 +217,19 @@ def normalise(value: ProposedValue) -> str | None:
 def parse_entered_date(text: str) -> date | None:
     """A date a *user* typed, read the same way the normaliser reads a document.
 
-    The same formats, on purpose. A person entering `03/04/2025` into the blind-entry
-    field is as ambiguous as a document containing it, and accepting it would let the
-    interaction that exists to remove a guess quietly reintroduce one.
+    The same formats **and the same time handling**, on purpose. A person entering
+    `03/04/2025` into the blind-entry field is as ambiguous as a document containing it,
+    and accepting it would let the interaction that exists to remove a guess quietly
+    reintroduce one. The symmetry is what makes the comparison in
+    `facts.service._resolve` meaningful: the two sides have to read the same strings the
+    same way, or agreement between them stops meaning agreement.
+
+    It also means someone copying `11 May 2026 18:40` off the document verbatim is
+    reading it correctly rather than getting an error for including what they were shown.
     """
     for fmt in _UNAMBIGUOUS_FORMATS:
         try:
-            return datetime.strptime(text.strip(), fmt).date()
+            return datetime.strptime(_without_trailing_time(text.strip()), fmt).date()
         except ValueError:
             continue
     return None

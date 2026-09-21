@@ -189,6 +189,48 @@ def test_typing_what_the_document_says_records_a_confirmation(
     assert body["claim_status"] == "CONFIRMED"
 
 
+def test_a_time_printed_beside_the_date_is_not_a_correction(api: Api, db_session: Session) -> None:
+    """The same confirmation, against the shape a booking actually produces.
+
+    The test above passes with `raw="4 May 2026"`, and no extractor ever returns that for
+    a flight: a booking prints `04 May 2026  07:25`, and the live fixture
+    `travel/italy_booking_amended_return.pdf` yields exactly that. With the time attached
+    the normaliser read None, nothing could match it, and **every correctly typed travel
+    date was recorded as `CORRECT`** — the person agreed with the model and the case said
+    they had overruled it.
+
+    That is a provenance error rather than a cosmetic one: it set `source_method` to
+    `USER_CORRECTED_AI_CLAIM`, and `BLIND_ENTRY` is the mode `facts.events` describes as
+    measuring "agreement between a model and a person", so the measurement was pinned at
+    zero however well the model read.
+    """
+    case_id, claim = _case_with_claim(api, db_session, raw="04 May 2026  07:25")
+
+    body = _review(api, case_id, claim.id, entered_value="4 May 2026").json()
+
+    assert body["decision"] == "CONFIRM"
+    assert body["review_mode"] == "BLIND_ENTRY"
+    assert body["value"] == "2026-05-04"
+    assert body["claim_status"] == "CONFIRMED"
+
+
+def test_an_ambiguous_date_stays_ambiguous_when_a_time_is_attached(
+    api: Api, db_session: Session
+) -> None:
+    """The guard on the fix above. Dropping the clock time must not drop the refusal:
+    `03/04/2025` is unreadable because of its day/month order, and a time beside it
+    changes nothing about that. If this ever records a CONFIRM, the normaliser has begun
+    guessing a convention, which is the one thing it exists not to do."""
+    case_id, claim = _case_with_claim(
+        api, db_session, raw="03/04/2025  07:25", model_iso="2025-04-03"
+    )
+
+    body = _review(api, case_id, claim.id, entered_value="3 April 2025").json()
+
+    assert body["decision"] == "CORRECT", "an unreadable proposal was matched against"
+    assert body["value"] == "2025-04-03", "the user's reading must still win"
+
+
 def test_typing_something_else_records_a_correction_and_the_users_value_wins(
     api: Api, db_session: Session
 ) -> None:
