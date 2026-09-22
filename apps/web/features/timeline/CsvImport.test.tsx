@@ -74,3 +74,28 @@ describe("CsvImport", () => {
     expect(await screen.findByText(/missing required columns/i)).toBeInTheDocument();
   });
 });
+
+describe("CsvImport guidance", () => {
+  it("keeps parser column names out of the lead copy and offers a template", () => {
+    render(<CsvImport caseId="c1" onImported={vi.fn()} />);
+
+    expect(screen.getByRole("heading", { name: "Import travel history from CSV" })).toBeInTheDocument();
+    // The template carries the column names, so the user never types one.
+    expect(screen.getByRole("link", { name: "Download the CSV template" })).toHaveAttribute(
+      "href",
+      "/templates/travel-history.csv",
+    );
+    // Column names appear only inside the collapsed guide.
+    const lead = screen.getByText(/one trip per row/);
+    expect(lead.textContent).not.toMatch(/destination_label|departure_date/);
+  });
+
+  it("sends a booking PDF to evidence rather than the importer", () => {
+    render(<CsvImport caseId="c1" onImported={vi.fn()} />);
+
+    expect(screen.getByRole("link", { name: "Upload it as evidence" })).toHaveAttribute(
+      "href",
+      "/cases/c1/evidence",
+    );
+  });
+});

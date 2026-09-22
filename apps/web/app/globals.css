@@ -123,6 +123,22 @@ a:hover {
   background: var(--cw-surface-sunken);
 }
 
+/* The travel CSV's column guide. The names are the parser's literal headers, so they are
+   set as code; `overflow-wrap` keeps `destination_country_code` from widening the page at
+   320px, the failure the file input above had. */
+.cw-csv-columns {
+  margin: var(--cw-space-2) 0 0;
+}
+.cw-csv-columns dt {
+  margin-top: var(--cw-space-2);
+  font-family: var(--cw-font-mono);
+  color: var(--cw-text);
+  overflow-wrap: anywhere;
+}
+.cw-csv-columns dd {
+  margin: var(--cw-space-1) 0 0;
+}
+
 /* Native date input: the calendar popup is browser-owned and unstylable, but the
    picker indicator (the little calendar icon) can be nudged to sit with the design. */
 .cw-date-input::-webkit-calendar-picker-indicator {

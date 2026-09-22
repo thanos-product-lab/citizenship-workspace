@@ -143,7 +143,7 @@ function GettingStarted({ overview }: { overview: Overview }): JSX.Element | nul
         ) : null}
         <li>
           <a href={data}>Add the periods you spent outside the UK</a>, or import them from a
-          spreadsheet.
+          CSV file.
         </li>
         <li>
           Then open <a href={requirements}>Requirements</a> and choose{" "}

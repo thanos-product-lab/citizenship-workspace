@@ -1,6 +1,7 @@
 "use client";
 
 import type { components } from "@cw/api-client";
+import Link from "next/link";
 import { useRef, useState } from "react";
 
 import { useApiClient } from "@/lib/api";
@@ -10,7 +11,9 @@ import { buttonStyle, errorTextStyle, secondaryButtonStyle } from "@/components/
 type Validation = components["schemas"]["ImportValidationResponse"];
 type State = "idle" | "checking" | "checked" | "malformed" | "importing" | "error";
 
-const REQUIRED_COLUMNS = "destination_label, departure_date, return_date, date_confidence";
+/** Served from `public/`. `tests/residence/test_csv_template.py` holds its header row to
+ * the parser's, since nothing else ties a static file to the backend contract. */
+const TEMPLATE_HREF = "/templates/travel-history.csv";
 
 /** Read a file's text via FileReader (works in the browser and jsdom). */
 function readText(file: File): Promise<string> {
@@ -94,11 +97,49 @@ export function CsvImport({ caseId, onImported }: { caseId: string; onImported: 
   return (
     <section aria-labelledby="csv-heading" style={{ marginTop: "var(--cw-space-6)" }}>
       <h4 id="csv-heading" style={{ margin: 0, fontSize: "var(--cw-text-base)" }}>
-        Import from a spreadsheet
+        Import travel history from CSV
       </h4>
-      <p style={{ marginTop: "var(--cw-space-2)", color: "var(--cw-text-muted)", fontSize: "var(--cw-text-sm)" }}>
-        Upload a CSV with columns: {REQUIRED_COLUMNS} (and optionally destination_country_code,
-        review_state, notes). Nothing is imported until you confirm.
+      <p style={mutedStyle}>
+        Fill in the template with one trip per row and save it as CSV. Nothing is imported
+        until every row has been checked and you confirm.
+      </p>
+      <p style={mutedStyle}>
+        <a href={TEMPLATE_HREF} download>
+          Download the CSV template
+        </a>
+      </p>
+
+      {/* The column names are the parser's, so they stay out of the lead copy and are
+          explained here for anyone filling the template in. */}
+      <details style={mutedStyle}>
+        <summary>What goes in each column</summary>
+        <dl className="cw-csv-columns">
+          <dt>destination_label</dt>
+          <dd>Where you went, in your own words.</dd>
+          <dt>departure_date, return_date</dt>
+          <dd>
+            The day you left the UK and the day you came back, written as year-month-day,
+            for example 2024-03-14.
+          </dd>
+          <dt>date_confidence</dt>
+          <dd>
+            EXACT if you know the dates, ESTIMATED if you are working from memory. An estimated
+            trip is kept but left out of confirmed totals, and flagged for you to firm up.
+          </dd>
+          <dt>destination_country_code, notes</dt>
+          <dd>Optional. A two-letter country code such as FR, and anything you want to note.</dd>
+          <dt>review_state</dt>
+          <dd>
+            Optional. Leave it blank and each trip is recorded as confirmed by you, the same as
+            typing it in.
+          </dd>
+        </dl>
+      </details>
+
+      <p style={mutedStyle}>
+        Have a booking PDF?{" "}
+        <Link href={`/cases/${caseId}/evidence`}>Upload it as evidence</Link> instead. Evidence
+        is read for you, and nothing from it is used until you have checked it.
       </p>
 
       <input
@@ -181,6 +222,13 @@ export function CsvImport({ caseId, onImported }: { caseId: string; onImported: 
     </section>
   );
 }
+
+const mutedStyle: React.CSSProperties = {
+  marginTop: "var(--cw-space-2)",
+  marginBottom: 0,
+  color: "var(--cw-text-muted)",
+  fontSize: "var(--cw-text-sm)",
+};
 
 const thStyle: React.CSSProperties = {
   textAlign: "left",

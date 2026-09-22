@@ -434,7 +434,7 @@ export function TravelHistory({
         <>
           {records.length === 0 ? (
             <p style={{ marginTop: "var(--cw-space-4)" }}>
-              No trips recorded yet. Add one below, or import a spreadsheet.
+              No trips recorded yet. Add one below, or import a CSV file.
             </p>
           ) : (
             /*

@@ -1292,7 +1292,7 @@ built.
 
 ### 13. The travel import speaks in schema field names and calls a CSV a spreadsheet
 
-**Status:** open · **Kind:** copy and affordance · **Size:** small
+**Status:** **fixed**, 22 September 2026 · **Kind:** copy and affordance · **Size:** small
 
 `apps/web/features/timeline/CsvImport.tsx:97` heads the control "Import from a spreadsheet"
 and then explains it as "Upload a CSV with columns: destination_label, departure_date,
@@ -1307,6 +1307,27 @@ with the headers already in place, so nobody types a field name. Link "Have a bo
 Upload it as evidence" to the evidence destination, because a booking PDF is the document a
 user is most likely to be holding and the import is not where it goes. Accepting PDFs here
 would be a new feature, not a fix, and is not proposed.
+
+**How it was closed.** Retitled, with lead copy that names no column. The template is a
+header-only static file at `apps/web/public/templates/travel-history.csv`. It carries no
+example trip, because a row left in by a user would be imported as a real one. The column
+names now live only inside a collapsed "What goes in each column" guide, which also says
+what EXACT and ESTIMATED do to a total, the one thing a user filling the file in could not
+otherwise find out. The booking-PDF link goes to Evidence.
+
+A static file has nothing tying it to the parser, so `tests/residence/test_csv_template.py`
+holds the template's header row equal to `REQUIRED_HEADERS + OPTIONAL_HEADERS` and asserts
+it carries no data row. Two other screens said "spreadsheet" (the travel history empty state
+and the Start here list) and now say "CSV file".
+
+Verified in the browser: the template downloads for a signed-in user, the guide opens, the
+link lands on Evidence, and the section reflows at 320px (measured in a 320px frame, since
+Chrome will not size the window below 606px). The file goes through Clerk auth, because
+`.csv` is not in the middleware's static exclusions; that is harmless for a header-only
+file and was left alone.
+
+Not changed, and worth knowing: `date_confidence` is matched case-sensitively, so `exact`
+is refused. The guide says EXACT in capitals for that reason.
 
 ### 14. The issue count mixes what the user must do with what is for information
 
