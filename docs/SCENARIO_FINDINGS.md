@@ -1275,3 +1275,132 @@ flip needs the date to move backwards across the applicant's 18th birthday, and 
 must already be 18 for the case to activate. The guard makes its scenario unreachable. It now
 pins the clock with a docstring saying exactly that — the closure is still worth proving, and
 its trigger is no longer a path anybody can walk.
+
+---
+
+## Manual UX pass: notes written alongside the walkthrough
+
+Six notes from using the product by hand, written before findings 1 to 12 were fixed and
+checked against the code afterwards. None of the twelve fixes touched them. They are a
+different class from the walkthrough: that pass found places where the product was wrong,
+this one found places where it is right and hard to use.
+
+The same bar applies. Each entry names the code and the state a user meets it in. Where an
+entry proposes changing something a recorded decision protects, it says which, because
+some of these are design changes rather than defects and should be planned before they are
+built.
+
+### 13. The travel import speaks in schema field names and calls a CSV a spreadsheet
+
+**Status:** open · **Kind:** copy and affordance · **Size:** small
+
+`apps/web/features/timeline/CsvImport.tsx:97` heads the control "Import from a spreadsheet"
+and then explains it as "Upload a CSV with columns: destination_label, departure_date,
+return_date, date_confidence (and optionally destination_country_code, review_state,
+notes)". A user who owns a spreadsheet learns that it will not be accepted as one, and is
+handed column names written for the parser.
+
+Reached by anyone opening the timeline.
+
+**Proposed.** Retitle to "Import travel history from CSV". Offer a downloadable template
+with the headers already in place, so nobody types a field name. Link "Have a booking PDF?
+Upload it as evidence" to the evidence destination, because a booking PDF is the document a
+user is most likely to be holding and the import is not where it goes. Accepting PDFs here
+would be a new feature, not a fix, and is not proposed.
+
+### 14. The issue count mixes what the user must do with what is for information
+
+**Status:** open · **Kind:** domain presentation · **Size:** needs a plan
+
+`IssueRepository.count_open` (`issues/repository.py:60`) counts `OPEN` and `IN_PROGRESS`
+issues and never looks at severity, so an `INFORMATION` issue ("For information" in
+`IssueCard.tsx:46`) raises the same number as one that blocks a requirement. Four
+recheck issues raised by one change read as four separate jobs when one command clears all
+of them.
+
+The command itself has three names on three screens: "Update assessment"
+(`CaseHeader.tsx:206`), "Recheck now" (`IssuesDestination.tsx:486`) and "Run assessment"
+(`RequirementsList.tsx:167`, and in the Start here list since finding 1). Finding 1 removed
+"Recalculate" from user-facing copy, which leaves three rather than four.
+
+**Proposed.** Count actionable issues only and show informational ones separately. Group
+rechecks that one run resolves into a single task, "Update assessment: 4 checks affected",
+with the action next to the explanation. After the run, say what is left: "Assessment
+updated. 1 action remains." One label for the one command everywhere.
+
+**Why this needs a plan.** Which severities are actionable is a domain decision, and
+grouping changes the queue from one row per issue to one row per resolving command. The
+case phase deliberately ignores the queue (ADR-0009), and that should stay true.
+
+### 15. A successful upload is announced only to screen readers
+
+**Status:** open · **Kind:** feedback gap · **Size:** medium
+
+The only statement that an upload succeeded is `EvidenceDestination.tsx:217`, an
+`aria-live` region with `cw-visually-hidden`. A sighted user sees the form reset and nothing
+else, and has to find the new row in the library to learn whether it worked. Processing
+then runs in the worker with no visible stage on the row the user just created.
+
+Reached on every upload.
+
+**Proposed.** Visible, persistent feedback on the new document: Uploaded, then Reading
+document, then Ready to review, ending in a "Review extracted information" action. Make
+the library the main content of the destination, with the upload form collapsed behind
+"Add document", since after the first upload the library is what a user comes back for.
+Keep the live region; this adds a visible equivalent rather than replacing it.
+
+### 16. Review ends in a sentence, and a rejected value is labelled "Unavailable"
+
+**Status:** open · **Kind:** closure and wording · **Size:** small to medium
+
+When the last value is decided, `DocumentReview.tsx:360` says "All N values have been
+decided." and the page stops. There is no summary of what was decided, no way back to the
+library, and no prompt to update the assessment when the decisions affected one.
+
+A rejected value is badged "Unavailable". `ExtractedFieldReview.tsx:210` explains the
+choice: a rejection trusts nothing, so it takes the provenance token for "contributes
+nothing". That is true of the data and wrong for the reader, who made a decision rather
+than met a failure. The glyph is a slash, not the checkmark the note describes; the body
+text, "You said this was wrong, so nothing was recorded from it.", is already right.
+
+**Proposed.** A completion panel with the counts ("4 confirmed, 1 corrected, 2
+rejected"), "Return to evidence", and "Update assessment" when a decision affected a
+current result. Label the back link "Back to evidence: decisions saved automatically",
+since every decision already persists as it is made. Show a rejection as "Rejected: not
+used". The provenance token itself stays; this is the review surface's label for it.
+
+### 17. The evidence row says what the worker did, not what the user decided
+
+**Status:** open · **Kind:** summary · **Size:** small
+
+After review the row still reads "Text read" (`tokens.ts:296`) with "See what we read"
+(`EvidenceDestination.tsx:82`). That is the processing state. Nothing on the row says how
+many values were confirmed or rejected, or that some are still waiting.
+
+**Proposed.** Summarise the review on the row: "4 confirmed, 2 rejected", "2 values still
+need review", or the specific field when one is outstanding, "Return date still needed". A
+fully decided document with rejections in it is finished, and must not read as needing
+attention: rejecting a value is a completed decision.
+
+### 18. The requirement detail shows every layer at once
+
+**Status:** open · **Kind:** progressive disclosure · **Size:** needs a plan
+
+`RequirementDetail.tsx` renders the whole explanation stack in sequence, including layers
+that state an absence ("No limitations were recorded against this result.", "There's
+nothing to do for this requirement right now."). On a simple requirement most of the
+screen is calculation, sources, rule and input versions, and history, and the answer to
+"am I OK here, and what do I do" is spread through it.
+
+**This proposal meets a recorded decision.** The absence statements are deliberate. The
+test `keeps the evidence layer and states that nothing is linked`
+(`RequirementDetail.test.tsx:122`) exists because "dropping the layer would let a reader
+assume the question had been satisfied". The release-gate audit passes "the explainability
+model is visible" on the strength of this screen rendering its layers.
+
+**Proposed, within that.** The first screen shows the requirement, the conclusion, a short
+reason, anything unresolved, and the next action. Calculations, sources, versions and
+history move under "How this was checked", collapsed but present, with their absence
+statements intact inside it. Limitations, the stale notice and the date-passed notice stay
+visible above the fold. That is collapsing, not removing, and it keeps every statement the
+test protects. The release-gate wording needs updating in the same change.
