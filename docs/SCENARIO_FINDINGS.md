@@ -938,7 +938,7 @@ path: `POST …/evidence/uploads` returned 200, the PUT to the store failed, and
 
 ### 11. A failed upload leaves its name behind, and the next document inherits it
 
-**Status:** outstanding · found running scenario 9
+**Status:** **fixed**, 22 September 2026 · found running scenario 9
 **Affects:** the evidence library of any user whose upload fails and who then uploads
 something else
 **Severity:** a document is filed under another file's name, in the one place in the product
@@ -976,6 +976,20 @@ the trigger.
 and refresh it on file change when it was auto-derived. Clearing the name on failure would
 also work and is simpler, at the cost of discarding a name the user typed before a failed
 attempt.
+
+**How it was closed.** The first of the two: a `nameIsDerived` flag beside `displayName`.
+`onFile` refreshes the name when it is empty *or* derived, and typing in the box clears the
+flag. The original guard's purpose is kept exactly — a name the user wrote is still never
+clobbered — and it simply stops treating a leftover as one.
+
+Verified by replaying the sequence that produced the defect: `empty.pdf` refused by the
+store, `password-protected.pdf` chosen next, and the library row now reads
+**password-protected**, not "empty". The mislabelled row from the original run is still in
+that case's library a few lines below, which makes a tidy before-and-after.
+
+Two tests, both halves: one asserts the rename after a failure, the other that a typed name
+survives choosing another file. The first fails against the old code; the second passes
+either way, which is the point — it pins the behaviour the guard existed to protect.
 
 ### Note: the refusal for an empty file says nothing about why
 

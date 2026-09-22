@@ -42,11 +42,16 @@ export function UploadDocument({
   const [file, setFile] = useState<File | null>(null);
   const [category, setCategory] = useState<string>(UPLOADABLE_CATEGORIES[0]);
   const [displayName, setDisplayName] = useState("");
+  // Whether `displayName` is the filename this form filled in, or something the user typed.
+  // Without the distinction the two are the same string and the guard below cannot tell a
+  // name worth keeping from one left over — see `onFile`.
+  const [nameIsDerived, setNameIsDerived] = useState(false);
   const [fileError, setFileError] = useState<string | undefined>(undefined);
 
   function reset(): void {
     setFile(null);
     setDisplayName("");
+    setNameIsDerived(false);
     setFileError(undefined);
     if (fileRef.current) fileRef.current.value = "";
   }
@@ -81,7 +86,18 @@ export function UploadDocument({
     setFile(chosen);
     // Seed the label from the filename so the common case needs no typing. The user can
     // change it; the filename is kept separately and never becomes the storage path.
-    if (!displayName) setDisplayName(chosen.name.replace(/\.[^.]+$/, ""));
+    //
+    // Refreshed when the standing name is one this form derived, not only when the box is
+    // empty. `reset()` runs on success alone, so a *failed* upload left its derived name
+    // behind, and the old `if (!displayName)` guard then declined to replace it — the next
+    // document was filed under the previous file's name. Observed: `empty.pdf` was refused
+    // by the store, and `password-protected.pdf` went into the library as "empty".
+    //
+    // A name the user typed is still never clobbered, which is what the guard was for.
+    if (!displayName || nameIsDerived) {
+      setDisplayName(chosen.name.replace(/\.[^.]+$/, ""));
+      setNameIsDerived(true);
+    }
   }
 
   function onSubmit(event: FormEvent<HTMLFormElement>): void {
@@ -167,7 +183,11 @@ export function UploadDocument({
           style={inputStyle}
           value={displayName}
           maxLength={255}
-          onChange={(event) => setDisplayName(event.currentTarget.value)}
+          onChange={(event) => {
+            setDisplayName(event.currentTarget.value);
+            // Typed, so it is now the user's and survives choosing another file.
+            setNameIsDerived(false);
+          }}
           aria-disabled={busy}
         />
       </Field>

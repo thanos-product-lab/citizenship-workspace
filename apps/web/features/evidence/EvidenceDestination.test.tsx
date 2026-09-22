@@ -293,6 +293,43 @@ describe("uploading", () => {
     expect(post).not.toHaveBeenCalled();
   });
 
+  it("renames when the standing name is one it derived, so a failure cannot mislabel the next file", async () => {
+    /**
+     * `reset()` runs on success alone, so a failed upload left its derived display name in
+     * the box — and `if (!displayName)` then declined to replace it, because the box was
+     * not empty. The next document went into the library under the previous file's name.
+     *
+     * Seen for real: `empty.pdf` was refused by the store, and `password-protected.pdf`
+     * was then filed as "empty" — a document under another file's name, in the one place
+     * whose job is knowing which document is which.
+     */
+    renderWithQuery(<EvidenceDestination caseId={CASE_ID} />);
+    const input = (await screen.findByLabelText("Document file")) as HTMLInputElement;
+    const name = () => screen.getByLabelText("Display name") as HTMLInputElement;
+
+    choose(input, new File(["%PDF-1.7"], "empty.pdf", { type: "application/pdf" }));
+    expect(name().value).toBe("empty");
+
+    // No upload in between: this is the form state a refusal leaves behind.
+    choose(input, new File(["%PDF-1.7"], "password-protected.pdf", { type: "application/pdf" }));
+    expect(name().value).toBe("password-protected");
+  });
+
+  it("keeps a name the user typed when another file is chosen", async () => {
+    // The other half, and the reason the original guard existed. Only a name this form
+    // filled in may be replaced; one the user wrote is theirs.
+    renderWithQuery(<EvidenceDestination caseId={CASE_ID} />);
+    const input = (await screen.findByLabelText("Document file")) as HTMLInputElement;
+    const name = () => screen.getByLabelText("Display name") as HTMLInputElement;
+
+    choose(input, new File(["%PDF-1.7"], "booking.pdf", { type: "application/pdf" }));
+    fireEvent.change(name(), { target: { value: "Rome trip, amended" } });
+
+    choose(input, new File(["%PDF-1.7"], "other.pdf", { type: "application/pdf" }));
+
+    expect(name().value).toBe("Rome trip, amended");
+  });
+
   it("binds the file error to the input that caused it", async () => {
     renderWithQuery(<EvidenceDestination caseId={CASE_ID} />);
     const input = (await screen.findByLabelText("Document file")) as HTMLInputElement;
