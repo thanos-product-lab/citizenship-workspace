@@ -149,6 +149,38 @@ const buttonStyle: React.CSSProperties = {
   cursor: "pointer",
 };
 
+/** What the server refused with, for the refusals this form can say something useful about. */
+type CreateRefusal = { code?: string; held?: number; limit?: number };
+
+/**
+ * Why a case could not be created, in words.
+ *
+ * Follows `refusalMessage` in `EvidenceDestination`: branch on the server's stable `code`,
+ * keep the sentence here, and use the numbers the server sent rather than reprinting a
+ * limit this file would have to hold in step with `max_cases_per_user`. The handler for
+ * `TOO_MANY_CASES` puts `held` and `limit` in the body for exactly that.
+ *
+ * **Every failure used to collapse into the fallback**, and for this one the fallback was
+ * not merely unhelpful but wrong: "Please try again" is the single thing guaranteed not to
+ * work when the refusal is a limit, and nothing told the user a limit existed or that
+ * deleting a finished case is the way out. The backend had written all of that and the
+ * client dropped it — `CaseNotAssessable`'s docstring says these carry "a stable `code` so
+ * the frontend can" act on them, so this was a dropped contract rather than an undesigned
+ * path.
+ */
+function createCaseRefusal(refusal: CreateRefusal | undefined): string {
+  if (refusal?.code === "TOO_MANY_CASES") {
+    const held = refusal.held ?? 0;
+    const limit = refusal.limit ?? 0;
+    return (
+      `You have ${held} of ${limit} cases, which is the maximum. ` +
+      "Delete a case you have finished with to open another."
+    );
+  }
+  // A genuinely unknown failure. Retrying is reasonable advice here and only here.
+  return "Could not create the case. Please try again.";
+}
+
 function CreateCaseForm({ onCreated }: { onCreated: (created: CaseResponse) => void }) {
   const api = useApiClient();
   const [title, setTitle] = useState("");
@@ -171,7 +203,7 @@ function CreateCaseForm({ onCreated }: { onCreated: (created: CaseResponse) => v
     });
     setSubmitting(false);
     if (apiError || !data) {
-      setError("Could not create the case. Please try again.");
+      setError(createCaseRefusal(apiError as CreateRefusal | undefined));
       inputRef.current?.focus();
       return;
     }

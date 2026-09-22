@@ -730,7 +730,7 @@ cleaned rather than merely dereferenced.
 
 ### 8. A backend error written for the user is thrown away by the frontend
 
-**Status:** outstanding · found running scenario 7, while trying to create the throwaway case
+**Status:** **fixed**, 22 September 2026 · found running scenario 7, while trying to create the throwaway case
 **Affects:** case creation, any user at the case limit
 **Severity:** the advice shown is not merely unhelpful, it is wrong. Retrying can never work.
 
@@ -765,6 +765,20 @@ a dropped contract rather than an undesigned path.
 **What closing it takes.** Branch on the error `code` in `handleSubmit` and render the
 server's message for `TOO_MANY_CASES`, keeping the generic line as the fallback for
 genuinely unknown failures.
+
+**How it was closed.** `createCaseRefusal` in `CasesPanel.tsx`, following `refusalMessage`
+in `EvidenceDestination`: branch on the stable `code`, keep the sentence in the client, and
+use the numbers the server sent. The handler puts `held` and `limit` in the body under a
+comment saying they are there "so the client can say 10 of 10" rather than the client
+reprinting a limit it would have to keep in step with `max_cases_per_user` — so the fix is
+the one the backend was already written for.
+
+The generic line survives as the fallback, which is correct for a failure nobody can name:
+retrying an unknown error is reasonable advice, and only that.
+
+Verified in the browser at the real limit: **"You have 10 of 10 cases, which is the maximum.
+Delete a case you have finished with to open another."** Two tests, one per branch; the
+limit one fails against the old code.
 
 **Note on how this was found.** It was not in the scenario. It surfaced because running seven
 scenarios accumulated ten cases, which is the ordinary consequence of using the product for a

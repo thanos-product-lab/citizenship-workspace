@@ -78,6 +78,51 @@ describe("CasesPanel", () => {
     expect(post).toHaveBeenCalledWith("/api/v1/cases", { body: { title: "My case" } });
   });
 
+  it("says the case limit was reached instead of telling the user to try again", async () => {
+    /**
+     * Every failure used to collapse into "Could not create the case. Please try again."
+     * For this one that advice is the single thing guaranteed not to work: the refusal is
+     * a limit, so retrying repeats it exactly, and nothing said a limit existed or that
+     * deleting a finished case is the way out.
+     *
+     * The server had written all of it. `TooManyCases` carries a stable code and puts
+     * `held` and `limit` in the body under a comment saying it is there "so the client can
+     * say 10 of 10" — the numbers come from the server precisely so this file does not
+     * hold a copy of `max_cases_per_user` that could drift.
+     */
+    get.mockResolvedValue({ data: [], error: undefined });
+    post.mockResolvedValue({
+      data: undefined,
+      error: { detail: "…", code: "TOO_MANY_CASES", held: 10, limit: 10 },
+      response: { status: 409 },
+    });
+    render(<CasesPanel />);
+    await waitFor(() => expect(screen.getByText(/no cases yet/i)).toBeInTheDocument());
+
+    fireEvent.change(screen.getByLabelText(/case name/i), { target: { value: "One too many" } });
+    fireEvent.click(screen.getByRole("button", { name: /create case/i }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(/10 of 10/);
+    expect(alert).toHaveTextContent(/delete a case you have finished with/i);
+    expect(alert).not.toHaveTextContent(/try again/i);
+  });
+
+  it("still offers a retry for a failure it cannot name", async () => {
+    // The fallback is right here and only here: an unknown failure may well be transient.
+    get.mockResolvedValue({ data: [], error: undefined });
+    post.mockResolvedValue({ data: undefined, error: {}, response: { status: 500 } });
+    render(<CasesPanel />);
+    await waitFor(() => expect(screen.getByText(/no cases yet/i)).toBeInTheDocument());
+
+    fireEvent.change(screen.getByLabelText(/case name/i), { target: { value: "Boom" } });
+    fireEvent.click(screen.getByRole("button", { name: /create case/i }));
+
+    await waitFor(() =>
+      expect(screen.getByRole("alert")).toHaveTextContent(/could not create the case/i),
+    );
+  });
+
   it("blocks submission of a blank title without calling the API", async () => {
     get.mockResolvedValue({ data: [], error: undefined });
     render(<CasesPanel />);
