@@ -314,6 +314,26 @@
   background: var(--cw-surface-sunken);
 }
 
+/*
+ * A link styled as a button keeps the button's text colour.
+ *
+ * The app's global `a` and `a:hover` rules colour and underline prose links, and `a:hover`
+ * outranks `.cw-button` on specificity. On a primary button-link that turned the text
+ * `--cw-accent-hover` over an `--cw-accent-hover` fill, so the label vanished on hover.
+ * Scoped to `a` so real buttons are untouched, and the underline goes too: the shape is
+ * the affordance here, as on any other button.
+ */
+a.cw-button,
+a.cw-button:hover {
+  color: var(--cw-accent-contrast);
+  text-decoration: none;
+}
+
+a.cw-button--secondary,
+a.cw-button--secondary:hover {
+  color: var(--cw-text);
+}
+
 
 /* --- Case workspace shell --------------------------------------------------- */
 
