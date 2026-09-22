@@ -1426,7 +1426,8 @@ the case's date was moved one day and restored, and the case was reassessed afte
 
 ### 17. The evidence row says what the worker did, not what the user decided
 
-**Status:** open · **Kind:** summary · **Size:** small
+**Status:** **fixed**, 22 September 2026 · **Kind:** summary · **Size:** small, but not
+frontend-only
 
 After review the row still reads "Text read" (`tokens.ts:296`) with "See what we read"
 (`EvidenceDestination.tsx:82`). That is the processing state. Nothing on the row says how
@@ -1436,6 +1437,32 @@ many values were confirmed or rejected, or that some are still waiting.
 need review", or the specific field when one is outstanding, "Return date still needed". A
 fully decided document with rejections in it is finished, and must not read as needing
 attention: rejecting a value is a completed decision.
+
+**How it was closed.** Not a copy change after all: the library response carried nothing
+about claims, so the row had nothing to summarise. Each `EvidenceResponse` now has a
+`review` block (confirmed, corrected, rejected, and the pending fields by claim type and
+journey), or null for a document that proposed nothing. Null rather than zeros, because
+"0 confirmed" would read as a review that happened.
+
+**This touches the claim boundary, and stays on the right side of it.** The library now
+reads `extracted_claims`, through a new `ClaimRepository.review_states_for_case`. It reads
+status, type and journey only, never a proposed value, so no document content reaches the
+response, and a test asserts the proposal is absent from the row. It is a display read: the
+trusted-reader list in `test_no_trusted_query_reads_claims` is unchanged and nothing on the
+assessment path calls it. Superseded and invalidated claims are left out as history. One
+query per case, like the library's other reads.
+
+The row adds one line under the state: "Departure date still needed." where one value is
+open (with its journey when there are several), "2 values still need review." where more
+are, and the tally after a review, "2 confirmed · 2 corrected · 2 rejected." Rejections are
+counted as decisions, so a finished review never reads as outstanding. Field names come
+from `claimLabels.ts`, now shared with the review screen so a field is called the same
+thing in both places.
+
+Verified in the browser on the demo case, which holds all three shapes: a finished review
+with corrections and rejections, one document with a single open value, and several with
+two. The scenario 1 case's `prompt-injection.pdf`, reviewed under finding 16, now reads
+"1 confirmed · 1 rejected." The rows reflow at 320px.
 
 ### 18. The requirement detail shows every layer at once
 

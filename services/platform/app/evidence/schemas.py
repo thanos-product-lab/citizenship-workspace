@@ -85,6 +85,48 @@ class RecordUploadRequest(BaseModel):
     original_filename: str | None = Field(default=None, max_length=255)
 
 
+class PendingField(BaseModel):
+    """A value still waiting for a decision, named by type. Never its value."""
+
+    claim_type: str
+    journey_index: int
+
+
+class ReviewSummary(BaseModel):
+    """Where review stands on one document, for its row in the library.
+
+    The processing state says what the worker did ("Text read"), which stays true after
+    a review and says nothing about it. This is what the person did.
+
+    A rejection is counted as a decision, the same as a confirmation. It is finished work,
+    and a document whose only outstanding thing is a rejection has nothing outstanding.
+    """
+
+    confirmed: int
+    corrected: int
+    rejected: int
+    #: Named rather than counted, so a row with one value left can say which one.
+    pending: list[PendingField]
+    #: How many journeys the document proposed values for. A pending field is named with
+    #: its journey only when there is more than one, as the review screen does.
+    journey_count: int
+
+    @classmethod
+    def from_states(cls, states: list[tuple[str, str, int]]) -> "ReviewSummary":
+        """Build from `(status, claim_type, journey_index)` rows for one document."""
+        return cls(
+            confirmed=sum(1 for status, _, _ in states if status == "CONFIRMED"),
+            corrected=sum(1 for status, _, _ in states if status == "CORRECTED"),
+            rejected=sum(1 for status, _, _ in states if status == "REJECTED"),
+            pending=[
+                PendingField(claim_type=claim_type, journey_index=journey)
+                for status, claim_type, journey in states
+                if status == "PENDING_REVIEW"
+            ],
+            journey_count=len({journey for _, _, journey in states}),
+        )
+
+
 class EvidenceResponse(BaseModel):
     id: uuid.UUID
     case_id: uuid.UUID
@@ -123,6 +165,8 @@ class EvidenceResponse(BaseModel):
     #: and computed by the same `may_retry` the retry command guards with, so the button
     #: cannot be offered for something the command will refuse.
     can_retry: bool = False
+    #: Where review stands, or null for a document that proposed nothing to review.
+    review: ReviewSummary | None = None
 
     # --- what the classifier proposed (M8 slice 2) --------------------------------
     #: The model's view of what kind of document this is. **A proposal, never a
@@ -161,6 +205,7 @@ class EvidenceResponse(BaseModel):
         run: EvidenceProcessingRun | None = None,
         text: EvidenceFileText | None = None,
         classification: "ExtractionRun | None" = None,
+        review: ReviewSummary | None = None,
     ) -> "EvidenceResponse":
         status = EvidenceProcessingStatus(item.processing_status)
         return cls(
@@ -177,6 +222,7 @@ class EvidenceResponse(BaseModel):
             character_count=text.character_count if text else None,
             text_truncated=text.truncated if text else False,
             can_retry=may_retry(status, run.failure_code if run else None),
+            review=review,
             proposed_category=classification.classified_category if classification else None,
             proposed_category_confidence=(
                 classification.classification_confidence if classification else None

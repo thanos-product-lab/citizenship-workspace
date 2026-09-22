@@ -898,3 +898,72 @@ def test_a_decision_with_no_value_cannot_produce_a_reviewed_value(db_session: Se
 
     with pytest.raises(ValueError, match="must carry one"):
         decision.outcome(schema=ValueSchema.TEXT_V1)
+
+
+# --- the library row's summary of a review --------------------------------------------
+
+
+def _library_row(api: Api, case_id: str) -> dict[str, Any]:
+    items = api("user_a").get(f"/api/v1/cases/{case_id}/evidence").json()["items"]
+    assert len(items) == 1
+    row: dict[str, Any] = items[0]
+    return row
+
+
+def test_the_library_names_what_is_still_open_by_type_and_never_by_value(
+    api: Api, db_session: Session
+) -> None:
+    """A row can say "Return date still needed" because it is sent the claim type. It is
+    not sent the proposal: a library response carrying a document's values would put
+    Tier-3 content on the screen whose job is to say where the work stands."""
+    case_id, _claim = _case_with_claim(
+        api, db_session, claim_type=ClaimType.TRAVEL_RETURN_DATE, raw="11 May 2026"
+    )
+
+    row = _library_row(api, case_id)
+
+    assert row["review"] == {
+        "confirmed": 0,
+        "corrected": 0,
+        "rejected": 0,
+        "pending": [{"claim_type": "travel.return_date", "journey_index": 0}],
+        "journey_count": 1,
+    }
+    assert "11 May 2026" not in str(row)
+    assert "2026-05-11" not in str(row)
+
+
+def test_a_rejection_counts_as_a_finished_decision(api: Api, db_session: Session) -> None:
+    """Rejecting a value is work done, not work outstanding. A document whose values were
+    all decided, some of them by rejection, has nothing pending."""
+    case_id, claim = _case_with_claim(api, db_session)
+    sibling = _second_journey(db_session, claim, raw="9 June 2026")
+
+    assert _review(api, case_id, claim.id, entered_value="4 May 2026").status_code == 201
+    assert (
+        _review(
+            api, case_id, sibling.id, decision="REJECT", reason_code="VALUE_NOT_PRESENT"
+        ).status_code
+        == 201
+    )
+
+    review = _library_row(api, case_id)["review"]
+    assert (review["confirmed"], review["corrected"], review["rejected"]) == (1, 0, 1)
+    assert review["pending"] == []
+    assert review["journey_count"] == 2
+
+
+def test_a_document_that_proposed_nothing_has_no_review_summary(
+    api: Api, db_session: Session
+) -> None:
+    """Null, not zeros. "0 confirmed" on a document nobody was asked about would read as
+    a review that happened and found nothing."""
+    from tests.security.conftest import SUPPORTED_ANSWERS
+
+    case_id = str(api("user_a").post("/api/v1/cases", json={"title": "Empty"}).json()["id"])
+    api("user_a").put(f"/api/v1/cases/{case_id}/route-profile", json=SUPPORTED_ANSWERS)
+    api("user_a").post(f"/api/v1/cases/{case_id}/route-profile/confirm", json={})
+    _evidence_chain(db_session, case_id=uuid.UUID(case_id), user="user_a")
+    db_session.commit()
+
+    assert _library_row(api, case_id)["review"] is None

@@ -779,6 +779,16 @@
             ],
             "title": "Proposed Category Confidence"
           },
+          "review": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReviewSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "revision": {
             "title": "Revision",
             "type": "integer"
@@ -1485,6 +1495,25 @@
           "blocking"
         ],
         "title": "NextActionView",
+        "type": "object"
+      },
+      "PendingField": {
+        "description": "A value still waiting for a decision, named by type. Never its value.",
+        "properties": {
+          "claim_type": {
+            "title": "Claim Type",
+            "type": "string"
+          },
+          "journey_index": {
+            "title": "Journey Index",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "claim_type",
+          "journey_index"
+        ],
+        "title": "PendingField",
         "type": "object"
       },
       "PriorityActionView": {
@@ -2383,6 +2412,43 @@
           "value"
         ],
         "title": "ReviewResponse",
+        "type": "object"
+      },
+      "ReviewSummary": {
+        "description": "Where review stands on one document, for its row in the library.\n\nThe processing state says what the worker did (\"Text read\"), which stays true after\na review and says nothing about it. This is what the person did.\n\nA rejection is counted as a decision, the same as a confirmation. It is finished work,\nand a document whose only outstanding thing is a rejection has nothing outstanding.",
+        "properties": {
+          "confirmed": {
+            "title": "Confirmed",
+            "type": "integer"
+          },
+          "corrected": {
+            "title": "Corrected",
+            "type": "integer"
+          },
+          "journey_count": {
+            "title": "Journey Count",
+            "type": "integer"
+          },
+          "pending": {
+            "items": {
+              "$ref": "#/components/schemas/PendingField"
+            },
+            "title": "Pending",
+            "type": "array"
+          },
+          "rejected": {
+            "title": "Rejected",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "confirmed",
+          "corrected",
+          "rejected",
+          "pending",
+          "journey_count"
+        ],
+        "title": "ReviewSummary",
         "type": "object"
       },
       "RouteProfileDraftInput": {

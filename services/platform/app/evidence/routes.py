@@ -15,6 +15,7 @@ would slip through at M7.
 """
 
 import uuid
+from collections import defaultdict
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, status
@@ -35,9 +36,11 @@ from app.evidence.schemas import (
     EvidenceResponse,
     EvidenceTextResponse,
     RecordUploadRequest,
+    ReviewSummary,
     StartUploadRequest,
     UploadGrantResponse,
 )
+from app.facts.repository import ClaimRepository
 from app.shared.tenant import get_tenant_session
 
 router = APIRouter(prefix="/api/v1/cases/{case_id}/evidence", tags=["evidence"])
@@ -146,6 +149,13 @@ def list_evidence(
     classifications = ExtractionRunRepository.latest_classifications_for_case(
         session, case_id=case.id
     )
+    # The same one-query shape for review: the row says what the person decided, which the
+    # processing state cannot, and a per-document read would be the N+1 above again.
+    states: dict[uuid.UUID, list[tuple[str, str, int]]] = defaultdict(list)
+    for item_id, claim_status, claim_type, journey in ClaimRepository.review_states_for_case(
+        session, case_id=case.id
+    ):
+        states[item_id].append((claim_status, claim_type, journey))
     return EvidenceLibraryResponse(
         items=[
             EvidenceResponse.from_domain(
@@ -154,6 +164,7 @@ def list_evidence(
                 runs.get(item.id),
                 texts.get(file.id),
                 classifications.get(item.id),
+                ReviewSummary.from_states(states[item.id]) if item.id in states else None,
             )
             for item, file in rows
         ],

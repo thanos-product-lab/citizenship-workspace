@@ -1,5 +1,7 @@
 import type { components } from "@cw/api-client";
 
+import { claimLabel } from "./review/claimLabels";
+
 export type EvidenceItem = components["schemas"]["EvidenceResponse"];
 
 /**
@@ -122,4 +124,44 @@ export function pollInterval(items: readonly EvidenceItem[], now: number): numbe
       now - new Date(item.uploaded_at).getTime() < SETTLE_WINDOW_MS,
   );
   return recent ? POLL_INTERVAL_MS : false;
+}
+
+/**
+ * What the person has decided about this document, or `null` where nothing was proposed.
+ *
+ * The processing state is the worker's ("Text read"), and it stays true after a review
+ * while saying nothing about one. This is the other half: what is still open, named
+ * where there is only one, and what was decided.
+ *
+ * A rejection is counted with the decisions, not with the work left. Rejecting a value
+ * finishes it, and a row that read as needing attention because of one would be asking
+ * the user to revisit a choice they already made.
+ */
+export function reviewSummary(item: EvidenceItem): string | null {
+  const review = item.review;
+  if (!review) return null;
+
+  const [only] = review.pending;
+  const open =
+    review.pending.length === 1 && only
+      ? `${claimLabel(only.claim_type)}${
+          review.journey_count > 1 ? ` (journey ${only.journey_index + 1})` : ""
+        } still needed`
+      : review.pending.length > 1
+        ? `${review.pending.length} values still need review`
+        : null;
+
+  const decided = (
+    [
+      [review.confirmed, "confirmed"],
+      [review.corrected, "corrected"],
+      [review.rejected, "rejected"],
+    ] as const
+  )
+    .filter(([count]) => count > 0)
+    .map(([count, word]) => `${count} ${word}`)
+    .join(" · ");
+
+  const parts = [open, decided].filter((part): part is string => Boolean(part));
+  return parts.length > 0 ? `${parts.join(". ")}.` : null;
 }

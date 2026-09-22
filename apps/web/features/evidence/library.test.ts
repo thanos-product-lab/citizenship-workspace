@@ -7,6 +7,7 @@ import {
   SETTLE_WINDOW_MS,
   TERMINAL_PROCESSING_STATES,
   pollInterval,
+  reviewSummary,
   type EvidenceItem,
 } from "./library";
 
@@ -139,5 +140,63 @@ describe("the state sets", () => {
       (state) => toEvidenceProcessingState(state) === null,
     );
     expect(untokened).toEqual([]);
+  });
+});
+
+describe("reviewSummary", () => {
+  const review = (overrides: Partial<NonNullable<EvidenceItem["review"]>> = {}) =>
+    anItem({
+      processing_status: "COMPLETED",
+      review: {
+        confirmed: 0,
+        corrected: 0,
+        rejected: 0,
+        pending: [],
+        journey_count: 1,
+        ...overrides,
+      },
+    });
+
+  it("says nothing for a document that proposed nothing", () => {
+    expect(reviewSummary(anItem())).toBeNull();
+  });
+
+  it("names the one value still open", () => {
+    expect(
+      reviewSummary(
+        review({ confirmed: 3, pending: [{ claim_type: "travel.return_date", journey_index: 0 }] }),
+      ),
+    ).toBe("Return date still needed. 3 confirmed.");
+  });
+
+  it("names the journey only when there is more than one", () => {
+    expect(
+      reviewSummary(
+        review({
+          journey_count: 2,
+          pending: [{ claim_type: "travel.return_date", journey_index: 1 }],
+        }),
+      ),
+    ).toBe("Return date (journey 2) still needed.");
+  });
+
+  it("counts the open values once there are several", () => {
+    expect(
+      reviewSummary(
+        review({
+          pending: [
+            { claim_type: "travel.departure_date", journey_index: 0 },
+            { claim_type: "travel.return_date", journey_index: 0 },
+          ],
+        }),
+      ),
+    ).toBe("2 values still need review.");
+  });
+
+  it("reads a finished review with rejections in it as finished", () => {
+    // Rejecting a value is a decision. Nothing about this sentence asks for attention.
+    const summary = reviewSummary(review({ confirmed: 4, rejected: 2 }));
+    expect(summary).toBe("4 confirmed · 2 rejected.");
+    expect(summary).not.toMatch(/still|need/);
   });
 });

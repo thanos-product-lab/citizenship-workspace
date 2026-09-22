@@ -1071,6 +1071,7 @@ export interface components {
             proposed_category?: string | null;
             /** Proposed Category Confidence */
             proposed_category_confidence?: number | null;
+            review?: components["schemas"]["ReviewSummary"] | null;
             /** Revision */
             revision: number;
             /** Size Bytes */
@@ -1372,6 +1373,16 @@ export interface components {
             priority: number;
             /** Text */
             text: string | null;
+        };
+        /**
+         * PendingField
+         * @description A value still waiting for a decision, named by type. Never its value.
+         */
+        PendingField: {
+            /** Claim Type */
+            claim_type: string;
+            /** Journey Index */
+            journey_index: number;
         };
         /**
          * PriorityActionView
@@ -1696,6 +1707,28 @@ export interface components {
             review_mode: string;
             /** Value */
             value: string | null;
+        };
+        /**
+         * ReviewSummary
+         * @description Where review stands on one document, for its row in the library.
+         *
+         *     The processing state says what the worker did ("Text read"), which stays true after
+         *     a review and says nothing about it. This is what the person did.
+         *
+         *     A rejection is counted as a decision, the same as a confirmation. It is finished work,
+         *     and a document whose only outstanding thing is a rejection has nothing outstanding.
+         */
+        ReviewSummary: {
+            /** Confirmed */
+            confirmed: number;
+            /** Corrected */
+            corrected: number;
+            /** Journey Count */
+            journey_count: number;
+            /** Pending */
+            pending: components["schemas"]["PendingField"][];
+            /** Rejected */
+            rejected: number;
         };
         /** RouteProfileDraftInput */
         RouteProfileDraftInput: {

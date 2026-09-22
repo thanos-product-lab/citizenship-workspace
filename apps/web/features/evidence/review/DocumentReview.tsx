@@ -38,24 +38,8 @@ import {
   useReviewClaim,
   type RejectionCode,
 } from "./useReviewClaim";
+import { claimLabel } from "./claimLabels";
 import { REVIEW_COMPLETE_ID, ReviewComplete } from "./ReviewComplete";
-
-/**
- * What each claim type is called on screen.
- *
- * `travel.departure_date` is the domain's name for the field and the right thing to
- * store; it is not a thing to show anybody. A missing entry falls back to a humanised
- * form rather than rendering the key, so a claim type added on the server appears as
- * readable words here before this map catches up.
- */
-const FIELD_LABELS: Record<string, string> = {
-  "travel.departure_date": "Departure date",
-  "travel.return_date": "Return date",
-  "travel.origin": "Departing from",
-  "travel.destination": "Arriving at",
-  "travel.booking_reference": "Booking reference",
-  "travel.traveller_name": "Traveller name",
-};
 
 /** RFC §10's reasons, in the words a person would use. */
 const REJECTION_OPTIONS: readonly RejectionOption[] = [
@@ -485,13 +469,7 @@ export function DocumentReview({
 }
 
 function fieldLabel(claim: ReviewClaim): string {
-  return FIELD_LABELS[claim.claim_type] ?? humanise(claim.claim_type);
-}
-
-function humanise(claimType: string): string {
-  const field = claimType.split(".").pop() ?? claimType;
-  const words = field.replace(/_/g, " ");
-  return words.charAt(0).toUpperCase() + words.slice(1);
+  return claimLabel(claim.claim_type);
 }
 
 /** Journeys in order, each with its fields in the order the API returned them. */

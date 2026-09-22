@@ -139,6 +139,43 @@ class ClaimRepository:
             ).scalars()
         )
 
+    @staticmethod
+    def review_states_for_case(
+        session: Session, *, case_id: uuid.UUID
+    ) -> list[tuple[uuid.UUID, str, str, int]]:
+        """Where review stands on every document in a case, as
+        `(evidence_item_id, status, claim_type, journey_index)`.
+
+        For the library, which summarises each document's review on its row. One query for
+        the whole case, for the same reason the library's other reads are: a per-document
+        lookup is the N+1 that turns one page into a round trip per row.
+
+        Types and statuses only, never a value. The row says "Return date still needed",
+        which a claim type answers, and a proposed value would put document content in a
+        response whose job is to say where the work stands.
+
+        **Superseded and invalidated claims are left out.** They are history rather than
+        decisions about this document as it now stands, and counting them would show work
+        done on a reading that no longer exists.
+        """
+        live = (
+            ClaimStatus.PENDING_REVIEW.value,
+            ClaimStatus.CONFIRMED.value,
+            ClaimStatus.CORRECTED.value,
+            ClaimStatus.REJECTED.value,
+        )
+        rows = session.execute(
+            select(
+                ExtractedClaim.evidence_item_id,
+                ExtractedClaim.status,
+                ExtractedClaim.claim_type,
+                ExtractedClaim.journey_index,
+            )
+            .where(ExtractedClaim.case_id == case_id, ExtractedClaim.status.in_(live))
+            .order_by(ExtractedClaim.journey_index, ExtractedClaim.claim_type)
+        ).all()
+        return [(row[0], row[1], row[2], row[3]) for row in rows]
+
 
 class FactLinkRepository:
     @staticmethod

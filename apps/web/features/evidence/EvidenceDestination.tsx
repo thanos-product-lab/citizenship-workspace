@@ -16,6 +16,7 @@ import { cardStyle, errorTextStyle, linkButtonStyle, secondaryButtonStyle } from
 import {
   CATEGORY_LABELS,
   disagreement,
+  reviewSummary,
   TERMINAL_PROCESSING_STATES,
   type EvidenceItem,
 } from "./library";
@@ -595,6 +596,18 @@ function EvidenceTable({
                     }}
                   >
                     {stateNote(item)}
+                  </span>
+                ) : null}
+                {reviewSummary(item) ? (
+                  <span
+                    style={{
+                      display: "block",
+                      color: "var(--cw-text)",
+                      fontSize: "var(--cw-text-xs)",
+                      marginTop: "var(--cw-space-1)",
+                    }}
+                  >
+                    {reviewSummary(item)}
                   </span>
                 ) : null}
                 {/* The route from the state to the act. Until M8 slice 3b this row named
