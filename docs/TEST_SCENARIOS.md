@@ -107,6 +107,13 @@ Create a case for each and confirm onboarding.
 | Spouse or civil partner of a British citizen: **yes** | Unsupported. The case stays in draft and is never activated. |
 | Status: **Other** | Unsupported, not currently satisfied. Stays in draft. |
 | Any chance you are already British: **yes** | Requires review, requires judgement. Stays in draft. |
+| Status: **I'm not sure** | **Needs an answer**, not evaluated, not yet assessed. Stays in draft, and nothing on screen says "not supported". |
+
+The fourth is the one to watch. "I'm not sure" is an answer the form offers, and it used to
+come back as *"Please answer immigration status before confirming"* — a refusal of a question
+that had been answered, with no way out but to claim a status. Getting it wrong in the other
+direction is worse: an unsure applicant told their status is **not supported** is a
+definitive negative drawn from missing data. Check the words, not only the outcome.
 
 **A failure here means** an unsupported applicant reached the residence engine, which is the
 one thing the onboarding gate exists to prevent.

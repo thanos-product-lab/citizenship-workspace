@@ -17,6 +17,7 @@ from app.requirements.route_rules import (
     ROUTE_ADULT_CONFIRMED,
     ROUTE_APPLICANT_UNDER_18,
     ROUTE_MAY_BE_BRITISH,
+    ROUTE_PREREQUISITES_UNDETERMINED,
     ROUTE_PREREQUISITES_UNMET,
     ROUTE_SPOUSE_UNSUPPORTED,
     ROUTE_STANDARD_CONFIRMED,
@@ -165,6 +166,55 @@ def test_composite_prerequisites_unmet(adult: RuleOutcome, status: RuleOutcome) 
     )
     assert r.conclusion is Conclusion.NOT_CURRENTLY_SATISFIED
     assert r.summary_code == ROUTE_PREREQUISITES_UNMET
+
+
+@pytest.mark.parametrize("status_type", ["UNKNOWN", None])
+def test_composite_undetermined_prerequisite_is_not_failure(status_type: str | None) -> None:
+    """§7.2b, the row that separates "we cannot tell" from "no".
+
+    The composite used to ask whether adult and status were both `SUPPORTED` and call
+    everything else failure. `NOT_YET_ASSESSED` is everything else, so an applicant who
+    answered *"I'm not sure"* about their status — an option the form offers — was told
+    their status is not supported. A definitive negative drawn from missing data is the
+    §2.7 failure the whole product is arranged against.
+    """
+    r = evaluate_standard_section_6_1(
+        married_to_british_citizen=False,
+        may_already_be_british=False,
+        adult=_adult(),
+        status=evaluate_supported_status(status_type),
+        profile_confirmed=True,
+    )
+    assert r.conclusion is Conclusion.NOT_YET_ASSESSED
+    assert r.summary_code == ROUTE_PREREQUISITES_UNDETERMINED
+
+
+@pytest.mark.parametrize(
+    ("married", "may_be_british", "expected", "code"),
+    [
+        (True, False, Conclusion.PROFESSIONAL_REVIEW_RECOMMENDED, ROUTE_SPOUSE_UNSUPPORTED),
+        (False, True, Conclusion.REQUIRES_JUDGEMENT, ROUTE_MAY_BE_BRITISH),
+    ],
+)
+def test_a_determined_stop_outranks_an_undetermined_status(
+    married: bool, may_be_british: bool, expected: Conclusion, code: str
+) -> None:
+    """The precedence the spec fixes, asserted rather than assumed.
+
+    Spouse route and may-be-British are determined facts about the route whatever else is
+    unknown. Someone unsure of their status but certain they are applying as a spouse
+    should still be told the spouse route is unsupported, rather than being asked about a
+    status that would not have helped either way.
+    """
+    r = evaluate_standard_section_6_1(
+        married_to_british_citizen=married,
+        may_already_be_british=may_be_british,
+        adult=_adult(),
+        status=evaluate_supported_status("UNKNOWN"),
+        profile_confirmed=True,
+    )
+    assert r.conclusion is expected
+    assert r.summary_code == code
 
 
 # --- properties (Hypothesis) ----------------------------------------------

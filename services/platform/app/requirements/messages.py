@@ -205,6 +205,14 @@ SUMMARY_TEMPLATES: dict[str, _Template] = {
         "The standard five-year route depends on being an adult and holding a settled "
         "status this route accepts. At least one of those is not currently met."
     ),
+    # Deliberately says nothing about whether the route fits. It cannot: the answer it
+    # needs is not known yet, and the difference between "we cannot tell" and "no" is the
+    # whole reason §7.2b has a row for this.
+    "ROUTE_PREREQUISITES_UNDETERMINED": lambda p: (
+        "This route depends on being an adult and holding a settled status this route "
+        "accepts, and one of those answers is not known yet. Nothing has been concluded "
+        "about your case either way."
+    ),
     # status.holding_period (§7.3)
     "STATUS_PERIOD_SATISFIED": lambda p: (
         "You will have held your settled status free of immigration time restrictions "

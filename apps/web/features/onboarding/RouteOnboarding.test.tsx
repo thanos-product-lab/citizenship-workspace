@@ -130,6 +130,39 @@ describe("RouteOnboarding", () => {
     expect(screen.getByLabelText(/date of birth/i)).toBeInTheDocument(); // still editable
   });
 
+  it("asks for the status it needs rather than calling an unknown one unsupported", async () => {
+    /**
+     * "I'm not sure" is an option the form offers, and the product used to reject it as no
+     * answer at all — *"Please answer immigration status before confirming"*, about a
+     * question that had been answered, with no way forward but to claim a status the
+     * applicant may not hold.
+     *
+     * The screen's half of the fix is that the outcome is not dressed as a refusal. Nothing
+     * has concluded against this applicant, so nothing on screen may say it has: the label
+     * is "Needs an answer", and the words "not supported" must not appear.
+     */
+    get.mockResolvedValue({ data: savedDraft, error: undefined });
+    put.mockResolvedValue({ data: { ...savedDraft, revision: 3 }, error: undefined });
+    post.mockResolvedValue(
+      decision({
+        support_status: "NOT_EVALUATED",
+        lifecycle_status: "DRAFT",
+        conclusion: "NOT_YET_ASSESSED",
+        summary_code: "ROUTE_PREREQUISITES_UNDETERMINED",
+      }),
+    );
+    render(<RouteOnboarding caseId="c1" />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /confirm route/i }));
+
+    const heading = await screen.findByRole("heading", { name: /need to know your immigration status/i });
+    const panel = heading.closest("section") as HTMLElement;
+    expect(panel).toHaveTextContent(/Needs an answer/);
+    expect(panel).not.toHaveTextContent(/not supported/i);
+    // The form stays, because changing the answer is the way out.
+    expect(screen.getByLabelText(/date of birth/i)).toBeInTheDocument();
+  });
+
   it("reports missing answers when confirming an incomplete profile", async () => {
     get.mockResolvedValue({ data: savedDraft, error: undefined });
     put.mockResolvedValue({ data: { ...savedDraft, revision: 3 }, error: undefined });

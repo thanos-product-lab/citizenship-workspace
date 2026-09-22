@@ -353,19 +353,42 @@ in the UI.
 `route_profile.may_already_be_british`, and the conclusions of
 `route.adult_applicant` and `route.supported_status`.
 
+Evaluated in **precedence order**, top to bottom; the first row that matches wins.
+
 | Condition | Conclusion |
 |---|---|
-| not spouse-route, not may-be-British, adult + status both `SUPPORTED` | `SUPPORTED` |
+| route profile not confirmed | `NOT_YET_ASSESSED` |
 | `married_to_british_citizen = true` | `PROFESSIONAL_REVIEW_RECOMMENDED` — spouse route unsupported |
 | `may_already_be_british = true` | `REQUIRES_JUDGEMENT` — may not need naturalisation |
-| `route.adult_applicant` or `route.supported_status` not satisfied | `NOT_CURRENTLY_SATISFIED` |
-| route profile not confirmed | `NOT_YET_ASSESSED` |
+| `route.adult_applicant` or `route.supported_status` is `NOT_YET_ASSESSED` | `NOT_YET_ASSESSED` — undetermined, not failed |
+| `route.adult_applicant` or `route.supported_status` concluded against the applicant | `NOT_CURRENTLY_SATISFIED` |
+| neither stop applies, adult + status both `SUPPORTED` | `SUPPORTED` |
+
+**[PRODUCT] Undetermined is not failure**, and the fourth row is what keeps the two
+apart. §7.2 already gives `UNKNOWN`/absent status a conclusion of `NOT_YET_ASSESSED`
+rather than a negative one; a composite that treated "not `SUPPORTED`" as failure threw
+that distinction away and told an applicant who answered *"I'm not sure"* that their
+status is not supported. That is a definitive negative drawn from missing data, which
+§2.7 ranks as the most important thing to get wrong — and it made
+`SupportStatus.NOT_EVALUATED` unreachable, a value the applicants service maps
+specifically so that missing data never becomes a definitive negative.
+
+The row sits **below** the spouse and may-be-British rows on purpose. Those two are
+determined facts about the route regardless of what else is unknown, and an applicant
+who is unsure of their status but certain they are applying as a spouse should still be
+told the spouse route is unsupported.
 
 **Dependencies:** `ROUTE_PROFILE` (any current version), plus the two named
 upstream requirement results.
 
 Summary codes: `ROUTE_STANDARD_CONFIRMED`, `ROUTE_SPOUSE_UNSUPPORTED`,
-`ROUTE_MAY_BE_BRITISH`, `ROUTE_PREREQUISITES_UNMET`.
+`ROUTE_MAY_BE_BRITISH`, `ROUTE_PREREQUISITES_UNMET`,
+`ROUTE_PREREQUISITES_UNDETERMINED`.
+
+> `ROUTE_PREREQUISITES_UNDETERMINED` is the one summary code carried by a
+> `NOT_YET_ASSESSED` conclusion. Elsewhere that conclusion means "no rule has run",
+> which needs no code; here a rule ran, read a complete profile, and concluded that an
+> answer it needs is not yet known. The screen has to be able to say which.
 
 ---
 

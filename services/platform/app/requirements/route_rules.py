@@ -38,6 +38,10 @@ ROUTE_STANDARD_CONFIRMED = "ROUTE_STANDARD_CONFIRMED"
 ROUTE_SPOUSE_UNSUPPORTED = "ROUTE_SPOUSE_UNSUPPORTED"
 ROUTE_MAY_BE_BRITISH = "ROUTE_MAY_BE_BRITISH"
 ROUTE_PREREQUISITES_UNMET = "ROUTE_PREREQUISITES_UNMET"
+#: The one summary code carried by a `NOT_YET_ASSESSED` conclusion (RULES_SPEC §7.2b).
+#: Elsewhere that conclusion means "no rule has run" and needs no code; here a rule ran,
+#: read a complete profile, and found that an answer it needs is not yet known.
+ROUTE_PREREQUISITES_UNDETERMINED = "ROUTE_PREREQUISITES_UNDETERMINED"
 
 # Status types that satisfy route.supported_status (RULES_SPEC §7.2; RFC §9.2).
 _SUPPORTED_STATUS = frozenset({"ILR", "ILE", "EU_SETTLED_STATUS"})
@@ -90,9 +94,24 @@ def evaluate_standard_section_6_1(
 ) -> RuleOutcome:
     """§7.2b. Composite guard: the case fits the one supported route, or it doesn't.
 
-    Precedence (approved M2 plan): unconfirmed → not-yet-assessed; spouse route →
-    professional review; may-be-British → requires judgement; failed prerequisites
-    → not currently satisfied; otherwise supported."""
+    Precedence, first match wins (RULES_SPEC §7.2b): unconfirmed → not-yet-assessed;
+    spouse route → professional review; may-be-British → requires judgement; an
+    **undetermined** prerequisite → not-yet-assessed; a prerequisite concluded against
+    the applicant → not currently satisfied; otherwise supported.
+
+    **Undetermined is not failure, and the two were the same test until they weren't.**
+    This read `not (adult and status are SUPPORTED)` and called everything else failure,
+    which quietly includes `NOT_YET_ASSESSED`. §7.2 gives an `UNKNOWN` status exactly that
+    conclusion, so an applicant answering *"I'm not sure"* was told their status is not
+    supported — a definitive negative drawn from missing data, which §2.7 ranks as the
+    most important thing to get wrong. It also made `SupportStatus.NOT_EVALUATED`
+    unreachable, which `applicants.service` maps specifically so that missing data never
+    becomes a definitive negative.
+
+    The undetermined row sits **below** spouse and may-be-British because those are
+    determined facts about the route whatever else is unknown: someone unsure of their
+    status but certain they are applying as a spouse should still be told so.
+    """
     if not profile_confirmed:
         return RuleOutcome(KEY_STANDARD, Conclusion.NOT_YET_ASSESSED, None)
     if married_to_british_citizen:
@@ -101,6 +120,10 @@ def evaluate_standard_section_6_1(
         )
     if may_already_be_british:
         return RuleOutcome(KEY_STANDARD, Conclusion.REQUIRES_JUDGEMENT, ROUTE_MAY_BE_BRITISH)
+    if Conclusion.NOT_YET_ASSESSED in (adult.conclusion, status.conclusion):
+        return RuleOutcome(
+            KEY_STANDARD, Conclusion.NOT_YET_ASSESSED, ROUTE_PREREQUISITES_UNDETERMINED
+        )
     prerequisites_met = (
         adult.conclusion is Conclusion.SUPPORTED and status.conclusion is Conclusion.SUPPORTED
     )

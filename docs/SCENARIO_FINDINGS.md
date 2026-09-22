@@ -165,7 +165,7 @@ are not collapsed: the latter maps to `NOT_YET_ASSESSED`, never to a definitive 
 
 ### 3. "I'm not sure" is offered as an answer and then rejected as no answer
 
-**Status:** outstanding · found running scenario 2, testing the gate's fourth branch
+**Status:** **fixed**, 22 September 2026 · found running scenario 2, testing the gate's fourth branch
 **Affects:** onboarding, any user who does not know their immigration status
 **Severity:** the product offers an honest "I don't know" and converts it into a validation
 error, which pushes the user towards claiming a status instead
@@ -208,6 +208,34 @@ That is a better outcome than the current dead end and it is already written.
 
 Alternatively, remove "I'm not sure" from the dropdown. That is smaller and worse: the
 answer is real, and the rules were written to handle it.
+
+**How it was closed, and why it was bigger than the entry says.** Dropping `UNKNOWN` from
+`_missing_required_fields` was necessary and not sufficient. With the gate alone removed the
+composite would have answered `NOT_CURRENTLY_SATISFIED`: `evaluate_standard_section_6_1`
+asked whether adult and status were both `SUPPORTED` and called everything else failure, and
+`NOT_YET_ASSESSED` is everything else. The dead end would have become a false negative, which
+is worse — the product would have told someone who said "I'm not sure" that their status is
+not supported.
+
+So the rule itself had to change, and `DETERMINISTIC_RULES_SPEC.md` §7.2b had to say so
+first. The spec's table was unordered and had one row covering both failure modes; it is now
+ordered by precedence with an explicit row for an undetermined prerequisite, plus a new
+summary code `ROUTE_PREREQUISITES_UNDETERMINED` and a `[PRODUCT]` note recording why.
+Migration `0037` takes the composite to 1.1.0, carrying its dependency and — the part worth
+checking in review — its two `rule_composition_edges`, without which the selective
+invalidation that restales it when `route.adult_applicant` moves would have been dropped
+silently.
+
+The undetermined row sits below the spouse and may-be-British rows, so an applicant unsure
+of their status but certain they are applying as a spouse is still told the spouse route is
+unsupported. Asserted, not assumed.
+
+Verified end to end in the browser on the scenario 2b case: selecting "I'm not sure" and
+confirming now yields **Needs an answer / We need to know your immigration status**, the
+words "not supported" appear nowhere, the case is `DRAFT` / `NOT_EVALUATED`, the emitted
+decision carries `ROUTE_PREREQUISITES_UNDETERMINED`, and **zero assessment runs** exist — so
+scenario 2's guarantee that an unassessable applicant never reaches the residence engine
+still holds.
 
 ### Note: the a11y binding is fine
 

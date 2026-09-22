@@ -80,6 +80,76 @@ def test_unsupported_status_is_stopped(api: Api) -> None:
     assert body["lifecycle_status"] == "DRAFT"
 
 
+def test_not_knowing_your_status_is_an_answer_the_gate_accepts(api: Api) -> None:
+    """The fourth stop, which used to be a dead end instead.
+
+    The form offers "I'm not sure" and `_missing_required_fields` counted it as no answer,
+    so confirming returned *"Please answer immigration status before confirming"* about a
+    question that had been answered, leaving no way forward but to claim a status the
+    applicant may not hold. The advice was also unactionable: retrying does the same thing.
+
+    Every piece of the honest path already existed. §7.2 concludes `NOT_YET_ASSESSED` for
+    `UNKNOWN`, §7.2b now keeps that undetermined rather than failed, and
+    `_SUPPORT_BY_CONCLUSION` maps it to `NOT_EVALUATED` under a comment saying missing data
+    must never become a definitive negative. Only the gate stood in the way.
+    """
+    case_id = _case_with_draft(
+        api, "user_a", {**SUPPORTED_ANSWERS, "status_type": "UNKNOWN", "status_granted_on": None}
+    )
+
+    status, body = _confirm(api, "user_a", case_id)
+
+    assert status == 200, "an offered answer was refused as no answer"
+    assert body["support_status"] == "NOT_EVALUATED"
+    assert body["conclusion"] == "NOT_YET_ASSESSED"
+    assert body["summary_code"] == "ROUTE_PREREQUISITES_UNDETERMINED"
+    assert body["lifecycle_status"] == "DRAFT", "an unassessable case must not activate"
+    assert api("user_a").get(f"/api/v1/cases/{case_id}").json()["lifecycle_status"] == "DRAFT"
+
+
+def test_not_knowing_your_status_is_never_reported_as_unsupported(api: Api) -> None:
+    """The distinction the rule change exists for, stated as its own assertion.
+
+    "Something else" is a definite no and reads `UNSUPPORTED`; "I'm not sure" is an absence
+    of information and must not. If these two ever converge, the product is drawing a
+    definitive negative from missing data, which §2.7 ranks as the most important thing to
+    get wrong.
+    """
+    unknown = _case_with_draft(
+        api, "user_a", {**SUPPORTED_ANSWERS, "status_type": "UNKNOWN", "status_granted_on": None}
+    )
+    other = _case_with_draft(
+        api, "user_a", {**SUPPORTED_ANSWERS, "status_type": "OTHER", "status_granted_on": None}
+    )
+
+    _s1, unknown_body = _confirm(api, "user_a", unknown)
+    _s2, other_body = _confirm(api, "user_a", other)
+
+    assert unknown_body["support_status"] != other_body["support_status"]
+    assert unknown_body["support_status"] == "NOT_EVALUATED"
+    assert other_body["support_status"] == "UNSUPPORTED"
+
+
+def test_a_spouse_route_answer_outranks_an_unknown_status(api: Api) -> None:
+    """Precedence at the API, matching §7.2b. Being unsure of a status does not stop the
+    product saying the thing it *is* sure about."""
+    case_id = _case_with_draft(
+        api,
+        "user_a",
+        {
+            **SUPPORTED_ANSWERS,
+            "status_type": "UNKNOWN",
+            "status_granted_on": None,
+            "married_to_british_citizen": True,
+        },
+    )
+
+    _status, body = _confirm(api, "user_a", case_id)
+
+    assert body["summary_code"] == "ROUTE_SPOUSE_UNSUPPORTED"
+    assert body["support_status"] == "UNSUPPORTED"
+
+
 def test_may_already_be_british_is_review_needed(api: Api) -> None:
     case_id = _case_with_draft(api, "user_a", {**SUPPORTED_ANSWERS, "may_already_be_british": True})
     _status, body = _confirm(api, "user_a", case_id)
@@ -108,7 +178,10 @@ def test_confirm_reports_each_requirement_outcome(api: Api) -> None:
         "route.standard_section_6_1": "SUPPORTED",
     }
     assert body["rule_set"] == "2026.07.0"
-    assert body["semantic_version"] == "1.0.0"
+    # 1.1.0 since §7.2b learned to tell an undetermined prerequisite from a failed one
+    # (migration 0037). The stamp covers the route logic as a whole, which is what makes a
+    # recorded decision reproducible; the rule set does not move for a behaviour change.
+    assert body["semantic_version"] == "1.1.0"
 
 
 def test_incomplete_profile_cannot_be_confirmed(api: Api) -> None:

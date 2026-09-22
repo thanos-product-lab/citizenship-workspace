@@ -252,7 +252,15 @@ def _missing_required_fields(draft: RouteProfileVersion) -> list[str]:
     missing: list[str] = []
     if draft.date_of_birth is None:
         missing.append("date_of_birth")
-    if draft.status_type is None or draft.status_type == StatusType.UNKNOWN.value:
+    # `UNKNOWN` is an answer, not the absence of one. It used to be counted as missing
+    # here, so "I'm not sure" — an option the form offers — came back as *"Please answer
+    # immigration status before confirming"*, about a question that had been answered, with
+    # no way forward but to claim a status the applicant may not hold. The rules have always
+    # known what to do with it: §7.2 concludes `NOT_YET_ASSESSED`, §7.2b keeps that
+    # undetermined rather than failed, and `_SUPPORT_BY_CONCLUSION` maps it to
+    # `NOT_EVALUATED` precisely so missing data never becomes a definitive negative. The
+    # gate was the only thing standing between the user and that path.
+    if draft.status_type is None:
         missing.append("status_type")
     elif draft.status_type in _SUPPORTED_STATUS_TYPES and draft.status_granted_on is None:
         missing.append("status_granted_on")

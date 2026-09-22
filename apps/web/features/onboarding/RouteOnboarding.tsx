@@ -398,6 +398,17 @@ function outcomeView(decision: RouteSupport): OutcomeView {
         heading: "You may already be a British citizen",
         body: "If you are already British you may not need to naturalise at all. This needs a person to check before going further.",
       };
+    case "ROUTE_PREREQUISITES_UNDETERMINED":
+      // "I'm not sure" is an answer, and this is what the product says back to it. Not
+      // "unsupported": nothing here has concluded against the applicant, and saying so
+      // would be a definitive negative drawn from missing data. The one thing this screen
+      // must not do is turn "we cannot tell yet" into "no".
+      return {
+        tone: "review",
+        label: "Needs an answer",
+        heading: "We need to know your immigration status",
+        body: "Every residence check is measured against the status you hold, so we can’t assess this case until that is settled. Your status is on the letter or email granting it, or on your UKVI account. Come back and change your answer once you know.",
+      };
     default: {
       // ROUTE_PREREQUISITES_UNMET — distinguish age from status for a useful message.
       const adult = decision.requirements.find((r) => r.requirement_key === "route.adult_applicant");
