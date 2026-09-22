@@ -1189,7 +1189,7 @@ does not move the phase; REQUIRES_JUDGEMENT and everything more severe does."
 
 ### 12. A past application date is blocked only by the browser, not by the API
 
-**Status:** **half fixed**, 21 September 2026 · found running scenario 11
+**Status:** **fixed**, 22 September 2026 · found running scenario 11
 **Affects:** `KNOWN_LIMITATIONS.md` entry 11, and the application-date boundary
 **Severity:** entry 11 reads as though the product blocks new past selections. Only the
 client does.
@@ -1243,7 +1243,24 @@ purely because a calendar boundary went by. A drifted date therefore still reads
 `test_a_date_that_drifted_into_the_past_is_still_read_back` asserts it, so the guard cannot
 be mistaken for a full fix.
 
-**The second half is proposed, not built.** It needs a rules-spec entry before any code, per
+**The second half is now built, and not as proposed.** See ADR-0032, which was redesigned
+before any code was written. The drafted shape — a `Limitation` on each date-anchored result,
+computed at assessment time — was the wrong type: a limitation reduces confidence in a
+*result*, and no result's confidence changes when a date goes by. Typing it that way is what
+forced the staleness question, because it made an immutable past record responsible for
+noticing that today had moved.
+
+Derived at read time instead, like the case phase (ADR-0009). `application_date_has_passed`
+on the overview and the requirement detail, with a notice naming the date. No rule change, no
+migration, no scheduled job, nothing fabricated on an immutable record.
+
+Verified against the harmful state itself: case `c128470c` drifted to 23 August 2026 reads
+`residence.total_absences` **SUPPORTED at 0 days** — the window having moved off the
+applicant's travel entirely — and now carries the notice on both the overview and the figure.
+The conclusion is deliberately unchanged: it is correct about the window it names, and making
+the product disagree with its own arithmetic would be a different defect.
+
+**The original proposal, for the record.** It needs a rules-spec entry before any code, per
 the `new-rule` skill's first step, and the spec currently says nothing about whether a
 proposed date may be in the past. Drafted as **ADR-0032**, which also names the problem entry
 11 missed: staleness here is event-driven, so a limitation "computed at assessment time" never

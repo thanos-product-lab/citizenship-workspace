@@ -100,6 +100,10 @@
             ],
             "title": "Application Date"
           },
+          "application_date_has_passed": {
+            "title": "Application Date Has Passed",
+            "type": "boolean"
+          },
           "case_id": {
             "format": "uuid",
             "title": "Case Id",
@@ -186,6 +190,7 @@
           "lifecycle_status",
           "current_phase",
           "application_date",
+          "application_date_has_passed",
           "groups",
           "priority_actions",
           "priority_actions_hidden",
@@ -1739,6 +1744,22 @@
       },
       "RequirementDetail": {
         "properties": {
+          "application_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Application Date"
+          },
+          "application_date_has_passed": {
+            "title": "Application Date Has Passed",
+            "type": "boolean"
+          },
           "calculation_breakdown": {
             "additionalProperties": true,
             "title": "Calculation Breakdown",
@@ -1892,6 +1913,8 @@
           "summary_parameters",
           "summary",
           "stale",
+          "application_date",
+          "application_date_has_passed",
           "calculation_breakdown",
           "limitations",
           "next_actions",

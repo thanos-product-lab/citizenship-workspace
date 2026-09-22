@@ -487,6 +487,8 @@ class CaseOverviewView:
     case: ApplicationCase
     phase: CasePhase
     application_date: date | None
+    #: Derived at read time, like `phase` (ADR-0009). See `_application_date_has_passed`.
+    application_date_has_passed: bool
     groups: list[GroupSummary]
     #: Every requirement with its group, so the overview can list and link them.
     members: list[GroupMember]
@@ -539,16 +541,48 @@ def get_case_overview(session: Session, *, case: ApplicationCase) -> CaseOvervie
 
     date_version = _current_application_date_version_or_none(session, case.id)
 
+    application_date = date_version.application_date if date_version else None
     return CaseOverviewView(
         case=case,
         phase=derive_case_phase(session, case=case),
-        application_date=date_version.application_date if date_version else None,
+        application_date=application_date,
+        application_date_has_passed=_application_date_has_passed(application_date),
         groups=summarise_groups(members),
         members=members,
         open_issue_count=IssueRepository.count_open(session, case.id),
         actions=select_priority_actions(candidates),
         last_assessed_at=last_assessed,
     )
+
+
+def _application_date_has_passed(application_date: date | None) -> bool:
+    """Whether the date this case is measured against is already behind us.
+
+    **Derived at read time, never stored and never a rule outcome** — the same treatment as
+    `current_phase` and for the same reason (ADR-0009). The alternative shapes were all
+    worse, and `KNOWN_LIMITATIONS.md` entry 11 originally proposed one of them: a
+    `Limitation` on each date-anchored result, computed when the assessment runs.
+
+    A `Limitation` is a condition reducing confidence in a *result*, and no result's
+    confidence changes here. "451 days across 16 April 2022 to 15 April 2027" stays exactly
+    true of that window forever. What changes is whether that window is still the one the
+    applicant means — a fact about the case today, not about the run.
+
+    Reading it that way is also what dissolves the problem entry 11 did not see. Staleness
+    in this product is event-driven: a result goes stale when a declared input version
+    changes, in the same transaction. Time passing is not an input version change, so a
+    limitation computed at assessment time would never reach a case nobody recalculates —
+    which is precisely the case it exists to protect. Closing that gap would have meant
+    `as_of` as a declared input (every case restaled daily), or a scheduled sweep (the first
+    such job in the system). A read-time derivation needs neither: it is simply true
+    whenever anyone looks.
+
+    The clock is read here, in the service, because everything under `requirements/` is a
+    pure function of its inputs and must stay that way.
+    """
+    if application_date is None:
+        return False
+    return application_date < datetime.now(UTC).date()
 
 
 def _current_application_date_version_or_none(
@@ -574,6 +608,11 @@ class RequirementDetailView:
     rule: RuleVersion | None
     guidance: list[dict[str, str]]
     history: list[AssessmentResult]
+    #: The case's current proposed application date, so the notice below can name it.
+    application_date: date | None
+    #: Derived at read time, like the overview's. Carried here too so the notice appears
+    #: beside the figure it qualifies, rather than only on the screen the user came from.
+    application_date_has_passed: bool
     #: The rule version behind each history entry, keyed by id. `rule` above covers the
     #: displayed result only, and every other entry ran under whatever was active then —
     #: which is the thing history exists to preserve (Domain §30.5). Without it the list
@@ -607,6 +646,7 @@ def get_requirement_detail(
         RequirementCatalogRepository.get_guidance(session, rule.id) if rule is not None else []
     )
     history = AssessmentRepository.list_history_for_requirement(session, case.id, definition.id)
+    date_version = _current_application_date_version_or_none(session, case.id)
     return RequirementDetailView(
         definition=definition,
         current=current,
@@ -616,6 +656,10 @@ def get_requirement_detail(
         history=history,
         history_rules=RequirementCatalogRepository.get_rule_versions(
             session, [entry.rule_version_id for entry in history]
+        ),
+        application_date=date_version.application_date if date_version else None,
+        application_date_has_passed=_application_date_has_passed(
+            date_version.application_date if date_version else None
         ),
     )
 

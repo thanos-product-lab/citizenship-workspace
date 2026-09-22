@@ -771,6 +771,8 @@ export interface components {
         CaseOverview: {
             /** Application Date */
             application_date: string | null;
+            /** Application Date Has Passed */
+            application_date_has_passed: boolean;
             /**
              * Case Id
              * Format: uuid
@@ -1490,6 +1492,10 @@ export interface components {
         };
         /** RequirementDetail */
         RequirementDetail: {
+            /** Application Date */
+            application_date: string | null;
+            /** Application Date Has Passed */
+            application_date_has_passed: boolean;
             /** Calculation Breakdown */
             calculation_breakdown: {
                 [key: string]: unknown;

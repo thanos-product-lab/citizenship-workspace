@@ -334,6 +334,56 @@ describe("RequirementDetail", () => {
     expect(screen.getByRole("heading", { name: "Rule that would apply" })).toBeInTheDocument();
   });
 
+  it("says the window has closed, above the stale notice when both apply", async () => {
+    /**
+     * A case can be stale *and* past its date, and the two say different things. Stale
+     * means the inputs moved and a recalculation settles it. This means the five-year
+     * window itself has closed, which no recalculation fixes — so it goes first.
+     *
+     * The wording must not call the figures wrong. "451 days across that window" stays
+     * true of that window; what changed is whether it is still the window the applicant
+     * means.
+     */
+    get.mockResolvedValue({
+      data: aDetail({
+        application_date: "2026-04-15",
+        application_date_has_passed: true,
+        currency: "STALE",
+        stale: {
+          reason_code: "TRAVEL_RECORD_CHANGED",
+          reason: "Your travel records changed after this was worked out.",
+          marked_stale_at: "2026-08-14T11:36:00Z",
+        },
+      }),
+    });
+    const { container } = render(
+      <RequirementDetail caseId="c1" requirementKey="residence.total_absences" />,
+    );
+
+    const notice = await waitFor(() => {
+      const found = container.querySelector(".cw-date-passed-notice");
+      expect(found).not.toBeNull();
+      return found as HTMLElement;
+    });
+    expect(notice.textContent).toMatch(/15 April 2026/);
+    expect(notice.textContent).not.toMatch(/wrong|invalid|out of date/i);
+
+    const stale = container.querySelector(".cw-stale-notice");
+    expect(stale).not.toBeNull();
+    expect(notice.compareDocumentPosition(stale as Node)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+  });
+
+  it("shows no date notice while the date is still ahead", async () => {
+    get.mockResolvedValue({ data: aDetail({ application_date_has_passed: false }) });
+    const { container } = render(
+      <RequirementDetail caseId="c1" requirementKey="residence.total_absences" />,
+    );
+    await screen.findByRole("heading", { name: "Total absences" });
+    expect(container.querySelector(".cw-date-passed-notice")).toBeNull();
+  });
+
   it("shows history with figures so a change is visible", async () => {
     get.mockResolvedValue({
       data: aDetail({

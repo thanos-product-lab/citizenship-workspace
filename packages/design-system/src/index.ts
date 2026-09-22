@@ -10,6 +10,7 @@ export * from "./ExplanationStack";
 export * from "./CalculationBreakdown";
 export * from "./AssessedInput";
 export * from "./SourceReference";
+export * from "./ApplicationDatePassedNotice";
 export * from "./StaleAssessmentNotice";
 export * from "./BeforeAfterValue";
 export * from "./IssueCard";

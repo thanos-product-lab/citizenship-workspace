@@ -134,6 +134,79 @@ def test_a_date_that_drifted_into_the_past_is_still_read_back(
     assert body["application_date"] == (date.today() - timedelta(days=30)).isoformat()
 
 
+def test_a_drifted_date_is_reported_on_the_screens_that_rest_on_it(
+    api: Api, db_session: Session
+) -> None:
+    """`KNOWN_LIMITATIONS.md` 11, the other half.
+
+    A case nobody touches eventually has an application date in the past, and every
+    residence figure then describes a five-year window that has already closed. What the
+    walkthrough found was eight requirements reading SUPPORTED with a total absence figure
+    of zero, because the window had moved off the applicant's travel entirely.
+
+    **Derived at read time, not recorded on a result.** Entry 11 originally proposed a
+    `Limitation` computed when the assessment runs, and that could never have reached this
+    case: staleness here is event-driven, and time passing is not an input version change,
+    so nothing would have recalculated it. Deriving on read means it is simply true whenever
+    anyone looks — no `as_of` input restaling every case daily, and no scheduled sweep.
+    """
+    case_id = _active_case(api, "user_a")
+    api("user_a").post(_url(case_id) + "/select", json={"application_date": "2027-04-15"})
+
+    # Drift, the only way there is: the command refuses a date that has already passed, so
+    # this is a date that was future when chosen and has since been overtaken.
+    version = db_session.scalars(select(ProposedApplicationDateVersion)).one()
+    passed = date.today() - timedelta(days=30)
+    db_session.execute(
+        update(ProposedApplicationDateVersion)
+        .where(ProposedApplicationDateVersion.id == version.id)
+        .values(application_date=passed)
+    )
+    db_session.commit()
+
+    overview = api("user_a").get(f"/api/v1/cases/{case_id}/overview").json()
+    assert overview["application_date_has_passed"] is True
+    assert overview["application_date"] == passed.isoformat()
+
+    detail = (
+        api("user_a").get(f"/api/v1/cases/{case_id}/requirements/residence.total_absences").json()
+    )
+    assert detail["application_date_has_passed"] is True, "the notice must reach the figure"
+    assert detail["application_date"] == passed.isoformat()
+
+
+def test_a_future_date_reports_nothing_and_neither_does_no_date(
+    api: Api, db_session: Session
+) -> None:
+    """The quiet side. A case with a date still ahead of it, and a case with no date at
+    all, both say nothing — a notice that appeared on either would be crying wolf."""
+    case_id = _active_case(api, "user_a")
+
+    before_any_date = api("user_a").get(f"/api/v1/cases/{case_id}/overview").json()
+    assert before_any_date["application_date"] is None
+    assert before_any_date["application_date_has_passed"] is False
+
+    api("user_a").post(
+        _url(case_id) + "/select",
+        json={"application_date": (date.today() + timedelta(days=400)).isoformat()},
+    )
+
+    after = api("user_a").get(f"/api/v1/cases/{case_id}/overview").json()
+    assert after["application_date_has_passed"] is False
+
+
+def test_today_has_not_passed(api: Api) -> None:
+    """The boundary, on the read side to match the write side. A window ending today is
+    closing today, not closed, and the applicant can still apply."""
+    case_id = _active_case(api, "user_a")
+    api("user_a").post(
+        _url(case_id) + "/select", json={"application_date": date.today().isoformat()}
+    )
+
+    overview = api("user_a").get(f"/api/v1/cases/{case_id}/overview").json()
+    assert overview["application_date_has_passed"] is False
+
+
 def test_selecting_a_date_creates_the_current_version(api: Api) -> None:
     case_id = _active_case(api, "user_a")
     resp = api("user_a").post(_url(case_id) + "/select", json={"application_date": "2027-04-15"})

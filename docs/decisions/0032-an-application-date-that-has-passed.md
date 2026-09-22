@@ -1,9 +1,9 @@
 # ADR-0032: An application date that has passed
 
-**Status:** **Proposed.** The selection guard described under "Decision, part 1" is
-implemented. Part 2 amends `DETERMINISTIC_RULES_SPEC.md` and is not built, because the spec
-has to say what the rule is before code can implement it (`new-rule` skill, step 1).
-**Closes:** `KNOWN_LIMITATIONS.md` entry 11, half now and half on approval
+**Status:** **Accepted**, 22 September 2026. Both parts implemented. Part 2 was **redesigned
+before building** — the shape this ADR originally proposed, and which entry 11 had recorded,
+turned out to be the wrong one; the argument is under "Decision, part 2".
+**Closes:** `KNOWN_LIMITATIONS.md` entry 11, in full
 **Found by:** scenario 11 of the walkthrough, recorded as finding 12 in `SCENARIO_FINDINGS.md`
 
 ## Context
@@ -74,51 +74,51 @@ closure is still worth proving; its trigger is no longer a path anybody can walk
 slice gives the composite an input a forward date move can flip, that test should be rewritten
 around it and the pin dropped.
 
-## Decision, part 2: a derived limitation for a date that has drifted (proposed)
+## Decision, part 2: a derived case-level condition, read at display time
 
-Entry 11 already names the shape: "a derived limitation and issue computed at assessment time
-like every other conflict, which is a rules change with a version bump, a migration, and an
-amendment to the rules spec, since the spec currently says nothing about whether a proposed
-date may be in the past."
+`CaseOverview` and `RequirementDetail` carry `application_date_has_passed`, derived in
+`assessments.service._application_date_has_passed` from the case's current date and today.
+A notice on both screens names the date and offers the one action that helps.
 
-**Proposed spec entry**, for `DETERMINISTIC_RULES_SPEC.md`:
+**This is not what entry 11 proposed, or what this ADR first drafted**, and the difference
+is the whole decision. Both said: a derived `Limitation` on every date-anchored residence
+rule, computed at assessment time, with a rule version bump and a migration.
 
-> **The proposed application date and the present day.** A proposed application date is a
-> planning intention and may be any date the applicant chooses that has not already passed
-> when they choose it. The rules do not otherwise constrain it.
->
-> A date that has passed since it was selected does not invalidate the arithmetic: the window
-> it defines is still computed the same way, and the conclusions drawn are still correct
-> *about that window*. What changes is that the window has closed, so the conclusions no
-> longer describe an application the applicant can still make.
->
-> Every residence requirement whose window is anchored on the proposed application date
-> therefore carries `APPLICATION_DATE_HAS_PASSED` (severity `REVIEW_REQUIRED`) when
-> `application_date < as_of`, with parameters `application_date` and `as_of`. The conclusion
-> itself is unchanged: the figure is what it is, and overstating it would be its own kind of
-> false reassurance. What the limitation says is that the question has moved.
+**A `Limitation` is the wrong type for this.** It is defined as a structured condition
+reducing confidence in a *result* (Domain §33). No result's confidence changes when a date
+goes by. "451 days across 16 April 2022 to 15 April 2027" is true of that window
+permanently, and stays exactly as certain as it was. What changes is whether that window is
+still the one the applicant means — a fact about the case today, not about the run that
+produced the figure.
 
-### The part entry 11 does not mention, and which needs deciding
+**And that mis-typing is what created the hard problem.** Attaching today's facts to an
+immutable past result forces the question "how does the result learn that today moved?",
+which has only expensive answers. Staleness here is event-driven: a result goes stale when a
+declared input version changes, in the same transaction. Time passing is not an input version
+change. So a limitation computed at assessment time would never reach a case nobody
+recalculates — precisely the case it exists to protect — and closing that gap needs one of:
 
-"Computed at assessment time" is not sufficient on its own. Staleness in this product is
-**event-driven**: a result goes stale when a declared input version changes, in the same
-transaction. Time passing is not an input version change, so a case assessed today as
-supported will still read supported tomorrow when its date passes. Nobody recalculates a case
-they think is finished — which is precisely the case this is meant to protect.
-
-Three ways to close that, and the choice belongs to whoever approves this:
-
-- **`as_of` as a declared input.** Truthful and expensive: every case restales every day, and
+- **`as_of` as a declared input.** Truthful and unusable: every case restales every day and
   the issue queue fills with rechecks nobody asked for.
-- **Compute the limitation at read time**, from the stored result plus today's date. Cheap,
-  always correct, and it breaks the rule that a displayed result is exactly what the run
-  produced — the limitation would appear on a result that never recorded it.
-- **A scheduled sweep** that stales cases whose date has passed. Keeps the event-driven model
-  honest by making the passage of the date into a real event, at the cost of the first
-  scheduled job in the system.
+- **A scheduled sweep** that stales cases whose date has passed. Consistent with the
+  event-driven model, at the cost of the first scheduled job in the system.
+- **Compute it at read time.** Rejected in the first draft on the grounds that it breaks
+  "a displayed result is exactly what the run produced".
 
-The second is the smallest and the third is the most consistent with everything else here.
-Neither should be chosen in a commit message.
+The third objection dissolves once the condition stops pretending to be part of the result.
+Nothing is added to a result; a fact about the case is computed when the case is read. That
+is already how `current_phase` works, under ADR-0009, on the same response.
+
+So: no rule change, no summary code, no migration, no scheduled job, and nothing fabricated
+on an immutable record. The rules spec gains §4.0 stating that the rules do not constrain
+the date and that its passing is a read-model condition rather than a rule outcome.
+
+**What this does not do.** The conclusions themselves are unchanged — `residence.total_absences`
+on a drifted case still reads SUPPORTED at 0 days, because that is what the window contains.
+The notice is what stops that being read as an answer about the application the user is
+preparing. If a future slice wants the conclusion itself to move, that is a rules change and
+needs its own spec entry; this one deliberately does not make the product disagree with its
+own arithmetic.
 
 ## Consequences
 

@@ -307,6 +307,13 @@ class RequirementDetail(BaseModel):
     summary_parameters: dict[str, object]
     summary: RenderedMessage | None
     stale: StaleInformation | None
+    #: The case's current proposed application date, so a notice can name it rather than
+    #: making the reader go and look.
+    application_date: date | None
+    #: That date has passed, so the window every residence figure on this screen is measured
+    #: over has closed. Not a `Limitation`: nothing about the conclusion is less certain, it
+    #: is the question that has moved.
+    application_date_has_passed: bool
     calculation_breakdown: dict[str, object]
     limitations: list[LimitationView]
     next_actions: list[NextActionView]
@@ -351,6 +358,8 @@ class RequirementDetail(BaseModel):
                 else None
             ),
             stale=_stale_information(current),
+            application_date=view.application_date,
+            application_date_has_passed=view.application_date_has_passed,
             calculation_breakdown=dict(current.calculation_breakdown) if current else {},
             limitations=[
                 LimitationView.of(item) for item in (current.limitations if current else [])
@@ -512,6 +521,10 @@ class CaseOverview(BaseModel):
     #: Derived from assessment state, never the stored column (ADR-0009).
     current_phase: str
     application_date: date | None
+    #: Whether that date is already behind us. Derived at read time for the same reason
+    #: `current_phase` is: it is a fact about the case today, not about any run. See
+    #: `assessments.service._application_date_has_passed` for why it is not a `Limitation`.
+    application_date_has_passed: bool
     groups: list[GroupSummaryView]
     priority_actions: list[PriorityActionView]
     #: How many actions exist beyond the three shown, so the cap never hides work silently.
@@ -540,6 +553,7 @@ class CaseOverview(BaseModel):
             lifecycle_status=view.case.lifecycle_status.value,
             current_phase=view.phase.value,
             application_date=view.application_date,
+            application_date_has_passed=view.application_date_has_passed,
             groups=[GroupSummaryView.of(group, view.members) for group in view.groups],
             conclusion_counts=[
                 ConclusionCountView(conclusion=c.conclusion, count=c.count)

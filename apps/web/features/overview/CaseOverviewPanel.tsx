@@ -1,9 +1,10 @@
 "use client";
 
 import type { components } from "@cw/api-client";
-import { RequirementStatus } from "@cw/design-system";
+import { ApplicationDatePassedNotice, RequirementStatus } from "@cw/design-system";
 import type { JSX } from "react";
 
+import { formatDate } from "@/features/requirements/dates";
 import { GROUP_LABELS } from "@/features/requirements/groups";
 
 import { AssessmentGroups } from "./AssessmentGroups";
@@ -55,6 +56,16 @@ export function CaseOverviewPanel({ overview }: { overview: Overview }): JSX.Ele
   return (
     <section className="cw-overview" aria-label="Case overview">
       <h2 className="cw-overview__heading">{readinessHeadline(overview)}</h2>
+
+      {/* Above the counts, because it qualifies every one of them: they are measured over a
+          window that has closed. Leaving it lower would let a reader take the figures at
+          face value and meet the caveat afterwards. */}
+      {overview.application_date_has_passed && overview.application_date ? (
+        <ApplicationDatePassedNotice
+          applicationDate={formatDate(overview.application_date)}
+          href={`/cases/${overview.case_id}/data`}
+        />
+      ) : null}
 
       {hasCounts ? (
         <ul className="cw-overview__counts" aria-label="Requirements by state">

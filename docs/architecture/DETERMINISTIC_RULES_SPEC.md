@@ -108,6 +108,37 @@ Treat this as the single highest-value test in the suite.
 All dates are calendar `DATE` values with no timezone. No rule in this
 specification uses a timestamp.
 
+**No rule in this specification reads the clock.** Every evaluator is a pure
+function of the inputs it is given, which is what makes a result reproducible
+from its recorded input versions. Where a reference date is needed — the age
+check in §7.1 — the caller passes it in.
+
+### 4.0 The proposed application date and the present day **[PRODUCT]**
+
+A proposed application date is a forward-looking planning intention. The rules do
+not constrain it: they measure the window it defines and say what that window
+contains, whatever today happens to be.
+
+Two consequences, and they are deliberately not symmetrical.
+
+**Choosing a date that has already passed is refused**, not by a rule but by the
+command that selects one (`ApplicationDateInPast`, 422). A date that was already
+behind the applicant when they picked it cannot describe an application they are
+preparing.
+
+**A date that has since been overtaken is still believed by the rules, and the
+read model says so.** The figures stay correct about the window they name — "451
+days across 16 April 2022 to 15 April 2027" is true of that window permanently —
+so nothing here is a `Limitation`: no conclusion's confidence has changed. What
+changes is whether the window is still the one the applicant means, which is a
+fact about the case today and not about the run. It is therefore **derived at
+read time**, alongside the case phase (ADR-0009), and never recorded on a result.
+
+ADR-0032 records why the alternatives were rejected. The short version: staleness
+in this product is event-driven, time passing is not an input version change, and
+a condition computed when the assessment runs would never reach a case nobody
+recalculates — which is exactly the case it exists to protect.
+
 ### 4.1 Year arithmetic **[PRODUCT]**
 
 Use `dateutil.relativedelta` semantics: subtracting *n* years from a date yields

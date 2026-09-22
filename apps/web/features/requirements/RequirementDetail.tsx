@@ -10,6 +10,7 @@ import {
   ExplanationStack,
   RequirementStatus,
   SourceReference,
+  ApplicationDatePassedNotice,
   StaleAssessmentNotice,
   StatusGlyph,
 } from "@cw/design-system";
@@ -156,6 +157,15 @@ export function RequirementDetail({
         summary={detail.summary?.text ?? null}
         titleRef={titleRef}
       >
+        {detail.application_date_has_passed ? (
+          /* Above the stale notice deliberately. A case can be both, and this is the
+             larger fact: stale says a recalculation would settle it, and this says the
+             window a recalculation would measure has already closed. */
+          <ApplicationDatePassedNotice
+            applicationDate={formatDate(detail.application_date ?? "")}
+            href={`/cases/${caseId}/data`}
+          />
+        ) : null}
         {detail.stale ? (
           <StaleAssessmentNotice
             reason={detail.stale.reason}

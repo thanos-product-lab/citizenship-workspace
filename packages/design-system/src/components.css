@@ -186,6 +186,33 @@
   color: var(--cw-currency-stale);
 }
 
+/*
+ * The date-has-passed notice. Same three signals as the stale notice — a left rule, a
+ * glyph and words — because it has to survive greyscale for the same reason.
+ *
+ * It is not the stale notice and must not look like one. Stale says the inputs moved and a
+ * recalculation will settle it. This says the window itself has closed, which no
+ * recalculation fixes: the figures are right about a period that is over.
+ */
+.cw-date-passed-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--cw-space-2);
+  margin: var(--cw-space-3) 0 0;
+  padding: var(--cw-space-2) var(--cw-space-3);
+  border-left: 3px solid var(--cw-status-requires-judgement);
+  border-radius: 0 var(--cw-radius-sm) var(--cw-radius-sm) 0;
+  background: var(--cw-surface-sunken);
+  font-size: var(--cw-text-sm);
+  line-height: var(--cw-leading-snug);
+  color: var(--cw-text-muted);
+}
+
+.cw-date-passed-notice strong {
+  color: var(--cw-text);
+  font-weight: var(--cw-weight-medium);
+}
+
 /* --- Section shell --------------------------------------------------------- */
 
 .cw-section {

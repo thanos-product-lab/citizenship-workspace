@@ -311,7 +311,7 @@ own slice rather than a gate-buffer fix.
 
 ### 11. A saved application date is believed after it has passed
 
-**Status:** half fixed · **Found:** M8 gate walkthrough
+**Status:** **closed**, 22 September 2026 · **Found:** M8 gate walkthrough
 
 Setting an application date in the past produced every requirement green against a five year
 window that had already closed, with the last months of travel silently outside it. That is
@@ -334,12 +334,24 @@ a code change. The guard is on the *command* for exactly that reason: it only ev
 date somebody is choosing right now, and a stored date that has since passed still reads back
 (`test_a_date_that_drifted_into_the_past_is_still_read_back`).
 
-**Closing the remaining half** means a derived limitation and issue computed at assessment
-time like every other conflict, which is a rules change with a version bump, a migration, and
-an amendment to the rules spec, since the spec currently says nothing about whether a proposed
-date may be in the past. Drafted as **ADR-0032**, including the part this entry did not
-account for: staleness here is event-driven, so a limitation computed at assessment time still
-never reaches a case nobody recalculates, which is the case it exists to protect.
+**The remaining half is closed too, and not the way this entry said.** It proposed a derived
+limitation computed at assessment time. ADR-0032 rejected that before building it, for the
+reason this entry had not accounted for and then for a better one.
+
+The one this entry missed: staleness is event-driven, so a limitation computed when the
+assessment runs would never reach a case nobody recalculates — the case it exists to protect.
+
+The better one: a `Limitation` reduces confidence in a *result*, and no result's confidence
+changes here. "451 days across 16 April 2022 to 15 April 2027" stays true of that window
+permanently. What changes is whether that window is still the one the applicant means, which
+is a fact about the case today, not about the run. Typing it as a limitation is what created
+the staleness problem in the first place.
+
+So it is **derived at read time**, like the case phase (ADR-0009): `application_date_has_passed`
+on the overview and the requirement detail, with a notice naming the date and offering a new
+one. No rule change, no migration, no scheduled job. `DETERMINISTIC_RULES_SPEC.md` §4.0 now
+states that the rules do not constrain the date and that its passing is a read-model
+condition rather than a rule outcome.
 
 ---
 

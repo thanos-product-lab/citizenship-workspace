@@ -40,6 +40,7 @@ function anOverview(overrides: Record<string, unknown> = {}) {
     lifecycle_status: "ACTIVE",
     current_phase: "RESOLVING_ISSUES",
     application_date: "2027-04-15",
+    application_date_has_passed: false,
     groups: [
       aGroup(),
       aGroup({
@@ -80,6 +81,45 @@ describe("CaseOverviewPanel", () => {
     expect(text).not.toMatch(/%/);
     expect(text).not.toMatch(/\b\d+\s*(of|\/)\s*\d+\b/);
     expect(text).not.toMatch(/complete|progress|readiness score/i);
+  });
+
+  it("says the application date has passed, above the figures it qualifies", () => {
+    /**
+     * `KNOWN_LIMITATIONS.md` 11. A case left alone until its date went by read as
+     * supported against a window that had already closed — the false-reassurance shape
+     * §2.7 ranks as the most important thing to get right.
+     *
+     * Above the counts on purpose: it qualifies every one of them, and a reader who meets
+     * the caveat after the figures has already taken the figures at face value.
+     */
+    const { container } = render(
+      <CaseOverviewPanel
+        overview={anOverview({
+          application_date: "2026-04-15",
+          application_date_has_passed: true,
+        })}
+      />,
+    );
+
+    const notice = container.querySelector(".cw-date-passed-notice");
+    expect(notice).not.toBeNull();
+    expect(notice?.textContent).toMatch(/15 April 2026/);
+    expect(notice?.textContent).toMatch(/has passed/);
+    // Never "wrong", "invalid" or "out of date": the arithmetic is correct about a period
+    // that is over, and saying otherwise would be its own false statement.
+    expect(notice?.textContent).not.toMatch(/wrong|invalid|out of date|no longer valid/i);
+    // It sits before the counts in document order.
+    const counts = container.querySelector(".cw-overview__counts");
+    expect(notice?.compareDocumentPosition(counts as Node)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+  });
+
+  it("says nothing when the date is still ahead", () => {
+    // The default fixture is a 2027 date with the flag false. A notice here would be
+    // crying wolf on every healthy case.
+    const { container } = render(<CaseOverviewPanel overview={anOverview()} />);
+    expect(container.querySelector(".cw-date-passed-notice")).toBeNull();
   });
 
   it("states counts by named state, most severe first", () => {
