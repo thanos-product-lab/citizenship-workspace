@@ -397,6 +397,17 @@ export function RequirementDetail({
                       </span>
                       <span className="cw-history__when cw-figure">
                         {formatDateTime(entry.created_at)}
+                        {/* The rule that produced this entry, beside the time it ran.
+                            Without it two entries show different figures and the reader
+                            has only one explanation available — that the applicant's data
+                            moved — when a rule version change is the other one. The block
+                            above states the rule for the displayed result alone. */}
+                        {entry.rule_semantic_version ? (
+                          <span className="cw-history__rule">
+                            {`Rule ${entry.rule_semantic_version}`}
+                            {entry.rule_set ? ` · ${entry.rule_set}` : null}
+                          </span>
+                        ) : null}
                       </span>
                     </li>
                   ))}

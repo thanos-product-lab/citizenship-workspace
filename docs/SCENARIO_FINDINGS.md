@@ -555,7 +555,7 @@ May 2026." The control reads **"Use the dates from the document"**, as corrected
 
 ### 7. Assessment history does not show the rule version that produced each run
 
-**Status:** outstanding · found running scenario 5
+**Status:** **fixed**, 22 September 2026 · found running scenario 5
 **Affects:** the assessment-history list on every requirement detail
 **Severity:** the stored invariant holds; what fails is being able to see it. Today every run
 shares one rule version, so the gap is invisible. The first time a rule version changes it
@@ -603,6 +603,31 @@ applicant's data, when the rules moved underneath them. That is the confusion di
 **What closing it takes.** Add the semantic version and rule set to `ResultHistoryView.of`,
 which already receives the `AssessmentResult`, and render them on the history entry. Nothing
 new needs storing.
+
+**How it was closed.** `ResultHistoryView` gained `rule_semantic_version` and `rule_set`, fed
+by a new `RequirementCatalogRepository.get_rule_versions` that batch-loads the versions
+behind a history list in one query rather than one per entry. The detail screen renders them
+under each timestamp, quieter than the time, because the question they answer is one a reader
+asks rather than one the row leads with.
+
+Two flat fields rather than a nested rule object: a history entry needs to be *identified*,
+not explained. Guidance, lifecycle and effective dates stay in the rule block for the result
+actually on screen.
+
+**The demonstration arrived by itself.** When this was filed, every run on every case shared
+one rule version, so the gap was invisible — which is precisely why it would have shipped.
+Migration `0037` then took `route.standard_section_6_1` to 1.1.0 and staled what 1.0.0 had
+produced, so recalculating any case now yields a history whose entries span two versions.
+
+On case `728c12d6` that history reads **Supported** nine times over. The conclusion never
+moves, the summary sentence never changes, and the only thing distinguishing the newest entry
+from the eight beneath it is `Rule 1.1.0` against `Rule 1.0.0`. Without this change the
+screen would show a new entry appearing under an unchanged conclusion with nothing to explain
+why — the reader's only available conclusion being that something about their case had
+changed, when what changed was ours.
+
+Nothing about the stored data changed: the results always carried `rule_version_id`, so the
+§9 invariant held throughout. What was missing was the projection.
 
 ### Note: finding 6 reaches the explainability surface
 

@@ -113,6 +113,16 @@ def test_canonical_stale_transition_moves_439_to_440(api: Api, db_session: Sessi
     currencies = [row["currency"] for row in after["history"]]
     assert currencies.count("CURRENT") == 1  # never two current for one requirement
     assert currencies.count("SUPERSEDED") == 1  # the 439 predecessor is retired, not orphaned
+    # Every entry names the rule that produced it, not only the displayed one.
+    #
+    # The 439 → 440 pair is why this matters. Both band as NEAR_THRESHOLD, so the figures
+    # are the only thing that moved — and a list that shows two figures without a version
+    # leaves the reader one explanation, that the applicant's data changed, when a rule
+    # version change is the other. Here they are equal, which is the assertion: the data
+    # moved and the rules did not, and the screen can now say so.
+    versions = {row["rule_semantic_version"] for row in after["history"]}
+    assert versions == {"1.1.0"}, "a history entry did not name the rule that produced it"
+    assert {row["rule_set"] for row in after["history"]} == {"2026.07.0"}
 
 
 def test_the_canonical_case_shows_exactly_two_standing_issues(

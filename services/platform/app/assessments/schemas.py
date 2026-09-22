@@ -260,9 +260,28 @@ class ResultHistoryView(BaseModel):
     summary_parameters: dict[str, object]
     summary: RenderedMessage | None
     created_at: datetime
+    #: The rule that produced *this* entry, which is the point of keeping the entry at all.
+    #:
+    #: `RuleView` above describes the displayed result only, so before these existed the
+    #: history list showed a conclusion, a currency, a summary and a timestamp — and a
+    #: reader looking at a superseded figure had no way to learn which rule reached it.
+    #: The argument is the one `summary_parameters` already makes a few lines up: without
+    #: it a transition renders as nothing having happened. If a rule set moves between two
+    #: runs, a list that omits the version shows two different figures and invites the
+    #: reader to conclude the applicant's data moved, when the rules moved underneath them.
+    #:
+    #: Two flat fields rather than a nested rule object: an entry needs to be *identified*,
+    #: not explained. Guidance, lifecycle and effective dates belong to the rule block for
+    #: the result actually on screen.
+    #:
+    #: Optional only because the lookup is, and the rows are immutable and
+    #: foreign-keyed — a `None` here means a result outlived its rule version, which the
+    #: schema should be able to say rather than crash over.
+    rule_semantic_version: str | None = None
+    rule_set: str | None = None
 
     @classmethod
-    def of(cls, result: AssessmentResult) -> "ResultHistoryView":
+    def of(cls, result: AssessmentResult, rule: RuleVersion | None = None) -> "ResultHistoryView":
         parameters = dict(result.summary_parameters)
         return cls(
             assessment_run_id=result.assessment_run_id,
@@ -272,6 +291,8 @@ class ResultHistoryView(BaseModel):
             summary_parameters=parameters,
             summary=RenderedMessage.build(result.summary_code, parameters, render_summary),
             created_at=result.created_at,
+            rule_semantic_version=rule.semantic_version if rule else None,
+            rule_set=rule.rule_set if rule else None,
         )
 
 
@@ -351,7 +372,10 @@ class RequirementDetail(BaseModel):
             ],
             rule=RuleView.of(view.rule, view.guidance) if view.rule is not None else None,
             guidance=view.guidance,
-            history=[ResultHistoryView.of(item) for item in view.history],
+            history=[
+                ResultHistoryView.of(item, view.history_rules.get(item.rule_version_id))
+                for item in view.history
+            ],
         )
 
 

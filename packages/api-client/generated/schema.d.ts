@@ -1631,6 +1631,10 @@ export interface components {
             created_at: string;
             /** Currency */
             currency: string;
+            /** Rule Semantic Version */
+            rule_semantic_version?: string | null;
+            /** Rule Set */
+            rule_set?: string | null;
             summary: components["schemas"]["RenderedMessage"] | null;
             /** Summary Code */
             summary_code: string | null;

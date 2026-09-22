@@ -140,6 +140,22 @@ class RequirementCatalogRepository:
         return session.get(RuleVersion, rule_version_id)
 
     @staticmethod
+    def get_rule_versions(
+        session: Session, rule_version_ids: Collection[uuid.UUID]
+    ) -> dict[uuid.UUID, RuleVersion]:
+        """The rule versions behind a set of results, keyed by id.
+
+        The same principle as `get_rule_version` above, applied to a *list* of results: a
+        historical result must display the rule that actually produced it, and the history
+        list holds one result per run. One query rather than one per entry, because the
+        detail screen already loads a result, its input links and its guidance.
+        """
+        if not rule_version_ids:
+            return {}
+        rows = session.scalars(select(RuleVersion).where(RuleVersion.id.in_(set(rule_version_ids))))
+        return {row.id: row for row in rows}
+
+    @staticmethod
     def get_guidance(session: Session, rule_version_id: uuid.UUID) -> list[dict[str, str]]:
         version = session.get(RuleVersion, rule_version_id)
         if version is None:

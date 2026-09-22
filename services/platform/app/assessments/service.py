@@ -574,6 +574,12 @@ class RequirementDetailView:
     rule: RuleVersion | None
     guidance: list[dict[str, str]]
     history: list[AssessmentResult]
+    #: The rule version behind each history entry, keyed by id. `rule` above covers the
+    #: displayed result only, and every other entry ran under whatever was active then —
+    #: which is the thing history exists to preserve (Domain §30.5). Without it the list
+    #: shows two different figures and lets the reader assume the applicant's data moved,
+    #: when the rules may have moved underneath them.
+    history_rules: dict[uuid.UUID, RuleVersion]
 
 
 def get_requirement_detail(
@@ -608,6 +614,9 @@ def get_requirement_detail(
         rule=rule,
         guidance=guidance,
         history=history,
+        history_rules=RequirementCatalogRepository.get_rule_versions(
+            session, [entry.rule_version_id for entry in history]
+        ),
     )
 
 

@@ -1213,6 +1213,17 @@
 .cw-history__when {
   font-size: var(--cw-text-sm);
   color: var(--cw-text-muted);
+  display: grid;
+  justify-items: end;
+  gap: var(--cw-space-1);
+}
+
+/* The rule version that produced the entry, under its timestamp. Quieter than the time:
+   it answers "did the rules move, or did my data" only when the reader asks, and must not
+   compete with the conclusion on the other side of the row. */
+.cw-history__rule {
+  font-size: var(--cw-text-xs);
+  color: var(--cw-text-muted);
 }
 
 /* --- Detail page shell ----------------------------------------------------- */

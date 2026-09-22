@@ -2186,6 +2186,28 @@
             "title": "Currency",
             "type": "string"
           },
+          "rule_semantic_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rule Semantic Version"
+          },
+          "rule_set": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rule Set"
+          },
           "summary": {
             "anyOf": [
               {

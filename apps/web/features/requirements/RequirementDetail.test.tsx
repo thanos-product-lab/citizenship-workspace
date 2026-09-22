@@ -372,6 +372,92 @@ describe("RequirementDetail", () => {
     expect(screen.getByText("Superseded")).toBeInTheDocument();
   });
 
+  it("names the rule behind each entry, so a version move is not read as a data move", async () => {
+    /**
+     * A history entry used to render four things — conclusion, currency, summary,
+     * timestamp — and none of them said which rule produced it. The block above states
+     * the rule for the *displayed* result only, so a reader looking at a superseded
+     * figure had no way to find out.
+     *
+     * The stakes are clearest when the figure moves and the conclusion does not, which is
+     * the canonical 439 → 440: with no version on the entries, the reader has exactly one
+     * explanation available — the applicant's data changed — and a rule version change is
+     * the other one. Here the rule really did move between the runs, and the list has to
+     * be able to say so.
+     */
+    get.mockResolvedValue({
+      data: aDetail({
+        history: [
+          {
+            assessment_run_id: "r2",
+            conclusion: "NEAR_THRESHOLD",
+            currency: "CURRENT",
+            summary_code: "TOTAL_ABSENCES_NEAR_THRESHOLD",
+            summary_parameters: { days: 440 },
+            summary: { code: "X", parameters: {}, text: "440 days outside the UK." },
+            created_at: "2026-08-14T11:37:00Z",
+            rule_semantic_version: "1.1.0",
+            rule_set: "2026.07.0",
+          },
+          {
+            assessment_run_id: "r1",
+            conclusion: "NEAR_THRESHOLD",
+            currency: "SUPERSEDED",
+            summary_code: "TOTAL_ABSENCES_NEAR_THRESHOLD",
+            summary_parameters: { days: 439 },
+            summary: { code: "X", parameters: {}, text: "439 days outside the UK." },
+            created_at: "2026-08-14T11:36:00Z",
+            rule_semantic_version: "1.0.0",
+            rule_set: "2026.07.0",
+          },
+        ],
+      }),
+    });
+    render(<RequirementDetail caseId="c1" requirementKey="residence.total_absences" />);
+
+    await screen.findByRole("heading", { name: "Assessment history" });
+    expect(screen.getByText(/Rule 1\.1\.0/)).toBeInTheDocument();
+    expect(screen.getByText(/Rule 1\.0\.0/)).toBeInTheDocument();
+  });
+
+  it("says nothing about a rule it was not told", async () => {
+    // A result that outlived its rule version. The row still renders; it just does not
+    // invent a version, because fabricated provenance is the worst defect here.
+    get.mockResolvedValue({
+      data: aDetail({
+        history: [
+          {
+            assessment_run_id: "r2",
+            conclusion: "SUPPORTED",
+            currency: "CURRENT",
+            summary_code: null,
+            summary_parameters: {},
+            summary: null,
+            created_at: "2026-08-14T11:37:00Z",
+          },
+          {
+            assessment_run_id: "r1",
+            conclusion: "SUPPORTED",
+            currency: "SUPERSEDED",
+            summary_code: null,
+            summary_parameters: {},
+            summary: null,
+            created_at: "2026-08-14T11:36:00Z",
+          },
+        ],
+      }),
+    });
+    const { container } = render(
+      <RequirementDetail caseId="c1" requirementKey="residence.total_absences" />,
+    );
+
+    await screen.findByRole("heading", { name: "Assessment history" });
+    expect(container.querySelector(".cw-history__rule")).toBeNull();
+    // Scoped to the list: "Rule used", "Rule version" and "Rule set" are legitimate
+    // headings in the block above, which describes the rule behind the displayed result.
+    expect(container.querySelector(".cw-history")?.textContent).not.toMatch(/Rule /);
+  });
+
   it("does not manufacture a change when the figure did not move", async () => {
     // A recalculation that confirms the previous answer is not a change. "439 → 439"
     // would invent one.
