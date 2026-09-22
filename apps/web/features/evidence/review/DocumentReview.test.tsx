@@ -75,8 +75,15 @@ function serve({
   },
   claimsStatus = 200,
   textStatus = 200,
+  overview = null,
 }: Record<string, unknown> = {}) {
   get.mockImplementation((path: string) => {
+    if (path.endsWith("/overview")) {
+      return Promise.resolve({
+        data: overview ?? undefined,
+        response: { status: overview ? 200 : 404 },
+      });
+    }
     if (path.endsWith("/claims")) {
       return Promise.resolve({
         data: claimsStatus === 200 ? { items: claims } : undefined,
@@ -383,10 +390,13 @@ describe("when the server refuses", () => {
         call += 1;
         return Promise.resolve({
           data: {
+            // A second, still-open field, so this is a decision mid-review. The last
+            // decision moves focus to the completion panel instead (tested below).
             items:
               call === 1
-                ? [aClaim()]
+                ? [aClaim(), aTextClaim()]
                 : [
+                    aTextClaim(),
                     aClaim({
                       status: "CONFIRMED",
                       proposed_value: MODEL_READ,
@@ -629,9 +639,77 @@ describe("what the screen says about itself", () => {
     });
     render();
 
+    const panel = await screen.findByRole("region", { name: "Review complete" });
+    expect(within(panel).getByText("1 confirmed.")).toBeTruthy();
     expect(
-      await screen.findByText("All 1 values have been decided."),
+      within(panel).getByRole("link", { name: "Return to evidence" }),
+    ).toHaveAttribute("href", `/cases/${CASE_ID}/evidence`);
+    // Nothing is stale, so there is nothing to update.
+    expect(within(panel).queryByRole("button", { name: "Update assessment" })).toBeNull();
+  });
+
+  it("counts each kind of decision and says a rejection is finished", async () => {
+    const decided = (id: string, decision: string, value: string | null) =>
+      aTextClaim({
+        id,
+        status: decision === "REJECT" ? "REJECTED" : "CONFIRMED",
+        decision: {
+          decision,
+          review_mode: "PREFILLED",
+          reason_code: decision === "REJECT" ? "VALUE_NOT_PRESENT" : null,
+          value,
+          reviewed_by: "user_a",
+          reviewed_at: "2026-09-06T09:00:00Z",
+        },
+      });
+    serve({
+      claims: [
+        decided("a", "CONFIRM", "SKY-7P2QMN"),
+        decided("b", "CORRECT", "SKY-7P2QMM"),
+        decided("c", "REJECT", null),
+        decided("d", "REJECT", null),
+      ],
+    });
+    render();
+
+    const panel = await screen.findByRole("region", { name: "Review complete" });
+    expect(within(panel).getByText("1 confirmed · 1 corrected · 2 rejected.")).toBeTruthy();
+    expect(within(panel).getByText(/Rejected values were not used/)).toBeTruthy();
+    // The field says what the person did, not that something is missing.
+    expect(screen.getAllByText("Rejected: not used")).toHaveLength(2);
+    expect(screen.queryByText("Unavailable")).toBeNull();
+  });
+
+  it("offers to update the assessment only while conclusions are stale", async () => {
+    serve({
+      claims: [
+        aClaim({
+          status: "CONFIRMED",
+          decision: {
+            decision: "CONFIRM",
+            review_mode: "BLIND_ENTRY",
+            reason_code: null,
+            value: "2026-05-11",
+            reviewed_by: "user_a",
+            reviewed_at: "2026-09-06T09:00:00Z",
+          },
+        }),
+      ],
+      overview: { groups: [], conclusion_counts: [], stale: 4 },
+    });
+    post.mockResolvedValue({ data: { requirements: [] } });
+    render();
+
+    const panel = await screen.findByRole("region", { name: "Review complete" });
+    expect(
+      await within(panel).findByText(/4 conclusions in your case have not been rechecked/),
     ).toBeTruthy();
+    fireEvent.click(within(panel).getByRole("button", { name: "Update assessment" }));
+    await waitFor(() =>
+      expect(post.mock.calls[0]![0]).toBe("/api/v1/cases/{case_id}/assessments/recalculate"),
+    );
+    // The button goes once nothing is stale; focus must not go with it.
+    await waitFor(() => expect(document.activeElement?.id).toBe("review-complete"));
   });
 
   it("separates a failed load from an empty document", async () => {
@@ -671,10 +749,13 @@ describe("what a keyboard and a screen reader get", () => {
         call += 1;
         return Promise.resolve({
           data: {
+            // A second, still-open field, so this is a decision mid-review. The last
+            // decision moves focus to the completion panel instead (tested below).
             items:
               call === 1
-                ? [aClaim()]
+                ? [aClaim(), aTextClaim()]
                 : [
+                    aTextClaim(),
                     aClaim({
                       status: "CONFIRMED",
                       proposed_value: DOCUMENT_SAYS,
@@ -705,6 +786,55 @@ describe("what a keyboard and a screen reader get", () => {
     await waitFor(() =>
       expect(document.activeElement?.id).toBe("claim-claim-1-card"),
     );
+  });
+
+  it("moves focus to the completion panel after the last decision", async () => {
+    // Leaving focus on the final field would put the outcome of the whole review, and
+    // the way on from it, somewhere a keyboard user has to go looking for.
+    post.mockResolvedValue({
+      data: {
+        claim_id: "claim-1",
+        claim_status: "REJECTED",
+        decision: "REJECT",
+        review_mode: "PREFILLED",
+        value: null,
+      },
+    });
+    let call = 0;
+    get.mockImplementation((path: string) => {
+      if (String(path).endsWith("/claims")) {
+        call += 1;
+        return Promise.resolve({
+          data: {
+            items: [
+              aTextClaim(
+                call === 1
+                  ? {}
+                  : {
+                      status: "REJECTED",
+                      decision: {
+                        decision: "REJECT",
+                        review_mode: "PREFILLED",
+                        reason_code: "VALUE_NOT_PRESENT",
+                        value: null,
+                        reviewed_by: "user_a",
+                        reviewed_at: "2026-09-06T09:00:00Z",
+                      },
+                    },
+              ),
+            ],
+          },
+          response: { status: 200 },
+        });
+      }
+      return Promise.resolve({ data: undefined, response: { status: 404 } });
+    });
+    render();
+
+    fireEvent.click(await screen.findByRole("button", { name: "This is wrong" }));
+    fireEvent.click(screen.getByRole("button", { name: "Reject this value" }));
+
+    await waitFor(() => expect(document.activeElement?.id).toBe("review-complete"));
   });
 
   it("does not put every other field on the page into a busy state", async () => {

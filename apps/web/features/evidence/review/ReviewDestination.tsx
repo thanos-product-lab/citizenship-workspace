@@ -29,7 +29,7 @@ export function ReviewDestination({
   return (
     <section className="cw-section" aria-labelledby="review-heading">
       <Link className="cw-case-header__back" href={`/cases/${caseId}/evidence`}>
-        ← Your documents
+        ← Back to evidence
       </Link>
       <h1 id="review-heading">Confirm what we read</h1>
       <p style={{ color: "var(--cw-text-muted)" }}>
@@ -38,12 +38,13 @@ export function ReviewDestination({
             <strong>{document.display_name}</strong>. Read the document and say
             what it says. Nothing below counts towards your case until you do —
             and where a value matters enough to be worth checking, we ask you to
-            type it rather than offering ours to accept.
+            type it rather than offering ours to accept. Each decision is saved as
+            you make it, so you can leave and come back.
           </>
         ) : (
           <>
             Read the document and say what it says. Nothing below counts towards
-            your case until you do.
+            your case until you do. Each decision is saved as you make it.
           </>
         )}
       </p>

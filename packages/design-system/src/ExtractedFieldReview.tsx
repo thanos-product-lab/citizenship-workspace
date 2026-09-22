@@ -155,7 +155,10 @@ export function ExtractedFieldReview({
         <span className="cw-field-review__label" id={`${id}-name`}>
           {label}
         </span>
-        <ProvenanceBadge kind={badgeKind(decision, conflictsWith)} />
+        <ProvenanceBadge
+          kind={badgeKind(decision, conflictsWith)}
+          label={decision?.decision === "REJECT" ? "Rejected: not used" : undefined}
+        />
       </div>
 
       {decided ? (
@@ -208,7 +211,9 @@ function badgeKind(
   if (conflictsWith) return "conflicting";
   if (decision === null) return "ai_proposed";
   // A rejection is neither confirmed nor corrected: nothing was trusted. `unavailable`
-  // is the provenance token for "this contributes nothing", which is exactly true.
+  // is the provenance token for "this contributes nothing", which is exactly true, so it
+  // keeps the token's colour and glyph. Its *label* is overridden at the call site: the
+  // token says "Unavailable", which reads as a failure to someone who just made a choice.
   return DECISION_PROVENANCE[decision.decision] ?? "unavailable";
 }
 

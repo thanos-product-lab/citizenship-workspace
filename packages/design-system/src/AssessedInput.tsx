@@ -19,7 +19,19 @@ import type { JSX } from "react";
 import { StatusGlyph } from "./StatusGlyph";
 import { provenanceTokens, type ProvenanceKind } from "./tokens";
 
-export function ProvenanceBadge({ kind }: { kind: string }): JSX.Element {
+/**
+ * `label` overrides the token's wording and nothing else: the colour and glyph still say
+ * which provenance this is. It exists for surfaces where the token is true of the data and
+ * wrong for the reader, such as a rejection on the review screen, where "Unavailable"
+ * reads as a failure when the user made a decision.
+ */
+export function ProvenanceBadge({
+  kind,
+  label,
+}: {
+  kind: string;
+  label?: string | undefined;
+}): JSX.Element {
   const key = kind.toLowerCase() as ProvenanceKind;
   const token = provenanceTokens[key];
   // An unrecognised provenance kind is shown verbatim rather than guessed at, for the
@@ -39,7 +51,7 @@ export function ProvenanceBadge({ kind }: { kind: string }): JSX.Element {
       style={{ color: `var(${token.colorVar})` }}
     >
       <StatusGlyph name={token.glyph} size={14} />
-      <span>{token.label}</span>
+      <span>{label ?? token.label}</span>
     </span>
   );
 }

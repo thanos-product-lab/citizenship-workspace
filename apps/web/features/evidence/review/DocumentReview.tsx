@@ -38,6 +38,7 @@ import {
   useReviewClaim,
   type RejectionCode,
 } from "./useReviewClaim";
+import { REVIEW_COMPLETE_ID, ReviewComplete } from "./ReviewComplete";
 
 /**
  * What each claim type is called on screen.
@@ -146,7 +147,7 @@ export function DocumentReview({
       // overwrote a live-region message 38ms after it was set, so a screen reader never
       // said the thing had happened; announcing once the DOM has settled is what stops
       // this being that again.
-      await claims.refetch();
+      const settled = await claims.refetch();
       patch(claim.id, { entered: "", correcting: false, rejecting: false });
       announce(
         describeOutcome(fieldLabel(claim), outcome.decision, outcome.value),
@@ -157,8 +158,15 @@ export function DocumentReview({
       // decided field to reach the next open one, and a screen-reader user's virtual
       // cursor jumped to the top with only the announcement to go on. Four fields, four
       // times. The deletion flow solved the same problem the same way in M7.
+      //
+      // Except after the last one. Then the useful place is the completion panel, which
+      // says what was decided and offers the way on; leaving focus on the final field
+      // would put the outcome of the whole review somewhere the user has to go looking.
+      const done = (settled.data ?? []).every((c) => c.decision !== null);
       requestAnimationFrame(() =>
-        document.getElementById(`claim-${claim.id}-card`)?.focus(),
+        document
+          .getElementById(done ? REVIEW_COMPLETE_ID : `claim-${claim.id}-card`)
+          ?.focus(),
       );
     } catch (error) {
       if (error instanceof ReviewRefused) {
@@ -353,13 +361,15 @@ export function DocumentReview({
           className="cw-review__pane"
           aria-label="What we read from this document"
         >
-          <p role="status">
-            {items.length === 0
-              ? "Nothing here needs your decision."
-              : open.length === 0
-                ? `All ${items.length} values have been decided.`
+          {items.length > 0 && open.length === 0 ? (
+            <ReviewComplete caseId={caseId} claims={items} />
+          ) : (
+            <p role="status">
+              {items.length === 0
+                ? "Nothing here needs your decision."
                 : `${open.length} of ${items.length} values still need your decision.`}
-          </p>
+            </p>
+          )}
 
           {journeys.map(([journey, group]) => (
             <div className="cw-review__journey" key={journey}>

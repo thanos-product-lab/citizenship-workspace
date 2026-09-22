@@ -2561,6 +2561,42 @@
   border-radius: var(--cw-radius-md);
 }
 
+/* The end of a review. Settled rather than alarming: a completed review is the outcome
+   the screen exists for, so it takes the confirmed border rather than an attention one. */
+.cw-review-complete {
+  display: grid;
+  gap: var(--cw-space-2);
+  padding: var(--cw-space-4);
+  border: 1px solid var(--cw-border);
+  border-left: 3px solid var(--cw-provenance-user-confirmed);
+  border-radius: 0 var(--cw-radius-md) var(--cw-radius-md) 0;
+  background: var(--cw-surface);
+}
+
+.cw-review-complete__heading {
+  margin: 0;
+  font-size: var(--cw-text-base);
+  font-weight: var(--cw-weight-medium);
+}
+
+.cw-review-complete__tally {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.cw-review-complete__note {
+  margin: 0;
+  font-size: var(--cw-text-sm);
+  color: var(--cw-text-muted);
+}
+
+.cw-review-complete__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cw-space-3);
+  margin-top: var(--cw-space-2);
+}
+
 .cw-review__journey {
   display: grid;
   gap: var(--cw-space-3);

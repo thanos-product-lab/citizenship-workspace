@@ -1372,7 +1372,7 @@ Keep the live region; this adds a visible equivalent rather than replacing it.
 
 ### 16. Review ends in a sentence, and a rejected value is labelled "Unavailable"
 
-**Status:** open · **Kind:** closure and wording · **Size:** small to medium
+**Status:** **fixed**, 22 September 2026 · **Kind:** closure and wording · **Size:** small to medium
 
 When the last value is decided, `DocumentReview.tsx:360` says "All N values have been
 decided." and the page stops. There is no summary of what was decided, no way back to the
@@ -1389,6 +1389,40 @@ rejected"), "Return to evidence", and "Update assessment" when a decision affect
 current result. Label the back link "Back to evidence: decisions saved automatically",
 since every decision already persists as it is made. Show a rejection as "Rejected: not
 used". The provenance token itself stays; this is the review surface's label for it.
+
+**How it was closed.** `ReviewComplete` replaces the one-line status once nothing is left
+to decide. It gives the tally ("1 confirmed · 1 rejected"), says a rejected value was not
+used and is a finished decision, and offers "Return to evidence". When the case has stale
+conclusions it also offers "Update assessment", sharing the header's recalculation hook so
+the two controls cannot run concurrently.
+
+**One deliberate narrowing.** The note asked for "Update assessment" when *this review*
+affected a result. The overview carries how many conclusions are stale, not which input
+staled each one, so the panel says the *case* has conclusions waiting rather than claiming
+the review caused them. After a date review the two coincide, because
+`facts.service._invalidate_dependents` stales residence results in the same transaction as
+the decision. After a traveller-name review they need not. Attributing staleness to a
+document would need the stale reason per result joined to its evidence, which is a
+backend change and was not made.
+
+The badge keeps the `unavailable` token's colour and slash glyph, and `ProvenanceBadge`
+gained an optional `label` that overrides only the words, so "Unavailable" is unchanged
+everywhere else it means what it says. The review page's back link reads "Back to
+evidence", and the lead copy now says each decision is saved as it is made.
+
+**Focus, twice.** The last decision now moves focus to the panel rather than to the final
+field, so a keyboard user lands on the outcome and the way on. Driving it in the browser
+found a second case the tests had not: "Update assessment" unmounts once the run clears
+the stale count, and focus fell to `<body>`, the defect this screen already fixed once for
+fields. Focus now returns to the panel when the run settles, with a test that fails
+without it.
+
+Verified in the browser on the scenario 1 case's `prompt-injection.pdf`, whose two open
+values were decided honestly: the departure date was rejected as not on the document (it
+is not), and the traveller name confirmed. The panel appeared with focus on it and both
+actions; Update assessment cleared all stale conclusions and was announced; the page
+reflows at 320px; "Return to evidence" lands on the library. To re-test the update path
+the case's date was moved one day and restored, and the case was reassessed afterwards.
 
 ### 17. The evidence row says what the worker did, not what the user decided
 
