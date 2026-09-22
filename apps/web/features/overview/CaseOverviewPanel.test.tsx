@@ -417,11 +417,30 @@ describe("CaseOverviewPanel", () => {
     });
 
     it("stops offering the application date once the case has one", () => {
+      /**
+       * **A date with no conclusions, which is a real state and not an arrangement of the
+       * fixture.** Worth saying, because the pair looks impossible from inside this app: the
+       * only control that saves a date is `ApplicationDateCard`, and it selects and
+       * recalculates in one action, so a user of the web form never sees it.
+       *
+       * It arises two ways. `POST /application-dates/select` with no following
+       * `/assessments/recalculate` produces it directly — pairing them is a convention of
+       * `useSaveApplicationDate`, not something the API requires, so any other client
+       * reaches this in one call. And when the recalculation half of that pair fails, the
+       * user is left here with a saved date and nothing assessed, which is exactly the
+       * moment the list below has to be right.
+       *
+       * Observed live rather than reasoned about: case `c128470c`, date saved, fifteen
+       * requirements unassessed, this two-step list on screen.
+       */
       render(<CaseOverviewPanel overview={anUnassessedOverview({ application_date: "2027-04-15" })} />);
 
       const start = screen.getByRole("region", { name: "Start here" });
       expect(within(start).queryByRole("link", { name: /Set the date you plan to apply/ })).toBeNull();
       expect(within(start).getByRole("link", { name: /periods you spent outside the UK/ })).toBeTruthy();
+      // The remaining steps still have to be a complete instruction on their own.
+      expect(within(start).getAllByRole("listitem")).toHaveLength(2);
+      expect(start).toHaveTextContent(/Run assessment/);
     });
 
     it("orders the steps, because the window is measured back from the date", () => {

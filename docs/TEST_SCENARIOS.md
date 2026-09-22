@@ -67,11 +67,23 @@ real user takes and the one where defects have actually hidden.
 3. Land on the overview.
 
 **Expected:** the case activates. The overview says nothing has been assessed yet and shows
-a **Start here** list: set an application date, add your travel history, then Recalculate.
-The application-date step disappears once a date exists.
+a **Start here** list of three steps: set an application date, add your travel history, then
+open **Requirements** and choose **Run assessment**.
+
+Check the last step names Requirements, not the header. The header's Update assessment button
+is hidden until a case has been assessed once, and this list only appears while nothing has
+been — so a step pointing "above" was naming a control guaranteed to be absent
+(`SCENARIO_FINDINGS.md` finding 1).
 
 **A failure here means** the empty state has regressed to a dead end, which is what it was
 before the release slice.
+
+**Not checkable here: "the step disappears once a date exists".** An earlier version of this
+scenario said so, and it passed for the wrong reason — the whole list disappears, because
+saving a date also recalculates. To see the two-step list you need a date with nothing
+assessed, which the web form never produces: select a date through the API without
+recalculating, or have a recalculation fail. Covered by `CaseOverviewPanel.test.tsx`, which
+names both routes.
 
 4. Case data, set the application date to **30 June 2027**. The control should read **Save
    this date**, not Preview.

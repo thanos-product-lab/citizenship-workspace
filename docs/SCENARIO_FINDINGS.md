@@ -94,7 +94,8 @@ two steps and the last one still points somewhere real.
 
 ### 2. A test passes against a state the happy path cannot produce
 
-**Status:** outstanding · found running scenario 1
+**Status:** **fixed**, 22 September 2026 · found running scenario 1 · **downgraded on
+inspection**: the coverage was real and the reasoning was not
 **Affects:** `CaseOverviewPanel.test.tsx:393`
 
 The test "stops offering the application date once the case has one" builds
@@ -124,6 +125,27 @@ any client that does not happen to be this web app, and the test covers a state 
 can reach — it is the *reasoning* in the test's name that was wrong, not the coverage.
 Observed live on case `c128470c`: date saved, fifteen requirements unassessed, two-step
 Start here on screen.
+
+**How it was closed.** Nothing was deleted and nothing about the component changed. The test
+now names the state it covers and both routes into it — `select` without a following
+`recalculate`, or the failure of the second half of that pair — so a reader can no longer
+mistake a real state for an arrangement of the fixture. It also gained two assertions, that
+the list is two steps and still ends on **Run assessment**, because a step that drops must
+leave a complete instruction behind rather than a stub.
+
+`TEST_SCENARIOS.md` scenario 1 carried the same mistake and is corrected in the same change.
+It claimed the application-date step disappears once a date exists, and that expectation
+passed in the walkthrough because the **whole list** disappears: saving a date also
+recalculates. The scenario now says the two-step state is not reachable from the web form,
+says which two routes do reach it, and points at the test.
+
+**What this finding is really worth.** Less than filed. It was collected as a fifth instance
+of "green against a state the product cannot reach", and it is not one — the state is
+reachable by any client that is not this web app. The genuine instances are finding 6, whose
+fixture used a date shape no extractor returns, and the confirm gate in finding 3, which hid
+a false negative behind a validation error. Recording the difference matters, because the
+case study's argument is about tests that cannot fail, not tests that are merely
+under-explained.
 
 ### Observation: saving the application date assesses the case
 
