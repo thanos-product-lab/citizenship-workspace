@@ -109,6 +109,13 @@ function GettingStarted({ overview }: { overview: Overview }): JSX.Element | nul
   if (assessed > 0) return null;
 
   const data = `/cases/${overview.case_id}/data`;
+  // Requirements, not the header. `RecalculateButton` renders only when `assessed > 0`
+  // and this block only when `assessed === 0`, so the two are mutually exclusive by
+  // construction: every time this list was on screen telling someone to press
+  // Recalculate, that button was guaranteed to be absent. The requirements list's empty
+  // state fires on `withResults.length === 0`, which is this same condition, so its
+  // "Run assessment" is the one control that is certain to be there.
+  const requirements = `/cases/${overview.case_id}/requirements`;
 
   return (
     <section className="cw-actions" aria-labelledby="getting-started-heading">
@@ -128,8 +135,9 @@ function GettingStarted({ overview }: { overview: Overview }): JSX.Element | nul
           spreadsheet.
         </li>
         <li>
-          Then choose <strong>Recalculate</strong> above. Nothing is assessed until you ask
-          for it, and you can change your answers and ask again.
+          Then open <a href={requirements}>Requirements</a> and choose{" "}
+          <strong>Run assessment</strong>. Nothing is assessed until you ask for it, and you
+          can change your answers and ask again.
         </li>
       </ol>
     </section>

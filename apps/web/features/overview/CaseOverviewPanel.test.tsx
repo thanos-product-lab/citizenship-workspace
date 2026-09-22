@@ -390,6 +390,32 @@ describe("CaseOverviewPanel", () => {
         .toHaveAttribute("href", "/cases/c1/data");
     });
 
+    it("sends the last step to a control that exists in this state", () => {
+      /**
+       * The step used to read "Then choose **Recalculate** above", and that button was
+       * guaranteed to be absent whenever this list was on screen. `RecalculateButton`
+       * renders only when `assessed > 0`; this block renders only when `assessed === 0`.
+       * Two components keyed off one predicate in exact opposition, so the instruction was
+       * wrong every time it was shown.
+       *
+       * It pointed at nothing by name, too: the header control is labelled "Update
+       * assessment", argued for deliberately in `CaseHeader`.
+       *
+       * The requirements list's empty state fires on `withResults.length === 0`, which is
+       * this same condition, so its "Run assessment" is the one control certain to be
+       * there. Asserting the destination is what keeps the pair from drifting apart again.
+       */
+      render(<CaseOverviewPanel overview={anUnassessedOverview()} />);
+
+      const start = screen.getByRole("region", { name: "Start here" });
+      expect(within(start).getByRole("link", { name: "Requirements" })).toHaveAttribute(
+        "href",
+        "/cases/c1/requirements",
+      );
+      expect(start).toHaveTextContent(/Run assessment/);
+      expect(start).not.toHaveTextContent(/Recalculate/);
+    });
+
     it("stops offering the application date once the case has one", () => {
       render(<CaseOverviewPanel overview={anUnassessedOverview({ application_date: "2027-04-15" })} />);
 

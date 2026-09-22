@@ -33,7 +33,7 @@ folding back into the scenario.
 
 ### 1. The Start here list instructs the user to press a control that cannot be on screen
 
-**Status:** outstanding · found running scenario 1
+**Status:** **fixed**, 22 September 2026 · found running scenario 1
 **Affects:** the overview of any case with no conclusions
 **Severity:** the instruction is wrong in every state it renders in, and most wrong in the
 one state where the user actually needs it
@@ -72,6 +72,26 @@ reachable from the overview. The second is smaller and is probably right: the bu
 hidden for a good reason, and the reason step 3 exists is to tell a user with nothing
 assessed what to do next.
 
+**How it was closed.** The second, and the smaller one. Step 3 now reads "Then open
+**Requirements** and choose **Run assessment**", with Requirements a link to that
+destination. The header button keeps its own rule and its own label, both of which were
+already argued for; what changes is the sentence that contradicted them.
+
+The requirements list's empty state fires on `withResults.length === 0`, which is the same
+condition this block renders under. So where the old copy named a control guaranteed to be
+absent, the new copy names one guaranteed to be present — the pairing is inverted rather
+than merely corrected.
+
+`sends the last step to a control that exists in this state` asserts the destination and
+that the word "Recalculate" is gone. It fails against the old copy, so the two components
+cannot drift apart again without something going red.
+
+Verified in the browser in both states. On a freshly confirmed case the step reads correctly
+and the header carries no button at all, which is the defect in one screenshot; following the
+link lands on Requirements with **Run assessment** on screen. Then with a date saved and
+nothing assessed — the state the finding said mattered most — Start here correctly drops to
+two steps and the last one still points somewhere real.
+
 ### 2. A test passes against a state the happy path cannot produce
 
 **Status:** outstanding · found running scenario 1
@@ -95,6 +115,15 @@ the fifth: verification that is green against a state the product cannot reach.
 **What closing it takes.** Keep the test, and name the state in it. If the only way to see
 a date with no conclusions is a failed recalculation, the test should say that, because
 then it is covering finding 1's recovery path rather than an imaginary happy one.
+
+**Correction, while fixing finding 1.** The state is more reachable than this entry says. It
+needs no failure at all: `POST /application-dates/select` without a following
+`/assessments/recalculate` produces it directly, and the pairing of the two is a convention
+of `useSaveApplicationDate` rather than anything the API requires. So the branch is real for
+any client that does not happen to be this web app, and the test covers a state the product
+can reach — it is the *reasoning* in the test's name that was wrong, not the coverage.
+Observed live on case `c128470c`: date saved, fifteen requirements unassessed, two-step
+Start here on screen.
 
 ### Observation: saving the application date assesses the case
 
