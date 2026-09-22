@@ -34,7 +34,8 @@ export function UploadDocument({
   caseId: string;
   supportedMediaTypes: string[];
   maxBytes: number;
-  onUploaded: (displayName: string) => void;
+  /** The name it was filed under, and the id of the evidence item it created. */
+  onUploaded: (displayName: string, evidenceItemId: string) => void;
   onStarted: (displayName: string) => void;
 }): JSX.Element {
   const upload = useUploadEvidence(caseId);
@@ -111,8 +112,8 @@ export function UploadDocument({
     upload.mutate(
       { file, category, displayName: name },
       {
-        onSuccess: () => {
-          onUploaded(name);
+        onSuccess: (recorded) => {
+          onUploaded(name, recorded.id);
           reset();
           // Focus would otherwise land on <body>: the submit button is unreachable
           // again the moment `file` clears. The file input is where "add another"
@@ -127,6 +128,7 @@ export function UploadDocument({
 
   return (
     <form
+      id="upload-form"
       aria-labelledby="upload-heading"
       style={{ ...cardStyle, display: "grid", gap: "var(--cw-space-4)" }}
       onSubmit={onSubmit}

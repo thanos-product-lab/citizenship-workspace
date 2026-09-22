@@ -17,10 +17,12 @@ import {
   CATEGORY_LABELS,
   disagreement,
   reviewSummary,
+  stateNote,
   TERMINAL_PROCESSING_STATES,
   type EvidenceItem,
 } from "./library";
 import { UploadDocument } from "./UploadDocument";
+import { UPLOAD_PROGRESS_ID, UploadProgress } from "./UploadProgress";
 import { useEvidence } from "./useEvidence";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 
@@ -54,8 +56,10 @@ const ANNOUNCE_AFTER_FOCUS_MS = 150;
  * look alike.
  *
  * **No progress bar over the processing states.** A document's route through Domain §14.4
- * is not a fixed pipeline, and `AWAITING_CONFIRMATION` has no producer until M8. A stepper
- * would draw stages this build cannot reach.
+ * is not a fixed pipeline: it can stop at Unsupported, No text found or Failed as well as
+ * arriving at Needs your confirmation. A stepper would draw stages a given document may
+ * never reach. `UploadProgress` follows a new upload visibly and keeps to the same rule:
+ * it lists the steps already reached, and draws the last one only once it is known.
  */
 /**
  * The label for the review link, or `null` where there is nothing to review.
@@ -107,6 +111,12 @@ export function EvidenceDestination({ caseId }: { caseId: string }): JSX.Element
   // message has to name *which* document failed, and the mutation state is shared by
   // every row's control.
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  // The document just uploaded, followed on screen until the user leaves the page.
+  const [recent, setRecent] = useState<{ id: string; name: string } | null>(null);
+  // Whether the upload form is open. `null` until the user chooses, and then the library
+  // decides: open when there is nothing in it, because adding a document is then the
+  // only thing to do here, and collapsed otherwise, so the documents are the page.
+  const [adding, setAdding] = useState<boolean | null>(null);
   const deletingItem =
     deletingId && data?.items
       ? ((data.items as EvidenceItem[]).find((i) => i.id === deletingId) ?? null)
@@ -261,21 +271,52 @@ export function EvidenceDestination({ caseId }: { caseId: string }): JSX.Element
 
       {status === "success" ? (
         <>
-          <UploadDocument
-            caseId={caseId}
-            supportedMediaTypes={data.supported_media_types ?? []}
-            maxBytes={data.max_upload_bytes}
-            onStarted={(name) => setAnnouncement(`Uploading ${name}…`)}
-            onUploaded={(name) =>
-              // Says where it went and what state it is in, not just that it happened —
-              // and the trailing space differs from the "Uploading…" message above, so
-              // two uploads of the same document still re-announce.
-              // The caption and the page note were both corrected when reading landed;
-              // this third copy was missed, and it is the only one no sighted user ever
-              // sees. Reading starts seconds later and the table would contradict it.
-              setAnnouncement(`${name} uploaded. Reading will start shortly.`)
-            }
-          />
+          {/* A disclosure rather than a permanent form. The form was the first thing on
+              the page at every visit, above the documents it exists to add to, when after
+              the first upload the library is what a user comes back for. */}
+          <button
+            type="button"
+            className="cw-button cw-button--secondary"
+            aria-expanded={adding ?? data.items.length === 0}
+            aria-controls="upload-form"
+            onClick={() => setAdding(!(adding ?? data.items.length === 0))}
+            style={{ marginBottom: "var(--cw-space-4)" }}
+          >
+            Add document
+          </button>
+
+          {(adding ?? data.items.length === 0) ? (
+            <UploadDocument
+              caseId={caseId}
+              supportedMediaTypes={data.supported_media_types ?? []}
+              maxBytes={data.max_upload_bytes}
+              onStarted={(name) => setAnnouncement(`Uploading ${name}…`)}
+              onUploaded={(name, id) => {
+                // Says where it went and what state it is in, not just that it happened —
+                // and the trailing space differs from the "Uploading…" message above, so
+                // two uploads of the same document still re-announce.
+                // The caption and the page note were both corrected when reading landed;
+                // this third copy was missed. Reading starts seconds later and the table
+                // would contradict it.
+                setAnnouncement(`${name} uploaded. Reading will start shortly.`);
+                setRecent({ id, name });
+                setAdding(false);
+                // The form is about to unmount under the submit button. The card that
+                // replaces it is where the answer is, so focus goes there.
+                requestAnimationFrame(() =>
+                  document.getElementById(UPLOAD_PROGRESS_ID)?.focus(),
+                );
+              }}
+            />
+          ) : null}
+
+          {recent ? (
+            <UploadProgress
+              caseId={caseId}
+              displayName={recent.name}
+              item={(data.items as EvidenceItem[]).find((item) => item.id === recent.id)}
+            />
+          ) : null}
 
           {data.items.length === 0 ? (
             <p style={{ color: "var(--cw-text-muted)" }} data-testid="evidence-empty">
@@ -392,36 +433,6 @@ export function EvidenceDestination({ caseId }: { caseId: string }): JSX.Element
  * the Next.js server's memory, or in an error reporter's breadcrumbs for the sake of a
  * cell that only has to say "this worked".
  */
-/**
- * The one-line note beneath a state, or null where the state speaks for itself.
- *
- * A failure always carries its reason. "No text found" carries one too, because without
- * it the user cannot tell whether their document is broken — it is not; a scan simply
- * has no text layer, and reading one needs OCR, which is M8.
- */
-function stateNote(item: EvidenceItem): string | null {
-  if (item.failure_reason) return item.failure_reason;
-  // Why analysis produced nothing, in the server's words. Checked before the generic
-  // "no text found" below because the two are different findings with different
-  // remedies: a scan has no text to read, whereas a spent daily budget means the text
-  // was read fine and the analysis will work tomorrow. Telling someone with a perfectly
-  // good document to try a different file is the failure this branch prevents.
-  if (item.analysis_note) return item.analysis_note;
-  if (item.processing_status === "PARTIALLY_COMPLETED") {
-    // Read from the token rather than repeated here: the same sentence written twice in
-    // two packages is two sentences that can drift.
-    return evidenceProcessingTokens.partially_completed.meaning;
-  }
-  if (item.processing_status === "AWAITING_CONFIRMATION") {
-    // Without this the announcement was "Values proposed. 1 page." — the page count
-    // stripped of the column header that gives it meaning on screen, arriving straight
-    // after a sentence about values, and parsing as *one page was proposed*. A number
-    // announced with no context, on the one state the milestone exists to reach.
-    return evidenceProcessingTokens.awaiting_confirmation.meaning;
-  }
-  return null;
-}
-
 /** What to say when a document finishes, for the live region. */
 function describeOutcome(item: EvidenceItem): string {
   const note = stateNote(item);

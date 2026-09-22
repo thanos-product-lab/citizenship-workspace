@@ -1,4 +1,5 @@
 import type { components } from "@cw/api-client";
+import { evidenceProcessingTokens } from "@cw/design-system";
 
 import { claimLabel } from "./review/claimLabels";
 
@@ -164,4 +165,34 @@ export function reviewSummary(item: EvidenceItem): string | null {
 
   const parts = [open, decided].filter((part): part is string => Boolean(part));
   return parts.length > 0 ? `${parts.join(". ")}.` : null;
+}
+
+/**
+ * The one-line note beneath a state, or null where the state speaks for itself.
+ *
+ * A failure always carries its reason. "No text found" carries one too, because without
+ * it the user cannot tell whether their document is broken — it is not; a scan simply
+ * has no text layer, and reading one needs OCR, which is M8.
+ */
+export function stateNote(item: EvidenceItem): string | null {
+  if (item.failure_reason) return item.failure_reason;
+  // Why analysis produced nothing, in the server's words. Checked before the generic
+  // "no text found" below because the two are different findings with different
+  // remedies: a scan has no text to read, whereas a spent daily budget means the text
+  // was read fine and the analysis will work tomorrow. Telling someone with a perfectly
+  // good document to try a different file is the failure this branch prevents.
+  if (item.analysis_note) return item.analysis_note;
+  if (item.processing_status === "PARTIALLY_COMPLETED") {
+    // Read from the token rather than repeated here: the same sentence written twice in
+    // two packages is two sentences that can drift.
+    return evidenceProcessingTokens.partially_completed.meaning;
+  }
+  if (item.processing_status === "AWAITING_CONFIRMATION") {
+    // Without this the announcement was "Values proposed. 1 page." — the page count
+    // stripped of the column header that gives it meaning on screen, arriving straight
+    // after a sentence about values, and parsing as *one page was proposed*. A number
+    // announced with no context, on the one state the milestone exists to reach.
+    return evidenceProcessingTokens.awaiting_confirmation.meaning;
+  }
+  return null;
 }

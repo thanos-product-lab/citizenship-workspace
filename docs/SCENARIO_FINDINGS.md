@@ -1355,7 +1355,7 @@ case phase deliberately ignores the queue (ADR-0009), and that should stay true.
 
 ### 15. A successful upload is announced only to screen readers
 
-**Status:** open · **Kind:** feedback gap · **Size:** medium
+**Status:** **fixed**, 22 September 2026 · **Kind:** feedback gap · **Size:** medium
 
 The only statement that an upload succeeded is `EvidenceDestination.tsx:217`, an
 `aria-live` region with `cw-visually-hidden`. A sighted user sees the form reset and nothing
@@ -1369,6 +1369,40 @@ document, then Ready to review, ending in a "Review extracted information" actio
 the library the main content of the destination, with the upload form collapsed behind
 "Add document", since after the first upload the library is what a user comes back for.
 Keep the live region; this adds a visible equivalent rather than replacing it.
+
+**How it was closed, and the recorded decision it met.** The library deliberately draws no
+track through the processing states, and a test says so ("draws no path through the
+stages"): a document can stop at Unsupported, No text found or Failed as well as arriving
+at Needs your confirmation, so a three-step track with "Ready to review" drawn ahead of
+time would promise an ending a given document may not reach. The proposal above is exactly
+that track.
+
+So `UploadProgress` lists only the steps already reached. Uploaded, then "Reading
+document…" while the worker has it, then "Document read" and the real outcome once there is
+one: "Ready to review" with a "Review extracted information" button for a document that
+proposed values, and the state's own label and reason (Unsupported, Failed, No text found)
+for one that did not. Before the outcome is known, one sentence says what reading may lead
+to, which is a statement rather than a stage. The existing test still holds and a new one
+asserts "Ready to review" is never drawn early.
+
+The library is now the page: the form sits behind "Add document" (a disclosure with
+`aria-expanded`), open by default only when the library is empty, since adding is then the
+only thing to do. On success the form collapses and focus moves to the card, because the
+submit button it was on has just unmounted. The live region is unchanged.
+
+The card lasts for the visit. After leaving the page, the row carries the document's state
+and review summary (finding 17), so nothing is lost.
+
+Verified in the browser with two synthetic fixtures on the scenario 1 case
+(`tests/fixtures/documents/travel-booking.pdf` and the eval fixture
+`italy_booking_amended_return.pdf`). The library loaded with the form collapsed, the upload
+collapsed it again and focused the card, and a DOM observer recorded the card moving from
+"Uploaded / Reading document…" to "Uploaded / Document read / Ready to review" in real
+time. The review page opened on the right document. One thing not isolated: the click that
+opened it came from a scripted step, so which of the card's link and the row's link fired
+was not confirmed separately. The card's link target is asserted by a unit test. The page
+reflows at 320px, though the frame used for that check was a fresh load and so did not
+contain the card.
 
 ### 16. Review ends in a sentence, and a rejected value is labelled "Unavailable"
 

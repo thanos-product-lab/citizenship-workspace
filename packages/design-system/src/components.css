@@ -2561,6 +2561,55 @@
   border-radius: var(--cw-radius-md);
 }
 
+/* A new upload, followed while the worker reads it. Neutral rather than attention: the
+   card reports progress, and a document that needs the user says so in its last step. */
+.cw-upload-progress {
+  display: grid;
+  gap: var(--cw-space-2);
+  margin-bottom: var(--cw-space-4);
+  padding: var(--cw-space-4);
+  border: 1px solid var(--cw-border);
+  border-radius: var(--cw-radius-md);
+  background: var(--cw-surface);
+}
+
+.cw-upload-progress__heading {
+  margin: 0;
+  font-size: var(--cw-text-base);
+  font-weight: var(--cw-weight-medium);
+  overflow-wrap: anywhere;
+}
+
+.cw-upload-progress__steps {
+  display: grid;
+  gap: var(--cw-space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--cw-text-sm);
+}
+
+.cw-upload-progress__steps li {
+  display: flex;
+  align-items: center;
+  gap: var(--cw-space-2);
+  color: var(--cw-text-muted);
+}
+
+/* Weight, not only colour, marks the step that is happening or the one that decides what
+   to do next; the glyph beside each carries the same meaning without colour. */
+.cw-upload-progress__steps li[data-step="current"],
+.cw-upload-progress__steps li[data-step="outcome"] {
+  color: var(--cw-text);
+  font-weight: var(--cw-weight-medium);
+}
+
+.cw-upload-progress__note {
+  margin: var(--cw-space-1) 0 0;
+  font-size: var(--cw-text-sm);
+  color: var(--cw-text-muted);
+}
+
 /* The end of a review. Settled rather than alarming: a completed review is the outcome
    the screen exists for, so it takes the confirmed border rather than an attention one. */
 .cw-review-complete {

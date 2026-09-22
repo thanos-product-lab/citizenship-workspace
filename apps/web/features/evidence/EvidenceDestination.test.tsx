@@ -1059,3 +1059,121 @@ describe("what the analysis proposed", () => {
     expect(row.getByText(/paused until tomorrow/)).toBeTruthy();
   });
 });
+
+describe("following an upload", () => {
+  /** Run an upload that records `recorded`, with the library then holding `after`. */
+  async function uploadWithLibrary(after: unknown[]) {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true }));
+    post.mockImplementation((path: string) => {
+      if (path.endsWith("/uploads")) {
+        return Promise.resolve({
+          data: {
+            upload_url: "https://store.example/upload",
+            upload_fields: { key: "k", "Content-Type": "application/pdf" },
+            upload_token: "tok.sig",
+            media_type: "application/pdf",
+            expires_in_seconds: 60,
+          },
+        });
+      }
+      get.mockResolvedValue({ data: aLibrary(after) });
+      return Promise.resolve({ data: anItem({ id: "ev-new", display_name: "Rome booking" }) });
+    });
+
+    renderWithQuery(<EvidenceDestination caseId={CASE_ID} />);
+    const input = (await screen.findByLabelText("Document file")) as HTMLInputElement;
+    choose(input, new File(["%PDF-1.7"], "rome.pdf", { type: "application/pdf" }));
+    fireEvent.change(screen.getByLabelText("Display name"), {
+      target: { value: "Rome booking" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Upload document" }));
+    return screen.findByRole("region", { name: "Rome booking" });
+  }
+
+  it("keeps the library first and the form behind Add document once there are documents", async () => {
+    get.mockResolvedValue({ data: aLibrary([anItem()]) });
+    renderWithQuery(<EvidenceDestination caseId={CASE_ID} />);
+
+    const add = await screen.findByRole("button", { name: "Add document" });
+    expect(add).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByLabelText("Document file")).toBeNull();
+
+    fireEvent.click(add);
+    expect(add).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByLabelText("Document file")).toBeTruthy();
+  });
+
+  it("opens the form when the library is empty, since adding is the only thing to do", async () => {
+    renderWithQuery(<EvidenceDestination caseId={CASE_ID} />);
+
+    expect(await screen.findByRole("button", { name: "Add document" })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+    expect(screen.getByLabelText("Document file")).toBeTruthy();
+  });
+
+  it("shows the upload landing and being read, and moves focus to it", async () => {
+    const card = await uploadWithLibrary([
+      anItem({ id: "ev-new", display_name: "Rome booking", processing_status: "EXTRACTING_TEXT" }),
+    ]);
+
+    const steps = within(card);
+    expect(steps.getByText("Uploaded")).toBeTruthy();
+    expect(await steps.findByText("Reading document…")).toBeTruthy();
+    // The form collapsed under the submit button, so focus goes where the answer is.
+    await waitFor(() => expect(document.activeElement?.id).toBe("upload-progress"));
+    expect(screen.queryByLabelText("Document file")).toBeNull();
+
+    vi.unstubAllGlobals();
+  });
+
+  it("draws no step the document has not reached", async () => {
+    // The rule the library keeps: a document can stop at Unsupported or Failed, so
+    // "Ready to review" is drawn for a document that is, and never ahead of time.
+    const card = await uploadWithLibrary([
+      anItem({ id: "ev-new", display_name: "Rome booking", processing_status: "VALIDATING" }),
+    ]);
+
+    await within(card).findByText("Reading document…");
+    expect(within(card).queryByText("Ready to review")).toBeNull();
+    expect(within(card).queryByRole("link")).toBeNull();
+
+    vi.unstubAllGlobals();
+  });
+
+  it("offers the review once there is something to review", async () => {
+    const card = await uploadWithLibrary([
+      anItem({
+        id: "ev-new",
+        display_name: "Rome booking",
+        processing_status: "AWAITING_CONFIRMATION",
+      }),
+    ]);
+
+    expect(await within(card).findByText("Ready to review")).toBeTruthy();
+    expect(within(card).getByText("Document read")).toBeTruthy();
+    expect(
+      within(card).getByRole("link", { name: "Review extracted information" }),
+    ).toHaveAttribute("href", `/cases/${CASE_ID}/evidence/ev-new/review`);
+
+    vi.unstubAllGlobals();
+  });
+
+  it("ends in the real outcome when reading cannot finish", async () => {
+    const card = await uploadWithLibrary([
+      anItem({
+        id: "ev-new",
+        display_name: "Rome booking",
+        processing_status: "UNSUPPORTED",
+        failure_reason: "This file is not a document this product can read.",
+      }),
+    ]);
+
+    expect(await within(card).findByText("Unsupported")).toBeTruthy();
+    expect(within(card).getByText(/not a document this product can read/)).toBeTruthy();
+    expect(within(card).queryByText("Ready to review")).toBeNull();
+
+    vi.unstubAllGlobals();
+  });
+});
