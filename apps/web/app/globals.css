@@ -148,3 +148,106 @@ a:hover {
 .cw-date-input::-webkit-calendar-picker-indicator:hover {
   opacity: 1;
 }
+
+/* --- Sign-in ---------------------------------------------------------------- */
+
+/* The introduction and Clerk's card side by side where there is room, stacked where there
+   is not. The introduction comes first in both, so a narrow screen reads what this is
+   before it asks for anything. */
+.cw-auth {
+  min-height: 100dvh;
+  display: grid;
+  align-content: center;
+  gap: var(--cw-space-8);
+  max-width: 64rem;
+  margin: 0 auto;
+  padding: var(--cw-space-8) var(--cw-space-4);
+}
+
+@media (min-width: 56rem) {
+  .cw-auth {
+    /* A fixed column for the card: `auto` sized itself from a card that asks for 100% of
+       it, and settled narrower than Clerk's own width. */
+    grid-template-columns: minmax(0, 1fr) 25rem;
+    align-items: center;
+    gap: var(--cw-space-12);
+    padding-inline: var(--cw-space-8);
+  }
+}
+
+.cw-auth__intro {
+  display: grid;
+  gap: var(--cw-space-4);
+  max-width: 34rem;
+}
+
+.cw-auth__brand {
+  margin: 0;
+  font-weight: var(--cw-weight-semibold);
+  color: var(--cw-text);
+}
+
+.cw-auth__statement {
+  margin: 0;
+  font-size: var(--cw-text-3xl);
+  font-weight: var(--cw-weight-semibold);
+  line-height: var(--cw-leading-snug);
+  color: var(--cw-text);
+}
+
+.cw-auth__lead {
+  margin: 0;
+  color: var(--cw-text-muted);
+}
+
+/* The three promises, each with a glyph so none of them relies on colour. */
+.cw-auth__points {
+  display: grid;
+  gap: var(--cw-space-3);
+  margin: var(--cw-space-2) 0 0;
+  padding: var(--cw-space-4) 0 0;
+  border-top: 1px solid var(--cw-border);
+  list-style: none;
+}
+
+.cw-auth__points li {
+  display: flex;
+  align-items: baseline;
+  gap: var(--cw-space-3);
+  color: var(--cw-text);
+}
+
+.cw-auth__points svg {
+  flex: none;
+  color: var(--cw-accent);
+  transform: translateY(2px);
+}
+
+.cw-auth__note {
+  margin: 0;
+  font-size: var(--cw-text-sm);
+  color: var(--cw-text-muted);
+}
+
+.cw-auth__panel {
+  display: grid;
+  justify-items: center;
+  min-width: 0;
+}
+
+/* Clerk's card, brought onto the product's surfaces: a bordered panel like every other
+   card here, not a floating shadow. */
+.cw-auth__card {
+  border: 1px solid var(--cw-border);
+  box-shadow: var(--cw-shadow-sm);
+}
+
+/* Clerk fixes its card at 25rem. At 320px that scrolled the page sideways (416px of
+   content), which is WCAG 1.4.10. Scoped under the panel so the rule outranks Clerk's own
+   single-class styles, and capped at Clerk's width so wide screens are unchanged. */
+.cw-auth__panel .cl-rootBox,
+.cw-auth__panel .cl-cardBox,
+.cw-auth__panel .cl-card {
+  width: 100%;
+  max-width: 25rem;
+}

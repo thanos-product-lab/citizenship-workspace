@@ -13,7 +13,9 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <ClerkProvider>
+    // The same page the middleware sends signed-out visitors to, so a sign-in started from
+    // anywhere in the app (the user menu, an expired session) lands there too.
+    <ClerkProvider signInUrl="/sign-in">
       <html lang="en">
         <body>
           <Providers>{children}</Providers>
