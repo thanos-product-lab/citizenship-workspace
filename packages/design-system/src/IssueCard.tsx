@@ -53,6 +53,8 @@ export interface IssueCardProps {
   body?: string | null | undefined;
   /** Why it matters — the consequence, never a prediction. */
   impact?: string | null | undefined;
+  /** Structured content under the body, such as the checks one task covers. */
+  details?: ReactNode | undefined;
   /** True when this cause was raised before, resolved, and has returned. */
   hasRecurred?: boolean | undefined;
   /** Actions the user can take. Rendered in a group so the card has one action row. */
@@ -75,6 +77,7 @@ export function IssueCard({
   severity,
   body,
   impact,
+  details,
   hasRecurred = false,
   actions,
   affectedLink,
@@ -99,6 +102,8 @@ export function IssueCard({
       </div>
 
       {body ? <p className="cw-issue-card__body">{body}</p> : null}
+
+      {details ? <div className="cw-issue-card__details">{details}</div> : null}
 
       {impact ? (
         <p className="cw-issue-card__impact">

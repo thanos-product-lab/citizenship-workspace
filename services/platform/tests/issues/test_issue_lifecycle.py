@@ -58,8 +58,16 @@ def _queue(api: Api, user: str, case_id: str) -> dict[str, Any]:
     return payload
 
 
+def _open_issues(queue: dict[str, Any]) -> list[dict[str, Any]]:
+    """Every open issue, wherever the queue presents it: in a group, or behind the one
+    recheck task that stands for all the stale ones (ADR-0033)."""
+    grouped = [issue for group in queue["groups"] for issue in group["issues"]]
+    behind_recheck = queue["recheck"]["issues"] if queue["recheck"] else []
+    return grouped + behind_recheck
+
+
 def _open_keys(queue: dict[str, Any]) -> set[str]:
-    return {issue["affected_object_id"] for group in queue["groups"] for issue in group["issues"]}
+    return {issue["affected_object_id"] for issue in _open_issues(queue)}
 
 
 def test_an_assessed_case_with_nothing_wrong_has_an_empty_queue(api: Api) -> None:
@@ -86,6 +94,28 @@ def test_a_travel_change_opens_one_issue_per_stale_requirement(api: Api) -> None
     }
 
 
+def test_the_stale_issues_are_presented_as_one_update_task(api: Api) -> None:
+    """Four stored issues, one thing to do (ADR-0033). The rows are untouched; only their
+    presentation is combined, and each still names its own requirement."""
+    case_id = _assessed_case(api, "user_a")
+    _add_trip(api, "user_a", case_id, "2023-06-01", "2023-07-02")
+
+    queue = _queue(api, "user_a", case_id)
+    task = queue["recheck"]
+    assert task["failed"] is False
+    assert task["title"] == "Update assessment"
+    assert task["body"].startswith("4 conclusions were reached before")
+    assert {c["requirement_key"] for c in task["checks"]} == _open_keys(queue)
+    assert all(c["requirement_title"] != c["requirement_key"] for c in task["checks"])
+    # Not shown twice: none of them is also in a group.
+    assert all(
+        issue["issue_type"] != "STALE_ASSESSMENT"
+        for group in queue["groups"]
+        for issue in group["issues"]
+    )
+    assert (queue["open_count"], queue["action_count"]) == (4, 1)
+
+
 def test_recalculation_auto_resolves_the_issues_it_makes_current(api: Api) -> None:
     """§41.3: stale issues resolve automatically. Not a special case in the recalculation
     path — the reconciler simply finds those causes gone."""
@@ -98,6 +128,7 @@ def test_recalculation_auto_resolves_the_issues_it_makes_current(api: Api) -> No
     queue = _queue(api, "user_a", case_id)
     assert queue["open_count"] == 0
     assert queue["groups"] == []
+    assert queue["recheck"] is None
     # Resolved, not deleted (§36.6): the history says this was raised and cleared.
     assert len(queue["history"]) == 4
     assert {issue["status"] for issue in queue["history"]} == {"RESOLVED"}
@@ -205,7 +236,8 @@ def test_a_stale_issue_cannot_be_dismissed(api: Api) -> None:
     case_id = _assessed_case(api, "user_a")
     _add_trip(api, "user_a", case_id, "2023-06-01", "2023-07-02")
     queue = _queue(api, "user_a", case_id)
-    issue = queue["groups"][0]["issues"][0]
+    issue = _open_issues(queue)[0]
+    assert issue["issue_type"] == "STALE_ASSESSMENT"
     assert issue["dismissibility"] == "NOT_DISMISSIBLE"
 
     response = api("user_a").post(f"/api/v1/cases/{case_id}/issues/{issue['id']}/dismiss")

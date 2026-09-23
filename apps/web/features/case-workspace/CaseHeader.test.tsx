@@ -49,6 +49,7 @@ function anOverview(overrides: Record<string, unknown> = {}) {
     not_yet_assessed: 6,
     stale: 0,
     open_issue_count: 0,
+    issue_action_count: 0,
     open_issues: 0,
     total_requirements: 15,
     ...overrides,
@@ -252,13 +253,21 @@ describe("CaseHeader", () => {
       );
     });
 
-    it("carries the open issue count inside the Issues link, not as an orphan badge", async () => {
-      mock({ open_issue_count: 4 });
+    it("carries the action count inside the Issues link, not as an orphan badge", async () => {
+      mock({ open_issue_count: 9, issue_action_count: 4 });
       renderHeader();
-      // One accessible name, "Issues 4 open issues" — a number rendered beside the link
+      // One accessible name, "Issues 4 things to do": a number rendered beside the link
       // would be announced with nothing tying it to what it counts.
-      const link = await screen.findByRole("link", { name: /Issues\s*4\s*open issues/i });
+      const link = await screen.findByRole("link", { name: /Issues\s*4\s*things to do/i });
       expect(link).toHaveAttribute("href", "/cases/c1/issues");
+    });
+
+    it("counts actions, not notes for information (ADR-0033)", async () => {
+      // Five open issues, all of them notes: nothing to do, so no number.
+      mock({ open_issue_count: 5, issue_action_count: 0 });
+      renderHeader();
+      const link = await screen.findByRole("link", { name: "Issues" });
+      expect(link.textContent).toBe("Issues");
     });
 
     it("shows no count when nothing is open", async () => {

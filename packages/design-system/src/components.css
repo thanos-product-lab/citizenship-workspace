@@ -1755,6 +1755,15 @@ a.cw-button--secondary:hover {
   color: var(--cw-text);
 }
 
+/* The checks one task covers: a short list of links, each to its requirement. */
+.cw-issue-card__details ul {
+  display: grid;
+  gap: var(--cw-space-1);
+  margin: 0;
+  padding-left: var(--cw-space-5);
+  font-size: var(--cw-text-sm);
+}
+
 .cw-issue-card__impact {
   margin: 0;
   font-size: var(--cw-text-sm);
@@ -1821,6 +1830,22 @@ a.cw-button--secondary:hover {
 .cw-issue-queue__settled {
   margin: 0;
   color: var(--cw-text-muted);
+}
+
+/* What the queue asks of the user, stated once above the groups (ADR-0033). */
+.cw-issue-queue__summary {
+  margin: 0 0 var(--cw-space-4);
+  color: var(--cw-text);
+}
+
+/* What the last update left. Persistent rather than a toast: it is the answer to the
+   action the user just took, and it stays until they take another. */
+.cw-issue-queue__outcome {
+  margin: 0 0 var(--cw-space-4);
+  padding-left: var(--cw-space-3);
+  border-left: 3px solid var(--cw-status-supported);
+  color: var(--cw-text);
+  font-weight: var(--cw-weight-medium);
 }
 
 .cw-issue-history {

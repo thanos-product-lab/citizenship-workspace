@@ -127,6 +127,10 @@
             "title": "Groups",
             "type": "array"
           },
+          "issue_action_count": {
+            "title": "Issue Action Count",
+            "type": "integer"
+          },
           "last_assessed_at": {
             "anyOf": [
               {
@@ -199,6 +203,7 @@
           "needs_attention",
           "stale",
           "open_issue_count",
+          "issue_action_count",
           "total_requirements",
           "last_assessed_at"
         ],
@@ -1210,6 +1215,14 @@
       "IssueQueue": {
         "description": "Domain \u00a744.5.\n\n`open_count` counts OPEN and IN_PROGRESS only. A dismissed issue is not awaiting the\nuser, and counting it would leave a badge nobody can clear.",
         "properties": {
+          "action_count": {
+            "title": "Action Count",
+            "type": "integer"
+          },
+          "awareness_count": {
+            "title": "Awareness Count",
+            "type": "integer"
+          },
           "case_id": {
             "format": "uuid",
             "title": "Case Id",
@@ -1232,11 +1245,23 @@
           "open_count": {
             "title": "Open Count",
             "type": "integer"
+          },
+          "recheck": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RecheckTaskView"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
           "case_id",
           "open_count",
+          "action_count",
+          "awareness_count",
           "groups",
           "history"
         ],
@@ -1687,6 +1712,76 @@
           "requirements"
         ],
         "title": "RecalculateResponse",
+        "type": "object"
+      },
+      "RecheckTaskView": {
+        "description": "Every open recheck-type issue, presented as the one task they are (ADR-0033).\n\nThe stored issues are untouched: each keeps its own identity, history and reopening\n(ADR-0015), and each still appears on its own in `history` once resolved. This is only\nhow the open ones are shown, because one command clears them all and four cards for\none button read as four jobs.\n\nProse is rendered here, not in the client, like every other issue sentence.",
+        "properties": {
+          "body": {
+            "title": "Body",
+            "type": "string"
+          },
+          "checks": {
+            "items": {
+              "$ref": "#/components/schemas/RecheckedCheckView"
+            },
+            "title": "Checks",
+            "type": "array"
+          },
+          "failed": {
+            "title": "Failed",
+            "type": "boolean"
+          },
+          "impact": {
+            "title": "Impact",
+            "type": "string"
+          },
+          "issues": {
+            "items": {
+              "$ref": "#/components/schemas/IssueView"
+            },
+            "title": "Issues",
+            "type": "array"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "failed",
+          "title",
+          "body",
+          "impact",
+          "checks",
+          "issues"
+        ],
+        "title": "RecheckTaskView",
+        "type": "object"
+      },
+      "RecheckedCheckView": {
+        "description": "One conclusion the update would recheck, named and addressable.",
+        "properties": {
+          "issue_id": {
+            "format": "uuid",
+            "title": "Issue Id",
+            "type": "string"
+          },
+          "requirement_key": {
+            "title": "Requirement Key",
+            "type": "string"
+          },
+          "requirement_title": {
+            "title": "Requirement Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "issue_id",
+          "requirement_key",
+          "requirement_title"
+        ],
+        "title": "RecheckedCheckView",
         "type": "object"
       },
       "RecordUploadRequest": {

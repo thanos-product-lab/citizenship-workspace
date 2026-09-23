@@ -249,7 +249,7 @@ describe("ResidenceTimeline", () => {
     render(<ResidenceTimeline caseId="c1" />);
 
     const row = (await screen.findByText("Spain")).closest("tr")!;
-    expect(row).toHaveTextContent(/recheck your requirements and it will appear in issues/i);
+    expect(row).toHaveTextContent(/update your assessment and it will appear in issues/i);
     expect(row).not.toHaveTextContent(/you can resolve it from issues/i);
   });
 

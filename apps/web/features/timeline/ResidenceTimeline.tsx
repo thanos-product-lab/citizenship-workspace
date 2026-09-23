@@ -347,7 +347,7 @@ function TripRow({
                       appear, and a queue that looks empty reads as a problem that went
                       away. */}
                   {assessmentIsStale
-                    ? "Recheck your requirements and it will appear in Issues."
+                    ? "Update your assessment and it will appear in Issues."
                     : "You can resolve it from Issues."}
                 </span>
               </>

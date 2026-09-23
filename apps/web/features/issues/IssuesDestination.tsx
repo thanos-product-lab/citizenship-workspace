@@ -12,7 +12,12 @@ import {
 import { formatDateTime } from "@/features/requirements/dates";
 import { REQUIREMENT_TITLES } from "@/features/requirements/groups";
 
-import { groupHeading, type Issue, type IssueGroup } from "./groups";
+import {
+  groupHeading,
+  type Issue,
+  type IssueGroup,
+  type RecheckTaskView,
+} from "./groups";
 import {
   AdoptionRefused,
   useAdoptDocumentDates,
@@ -75,7 +80,10 @@ export function IssuesDestination({ caseId }: { caseId: string }): JSX.Element {
   const dismiss = useDismissIssue(caseId);
   const adopt = useAdoptDocumentDates(caseId);
   const [recheckRequested, setRecheckRequested] = useState(false);
-  const recheckBaseline = useRef(openCount);
+  // What the last update left, shown until the next one. The live region says it too, but
+  // only a screen reader hears that; a sighted user saw the list change and was told
+  // nothing about what the change meant.
+  const [outcome, setOutcome] = useState<string | null>(null);
   const recheckInFlight = useRecalculationInFlight(caseId);
 
   // Fire when the recheck *settles*, not when the count moves.
@@ -99,17 +107,19 @@ export function IssuesDestination({ caseId }: { caseId: string }): JSX.Element {
     )
       return;
 
-    const previous = recheckBaseline.current;
-    const cleared = previous - openCount;
-    setAnnouncement(
-      cleared > 0
-        ? `Recheck finished. ${cleared === 1 ? "1 issue" : `${cleared} issues`} resolved.` +
-            (openCount === 0 ? " Nothing needs your attention." : "")
-        : "Recheck finished. Nothing was resolved.",
-    );
+    // Said in actions, the unit the navigation counts (ADR-0033), rather than in issues
+    // resolved: eight stale issues clearing is one thing done, and "8 issues resolved"
+    // described bookkeeping the user never saw.
+    const remaining = queue?.action_count ?? 0;
+    const message =
+      remaining === 0
+        ? "Assessment updated. Nothing needs your action."
+        : `Assessment updated. ${remaining === 1 ? "1 action remains" : `${remaining} actions remain`}.`;
+    setAnnouncement(message);
+    setOutcome(message);
     setRecheckRequested(false);
     setReturnFocus(true);
-  }, [openCount, recheckRequested, recheckInFlight, isFetching, status]);
+  }, [queue?.action_count, recheckRequested, recheckInFlight, isFetching, status]);
 
   return (
     <section aria-labelledby="issues-heading">
@@ -159,38 +169,52 @@ export function IssuesDestination({ caseId }: { caseId: string }): JSX.Element {
 
       {status === "success" && queue ? (
         <>
+          {outcome ? <p className="cw-issue-queue__outcome">{outcome}</p> : null}
+
           {openCount === 0 ? (
             <SettledStatement caseId={caseId} />
           ) : (
-            <NotRecheckedNote queue={queue} />
+            <>
+              <QueueSummary
+                actions={queue.action_count}
+                awareness={queue.awareness_count}
+              />
+              <NotRecheckedNote queue={queue} />
+            </>
           )}
 
-          {queue.groups.map((group) => (
-            <IssueGroupSection
-              key={group.action_group}
+          {queue.recheck ? (
+            <RecheckTask
               caseId={caseId}
-              group={group}
-              onRecheckRequested={() => {
-                // Snapshot the count the outcome will be measured against, and say
-                // something now: the label changing to "Rechecking…" and `aria-disabled`
-                // going true are both silent to a screen reader, so without this the
-                // user gets no feedback at all for the length of the request.
-                recheckBaseline.current = openCount;
-                setAnnouncement("Rechecking your conclusions.");
+              task={queue.recheck}
+              onRequested={() => {
+                // Say something now: the label changing to "Updating…" and
+                // `aria-disabled` going true are both silent to a screen reader, so
+                // without this the user gets no feedback for the length of the request.
+                setOutcome(null);
+                setAnnouncement("Updating your assessment.");
                 setRecheckRequested(true);
               }}
-              onRecheckFailed={() => {
+              onFailed={() => {
                 // Clear the flag but say nothing here. `RecheckAction` renders a
                 // `role="alert"` for the same failure, which is assertive and lands first;
                 // a polite message behind it repeats the same fact in slightly different
                 // words and sounds like a second event. One failure, one announcer.
                 //
                 // Clearing matters on its own: a failure refetches the queue, which adds
-                // the processing-failure item, so the count moves — and a still-armed
-                // recheck would report "recheck finished" over a recheck that did not.
+                // the processing-failure item, so the count moves, and a still-armed
+                // update would report "Assessment updated" over one that did not finish.
                 setAnnouncement("");
                 setRecheckRequested(false);
               }}
+            />
+          ) : null}
+
+          {queue.groups.map((group) => (
+            <IssueGroupSection
+              key={group.action_group}
+              caseId={caseId}
+              group={group}
               adoptState={adopt}
               onAdopt={(issue) => {
                 adopt.mutate(issue.affected_object_id, {
@@ -244,12 +268,9 @@ export function IssuesDestination({ caseId }: { caseId: string }): JSX.Element {
 function NotRecheckedNote({
   queue,
 }: {
-  queue: { groups: { issues: Issue[] }[] };
+  queue: { recheck?: { checks: unknown[] } | null };
 }): JSX.Element | null {
-  const stale = queue.groups
-    .flatMap((group) => group.issues)
-    .filter((issue) => issue.issue_type === "STALE_ASSESSMENT").length;
-  if (stale === 0) return null;
+  if (!queue.recheck || queue.recheck.checks.length === 0) return null;
   return (
     <p className="cw-issue-queue__caveat">
       Some of these were worked out before your last change and have not been
@@ -285,11 +306,95 @@ function SettledStatement({ caseId }: { caseId: string }): JSX.Element {
   );
 }
 
+/**
+ * How much of the queue is the user's to do, and how much is only to know. Both numbers
+ * come from the server (ADR-0033), the same `action_count` the navigation shows, so the
+ * two cannot disagree.
+ */
+function QueueSummary({
+  actions,
+  awareness,
+}: {
+  actions: number;
+  awareness: number;
+}): JSX.Element {
+  const todo =
+    actions === 0
+      ? "Nothing needs your action."
+      : `${actions === 1 ? "1 thing needs" : `${actions} things need`} your action.`;
+  const notes =
+    awareness === 0
+      ? ""
+      : ` ${awareness === 1 ? "1 note" : `${awareness} notes`} for your awareness.`;
+  return <p className="cw-issue-queue__summary">{todo + notes}</p>;
+}
+
+/**
+ * Every stale conclusion, and a failed update if there is one, as the single task they are.
+ *
+ * Four cards for one button read as four jobs, and the button sat above them rather than
+ * with the explanation. The stored issues are unchanged (ADR-0015): each is still its own
+ * row, resolves on its own and appears on its own in the history below. The sentences are
+ * the server's, like every other issue's.
+ */
+function RecheckTask({
+  caseId,
+  task,
+  onRequested,
+  onFailed,
+}: {
+  caseId: string;
+  task: RecheckTaskView;
+  onRequested: () => void;
+  onFailed: () => void;
+}): JSX.Element {
+  const headingId = "issue-group-RECHECK_CONCLUSIONS";
+  return (
+    <section className="cw-issue-group" aria-labelledby={headingId}>
+      <div className="cw-issue-group__head">
+        <h3 id={headingId} className="cw-issue-group__heading">
+          {groupHeading("RECHECK_CONCLUSIONS")}
+        </h3>
+      </div>
+      <IssueCard
+        titleId="issue-title-recheck"
+        headingLevel={4}
+        title={task.title}
+        severity="ACTION_REQUIRED"
+        body={task.body}
+        impact={task.impact}
+        details={
+          task.checks.length > 0 ? (
+            <ul aria-label="Conclusions this update rechecks">
+              {task.checks.map((check) => (
+                <li key={check.issue_id}>
+                  <a
+                    className="cw-issue-card__link"
+                    href={`/cases/${caseId}/requirements/${encodeURIComponent(check.requirement_key)}`}
+                  >
+                    {check.requirement_title}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          ) : undefined
+        }
+        actions={
+          <RecheckAction
+            caseId={caseId}
+            retry={task.failed}
+            onRequested={onRequested}
+            onFailed={onFailed}
+          />
+        }
+      />
+    </section>
+  );
+}
+
 function IssueGroupSection({
   caseId,
   group,
-  onRecheckRequested,
-  onRecheckFailed,
   onDismiss,
   dismissState,
   onAdopt,
@@ -297,8 +402,6 @@ function IssueGroupSection({
 }: {
   caseId: string;
   group: IssueGroup;
-  onRecheckRequested: () => void;
-  onRecheckFailed: () => void;
   onDismiss: (issue: Issue) => void;
   dismissState: {
     isPending: boolean;
@@ -314,17 +417,6 @@ function IssueGroupSection({
   };
 }): JSX.Element {
   const headingId = `issue-group-${group.action_group}`;
-  // A processing failure is cleared by the same case-wide recalculation a stale conclusion
-  // is, so it does not get a control of its own — it changes what this one is called. It
-  // also earns the control on its own: a recalculation can fail on a case with nothing
-  // stale, and without this that group would show the failure and no way to retry it.
-  const failed = group.issues.some(
-    (issue) => issue.issue_type === "PROCESSING_FAILURE",
-  );
-  const recheckable =
-    failed ||
-    group.issues.some((issue) => issue.issue_type === "STALE_ASSESSMENT");
-
   return (
     <section className="cw-issue-group" aria-labelledby={headingId}>
       <div className="cw-issue-group__head">
@@ -338,15 +430,6 @@ function IssueGroupSection({
             : `${group.issues.length} items`}
         </span>
       </div>
-
-      {recheckable ? (
-        <RecheckAction
-          caseId={caseId}
-          retry={failed}
-          onRequested={onRecheckRequested}
-          onFailed={onRecheckFailed}
-        />
-      ) : null}
 
       <ul className="cw-issue-group__list" role="list">
         {group.issues.map((issue) => (
@@ -483,15 +566,13 @@ function RecheckAction({
           mutation.mutate();
         }}
       >
-        {busy ? "Rechecking…" : retry ? "Try again" : "Recheck now"}
+        {/* One name for the one command, as in the case header (ADR-0033). */}
+        {busy ? "Updating…" : retry ? "Try again" : "Update assessment"}
         {/* "Try again" has no antecedent in a screen reader's control list, and after a
             reload — the whole point of making the failure durable — there is no alert
             left to supply one. Same hidden-suffix pattern as Dismiss (2.4.6, 2.5.3). */}
-        {busy ? null : (
-          <span className="cw-visually-hidden">
-            {" "}
-            — recheck your conclusions
-          </span>
+        {busy || !retry ? null : (
+          <span className="cw-visually-hidden"> to update your assessment</span>
         )}
       </button>
       {/* Deliberately silent about whether anything changed. A server-side failure
@@ -503,8 +584,8 @@ function RecheckAction({
           destination deliberately sets no polite message for this. */}
       {mutation.isError ? (
         <p role="alert" className="cw-case-header__error">
-          That recheck didn’t finish. This list has been refreshed with what the
-          server recorded — anything it did record is shown below.
+          That update didn’t finish. This list has been refreshed with what the
+          server recorded, and anything it did record is shown below.
         </p>
       ) : null}
     </div>

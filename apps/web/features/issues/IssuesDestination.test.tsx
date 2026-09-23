@@ -1,6 +1,6 @@
 import "@testing-library/jest-dom/vitest";
 
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { axe } from "jest-axe";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -54,10 +54,43 @@ function aQueue(overrides: Record<string, unknown> = {}) {
   return {
     case_id: CASE,
     open_count: 0,
+    action_count: 0,
+    awareness_count: 0,
+    recheck: null,
     groups: [],
     history: [],
     ...overrides,
   };
+}
+
+/** The server's one task standing for every open recheck-type issue (ADR-0033). */
+function aTask(
+  issues: ReturnType<typeof anIssue>[],
+  overrides: Record<string, unknown> = {},
+) {
+  const stale = issues.filter((i) => i.issue_type === "STALE_ASSESSMENT");
+  return {
+    failed: false,
+    title: "Update assessment",
+    body: `${stale.length} conclusions were reached before your inputs last changed.`,
+    impact: "Until you update, these conclusions may no longer match your case data.",
+    checks: stale.map((i) => ({
+      issue_id: i.id,
+      requirement_key: i.affected_object_id,
+      requirement_title: "Total absences",
+    })),
+    issues,
+    ...overrides,
+  };
+}
+
+/** A queue whose only open work is stale conclusions: several issues, one action. */
+function staleQueue(issues = [anIssue()]) {
+  return aQueue({
+    open_count: issues.length,
+    action_count: 1,
+    recheck: aTask(issues),
+  });
 }
 
 beforeEach(() => {
@@ -255,20 +288,28 @@ describe("issues destination", () => {
     expect(container.textContent ?? "").not.toMatch(/%/);
   });
 
-  it("offers a recheck on a stale issue", async () => {
-    queueReturns(
-      aQueue({
-        open_count: 1,
-        groups: [{ action_group: "CONFIRM_INFORMATION", issues: [anIssue()] }],
-      }),
-    );
+  it("offers the update on stale conclusions, under the header's own label", async () => {
+    queueReturns(staleQueue());
     renderWithQuery(<IssuesDestination caseId={CASE} />);
 
     await waitFor(() =>
       expect(
-        screen.getByRole("button", { name: /recheck now/i }),
+        screen.getByRole("button", { name: "Update assessment" }),
       ).toBeInTheDocument(),
     );
+  });
+
+  it("says how much is to do and how much is only to know", async () => {
+    queueReturns(
+      aQueue({ open_count: 7, action_count: 2, awareness_count: 3 }),
+    );
+    renderWithQuery(<IssuesDestination caseId={CASE} />);
+
+    expect(
+      await screen.findByText(
+        "2 things need your action. 3 notes for your awareness.",
+      ),
+    ).toBeInTheDocument();
   });
 });
 
@@ -311,26 +352,31 @@ describe("issues destination accessibility", () => {
     ).toBeInTheDocument();
   });
 
-  it("offers one recheck for the group, not one per card", async () => {
-    // Every stale issue is cleared by the same case-wide recalculation. N identically
-    // named controls let a second fire while the first was in flight.
+  it("presents several stale conclusions as one task, with the control inside it", async () => {
+    // Every stale issue is cleared by the same case-wide recalculation, so they are one
+    // task: one card, one control, and the control beside the explanation (ADR-0033).
     queueReturns(
-      aQueue({
-        open_count: 2,
-        groups: [
-          {
-            action_group: "CONFIRM_INFORMATION",
-            issues: [anIssue(), anIssue({ id: "i2" })],
-          },
-        ],
-      }),
+      staleQueue([
+        anIssue(),
+        anIssue({
+          id: "i2",
+          affected_object_id: "residence.final_year_absences",
+        }),
+      ]),
     );
     renderWithQuery(<IssuesDestination caseId={CASE} />);
 
-    await screen.findAllByRole("article");
+    const task = await screen.findByRole("article", { name: "Update assessment" });
+    expect(screen.getAllByRole("article")).toHaveLength(1);
     expect(
-      screen.getAllByRole("button", { name: /recheck now/i }),
+      within(task).getAllByRole("button", { name: "Update assessment" }),
     ).toHaveLength(1);
+    // Each conclusion it rechecks is named and reachable.
+    const links = within(task).getAllByRole("link");
+    expect(links.map((a) => a.getAttribute("href"))).toEqual([
+      "/cases/c1/requirements/residence.total_absences",
+      "/cases/c1/requirements/residence.final_year_absences",
+    ]);
   });
 
   it("mounts the live region before it has anything to say", async () => {
@@ -352,15 +398,7 @@ describe("issues destination accessibility", () => {
     // not from a mutation callback — React Query drops mutate() callbacks when the calling
     // component unmounts, and clearing the queue unmounts the group the button lives in.
     // A mock that returns the same payload twice would let that defect pass, as it did.
-    const populated = aQueue({
-      open_count: 2,
-      groups: [
-        {
-          action_group: "CONFIRM_INFORMATION",
-          issues: [anIssue(), anIssue({ id: "i2" })],
-        },
-      ],
-    });
+    const populated = staleQueue([anIssue(), anIssue({ id: "i2" })]);
     const cleared = aQueue({
       history: [
         anIssue({ status: "RESOLVED", resolved_at: "2026-08-20T11:00:00Z" }),
@@ -382,11 +420,15 @@ describe("issues destination accessibility", () => {
     renderWithQuery(<IssuesDestination caseId={CASE} />);
 
     fireEvent.click(
-      await screen.findByRole("button", { name: /recheck now/i }),
+      await screen.findByRole("button", { name: "Update assessment" }),
     );
 
+    // Said in actions, and shown as well as announced: the live region and the visible
+    // outcome both carry it.
     await waitFor(() =>
-      expect(screen.getByText(/2 issues resolved/i)).toBeInTheDocument(),
+      expect(
+        screen.getAllByText("Assessment updated. Nothing needs your action."),
+      ).toHaveLength(2),
     );
     await waitFor(() =>
       expect(document.activeElement).toBe(
@@ -417,25 +459,32 @@ describe("issues destination accessibility", () => {
       });
     }
 
-    it("calls the control a retry once an attempt has failed", async () => {
-      queueReturns(
-        aQueue({
-          open_count: 2,
-          groups: [
-            {
-              action_group: "CONFIRM_INFORMATION",
-              issues: [aFailure(), anIssue()],
-            },
-          ],
+    /** The task as the server sends it after a failed run: the failure's own words. */
+    function failedQueue(stale: ReturnType<typeof anIssue>[] = [anIssue()]) {
+      const failure = aFailure();
+      return aQueue({
+        open_count: stale.length + 1,
+        action_count: 1,
+        recheck: aTask([failure, ...stale], {
+          failed: true,
+          title: failure.title,
+          body: failure.body,
+          impact: failure.impact,
         }),
-      );
+      });
+    }
+
+    it("calls the control a retry once an attempt has failed", async () => {
+      queueReturns(failedQueue());
       renderWithQuery(<IssuesDestination caseId={CASE} />);
 
       await screen.findAllByRole("article");
       expect(
         screen.getByRole("button", { name: /try again/i }),
       ).toBeInTheDocument();
-      expect(screen.queryByRole("button", { name: /recheck now/i })).toBeNull();
+      expect(
+        screen.queryByRole("button", { name: "Update assessment" }),
+      ).toBeNull();
       // Still one control for the group: the failure changes its name, not its number.
       expect(
         screen.getAllByRole("button", { name: /try again/i }),
@@ -445,14 +494,7 @@ describe("issues destination accessibility", () => {
     it("offers a retry even when nothing else in the group is stale", async () => {
       // A recalculation can fail on a case with no stale conclusions at all. Keying the
       // control on STALE_ASSESSMENT alone would show the failure with no way to act on it.
-      queueReturns(
-        aQueue({
-          open_count: 1,
-          groups: [
-            { action_group: "CONFIRM_INFORMATION", issues: [aFailure()] },
-          ],
-        }),
-      );
+      queueReturns(failedQueue([]));
       renderWithQuery(<IssuesDestination caseId={CASE} />);
 
       await screen.findByRole("article");
@@ -462,14 +504,7 @@ describe("issues destination accessibility", () => {
     });
 
     it("never reads as reassurance", async () => {
-      queueReturns(
-        aQueue({
-          open_count: 1,
-          groups: [
-            { action_group: "CONFIRM_INFORMATION", issues: [aFailure()] },
-          ],
-        }),
-      );
+      queueReturns(failedQueue([]));
       renderWithQuery(<IssuesDestination caseId={CASE} />);
 
       await screen.findByRole("article");
@@ -488,19 +523,8 @@ describe("issues destination accessibility", () => {
       // A failure refetches the queue, which *adds* the processing-failure item — so the
       // open count moves. Deriving the announcement from the count alone would report
       // "recheck finished" over a recheck that did not.
-      const before = aQueue({
-        open_count: 1,
-        groups: [{ action_group: "CONFIRM_INFORMATION", issues: [anIssue()] }],
-      });
-      const after = aQueue({
-        open_count: 2,
-        groups: [
-          {
-            action_group: "CONFIRM_INFORMATION",
-            issues: [aFailure(), anIssue()],
-          },
-        ],
-      });
+      const before = staleQueue();
+      const after = failedQueue();
       let attempted = false;
       get.mockImplementation((path: string) => {
         if (path === "/api/v1/cases/{case_id}/issues") {
@@ -515,7 +539,7 @@ describe("issues destination accessibility", () => {
       renderWithQuery(<IssuesDestination caseId={CASE} />);
 
       fireEvent.click(
-        await screen.findByRole("button", { name: /recheck now/i }),
+        await screen.findByRole("button", { name: "Update assessment" }),
       );
 
       // One announcer, not two: the assertive alert reports the failure, and the polite
@@ -527,7 +551,7 @@ describe("issues destination accessibility", () => {
       expect(
         await screen.findByRole("button", { name: /try again/i }),
       ).toBeInTheDocument();
-      expect(screen.queryByText(/Recheck finished/i)).toBeNull();
+      expect(screen.queryByText(/Assessment updated/i)).toBeNull();
     });
   });
 
@@ -536,12 +560,10 @@ describe("issues destination accessibility", () => {
     // stale issue and opens one fresh one is net zero — and the old code, gated on the
     // count moving, announced nothing, never cleared its flag, and let focus fall to
     // <body> when the group unmounted. WCAG 2.4.3 and 4.1.3.
-    const before = aQueue({
-      open_count: 1,
-      groups: [{ action_group: "RECHECK_CONCLUSIONS", issues: [anIssue()] }],
-    });
+    const before = staleQueue();
     const after = aQueue({
       open_count: 1,
+      action_count: 1,
       groups: [
         {
           action_group: "REVIEW_CAREFULLY",
@@ -575,13 +597,14 @@ describe("issues destination accessibility", () => {
     renderWithQuery(<IssuesDestination caseId={CASE} />);
 
     fireEvent.click(
-      await screen.findByRole("button", { name: /recheck now/i }),
+      await screen.findByRole("button", { name: "Update assessment" }),
     );
 
+    // The update left one thing to do, and says so rather than only that it ran.
     await waitFor(() =>
       expect(
-        screen.getByText(/Recheck finished\. Nothing was resolved\./i),
-      ).toBeInTheDocument(),
+        screen.getAllByText("Assessment updated. 1 action remains."),
+      ).toHaveLength(2),
     );
     await waitFor(() =>
       expect(document.activeElement).toBe(
@@ -641,45 +664,49 @@ describe("issues destination accessibility", () => {
         screen.getByText(/dismissed\. It is listed under Settled\./i),
       ).toBeInTheDocument(),
     );
-    expect(screen.queryByText(/Recheck finished/i)).toBeNull();
+    expect(screen.queryByText(/Assessment updated/i)).toBeNull();
     expect(recalculated).toBe(false);
   });
 
   it("says something the moment a recheck starts, not only when it settles", async () => {
     // "Rechecking…" and aria-disabled are both silent to a screen reader, so without this
     // the user gets no feedback for the length of the request.
-    queueReturns(
-      aQueue({
-        open_count: 1,
-        groups: [{ action_group: "RECHECK_CONCLUSIONS", issues: [anIssue()] }],
-      }),
-    );
+    queueReturns(staleQueue());
     post.mockImplementation(() => new Promise(() => {})); // never settles
     renderWithQuery(<IssuesDestination caseId={CASE} />);
 
     fireEvent.click(
-      await screen.findByRole("button", { name: /recheck now/i }),
+      await screen.findByRole("button", { name: "Update assessment" }),
     );
 
     expect(
-      await screen.findByText(/Rechecking your conclusions\./i),
+      await screen.findByText(/Updating your assessment\./i),
     ).toBeInTheDocument();
   });
 
-  it("names what the group control rechecks, for a control list with no context", async () => {
+  it("names what a retry retries, for a control list with no context", async () => {
+    const failure = anIssue({
+      id: "f1",
+      issue_type: "PROCESSING_FAILURE",
+      title: "We could not recheck your conclusions",
+      affected_object_type: "Case",
+      affected_object_id: CASE,
+    });
     queueReturns(
       aQueue({
         open_count: 1,
-        groups: [{ action_group: "RECHECK_CONCLUSIONS", issues: [anIssue()] }],
+        action_count: 1,
+        recheck: aTask([failure], { failed: true, title: failure.title }),
       }),
     );
     renderWithQuery(<IssuesDestination caseId={CASE} />);
 
     // The visible label still matches for speech control (2.5.3); the hidden suffix
-    // supplies the antecedent "Try again" has none of after a reload.
+    // supplies the antecedent "Try again" has none of after a reload. "Update
+    // assessment" names itself and needs none.
     expect(
       await screen.findByRole("button", {
-        name: /recheck now — recheck your conclusions/i,
+        name: /try again to update your assessment/i,
       }),
     ).toBeInTheDocument();
   });
@@ -704,12 +731,7 @@ describe("issues destination accessibility", () => {
       );
     }
 
-    queueReturns(
-      aQueue({
-        open_count: 1,
-        groups: [{ action_group: "RECHECK_CONCLUSIONS", issues: [anIssue()] }],
-      }),
-    );
+    queueReturns(staleQueue());
     post.mockImplementation(() => new Promise(() => {})); // stays in flight
     renderWithQuery(
       <>
@@ -725,7 +747,7 @@ describe("issues destination accessibility", () => {
 
     await waitFor(() =>
       expect(
-        screen.getByRole("button", { name: /rechecking…/i }),
+        screen.getByRole("button", { name: /updating…/i }),
       ).toHaveAttribute("aria-disabled", "true"),
     );
     expect(

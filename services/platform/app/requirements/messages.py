@@ -584,7 +584,12 @@ def render_stale_reason(code: str | None, parameters: Parameters | None = None) 
 #: names on the frontend: a stale conclusion has *not* been rechecked, so it may not be
 #: described as standing, holding, or still valid.
 ISSUE_TITLE_TEMPLATES: dict[str, _Template] = {
-    "ISSUE_STALE_ASSESSMENT": lambda p: f"Recheck {p.get('requirement_title', 'this requirement')}",
+    # A state, not an instruction. The queue presents every stale item as one "Update
+    # assessment" task (ADR-0033), so this title is read in resolved history and in the
+    # task's list of affected checks, where "Recheck X" named a command with no button.
+    "ISSUE_STALE_ASSESSMENT": lambda p: (
+        f"{p.get('requirement_title', 'This requirement')}: out of date"
+    ),
     "ISSUE_NEAR_THRESHOLD_ABSENCES": lambda p: (
         f"{p.get('requirement_title', 'This requirement')} is close to its threshold"
     ),

@@ -84,6 +84,47 @@ class ResolutionType(StrEnum):
 #: Statuses a reconciliation treats as live: the cause is still represented in the queue,
 #: so it must not be opened again. DISMISSED is live in this sense — the user has seen it
 #: and set it aside — which is why dismissal suppresses recreation but not resolution.
+#: The issue types one case-wide recalculation clears. Four stale results are four issues,
+#: each with its own history (ADR-0015), and still one thing for the user to do.
+RECHECK_TYPES: frozenset[str] = frozenset(
+    {IssueType.STALE_ASSESSMENT.value, IssueType.PROCESSING_FAILURE.value}
+)
+
+
+@dataclass(frozen=True)
+class ActionCounts:
+    """How much of the open queue is the user's to do, and how much is only to know.
+
+    Domain §36.3 and ADR-0033. `actions` is what the navigation shows as the Issues count.
+    """
+
+    actions: int
+    awareness: int
+
+
+def count_actions(open_issues: list[tuple[str, str]]) -> ActionCounts:
+    """Count `(issue_type, severity)` pairs for **open** issues only; the caller filters.
+
+    - INFORMATION is never an action. It is shown, and counted separately, but a note about
+      a trip with no document attached is not something the user has been asked to do.
+    - Every recheck-type issue together is **one** action, because one command clears
+      them all. Counting four would describe four jobs where there is one button.
+    - BLOCKING, ACTION_REQUIRED and REVIEW_REQUIRED each count once. REVIEW_REQUIRED stays
+      in: near-threshold and overlapping-trip items are what §2.7 says must not be
+      under-stated.
+
+    A recheck issue is counted as an action whatever its stored severity, since a stale
+    conclusion always needs the command.
+    """
+    recheck = any(issue_type in RECHECK_TYPES for issue_type, _ in open_issues)
+    others = [(t, s) for t, s in open_issues if t not in RECHECK_TYPES]
+    return ActionCounts(
+        actions=sum(1 for _, s in others if s != IssueSeverity.INFORMATION.value)
+        + (1 if recheck else 0),
+        awareness=sum(1 for _, s in others if s == IssueSeverity.INFORMATION.value),
+    )
+
+
 LIVE_STATUSES = (IssueStatus.OPEN.value, IssueStatus.IN_PROGRESS.value, IssueStatus.DISMISSED.value)
 
 

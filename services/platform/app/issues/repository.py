@@ -57,20 +57,18 @@ class IssueRepository:
         )
 
     @staticmethod
-    def count_open(session: Session, case_id: uuid.UUID) -> int:
-        """Issues awaiting the user: OPEN or IN_PROGRESS. Dismissed ones are excluded — the
-        user has already decided about them, and counting them would make the badge
-        un-clearable."""
-        return len(
-            list(
-                session.scalars(
-                    select(Issue.id).where(
-                        Issue.case_id == case_id,
-                        Issue.status.in_((IssueStatus.OPEN.value, IssueStatus.IN_PROGRESS.value)),
-                    )
-                )
+    def open_types_and_severities(session: Session, case_id: uuid.UUID) -> list[tuple[str, str]]:
+        """`(issue_type, severity)` for every issue awaiting the user, for `count_actions`.
+
+        OPEN or IN_PROGRESS only. Dismissed ones are excluded: the user has already decided
+        about them, and counting them would make the badge un-clearable."""
+        rows = session.execute(
+            select(Issue.issue_type, Issue.severity).where(
+                Issue.case_id == case_id,
+                Issue.status.in_((IssueStatus.OPEN.value, IssueStatus.IN_PROGRESS.value)),
             )
-        )
+        ).all()
+        return [(row[0], row[1]) for row in rows]
 
     @staticmethod
     def list_resolutions(

@@ -146,11 +146,16 @@ def test_the_open_issue_count_follows_the_stale_conclusions(api: Api) -> None:
         json={"application_date": "2027-05-20", "expected_revision": current["revision"]},
     )
     # One issue per stale requirement — the eight a date change stales (ADR-0014).
-    assert _overview(api, "user_a", case_id)["open_issue_count"] == 8
+    overview = _overview(api, "user_a", case_id)
+    assert overview["open_issue_count"] == 8
+    # And one thing to do: the same command clears all eight (ADR-0033).
+    assert overview["issue_action_count"] == 1
 
     api("user_a").post(f"/api/v1/cases/{case_id}/assessments/recalculate")
     # Recalculation removes the cause, so every one of them resolves itself.
-    assert _overview(api, "user_a", case_id)["open_issue_count"] == 0
+    overview = _overview(api, "user_a", case_id)
+    assert overview["open_issue_count"] == 0
+    assert overview["issue_action_count"] == 0
 
 
 def test_priority_actions_are_capped_at_three_and_carry_rendered_text(api: Api) -> None:

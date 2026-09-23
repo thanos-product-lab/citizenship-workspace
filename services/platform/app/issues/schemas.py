@@ -12,12 +12,14 @@ from datetime import datetime
 from pydantic import BaseModel
 
 from app.issues.domain import (
+    RECHECK_TYPES,
     Dismissibility,
     Issue,
     IssueResolution,
     IssueSeverity,
     IssueStatus,
     IssueType,
+    count_actions,
 )
 from app.requirements.messages import (
     render_issue_body,
@@ -32,10 +34,7 @@ from app.requirements.messages import (
 #: by landmark was routed away from the one item explaining why their figures are stale
 #: (WCAG 2.4.6). Both types are cleared by the same case-wide recalculation, which is what
 #: makes them one group.
-TYPE_ACTION_GROUPS: dict[str, str] = {
-    IssueType.STALE_ASSESSMENT.value: "RECHECK_CONCLUSIONS",
-    IssueType.PROCESSING_FAILURE.value: "RECHECK_CONCLUSIONS",
-}
+TYPE_ACTION_GROUPS: dict[str, str] = dict.fromkeys(RECHECK_TYPES, "RECHECK_CONCLUSIONS")
 
 #: Severity → the group a user acts on, per UI/UX §10 ("group issues by user action"). The
 #: fallback when the type says nothing more specific.
@@ -142,6 +141,93 @@ class IssueGroupView(BaseModel):
         return len(self.issues)
 
 
+class RecheckedCheckView(BaseModel):
+    """One conclusion the update would recheck, named and addressable."""
+
+    issue_id: uuid.UUID
+    requirement_key: str
+    requirement_title: str
+
+
+class RecheckTaskView(BaseModel):
+    """Every open recheck-type issue, presented as the one task they are (ADR-0033).
+
+    The stored issues are untouched: each keeps its own identity, history and reopening
+    (ADR-0015), and each still appears on its own in `history` once resolved. This is only
+    how the open ones are shown, because one command clears them all and four cards for
+    one button read as four jobs.
+
+    Prose is rendered here, not in the client, like every other issue sentence.
+    """
+
+    #: The last recalculation failed, so the command is a retry.
+    failed: bool
+    title: str
+    body: str
+    impact: str
+    checks: list[RecheckedCheckView]
+    #: The stored issues behind the task, in queue order (a failure first, since it is
+    #: why the stale ones are still stale). Kept so nothing about an individual issue is
+    #: lost by presenting them together.
+    issues: list[IssueView]
+
+
+def _recheck_task(
+    open_issues: list[Issue], views: dict[uuid.UUID, IssueView], ordered: list[IssueView]
+) -> RecheckTaskView | None:
+    rechecks = [i for i in open_issues if i.issue_type in RECHECK_TYPES]
+    if not rechecks:
+        return None
+    failure = next(
+        (i for i in rechecks if i.issue_type == IssueType.PROCESSING_FAILURE.value), None
+    )
+    stale = sorted(
+        (i for i in rechecks if i.issue_type == IssueType.STALE_ASSESSMENT.value),
+        key=lambda i: i.affected_object_id,
+    )
+    checks = [
+        RecheckedCheckView(
+            issue_id=i.id,
+            requirement_key=i.affected_object_id,
+            requirement_title=str(
+                dict(i.message_parameters).get("requirement_title", i.affected_object_id)
+            ),
+        )
+        for i in stale
+    ]
+    n = len(checks)
+    behind = [v for v in ordered if v.issue_type in RECHECK_TYPES]
+    if failure is not None:
+        # The failure's own server-rendered sentences: they already say what happened and
+        # that the figures were left alone, and a second wording would drift from them.
+        view = views[failure.id]
+        return RecheckTaskView(
+            failed=True,
+            title=view.title,
+            body=view.body or "",
+            impact=view.impact or "",
+            checks=checks,
+            issues=behind,
+        )
+    return RecheckTaskView(
+        failed=False,
+        title="Update assessment",
+        body=(
+            f"{n} {'conclusion was' if n == 1 else 'conclusions were'} reached before "
+            "your inputs last changed, and "
+            f"{'has' if n == 1 else 'have'} not been rechecked. One update rechecks "
+            f"{'it' if n == 1 else 'all of them'}."
+        ),
+        impact=(
+            "Until you update, "
+            f"{'this conclusion' if n == 1 else 'these conclusions'} may no longer match "
+            "your case data."
+        ),
+        checks=checks,
+        issues=behind,
+    )
+
+
 class IssueQueue(BaseModel):
     """Domain §44.5.
 
@@ -151,6 +237,14 @@ class IssueQueue(BaseModel):
 
     case_id: uuid.UUID
     open_count: int
+    #: What the user has to do, with every recheck counted once (ADR-0033). The number the
+    #: navigation shows; `open_count` stays the plain total.
+    action_count: int
+    #: Open INFORMATION items: shown, and never counted as something to do.
+    awareness_count: int
+    #: The open recheck-type issues as one task, or null when there are none. They are
+    #: left out of `groups` so the same issue is not shown twice.
+    recheck: RecheckTaskView | None = None
     groups: list[IssueGroupView]
     #: Resolved and dismissed issues, newest first. Retained rather than deleted (§36.6):
     #: "this was raised and cleared" is part of what the case says about itself.
@@ -165,11 +259,13 @@ class IssueQueue(BaseModel):
         resolutions_by_issue: dict[uuid.UUID, list[IssueResolution]],
     ) -> "IssueQueue":
         open_views: list[IssueView] = []
+        open_issues: list[Issue] = []
         history: list[IssueView] = []
         for issue in issues:
             view = IssueView.of(issue, resolutions_by_issue.get(issue.id, []))
             if issue.status in (IssueStatus.OPEN.value, IssueStatus.IN_PROGRESS.value):
                 open_views.append(view)
+                open_issues.append(issue)
             else:
                 history.append(view)
 
@@ -186,11 +282,17 @@ class IssueQueue(BaseModel):
         )
         grouped: dict[str, list[IssueView]] = {}
         for view in open_views:
+            if view.issue_type in RECHECK_TYPES:
+                continue
             grouped.setdefault(view.action_group, []).append(view)
 
+        counts = count_actions([(v.issue_type, v.severity) for v in open_views])
         return cls(
             case_id=case_id,
             open_count=len(open_views),
+            action_count=counts.actions,
+            awareness_count=counts.awareness,
+            recheck=_recheck_task(open_issues, {v.id: v for v in open_views}, open_views),
             groups=[
                 IssueGroupView(action_group=group, issues=views) for group, views in grouped.items()
             ],

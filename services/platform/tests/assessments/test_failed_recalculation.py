@@ -288,10 +288,11 @@ def test_the_failure_opens_a_processing_failure_issue_that_outlives_the_request(
         api("user_a").post(f"/api/v1/cases/{case_id}/assessments/recalculate")
 
     queue = _queue(api, case_id)
+    # Presented behind the one recheck task, which the failure turns into a retry.
+    assert queue["recheck"]["failed"] is True
     failures = [
         issue
-        for group in queue["groups"]
-        for issue in group["issues"]
+        for issue in queue["recheck"]["issues"]
         if issue["issue_type"] == IssueType.PROCESSING_FAILURE.value
     ]
     assert len(failures) == 1
@@ -317,13 +318,13 @@ def test_the_failure_sorts_above_the_stale_items_it_explains(
     with pytest.raises(RuntimeError):
         api("user_a").post(f"/api/v1/cases/{case_id}/assessments/recalculate")
 
-    # Both types are cleared by the same recalculation, so they share one action group —
-    # named for that action rather than for their severity (see `TYPE_ACTION_GROUPS`).
-    group = next(
-        g for g in _queue(api, case_id)["groups"] if g["action_group"] == "RECHECK_CONCLUSIONS"
-    )
-    assert group["issues"][0]["issue_type"] == IssueType.PROCESSING_FAILURE.value
-    assert {i["issue_type"] for i in group["issues"][1:]} == {IssueType.STALE_ASSESSMENT.value}
+    # Both types are cleared by the same recalculation, so they are one task (ADR-0033),
+    # and the failure leads it: its sentences become the task's.
+    task = _queue(api, case_id)["recheck"]
+    assert task["issues"][0]["issue_type"] == IssueType.PROCESSING_FAILURE.value
+    assert {i["issue_type"] for i in task["issues"][1:]} == {IssueType.STALE_ASSESSMENT.value}
+    assert task["title"] == task["issues"][0]["title"]
+    assert len(task["checks"]) == len(task["issues"]) - 1
 
 
 def test_a_second_failure_does_not_resolve_the_first(

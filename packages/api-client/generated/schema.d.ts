@@ -784,6 +784,8 @@ export interface components {
             current_phase: string;
             /** Groups */
             groups: components["schemas"]["GroupSummaryView"][];
+            /** Issue Action Count */
+            issue_action_count: number;
             /** Last Assessed At */
             last_assessed_at: string | null;
             /** Lifecycle Status */
@@ -1259,6 +1261,10 @@ export interface components {
          *     user, and counting it would leave a badge nobody can clear.
          */
         IssueQueue: {
+            /** Action Count */
+            action_count: number;
+            /** Awareness Count */
+            awareness_count: number;
             /**
              * Case Id
              * Format: uuid
@@ -1270,6 +1276,7 @@ export interface components {
             history: components["schemas"]["IssueView"][];
             /** Open Count */
             open_count: number;
+            recheck?: components["schemas"]["RecheckTaskView"] | null;
         };
         /** IssueResolutionView */
         IssueResolutionView: {
@@ -1461,6 +1468,46 @@ export interface components {
             result_count: number;
             /** Trigger Type */
             trigger_type: string;
+        };
+        /**
+         * RecheckTaskView
+         * @description Every open recheck-type issue, presented as the one task they are (ADR-0033).
+         *
+         *     The stored issues are untouched: each keeps its own identity, history and reopening
+         *     (ADR-0015), and each still appears on its own in `history` once resolved. This is only
+         *     how the open ones are shown, because one command clears them all and four cards for
+         *     one button read as four jobs.
+         *
+         *     Prose is rendered here, not in the client, like every other issue sentence.
+         */
+        RecheckTaskView: {
+            /** Body */
+            body: string;
+            /** Checks */
+            checks: components["schemas"]["RecheckedCheckView"][];
+            /** Failed */
+            failed: boolean;
+            /** Impact */
+            impact: string;
+            /** Issues */
+            issues: components["schemas"]["IssueView"][];
+            /** Title */
+            title: string;
+        };
+        /**
+         * RecheckedCheckView
+         * @description One conclusion the update would recheck, named and addressable.
+         */
+        RecheckedCheckView: {
+            /**
+             * Issue Id
+             * Format: uuid
+             */
+            issue_id: string;
+            /** Requirement Key */
+            requirement_key: string;
+            /** Requirement Title */
+            requirement_title: string;
         };
         /**
          * RecordUploadRequest

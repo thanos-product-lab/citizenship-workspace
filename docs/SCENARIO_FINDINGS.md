@@ -1331,7 +1331,8 @@ is refused. The guide says EXACT in capitals for that reason.
 
 ### 14. The issue count mixes what the user must do with what is for information
 
-**Status:** open · **Kind:** domain presentation · **Size:** needs a plan
+**Status:** **fixed**, 23 September 2026 · **Kind:** domain presentation · **Size:** planned
+first, see ADR-0033
 
 `IssueRepository.count_open` (`issues/repository.py:60`) counts `OPEN` and `IN_PROGRESS`
 issues and never looks at severity, so an `INFORMATION` issue ("For information" in
@@ -1352,6 +1353,36 @@ updated. 1 action remains." One label for the one command everywhere.
 **Why this needs a plan.** Which severities are actionable is a domain decision, and
 grouping changes the queue from one row per issue to one row per resolving command. The
 case phase deliberately ignores the queue (ADR-0009), and that should stay true.
+
+**How it was closed.** Planned before code, with two decisions taken with the owner: the
+count covers actions only, and "Run assessment" survives for the first run. The rule is
+recorded in Domain §36.3 and ADR-0033.
+
+An action is an open BLOCKING, ACTION_REQUIRED or REVIEW_REQUIRED issue, with every stale
+conclusion and a failed update together counted once. `issues.domain.count_actions` is the
+one definition; the queue and the overview both carry its result, and the navigation shows
+it. INFORMATION items are counted separately as notes and never raise the badge.
+
+The rechecks are one task, built on the server as the queue's `recheck` block: the title,
+body and impact are rendered there like every other issue sentence, the conclusions it
+covers are listed and linked, and the button sits inside the card. The stored issues are
+unchanged. Each still resolves and appears in the history on its own, now titled "Total
+absences: out of date", because an imperative title had no button beside it once the
+cards were combined. After an update the page says "Assessment updated. 1 action remains."
+visibly and in the live region, in the same unit as the badge.
+
+One departure from the plan, for the reason in the ADR: the plan had the combined card's
+sentences written in the client, and the issues module renders all its prose on the
+server, so the task is part of the queue projection.
+
+Verified in the browser. The demo case's three open issues read "Issues 1" (its one review
+item) with "1 thing needs your action. 2 notes for your awareness." On the scenario 1
+case, a one-day date move opened eight stale issues beside six notes: the badge read 1, one
+"Update assessment" card named and linked all eight, the button held its colours on hover,
+and pressing it showed and announced "Assessment updated. Nothing needs your action.",
+returned focus to the heading and cleared the badge while the six notes stayed listed. The
+history kept all eight under their new titles. The date was restored and the case
+reassessed afterwards. The page fits at 320px.
 
 ### 15. A successful upload is announced only to screen readers
 

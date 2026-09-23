@@ -541,6 +541,8 @@ class CaseOverview(BaseModel):
     #: Issues awaiting the user (OPEN or IN_PROGRESS). Dismissed issues are not counted:
     #: the user has decided about them, and a badge they cannot clear is a nag, not a signal.
     open_issue_count: int
+    #: What the navigation shows: actions only, every recheck counted once (ADR-0033).
+    issue_action_count: int
     total_requirements: int
     last_assessed_at: datetime | None
 
@@ -565,6 +567,7 @@ class CaseOverview(BaseModel):
             needs_attention=sum(g.needs_attention for g in view.groups),
             stale=sum(g.stale for g in view.groups),
             open_issue_count=view.open_issue_count,
+            issue_action_count=view.issue_action_count,
             total_requirements=sum(g.total for g in view.groups),
             last_assessed_at=view.last_assessed_at,
         )

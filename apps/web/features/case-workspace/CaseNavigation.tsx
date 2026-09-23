@@ -25,7 +25,10 @@ export function CaseNavigation({ caseId }: { caseId: string }): JSX.Element {
   const pathname = usePathname() ?? "";
   const active = activeSegment(pathname, caseId);
   const { data: overview } = useCaseOverview(caseId);
-  const openIssues = overview?.open_issue_count ?? 0;
+  // Actions, not every open issue (ADR-0033). A note for information is not something to
+  // do, and every stale conclusion together is one update, so neither inflates the number
+  // a user reads as "how much is left".
+  const openIssues = overview?.issue_action_count ?? 0;
 
   return (
     <nav aria-label="Case navigation" className="cw-case-nav">
@@ -47,7 +50,7 @@ export function CaseNavigation({ caseId }: { caseId: string }): JSX.Element {
                   <span className="cw-nav-count">
                     {openIssues}
                     <span className="cw-visually-hidden">
-                      {openIssues === 1 ? " open issue" : " open issues"}
+                      {openIssues === 1 ? " thing to do" : " things to do"}
                     </span>
                   </span>
                 ) : null}

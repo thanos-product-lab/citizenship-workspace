@@ -55,6 +55,7 @@ from app.cases.phase import RequirementState, derive_phase
 from app.evidence.repository import EvidenceLinkRepository
 from app.facts.repository import FactRepository
 from app.issues import service as issues_service
+from app.issues.domain import count_actions
 from app.issues.repository import IssueRepository
 from app.requirements.domain import Conclusion
 from app.requirements.evaluation import (
@@ -494,6 +495,7 @@ class CaseOverviewView:
     members: list[GroupMember]
     #: Issues awaiting the user: OPEN or IN_PROGRESS, dismissed ones excluded.
     open_issue_count: int
+    issue_action_count: int
     actions: PriorityActions
     last_assessed_at: datetime | None
 
@@ -540,6 +542,8 @@ def get_case_overview(session: Session, *, case: ApplicationCase) -> CaseOvervie
             )
 
     date_version = _current_application_date_version_or_none(session, case.id)
+    # One read for both counts, so the total and the action count cannot disagree.
+    open_issues = IssueRepository.open_types_and_severities(session, case.id)
 
     application_date = date_version.application_date if date_version else None
     return CaseOverviewView(
@@ -549,7 +553,8 @@ def get_case_overview(session: Session, *, case: ApplicationCase) -> CaseOvervie
         application_date_has_passed=_application_date_has_passed(application_date),
         groups=summarise_groups(members),
         members=members,
-        open_issue_count=IssueRepository.count_open(session, case.id),
+        open_issue_count=len(open_issues),
+        issue_action_count=count_actions(open_issues).actions,
         actions=select_priority_actions(candidates),
         last_assessed_at=last_assessed,
     )

@@ -2114,6 +2114,15 @@ REVIEW_REQUIRED
 BLOCKING
 ```
 
+**What counts as something to do** (ADR-0033). BLOCKING, ACTION_REQUIRED and
+REVIEW_REQUIRED issues are actions. INFORMATION issues are not: they are shown, and counted
+separately as notes for the user's awareness, but never in the number that tells a user how
+much is left. `STALE_ASSESSMENT` and `PROCESSING_FAILURE` together count as **one** action
+whatever their number, because one recalculation clears them all.
+
+This is a rule for counting and presenting open issues. It adds no value to any enum, and
+each issue keeps its own identity, resolution history and reopening (§36.6, ADR-0015).
+
 ### 36.4 Status
 
 ```text

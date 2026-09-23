@@ -3,6 +3,7 @@ import type { components } from "@cw/api-client";
 type IssueQueue = components["schemas"]["IssueQueue"];
 export type IssueGroup = IssueQueue["groups"][number];
 export type Issue = IssueGroup["issues"][number];
+export type RecheckTaskView = NonNullable<IssueQueue["recheck"]>;
 
 /**
  * Action-group key → its heading, following UI/UX §10's instruction to group issues by
@@ -12,7 +13,7 @@ export type Issue = IssueGroup["issues"][number];
  */
 const GROUP_HEADINGS: Record<string, string> = {
   RESOLVE_TO_CONTINUE: "Resolve to continue",
-  RECHECK_CONCLUSIONS: "Recheck your conclusions",
+  RECHECK_CONCLUSIONS: "Update your assessment",
   CONFIRM_INFORMATION: "Confirm information",
   REVIEW_CAREFULLY: "Review carefully",
   FOR_YOUR_AWARENESS: "For your awareness",

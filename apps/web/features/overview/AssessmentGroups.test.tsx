@@ -39,6 +39,7 @@ function anOverview(groups: Group[]) {
     not_yet_assessed: 0,
     stale: 0,
     open_issue_count: 0,
+    issue_action_count: 0,
     open_issues: 0,
     total_requirements: 15,
     ...{},
