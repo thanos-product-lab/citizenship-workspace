@@ -51,6 +51,24 @@ describe("CaseChrome", () => {
     del.mockReset();
   });
 
+  it("draws the shell while the case loads, and says so in words", async () => {
+    get.mockImplementation(() => new Promise(() => {})); // never settles
+    render(
+      <CaseChrome caseId="c1">
+        <div>destination</div>
+      </CaseChrome>,
+    );
+
+    // The sentence is there at once, for a screen reader; the shapes are not read at all.
+    expect(screen.getByRole("status")).toHaveTextContent("Loading this case…");
+    const skeleton = screen.getByTestId("case-shell-skeleton");
+    expect(skeleton).toHaveAttribute("aria-hidden", "true");
+    // No shapes for a load faster than the delay, then the shell's frame.
+    expect(skeleton.querySelector(".cw-skeleton")).toBeNull();
+    await waitFor(() => expect(skeleton.querySelector(".cw-skeleton")).not.toBeNull());
+    expect(screen.queryByText("destination")).toBeNull();
+  });
+
   it("shows a not-found state for an unowned or missing case", async () => {
     get.mockResolvedValue({ data: undefined, error: {}, response: { status: 404 } });
     render(

@@ -2742,3 +2742,66 @@ a.cw-button--secondary:hover {
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
+
+/* --- Skeleton --------------------------------------------------------------- */
+
+/* A placeholder shape. `--cw-border`, not the sunken surface: the case shell's identity
+   band is tinted almost exactly the sunken colour, and shapes drawn in it disappeared,
+   leaving only the moving highlight. The shimmer is a band of the surface colour, so it
+   reads in both themes without a colour of its own. */
+.cw-skeleton {
+  display: block;
+  border-radius: var(--cw-radius-sm);
+  background-color: var(--cw-border);
+  background-image: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in srgb, var(--cw-surface) 60%, transparent) 50%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  background-repeat: no-repeat;
+  animation: cw-skeleton-shimmer 1.4s ease-in-out infinite;
+}
+
+.cw-skeleton[data-round] {
+  border-radius: 50%;
+}
+
+@keyframes cw-skeleton-shimmer {
+  from {
+    background-position: 150% 0;
+  }
+  to {
+    background-position: -50% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cw-skeleton {
+    animation: none;
+    background-image: none;
+  }
+}
+
+/* The case shell's skeleton: the same bands as the real header, so nothing moves when the
+   case arrives. Only the gaps are its own. */
+/* Two lines of details at the height the real two-row description list takes. */
+.cw-case-header__facts.cw-shell-skeleton__facts {
+  flex-direction: column;
+  flex-wrap: nowrap;
+  justify-content: center;
+  gap: 0.9rem;
+  height: 3.125rem;
+}
+
+.cw-shell-skeleton__stack {
+  display: grid;
+  gap: var(--cw-space-3);
+}
+
+.cw-shell-skeleton__nav {
+  display: flex;
+  gap: var(--cw-space-5);
+  padding-block: var(--cw-space-4);
+}

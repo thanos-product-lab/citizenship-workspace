@@ -1,9 +1,10 @@
 "use client";
 
 import type { components } from "@cw/api-client";
+import { Skeleton } from "@cw/design-system";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { JSX, ReactNode } from "react";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { RouteOnboarding } from "@/features/onboarding/RouteOnboarding";
 import { useApiClient } from "@/lib/api";
@@ -33,6 +34,75 @@ function ContentShell({ children }: { children: ReactNode }): JSX.Element {
     <main className="cw-shell__main" id={MAIN_LANDMARK_ID} tabIndex={-1}>
       <div className="cw-shell__inner">{children}</div>
     </main>
+  );
+}
+
+/** How long a load may take before the skeleton appears. Faster loads show nothing, rather
+ *  than a frame of grey shapes that is gone before it can be read. */
+export const SKELETON_DELAY_MS = 300;
+
+/**
+ * The case shell while the case loads: the identity band, the navigation row and a content
+ * block as placeholder shapes, laid out with the real shell's classes so the page does not
+ * move when the case arrives.
+ *
+ * Screen readers get the sentence and not the shapes, which are all `aria-hidden`. The
+ * sentence is there from the first frame; only the shapes wait for `SKELETON_DELAY_MS`.
+ */
+function CaseShellSkeleton(): JSX.Element {
+  const [visible, setVisible] = useState(false);
+  useEffect(() => {
+    const timer = setTimeout(() => setVisible(true), SKELETON_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, []);
+
+  return (
+    <>
+      <div className="cw-case-shell" aria-hidden="true" data-testid="case-shell-skeleton">
+        {visible ? (
+          <>
+            <div className="cw-case-shell__identity">
+              <div className="cw-shell__inner">
+                {/* The real header's own row classes, with shapes the size of what fills
+                    them (the 28px avatar, the 42px Update assessment button, two lines of
+                    details), so the navigation row starts where it will stay. */}
+                <div className="cw-case-header__top">
+                  <Skeleton width="6rem" height="0.875rem" />
+                  <Skeleton width="1.75rem" height="1.75rem" round />
+                </div>
+                <div className="cw-case-header__identity">
+                  <Skeleton width="min(20rem, 55%)" height="1.75rem" />
+                  <Skeleton width="10.5rem" height="2.625rem" style={{ marginLeft: "auto" }} />
+                </div>
+                <div className="cw-case-header__facts cw-shell-skeleton__facts">
+                  <Skeleton width="min(26rem, 90%)" height="0.875rem" />
+                  <Skeleton width="10rem" height="0.875rem" />
+                </div>
+              </div>
+            </div>
+            <div className="cw-case-shell__nav">
+              <div className="cw-shell__inner cw-shell-skeleton__nav">
+                {[4.5, 4, 6, 4.5, 3.5, 5].map((rem, index) => (
+                  <Skeleton key={index} width={`${rem}rem`} height="0.875rem" />
+                ))}
+              </div>
+            </div>
+          </>
+        ) : null}
+      </div>
+      <ContentShell>
+        <p role="status" className="cw-visually-hidden">
+          Loading this case…
+        </p>
+        {visible ? (
+          <div className="cw-shell-skeleton__stack" aria-hidden="true">
+            <Skeleton width="12rem" height="1.25rem" />
+            <Skeleton height="6rem" />
+            <Skeleton height="6rem" />
+          </div>
+        ) : null}
+      </ContentShell>
+    </>
   );
 }
 
@@ -100,13 +170,7 @@ export function CaseChrome({
   }, [caseData?.lifecycle_status]);
 
   if (status === "pending") {
-    return (
-      <ContentShell>
-        <p role="status" style={{ color: "var(--cw-text-muted)" }}>
-          Loading this case…
-        </p>
-      </ContentShell>
-    );
+    return <CaseShellSkeleton />;
   }
 
   if (notFound) {
