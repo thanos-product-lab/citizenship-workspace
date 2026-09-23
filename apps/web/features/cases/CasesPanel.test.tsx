@@ -34,6 +34,18 @@ describe("CasesPanel", () => {
     post.mockReset();
   });
 
+  it("draws placeholder rows while loading, and says so in words", async () => {
+    get.mockImplementation(() => new Promise(() => {})); // never settles
+    render(<CasesPanel />);
+
+    // The sentence is in the live region at once; the rows are not read at all.
+    expect(screen.getByRole("status")).toHaveTextContent("Loading your cases…");
+    expect(screen.queryByTestId("case-list-skeleton")).toBeNull();
+    const skeleton = await screen.findByTestId("case-list-skeleton");
+    expect(skeleton).toHaveAttribute("aria-hidden", "true");
+    expect(skeleton.querySelectorAll("li")).toHaveLength(3);
+  });
+
   it("shows the empty state when the user has no cases", async () => {
     get.mockResolvedValue({ data: [], error: undefined });
     render(<CasesPanel />);

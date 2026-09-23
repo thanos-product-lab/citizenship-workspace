@@ -4,11 +4,12 @@ import type { components } from "@cw/api-client";
 import { Skeleton } from "@cw/design-system";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { JSX, ReactNode } from "react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 
 import { RouteOnboarding } from "@/features/onboarding/RouteOnboarding";
 import { useApiClient } from "@/lib/api";
 import { caseKeys } from "@/lib/queries";
+import { useShowAfter } from "@/lib/useShowAfter";
 
 import { CaseHeader } from "./CaseHeader";
 import { MAIN_LANDMARK_ID } from "./destinations";
@@ -37,10 +38,6 @@ function ContentShell({ children }: { children: ReactNode }): JSX.Element {
   );
 }
 
-/** How long a load may take before the skeleton appears. Faster loads show nothing, rather
- *  than a frame of grey shapes that is gone before it can be read. */
-export const SKELETON_DELAY_MS = 300;
-
 /**
  * The case shell while the case loads: the identity band, the navigation row and a content
  * block as placeholder shapes, laid out with the real shell's classes so the page does not
@@ -50,11 +47,7 @@ export const SKELETON_DELAY_MS = 300;
  * sentence is there from the first frame; only the shapes wait for `SKELETON_DELAY_MS`.
  */
 function CaseShellSkeleton(): JSX.Element {
-  const [visible, setVisible] = useState(false);
-  useEffect(() => {
-    const timer = setTimeout(() => setVisible(true), SKELETON_DELAY_MS);
-    return () => clearTimeout(timer);
-  }, []);
+  const visible = useShowAfter();
 
   return (
     <>

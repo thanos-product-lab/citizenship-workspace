@@ -1,9 +1,11 @@
 "use client";
 
 import type { components } from "@cw/api-client";
+import { Skeleton } from "@cw/design-system";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useApiClient } from "@/lib/api";
+import { useShowAfter } from "@/lib/useShowAfter";
 
 type CaseResponse = components["schemas"]["CaseResponse"];
 type LoadState = "loading" | "error" | "ready";
@@ -66,9 +68,7 @@ export function CasesPanel() {
 
       {/* Persistent polite live region: only transient status messages belong here. */}
       <div role="status" aria-live="polite" style={{ marginTop: "var(--cw-space-6)" }}>
-        {state === "loading" && (
-          <p style={{ color: "var(--cw-text-muted)" }}>Loading your cases…</p>
-        )}
+        {state === "loading" && <p className="cw-visually-hidden">Loading your cases…</p>}
         {state === "ready" && cases.length === 0 && (
           <p style={{ color: "var(--cw-text-muted)" }}>
             No cases yet. Create your first case to begin preparing your readiness case.
@@ -100,31 +100,15 @@ export function CasesPanel() {
         </div>
       )}
 
+      {state === "loading" && <CaseListSkeleton />}
+
       {state === "ready" && cases.length > 0 && (
-        <ul
-          style={{
-            listStyle: "none",
-            margin: "var(--cw-space-6) 0 0",
-            padding: 0,
-            display: "grid",
-            gap: "var(--cw-space-3)",
-          }}
-        >
+        <ul style={listStyle}>
           {cases.map((c) => (
             <li key={c.id}>
               <a
                 href={`/cases/${c.id}`}
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  padding: "var(--cw-space-4)",
-                  background: "var(--cw-surface)",
-                  border: "1px solid var(--cw-border)",
-                  borderRadius: "var(--cw-radius-md)",
-                  textDecoration: "none",
-                  color: "inherit",
-                }}
+                style={{ ...rowStyle, textDecoration: "none", color: "inherit" }}
               >
                 <span style={{ fontWeight: "var(--cw-weight-medium)" }}>{c.title}</span>
                 <span style={{ fontSize: "var(--cw-text-sm)", color: "var(--cw-text-muted)" }}>
@@ -254,5 +238,46 @@ function CreateCaseForm({ onCreated }: { onCreated: (created: CaseResponse) => v
         </p>
       )}
     </form>
+  );
+}
+
+/** The case list and its rows, shared with the skeleton so the two cannot drift apart. */
+const listStyle: React.CSSProperties = {
+  listStyle: "none",
+  margin: "var(--cw-space-6) 0 0",
+  padding: 0,
+  display: "grid",
+  gap: "var(--cw-space-3)",
+};
+
+const rowStyle: React.CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  padding: "var(--cw-space-4)",
+  background: "var(--cw-surface)",
+  border: "1px solid var(--cw-border)",
+  borderRadius: "var(--cw-radius-md)",
+};
+
+/**
+ * Three case rows as placeholder shapes, in the real list's box and row styles so the list
+ * lands where the shapes were. `aria-hidden`: the live region above says "Loading your
+ * cases…" to a screen reader, and shapes would only add noise. Shown after the shared
+ * delay, so a fast load draws nothing.
+ */
+function CaseListSkeleton(): React.JSX.Element | null {
+  const visible = useShowAfter();
+  if (!visible) return null;
+  return (
+    <ul style={listStyle} aria-hidden="true" data-testid="case-list-skeleton">
+      {["14rem", "11rem", "16rem"].map((width) => (
+        <li key={width} style={rowStyle}>
+          {/* 1.5rem tall, the line height of the title it stands in for. */}
+          <Skeleton width={`min(${width}, 60%)`} height="1rem" style={{ margin: "0.25rem 0" }} />
+          <Skeleton width="3.5rem" height="0.875rem" />
+        </li>
+      ))}
+    </ul>
   );
 }
