@@ -251,3 +251,117 @@ a:hover {
   width: 100%;
   max-width: 25rem;
 }
+
+/* --- Appearance (account window) ------------------------------------------- */
+
+.cw-appearance {
+  display: grid;
+  gap: var(--cw-space-3);
+  color: var(--cw-text);
+}
+
+.cw-appearance__title {
+  margin: 0;
+  font-size: var(--cw-text-lg);
+  font-weight: var(--cw-weight-semibold);
+}
+
+.cw-appearance__lead {
+  margin: 0;
+  font-size: var(--cw-text-sm);
+  color: var(--cw-text-muted);
+}
+
+/* Three choices side by side where there is room, stacked in a narrow window. */
+.cw-appearance__options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: var(--cw-space-3);
+  margin-top: var(--cw-space-2);
+}
+
+.cw-appearance__option {
+  position: relative;
+  display: grid;
+  gap: var(--cw-space-2);
+  padding: var(--cw-space-3);
+  border: 1px solid var(--cw-border-strong);
+  border-radius: var(--cw-radius-md);
+  background: var(--cw-surface);
+  cursor: pointer;
+}
+
+.cw-appearance__option:hover {
+  border-color: var(--cw-text-muted);
+}
+
+/* The chosen option: a thicker accent border and a tick, so it does not rely on colour. */
+.cw-appearance__option[data-selected="true"] {
+  border-color: var(--cw-accent);
+  box-shadow: inset 0 0 0 1px var(--cw-accent);
+}
+
+/* Empty alternative text (after the slash): the radio already announces "selected", and a
+   read-aloud "check mark" would only repeat it. */
+.cw-appearance__option[data-selected="true"] .cw-appearance__name::after {
+  content: " ✓" / "";
+  color: var(--cw-accent);
+}
+
+/* The native radio stays in the tab order and in the accessibility tree; it is only made
+   invisible, and the label's focus ring stands in for it. */
+.cw-appearance__option input {
+  position: absolute;
+  opacity: 0;
+  inset: 0;
+  margin: 0;
+  cursor: pointer;
+}
+
+.cw-appearance__option:has(input:focus-visible) {
+  box-shadow: var(--cw-focus-ring);
+}
+
+.cw-appearance__name {
+  font-weight: var(--cw-weight-medium);
+}
+
+.cw-appearance__resolved {
+  font-weight: var(--cw-weight-regular);
+  color: var(--cw-text-muted);
+}
+
+.cw-appearance__description {
+  font-size: var(--cw-text-sm);
+  color: var(--cw-text-muted);
+}
+
+/* A miniature of each theme, drawn from the fixed ramp rather than the theme tokens, so the
+   Light swatch stays light while dark mode is on, and the other way round. */
+.cw-appearance__swatch {
+  display: block;
+  height: 3rem;
+  border-radius: var(--cw-radius-sm);
+  border: 1px solid var(--cw-border);
+  background-repeat: no-repeat;
+}
+
+.cw-appearance__swatch[data-swatch="light"] {
+  background-color: var(--cw-neutral-50);
+  background-image:
+    linear-gradient(var(--cw-neutral-900), var(--cw-neutral-900)),
+    linear-gradient(var(--cw-neutral-200), var(--cw-neutral-200)),
+    linear-gradient(var(--cw-primary-600), var(--cw-primary-600));
+  background-size: 55% 0.375rem, 75% 0.25rem, 30% 0.5rem;
+  background-position: 0.5rem 0.5rem, 0.5rem 1.25rem, 0.5rem 1.875rem;
+}
+
+.cw-appearance__swatch[data-swatch="dark"] {
+  background-color: var(--cw-neutral-950);
+  background-image:
+    linear-gradient(var(--cw-neutral-200), var(--cw-neutral-200)),
+    linear-gradient(var(--cw-neutral-700), var(--cw-neutral-700)),
+    linear-gradient(var(--cw-primary-400), var(--cw-primary-400));
+  background-size: 55% 0.375rem, 75% 0.25rem, 30% 0.5rem;
+  background-position: 0.5rem 0.5rem, 0.5rem 1.25rem, 0.5rem 1.875rem;
+}

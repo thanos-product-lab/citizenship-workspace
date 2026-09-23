@@ -1,41 +1,38 @@
 "use client";
 
 import { UserButton } from "@clerk/nextjs";
-import { useEffect, useState, type JSX } from "react";
+import type { JSX } from "react";
 
-import { THEME_LABELS, chooseTheme, nextTheme, readTheme, type ThemeChoice } from "@/lib/theme";
+import { AppearancePanel } from "./AppearancePanel";
 
 /**
- * The account menu: Clerk's own items, plus the appearance choice.
+ * The account menu: Clerk's own items, plus Appearance.
  *
- * One item that steps through System, Light and Dark rather than three: the menu stays the
- * short list Clerk draws, and the label always says what is active now. Clerk closes the
- * menu on click; the page has already changed theme, so nothing more needs saying.
+ * Appearance opens a page in Clerk's account window rather than acting in the menu. The
+ * first version was a menu item that stepped System, Light, Dark on each click, and it had
+ * two faults that no amount of polish fixes: Clerk closes the menu on every click, and one
+ * step in any such cycle changes nothing on screen, because System always looks like one
+ * of the other two. Going System to Light on a light system read as a click that did
+ * nothing. The page shows all three choices at once, with System naming what it resolves
+ * to, and stays open while the theme changes around it.
  *
- * Shared by the case list and the case header, so the choice is reachable wherever the
- * avatar is.
+ * Shared by the case list and the case header, so it is reachable wherever the avatar is.
  */
 export function AccountMenu(): JSX.Element {
-  // "system" until mounted: the server cannot read this browser's storage, and rendering
-  // the stored value on the server would disagree with the client on first render.
-  const [theme, setTheme] = useState<ThemeChoice>("system");
-  useEffect(() => setTheme(readTheme()), []);
-
   return (
     <UserButton>
       <UserButton.MenuItems>
         <UserButton.Action label="manageAccount" />
-        <UserButton.Action
-          label={`Appearance: ${THEME_LABELS[theme]}`}
-          labelIcon={<AppearanceIcon />}
-          onClick={() => {
-            const next = nextTheme(theme);
-            chooseTheme(next);
-            setTheme(next);
-          }}
-        />
+        <UserButton.Action label="Appearance" labelIcon={<AppearanceIcon />} open="appearance" />
         <UserButton.Action label="signOut" />
       </UserButton.MenuItems>
+      <UserButton.UserProfilePage
+        label="Appearance"
+        url="appearance"
+        labelIcon={<AppearanceIcon />}
+      >
+        <AppearancePanel />
+      </UserButton.UserProfilePage>
     </UserButton>
   );
 }

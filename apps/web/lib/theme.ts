@@ -15,8 +15,6 @@ export type ThemeChoice = "system" | "light" | "dark";
 
 export const THEME_STORAGE_KEY = "cw-theme";
 
-const ORDER: readonly ThemeChoice[] = ["system", "light", "dark"];
-
 export const THEME_LABELS: Record<ThemeChoice, string> = {
   system: "System",
   light: "Light",
@@ -43,11 +41,6 @@ export function chooseTheme(choice: ThemeChoice): void {
   } catch {
     // Applied for this page view; it just will not be remembered.
   }
-}
-
-/** System, then Light, then Dark, then back to System. */
-export function nextTheme(choice: ThemeChoice): ThemeChoice {
-  return ORDER[(ORDER.indexOf(choice) + 1) % ORDER.length]!;
 }
 
 /**

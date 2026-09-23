@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 
-import { THEME_BOOT_SCRIPT, THEME_STORAGE_KEY, chooseTheme, nextTheme, readTheme } from "./theme";
+import { THEME_BOOT_SCRIPT, THEME_STORAGE_KEY, chooseTheme, readTheme } from "./theme";
 
 afterEach(() => {
   window.localStorage.clear();
@@ -8,12 +8,6 @@ afterEach(() => {
 });
 
 describe("the appearance choice", () => {
-  it("steps System, Light, Dark, then back to System", () => {
-    expect(nextTheme("system")).toBe("light");
-    expect(nextTheme("light")).toBe("dark");
-    expect(nextTheme("dark")).toBe("system");
-  });
-
   it("pins a theme with the attribute the tokens read, and remembers it", () => {
     chooseTheme("dark");
     expect(document.documentElement.getAttribute("data-theme")).toBe("dark");

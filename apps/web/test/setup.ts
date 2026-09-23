@@ -20,6 +20,9 @@ vi.mock("@clerk/nextjs", async (importOriginal) => {
       MenuItems: ({ children }: { children?: ReactNode }) => createElement("div", null, children),
       Action: ({ label, onClick }: { label: string; onClick?: () => void }) =>
         onClick ? createElement("button", { type: "button", onClick }, label) : null,
+      // A custom account page is rendered in place, so a test can reach what it contains.
+      UserProfilePage: ({ label, children }: { label: string; children?: ReactNode }) =>
+        createElement("section", { "aria-label": `${label} page` }, children),
     },
   );
   return {
@@ -58,6 +61,27 @@ expect.extend(toHaveNoViolations);
  */
 if (!Element.prototype.scrollIntoView) {
   Element.prototype.scrollIntoView = function scrollIntoView() {};
+}
+
+/**
+ * jsdom has no `matchMedia` either. The Appearance page asks it which scheme the device
+ * prefers, and it renders inside the account menu on every case page, so without this every
+ * header test failed for a reason unrelated to what it tests. Stubbed here for the same
+ * reason as `scrollIntoView`: a light-scheme device, with listeners that never fire. A test
+ * that cares about the scheme replaces it.
+ */
+if (!window.matchMedia) {
+  window.matchMedia = (query: string) =>
+    ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+      dispatchEvent: () => false,
+    }) as MediaQueryList;
 }
 
 
