@@ -80,4 +80,12 @@ export const authAppearance = {
   elements: {
     cardBox: "cw-auth__card",
   },
+  layout: {
+    // Hides the orange "Development mode" strip that development keys add to the card, so
+    // local screenshots and demo captures show the page as designed. It changes nothing
+    // about how sign-in works; "unsafe" only means Clerk stops reminding us these are
+    // development keys. A public deployment should move to a production instance anyway
+    // (CLAUDE.md §13, Clerk setup), where the strip does not appear.
+    unsafe_disableDevelopmentModeWarnings: true,
+  },
 };
