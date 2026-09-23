@@ -8,7 +8,7 @@ import type { JSX, RefObject } from "react";
 import { formatDate } from "@/features/requirements/dates";
 
 import { CaseNavigation } from "./CaseNavigation";
-import { useCaseOverview } from "./useCaseOverview";
+import { useCaseOverview, useOverviewUpdating } from "./useCaseOverview";
 import { useRecalculate, useRecalculationInFlight } from "./useRecalculate";
 
 type Case = components["schemas"]["CaseResponse"];
@@ -142,13 +142,16 @@ export function CaseHeader({
  * tell us — it says the conclusion is shown as it was reached.
  */
 function CaseCurrency({ caseId }: { caseId: string }): JSX.Element | null {
-  const { data: overview, isFetching, status } = useCaseOverview(caseId);
+  const { data: overview, status } = useCaseOverview(caseId);
+  // Not `isFetching`: every tab re-reads the overview on mount, and that is not a change
+  // being worked through. See `useOverviewUpdating`.
+  const updating = useOverviewUpdating(caseId);
 
   if (status !== "success" || !overview) return null;
 
   return (
     <>
-      {isFetching ? (
+      {updating ? (
         <p className="cw-updating" aria-live="polite">
           <StatusGlyph name="clock" size={14} />
           <span>Updating — the figures and conclusions shown are from before your last change.</span>
@@ -183,7 +186,8 @@ function CaseCurrency({ caseId }: { caseId: string }): JSX.Element | null {
  * won.
  */
 function RecalculateButton({ caseId }: { caseId: string }): JSX.Element | null {
-  const { data: overview, isFetching, status } = useCaseOverview(caseId);
+  const { data: overview, status } = useCaseOverview(caseId);
+  const updating = useOverviewUpdating(caseId);
   const { mutation: recalculate, announcement } = useRecalculate(caseId);
 
   // Shared across every recalculation control on the page, not just this one's observer.
@@ -191,7 +195,10 @@ function RecalculateButton({ caseId }: { caseId: string }): JSX.Element | null {
   // two controls each tracking only their own `isPending` leave the other looking idle
   // while a run is in flight.
   const inFlight = useRecalculationInFlight(caseId);
-  const busy = inFlight || recalculate.isPending || (isFetching && status === "success");
+  // Busy through the refetch a run triggers (it invalidates the overview), but not through
+  // a tab's routine re-read on mount, which used to flip the label to "Updating…" on every
+  // switch.
+  const busy = inFlight || recalculate.isPending || (updating && status === "success");
 
   // Nothing to recalculate until the case has been assessed once. `conclusion_counts`
   // excludes NOT_YET_ASSESSED, so this is "at least one requirement has a conclusion" —

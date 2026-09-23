@@ -76,6 +76,56 @@ describe("CaseHeader", () => {
     pathname.current = "/cases/c1";
   });
 
+  describe("the Updating banner", () => {
+    /** Serve one overview, then hold every later request open, so a refetch stays in flight. */
+    function holdRefetches() {
+      let calls = 0;
+      get.mockImplementation((path: string) => {
+        if (path !== "/api/v1/cases/{case_id}/overview") {
+          return Promise.resolve({ data: undefined, error: {}, response: { status: 404 } });
+        }
+        calls += 1;
+        return calls === 1
+          ? Promise.resolve({ data: anOverview(), error: undefined })
+          : new Promise(() => {});
+      });
+    }
+
+    it("stays silent through a tab's routine re-read, which changes nothing", async () => {
+      // Every case tab re-reads the overview as it mounts. That used to flash the Updating
+      // banner, which says the figures predate your last change, on each switch.
+      holdRefetches();
+      const { client } = renderHeader();
+      await screen.findByText("15 April 2027");
+
+      void client.refetchQueries({ queryKey: ["cases", "c1", "overview"] });
+      await waitFor(() => expect(get).toHaveBeenCalledTimes(2));
+
+      expect(screen.queryByText(/shown are from before your last change/)).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Update assessment" })).not.toHaveAttribute(
+        "aria-disabled",
+        "true",
+      );
+    });
+
+    it("shows while a change is being worked through", async () => {
+      // A change reaches the overview through `assessmentTouched`, which invalidates it.
+      holdRefetches();
+      const { client } = renderHeader();
+      await screen.findByText("15 April 2027");
+
+      void client.invalidateQueries({ queryKey: ["cases", "c1"] });
+
+      expect(
+        await screen.findByText(/shown are from before your last change/),
+      ).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Updating…" })).toHaveAttribute(
+        "aria-disabled",
+        "true",
+      );
+    });
+  });
+
   it("names the case and its derived phase once", async () => {
     mock();
     renderHeader();

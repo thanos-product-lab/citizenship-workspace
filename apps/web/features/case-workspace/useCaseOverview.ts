@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { useApiClient } from "@/lib/api";
 import { caseKeys } from "@/lib/queries";
@@ -34,4 +34,26 @@ export function useCaseOverview(caseId: string) {
       return data;
     },
   });
+}
+
+/**
+ * Whether the overview is being refetched **because something changed**: true only while an
+ * invalidated overview is on its way back.
+ *
+ * `isFetching` alone is true for every refetch, and nothing here is cached as fresh
+ * (`staleTime: 0`), so each case tab re-reads the overview as it mounts. The header read
+ * `isFetching` as "your last change is being worked through" and flashed its Updating
+ * banner, which says the figures shown predate your last change, on every tab switch when
+ * nothing had changed. A change reaches the overview through `assessmentTouched`, which
+ * invalidates it; a tab's check on mount does not. So invalidated-and-fetching is the state
+ * that sentence describes, and a routine revalidation stays silent.
+ *
+ * Read from the query cache at render: the component re-renders when `isFetching` changes,
+ * which is exactly when this can change.
+ */
+export function useOverviewUpdating(caseId: string): boolean {
+  const client = useQueryClient();
+  const { isFetching } = useCaseOverview(caseId);
+  const invalidated = client.getQueryState(caseKeys.overview(caseId))?.isInvalidated ?? false;
+  return isFetching && invalidated;
 }
