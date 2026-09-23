@@ -1,7 +1,7 @@
 import "@testing-library/jest-dom/vitest";
 
 import { toHaveNoViolations } from "jest-axe";
-import { createElement } from "react";
+import { createElement, type ReactNode } from "react";
 import { afterEach, beforeEach, expect, vi } from "vitest";
 
 /**
@@ -10,10 +10,23 @@ import { afterEach, beforeEach, expect, vi } from "vitest";
  * which renders it on every case page, is. Only `UserButton` is replaced: every other
  * export stays real, so a test that mocks Clerk itself (`lib/api.test.ts`) still can.
  */
-vi.mock("@clerk/nextjs", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@clerk/nextjs")>()),
-  UserButton: () => createElement("div", { "data-testid": "user-button" }),
-}));
+vi.mock("@clerk/nextjs", async (importOriginal) => {
+  // The placeholder keeps the compound API (`UserButton.MenuItems`, `UserButton.Action`)
+  // so the account menu renders; its custom items are plain buttons a test can press.
+  const UserButton = Object.assign(
+    ({ children }: { children?: ReactNode }) =>
+      createElement("div", { "data-testid": "user-button" }, children),
+    {
+      MenuItems: ({ children }: { children?: ReactNode }) => createElement("div", null, children),
+      Action: ({ label, onClick }: { label: string; onClick?: () => void }) =>
+        onClick ? createElement("button", { type: "button", onClick }, label) : null,
+    },
+  );
+  return {
+    ...(await importOriginal<typeof import("@clerk/nextjs")>()),
+    UserButton,
+  };
+});
 
 /**
  * `expect(await axe(container)).toHaveNoViolations()`.

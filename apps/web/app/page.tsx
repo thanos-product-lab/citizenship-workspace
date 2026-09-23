@@ -1,5 +1,5 @@
-import { UserButton } from "@clerk/nextjs";
 
+import { AccountMenu } from "@/features/account/AccountMenu";
 import { CasesPanel } from "@/features/cases/CasesPanel";
 
 export default function HomePage() {
@@ -15,7 +15,7 @@ export default function HomePage() {
         }}
       >
         <span style={{ fontWeight: "var(--cw-weight-semibold)" }}>Citizenship Workspace</span>
-        <UserButton />
+        <AccountMenu />
       </header>
 
       <section style={{ paddingTop: "var(--cw-space-8)" }}>

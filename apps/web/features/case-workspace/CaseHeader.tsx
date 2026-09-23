@@ -1,10 +1,10 @@
 "use client";
 
-import { UserButton } from "@clerk/nextjs";
 import type { components } from "@cw/api-client";
 import { StatusGlyph } from "@cw/design-system";
 import type { JSX, RefObject } from "react";
 
+import { AccountMenu } from "@/features/account/AccountMenu";
 import { formatDate } from "@/features/requirements/dates";
 
 import { CaseNavigation } from "./CaseNavigation";
@@ -76,7 +76,7 @@ export function CaseHeader({
             <a className="cw-case-header__back" href="/">
               <span aria-hidden="true">←</span> Your cases
             </a>
-            <UserButton />
+            <AccountMenu />
           </div>
 
           <div className="cw-case-header__identity">
