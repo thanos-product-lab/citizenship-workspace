@@ -1,7 +1,19 @@
 import "@testing-library/jest-dom/vitest";
 
 import { toHaveNoViolations } from "jest-axe";
-import { afterEach, beforeEach, expect } from "vitest";
+import { createElement } from "react";
+import { afterEach, beforeEach, expect, vi } from "vitest";
+
+/**
+ * Clerk's account menu, replaced by a placeholder. The real one needs a `ClerkProvider`
+ * and a Clerk instance, and no component test is about Clerk's menu; the case header,
+ * which renders it on every case page, is. Only `UserButton` is replaced: every other
+ * export stays real, so a test that mocks Clerk itself (`lib/api.test.ts`) still can.
+ */
+vi.mock("@clerk/nextjs", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@clerk/nextjs")>()),
+  UserButton: () => createElement("div", { "data-testid": "user-button" }),
+}));
 
 /**
  * `expect(await axe(container)).toHaveNoViolations()`.

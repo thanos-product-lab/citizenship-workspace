@@ -356,6 +356,21 @@ a.cw-button--secondary:hover {
   font-size: var(--cw-text-sm);
 }
 
+/* The way back on the left, the account menu on the right, above the case's identity. */
+.cw-case-header__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--cw-space-3);
+  margin-bottom: var(--cw-space-5);
+}
+
+/* The row owns the spacing here; the link keeps its own margin where it stands alone
+   (the review screen, and the case shell's loading and error states). */
+.cw-case-header__top .cw-case-header__back {
+  margin-bottom: 0;
+}
+
 .cw-case-header__identity {
   display: flex;
   align-items: center;

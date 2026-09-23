@@ -57,35 +57,11 @@ export const SIGN_IN_PATH = "/sign-in";
 export const SIGN_UP_PATH = "/sign-up";
 
 /**
- * Clerk's card themed with tokens, not colours. Every value is a `--cw-*` custom property,
- * so the card follows the light and dark themes with the rest of the product rather than
- * staying Clerk's white in both.
+ * What only the sign-in and sign-up cards add to the shared Clerk theme (applied on
+ * `ClerkProvider`, see `lib/clerkAppearance.ts`): the product's bordered card.
  */
 export const authAppearance = {
-  variables: {
-    colorPrimary: "var(--cw-accent)",
-    // Clerk otherwise picks white, which fails contrast on the dark theme's light accent.
-    // The token is dark text there, white in the light theme.
-    colorTextOnPrimaryBackground: "var(--cw-accent-contrast)",
-    colorText: "var(--cw-text)",
-    colorTextSecondary: "var(--cw-text-muted)",
-    colorBackground: "var(--cw-surface)",
-    colorInputBackground: "var(--cw-surface)",
-    colorInputText: "var(--cw-text)",
-    colorDanger: "var(--cw-status-not-satisfied)",
-    colorNeutral: "var(--cw-text)",
-    fontFamily: "var(--cw-font-sans)",
-    borderRadius: "var(--cw-radius-md)",
-  },
   elements: {
     cardBox: "cw-auth__card",
-  },
-  layout: {
-    // Hides the orange "Development mode" strip that development keys add to the card, so
-    // local screenshots and demo captures show the page as designed. It changes nothing
-    // about how sign-in works; "unsafe" only means Clerk stops reminding us these are
-    // development keys. A public deployment should move to a production instance anyway
-    // (CLAUDE.md §13, Clerk setup), where the strip does not appear.
-    unsafe_disableDevelopmentModeWarnings: true,
   },
 };

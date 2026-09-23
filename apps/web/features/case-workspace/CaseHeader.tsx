@@ -1,5 +1,6 @@
 "use client";
 
+import { UserButton } from "@clerk/nextjs";
 import type { components } from "@cw/api-client";
 import { StatusGlyph } from "@cw/design-system";
 import type { JSX, RefObject } from "react";
@@ -68,9 +69,15 @@ export function CaseHeader({
     <header className="cw-case-shell">
       <div className="cw-case-shell__identity">
         <div className="cw-shell__inner">
-          <a className="cw-case-header__back" href="/">
-            <span aria-hidden="true">←</span> Your cases
-          </a>
+          {/* The account menu on every case page, on the top line rather than beside the
+              title: the title line carries the case's one command, Update assessment, and
+              account controls there would compete with it. */}
+          <div className="cw-case-header__top">
+            <a className="cw-case-header__back" href="/">
+              <span aria-hidden="true">←</span> Your cases
+            </a>
+            <UserButton />
+          </div>
 
           <div className="cw-case-header__identity">
             <h1 className="cw-case-header__title" ref={headingRef} tabIndex={-1}>
