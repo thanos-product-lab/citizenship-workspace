@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import Link, { useLinkStatus } from "next/link";
 import { usePathname } from "next/navigation";
 import type { JSX } from "react";
 
@@ -43,6 +43,7 @@ export function CaseNavigation({ caseId }: { caseId: string }): JSX.Element {
                 aria-current={isCurrent ? "page" : undefined}
               >
                 {destination.label}
+                <PendingMark />
                 {/* The count is inside the link text, not a floating badge, so a screen
                     reader announces "Issues 4" as one label rather than leaving the number
                     orphaned. Absent at zero: a "0" is visual noise that reads as a state. */}
@@ -61,4 +62,21 @@ export function CaseNavigation({ caseId }: { caseId: string }): JSX.Element {
       </ul>
     </nav>
   );
+}
+
+/**
+ * Marks the tab that was just clicked while its destination is still on its way.
+ *
+ * The underline follows the page on screen (`aria-current`), so without this the old tab
+ * stayed highlighted and the clicked one showed nothing until the new destination
+ * rendered, which on a slow switch read as a click that had not registered.
+ * `useLinkStatus` must be called inside the link it reports on, so this renders there and
+ * the stylesheet styles the link through `:has()`.
+ *
+ * Nothing is announced: the destination's loading state carries the status sentence, and
+ * a second one here would say the same thing twice.
+ */
+function PendingMark(): JSX.Element | null {
+  const { pending } = useLinkStatus();
+  return pending ? <span className="cw-case-nav__pending" aria-hidden="true" /> : null;
 }

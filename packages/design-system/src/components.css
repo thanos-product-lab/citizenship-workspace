@@ -463,6 +463,35 @@ a.cw-button--secondary:hover {
   border-bottom-color: var(--cw-accent);
 }
 
+/* The tab just clicked, while its destination is on its way: text as if current, and a
+   lighter accent underline that pulses. Styled from the mark inside it, because only a
+   component inside the link can know it is pending. */
+.cw-case-nav__link:has(.cw-case-nav__pending) {
+  color: var(--cw-text);
+  border-bottom-color: color-mix(in srgb, var(--cw-accent) 45%, transparent);
+  animation: cw-tab-pending 0.9s ease-in-out infinite alternate;
+}
+
+@keyframes cw-tab-pending {
+  from {
+    border-bottom-color: color-mix(in srgb, var(--cw-accent) 25%, transparent);
+  }
+  to {
+    border-bottom-color: color-mix(in srgb, var(--cw-accent) 70%, transparent);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cw-case-nav__link:has(.cw-case-nav__pending) {
+    animation: none;
+  }
+}
+
+/* The mark carries no pixels of its own; it exists to be found by `:has()`. */
+.cw-case-nav__pending {
+  display: none;
+}
+
 /* The focus ring is a box-shadow, which a zero-height inline box clips awkwardly against
    the rule; a small radius keeps it legible without detaching the link from the border. */
 .cw-case-nav__link:focus-visible {
@@ -2744,6 +2773,29 @@ a.cw-button--secondary:hover {
 }
 
 /* --- Skeleton --------------------------------------------------------------- */
+
+/* A destination on its way (`loading.tsx`). The shapes wait 150ms, then fade in, so a fast
+   tab switch shows an empty content area for a moment rather than a flash of grey. */
+.cw-route-skeleton {
+  display: grid;
+  gap: var(--cw-space-3);
+  animation: cw-fade-in 200ms ease-out 150ms both;
+}
+
+@keyframes cw-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cw-route-skeleton {
+    animation: none;
+  }
+}
 
 /* A placeholder shape. `--cw-border`, not the sunken surface: the case shell's identity
    band is tinted almost exactly the sunken colour, and shapes drawn in it disappeared,
