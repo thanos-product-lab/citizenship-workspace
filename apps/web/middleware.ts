@@ -1,7 +1,7 @@
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 
-// Everything except the sign-in route requires an authenticated session.
-const isPublicRoute = createRouteMatcher(["/sign-in(.*)"]);
+// Everything except the sign-in and sign-up routes requires an authenticated session.
+const isPublicRoute = createRouteMatcher(["/sign-in(.*)", "/sign-up(.*)"]);
 
 /** This app's own sign-in page. Without it, `auth.protect()` sent a signed-out visitor to
  * Clerk's hosted Account Portal, and the page at `/sign-in` was reachable only by typing
@@ -14,7 +14,7 @@ export default clerkMiddleware(
       await auth.protect();
     }
   },
-  { signInUrl: SIGN_IN_PATH },
+  { signInUrl: SIGN_IN_PATH, signUpUrl: "/sign-up" },
 );
 
 export const config = {
