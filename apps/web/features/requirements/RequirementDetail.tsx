@@ -29,11 +29,16 @@ type Detail = components["schemas"]["RequirementDetail"];
 /**
  * The requirement explanation — the product's signature interaction.
  *
- * The layers follow UI/UX §7.3 exactly (Assessment → Facts used → Evidence used → Rule
- * used → Limitations → Next action), because that tree *is* the domain model: a result,
- * the versioned inputs it read, the evidence supporting those inputs, the rule version it
- * ran under, its structured limitations and its next actions. Nothing on this page is
- * generated prose — every sentence is either a server-rendered template or a field.
+ * The layers are the tree UI/UX §7.3 draws, because that tree *is* the domain model: a
+ * result, the versioned inputs it read, the evidence supporting those inputs, the rule
+ * version it ran under, its structured limitations and its next actions. Nothing on this
+ * page is generated prose: every sentence is either a server-rendered template or a field.
+ *
+ * **The answer comes first** (UI/UX §7.2, finding 18). Limitations and the next action sit
+ * under the conclusion; the calculation, inputs, evidence and rule follow; history is
+ * last. The order used to be the tree's reading order, which put "what do I do" below
+ * every table on the page. Nothing was collapsed to fix it: every layer stays open, and
+ * an empty one is stated in a line rather than dropped.
  *
  * The three things this page must not do:
  *
@@ -205,6 +210,70 @@ export function RequirementDetail({
         </ExplanationStack>
       ) : (
         <ExplanationStack>
+          {/* The answer leads: what reduces confidence and what to do, directly under the
+              conclusion. The working that produced it follows (UI/UX §7.2), every layer
+              still open, because the provenance is the point of this page and a reader
+              should not have to know to click to find it. */}
+          <ExplanationLayer
+            id="layer-limitations"
+            title="Limitations"
+            note="Things that reduce confidence in this conclusion."
+            emptyMessage="No limitations were recorded against this result."
+          >
+            {detail.limitations.length > 0 ? (
+              <ul className="cw-notes">
+                {detail.limitations.map((limitation) => (
+                  <li
+                    key={limitation.code}
+                    className="cw-note"
+                    data-severity={limitation.severity}
+                  >
+                    <StatusGlyph name="scale" size={16} />
+                    <span>
+                      {limitation.text ?? limitation.code}
+                      <span className="cw-note__meta">
+                        {limitation.severity.toLowerCase().replace(/_/g, " ")}
+                        {limitation.affected_input_ids.length > 0
+                          ? ` · affects ${limitation.affected_input_ids.length} record${
+                              limitation.affected_input_ids.length === 1 ? "" : "s"
+                            }`
+                          : ""}
+                      </span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </ExplanationLayer>
+
+          <ExplanationLayer
+            id="layer-next"
+            title="Next action"
+            emptyMessage={nextActionEmptyMessage(detail)}
+          >
+            {detail.next_actions.length > 0 ? (
+              <ul className="cw-notes">
+                {detail.next_actions.map((action) => (
+                  <li
+                    key={action.code}
+                    className="cw-note"
+                    data-blocking={action.blocking ? "true" : undefined}
+                  >
+                    <StatusGlyph name="gauge" size={16} />
+                    <span>
+                      {action.text ?? action.code}
+                      {action.blocking ? (
+                        <span className="cw-note__meta">
+                          blocks this requirement being satisfied
+                        </span>
+                      ) : null}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </ExplanationLayer>
+
           <ExplanationLayer
             id="layer-why"
             title="Why this assessment was made"
@@ -313,66 +382,6 @@ export function RequirementDetail({
                 guidanceVersionRecorded={detail.rule.guidance_version_recorded}
                 formatDate={formatDate}
               />
-            ) : null}
-          </ExplanationLayer>
-
-          <ExplanationLayer
-            id="layer-limitations"
-            title="Limitations"
-            note="Things that reduce confidence in this conclusion."
-            emptyMessage="No limitations were recorded against this result."
-          >
-            {detail.limitations.length > 0 ? (
-              <ul className="cw-notes">
-                {detail.limitations.map((limitation) => (
-                  <li
-                    key={limitation.code}
-                    className="cw-note"
-                    data-severity={limitation.severity}
-                  >
-                    <StatusGlyph name="scale" size={16} />
-                    <span>
-                      {limitation.text ?? limitation.code}
-                      <span className="cw-note__meta">
-                        {limitation.severity.toLowerCase().replace(/_/g, " ")}
-                        {limitation.affected_input_ids.length > 0
-                          ? ` · affects ${limitation.affected_input_ids.length} record${
-                              limitation.affected_input_ids.length === 1 ? "" : "s"
-                            }`
-                          : ""}
-                      </span>
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            ) : null}
-          </ExplanationLayer>
-
-          <ExplanationLayer
-            id="layer-next"
-            title="Next action"
-            emptyMessage={nextActionEmptyMessage(detail)}
-          >
-            {detail.next_actions.length > 0 ? (
-              <ul className="cw-notes">
-                {detail.next_actions.map((action) => (
-                  <li
-                    key={action.code}
-                    className="cw-note"
-                    data-blocking={action.blocking ? "true" : undefined}
-                  >
-                    <StatusGlyph name="gauge" size={16} />
-                    <span>
-                      {action.text ?? action.code}
-                      {action.blocking ? (
-                        <span className="cw-note__meta">
-                          blocks this requirement being satisfied
-                        </span>
-                      ) : null}
-                    </span>
-                  </li>
-                ))}
-              </ul>
             ) : null}
           </ExplanationLayer>
 

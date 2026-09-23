@@ -1531,7 +1531,8 @@ two. The scenario 1 case's `prompt-injection.pdf`, reviewed under finding 16, no
 
 ### 18. The requirement detail shows every layer at once
 
-**Status:** open · **Kind:** progressive disclosure · **Size:** needs a plan
+**Status:** **fixed**, 23 September 2026, **in part by design** · **Kind:** hierarchy ·
+**Size:** planned first
 
 `RequirementDetail.tsx` renders the whole explanation stack in sequence, including layers
 that state an absence ("No limitations were recorded against this result.", "There's
@@ -1551,3 +1552,36 @@ history move under "How this was checked", collapsed but present, with their abs
 statements intact inside it. Limitations, the stale notice and the date-passed notice stay
 visible above the fold. That is collapsing, not removing, and it keeps every statement the
 test protects. The release-gate wording needs updating in the same change.
+
+**How it was closed, and what was not taken.** The problem was taken and the proposed fix
+was not. The answer was spread through the page, but collapsing the working behind "How
+this was checked" would hide the provenance on the screen that exists to show it: an
+interviewer or user who does not know to click sees a result and a reason, the gate's
+"explainability model is visible" pass rests on these layers being on the page, and
+`ExplanationStack` has since M4 carried the rule that nothing in the stack sits behind an
+expand. So nothing is collapsed, including history.
+
+Instead the page leads with the answer. Under the conclusion, figure and reason (and the
+date-passed and stale notices, unchanged) come Limitations and Next action; then the
+calculation, facts, travel records, evidence and rule; history last. An empty layer now
+states its finding on the heading's line and drops the note that framed content it does
+not have, and consecutive empty layers sit closer together. Every layer is still a heading
+and still says what it found. UI/UX §7.2 and §7.3 were amended to the new order, since the
+design doc is the source of truth and the code had claimed to follow its old order
+"exactly". No divider label was added between the answer and the working, by decision.
+
+Not added: a list of open issues on the requirement. The detail carries no such field, and
+limitations and next action already say what is unresolved.
+
+Verified in the browser. The demo case's Total absences (near threshold) shows the
+conclusion, figure, reason, then Limitations and Next action as one-line findings within
+the first screen, then the calculation. `route.standard_section_6_1`, mostly empty, reads
+as a short run of one-line findings with the layers that have content keeping their notes.
+A stale Total absences on the scenario 1 case (date moved one day, restored and reassessed
+afterwards) keeps its stale notice in the summary above every layer. Headings are `h3` in
+the new order, and the page reflows at 320px.
+
+Worth knowing, not changed: moving Next action up makes its content more visible, and the
+demo case's near-threshold Total absences reads "No next action has been recorded for this
+result." A near-threshold result with no recorded next action is a rules-output question,
+not a layout one.

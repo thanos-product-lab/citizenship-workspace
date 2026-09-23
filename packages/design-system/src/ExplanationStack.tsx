@@ -5,11 +5,11 @@
  * and not an AI-generated paragraph. It is the domain model rendered:
  *
  *     Assessment
+ *     ├── Limitations
+ *     ├── Next action
  *     ├── Facts used
  *     ├── Evidence used
- *     ├── Rule used
- *     ├── Limitations
- *     └── Next action
+ *     └── Rule used
  *
  * So each layer is a real `<section>` with a real heading, and **the document outline is
  * the explanation structure**. A screen-reader user navigating by heading gets the same
@@ -20,6 +20,12 @@
  * recorded" and "no evidence is linked" are findings about the case, not absences to hide
  * — an explanation with layers silently missing invites the reader to assume they were
  * satisfied.
+ *
+ * **Compact when empty, never removed** (finding 18). An empty layer keeps its heading and
+ * its finding, and drops the framing note, which introduces content that is not there.
+ * `data-empty` lets the stylesheet set the two on one line and close the space between
+ * consecutive empty layers, so a mostly-empty explanation no longer takes a screen of
+ * headings to say "nothing here".
  */
 
 import type { JSX, ReactNode } from "react";
@@ -61,11 +67,15 @@ export function ExplanationLayer({
     (Array.isArray(children) && children.length === 0);
 
   return (
-    <section className="cw-stack__layer" aria-labelledby={id}>
+    <section
+      className="cw-stack__layer"
+      aria-labelledby={id}
+      data-empty={isEmpty ? "true" : undefined}
+    >
       <Heading className="cw-stack__title" id={id}>
         {title}
       </Heading>
-      {note ? <p className="cw-stack__note">{note}</p> : null}
+      {note && !isEmpty ? <p className="cw-stack__note">{note}</p> : null}
       {isEmpty ? <p className="cw-stack__empty">{emptyMessage ?? "Nothing recorded."}</p> : children}
     </section>
   );

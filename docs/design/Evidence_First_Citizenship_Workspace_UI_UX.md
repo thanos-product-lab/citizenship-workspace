@@ -480,9 +480,24 @@ Status must never rely on colour alone.
 
 ### 7.2 Explainability stack
 
+The answer comes first: the assessment, what limits it, and what to do. The working that
+produced it follows. Every layer stays open, and a layer with nothing in it states that
+in one line rather than being removed (finding 18, 23 September 2026).
+
 #### Assessment
 
 > Your confirmed travel records currently place you within the standard final-year absence threshold.
+
+#### Limitations
+
+```text
+2 travel dates were entered manually.
+1 trip has no supporting evidence.
+```
+
+#### Next action
+
+> Add evidence for your Greece trip or confirm that the manually entered dates are correct.
 
 #### Why this assessment was made
 
@@ -521,17 +536,6 @@ Display:
 - retrieval date;
 - action to open the source.
 
-#### Limitations
-
-```text
-2 travel dates were entered manually.
-1 trip has no supporting evidence.
-```
-
-#### Next action
-
-> Add evidence for your Greece trip or confirm that the manually entered dates are correct.
-
 ### 7.3 Explainability principle
 
 Explainability should not be implemented as a tooltip or AI-generated paragraph.
@@ -540,12 +544,15 @@ It must be represented in the domain model and reflected directly in the interfa
 
 ```text
 Assessment
+├── Limitations
+├── Next action
 ├── Facts used
 ├── Evidence used
-├── Rule used
-├── Limitations
-└── Next action
+└── Rule used
 ```
+
+The order is the page's reading order. The tree itself is the domain model, and every
+branch is always shown.
 
 #### Skills demonstrated
 

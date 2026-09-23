@@ -934,11 +934,34 @@ a.cw-button--secondary:hover {
   padding-left: var(--cw-space-6);
   border-left: 2px solid var(--cw-border);
   display: grid;
-  gap: var(--cw-space-8);
 }
 
 .cw-stack__layer {
   position: relative;
+}
+
+/* Spacing between layers as margins rather than `gap`, so it can close up between two
+   empty layers. A run of "nothing recorded" findings reads as one short list, not as a
+   screen of headings. */
+.cw-stack__layer + .cw-stack__layer {
+  margin-top: var(--cw-space-8);
+}
+
+.cw-stack__layer[data-empty] + .cw-stack__layer[data-empty] {
+  margin-top: var(--cw-space-4);
+}
+
+/* An empty layer states its finding on the heading's line where there is room, and wraps
+   under it where there is not. */
+.cw-stack__layer[data-empty] {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: var(--cw-space-3);
+}
+
+.cw-stack__layer[data-empty] .cw-stack__empty {
+  margin: 0;
 }
 
 /* The branch mark: a short rule reaching back to the stack's spine. */

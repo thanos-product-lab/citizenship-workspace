@@ -111,6 +111,46 @@ describe("RequirementDetail", () => {
     }
   });
 
+  it("puts the answer before the working (finding 18)", async () => {
+    // What reduces confidence and what to do sit under the conclusion; the calculation,
+    // inputs, evidence and rule follow; history is last. UI/UX §7.2.
+    get.mockResolvedValue({ data: aDetail() });
+    render(<RequirementDetail caseId="c1" requirementKey="residence.total_absences" />);
+
+    await screen.findByRole("heading", { name: "Total absences", level: 2 });
+    const order = screen
+      .getAllByRole("heading", { level: 3 })
+      .map((heading) => heading.textContent);
+    expect(order).toEqual([
+      "Limitations",
+      "Next action",
+      "Why this assessment was made",
+      "Facts used",
+      "Travel records used",
+      "Evidence used",
+      "Rule used",
+      "Assessment history",
+    ]);
+  });
+
+  it("states an empty layer compactly, without the note that framed its content", async () => {
+    // Compact, never removed: the heading and the finding stay, and the note that would
+    // introduce a list that is not there does not.
+    get.mockResolvedValue({ data: aDetail({ facts_used: [] }) });
+    render(<RequirementDetail caseId="c1" requirementKey="residence.total_absences" />);
+
+    const heading = await screen.findByRole("heading", { name: "Facts used", level: 3 });
+    const layer = heading.closest("section")!;
+    expect(layer).toHaveAttribute("data-empty", "true");
+    expect(layer).toHaveTextContent("No facts were recorded against this result.");
+    expect(layer).not.toHaveTextContent(/exact versions of your answers/);
+
+    // A layer with content keeps its note and is not marked empty.
+    const rule = screen.getByRole("heading", { name: "Rule used", level: 3 }).closest("section")!;
+    expect(rule).not.toHaveAttribute("data-empty");
+    expect(rule).toHaveTextContent("The exact rule version that produced this conclusion.");
+  });
+
   it("renders the server's summary and never composes its own", async () => {
     get.mockResolvedValue({ data: aDetail() });
     render(<RequirementDetail caseId="c1" requirementKey="residence.total_absences" />);
