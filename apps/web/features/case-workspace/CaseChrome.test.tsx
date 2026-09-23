@@ -63,9 +63,9 @@ describe("CaseChrome", () => {
     expect(screen.getByRole("status")).toHaveTextContent("Loading this case…");
     const skeleton = screen.getByTestId("case-shell-skeleton");
     expect(skeleton).toHaveAttribute("aria-hidden", "true");
-    // No shapes for a load faster than the delay, then the shell's frame.
-    expect(skeleton.querySelector(".cw-skeleton")).toBeNull();
-    await waitFor(() => expect(skeleton.querySelector(".cw-skeleton")).not.toBeNull());
+    // The shapes are there on the first render, so the server's HTML carries them; the
+    // hold-back for fast loads is the `Skeleton`'s CSS, not a timer.
+    expect(skeleton.querySelector(".cw-skeleton")).not.toBeNull();
     expect(screen.queryByText("destination")).toBeNull();
   });
 

@@ -40,10 +40,13 @@ describe("CasesPanel", () => {
 
     // The sentence is in the live region at once; the rows are not read at all.
     expect(screen.getByRole("status")).toHaveTextContent("Loading your cases…");
-    expect(screen.queryByTestId("case-list-skeleton")).toBeNull();
-    const skeleton = await screen.findByTestId("case-list-skeleton");
+    // Rendered on the first render, not after a timer, so the server's HTML carries it and
+    // a slow connection shows it before any JavaScript arrives. The 150ms hold-back is the
+    // `Skeleton`'s own CSS.
+    const skeleton = screen.getByTestId("case-list-skeleton");
     expect(skeleton).toHaveAttribute("aria-hidden", "true");
     expect(skeleton.querySelectorAll("li")).toHaveLength(3);
+    expect(skeleton.querySelectorAll(".cw-skeleton").length).toBeGreaterThan(0);
   });
 
   it("shows the empty state when the user has no cases", async () => {

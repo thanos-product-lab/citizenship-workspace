@@ -9,7 +9,6 @@ import { useEffect, useRef } from "react";
 import { RouteOnboarding } from "@/features/onboarding/RouteOnboarding";
 import { useApiClient } from "@/lib/api";
 import { caseKeys } from "@/lib/queries";
-import { useShowAfter } from "@/lib/useShowAfter";
 
 import { CaseHeader } from "./CaseHeader";
 import { MAIN_LANDMARK_ID } from "./destinations";
@@ -43,57 +42,50 @@ function ContentShell({ children }: { children: ReactNode }): JSX.Element {
  * block as placeholder shapes, laid out with the real shell's classes so the page does not
  * move when the case arrives.
  *
- * Screen readers get the sentence and not the shapes, which are all `aria-hidden`. The
- * sentence is there from the first frame; only the shapes wait for `SKELETON_DELAY_MS`.
+ * Screen readers get the sentence and not the shapes, which are all `aria-hidden`. Both
+ * are rendered at once, including in the server's HTML; the shapes hold themselves back
+ * for 150ms in CSS, so a fast load does not flash them.
  */
 function CaseShellSkeleton(): JSX.Element {
-  const visible = useShowAfter();
-
   return (
     <>
       <div className="cw-case-shell" aria-hidden="true" data-testid="case-shell-skeleton">
-        {visible ? (
-          <>
-            <div className="cw-case-shell__identity">
-              <div className="cw-shell__inner">
-                {/* The real header's own row classes, with shapes the size of what fills
-                    them (the 28px avatar, the 42px Update assessment button, two lines of
-                    details), so the navigation row starts where it will stay. */}
-                <div className="cw-case-header__top">
-                  <Skeleton width="6rem" height="0.875rem" />
-                  <Skeleton width="1.75rem" height="1.75rem" round />
-                </div>
-                <div className="cw-case-header__identity">
-                  <Skeleton width="min(20rem, 55%)" height="1.75rem" />
-                  <Skeleton width="10.5rem" height="2.625rem" style={{ marginLeft: "auto" }} />
-                </div>
-                <div className="cw-case-header__facts cw-shell-skeleton__facts">
-                  <Skeleton width="min(26rem, 90%)" height="0.875rem" />
-                  <Skeleton width="10rem" height="0.875rem" />
-                </div>
-              </div>
+        <div className="cw-case-shell__identity">
+          <div className="cw-shell__inner">
+            {/* The real header's own row classes, with shapes the size of what fills them
+                (the 28px avatar, the 42px Update assessment button, two lines of details),
+                so the navigation row starts where it will stay. */}
+            <div className="cw-case-header__top">
+              <Skeleton width="6rem" height="0.875rem" />
+              <Skeleton width="1.75rem" height="1.75rem" round />
             </div>
-            <div className="cw-case-shell__nav">
-              <div className="cw-shell__inner cw-shell-skeleton__nav">
-                {[4.5, 4, 6, 4.5, 3.5, 5].map((rem, index) => (
-                  <Skeleton key={index} width={`${rem}rem`} height="0.875rem" />
-                ))}
-              </div>
+            <div className="cw-case-header__identity">
+              <Skeleton width="min(20rem, 55%)" height="1.75rem" />
+              <Skeleton width="10.5rem" height="2.625rem" style={{ marginLeft: "auto" }} />
             </div>
-          </>
-        ) : null}
+            <div className="cw-case-header__facts cw-shell-skeleton__facts">
+              <Skeleton width="min(26rem, 90%)" height="0.875rem" />
+              <Skeleton width="10rem" height="0.875rem" />
+            </div>
+          </div>
+        </div>
+        <div className="cw-case-shell__nav">
+          <div className="cw-shell__inner cw-shell-skeleton__nav">
+            {[4.5, 4, 6, 4.5, 3.5, 5].map((rem, index) => (
+              <Skeleton key={index} width={`${rem}rem`} height="0.875rem" />
+            ))}
+          </div>
+        </div>
       </div>
       <ContentShell>
         <p role="status" className="cw-visually-hidden">
           Loading this case…
         </p>
-        {visible ? (
-          <div className="cw-shell-skeleton__stack" aria-hidden="true">
-            <Skeleton width="12rem" height="1.25rem" />
-            <Skeleton height="6rem" />
-            <Skeleton height="6rem" />
-          </div>
-        ) : null}
+        <div className="cw-shell-skeleton__stack" aria-hidden="true">
+          <Skeleton width="12rem" height="1.25rem" />
+          <Skeleton height="6rem" />
+          <Skeleton height="6rem" />
+        </div>
       </ContentShell>
     </>
   );

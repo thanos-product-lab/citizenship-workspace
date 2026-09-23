@@ -5,7 +5,6 @@ import { Skeleton } from "@cw/design-system";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useApiClient } from "@/lib/api";
-import { useShowAfter } from "@/lib/useShowAfter";
 
 type CaseResponse = components["schemas"]["CaseResponse"];
 type LoadState = "loading" | "error" | "ready";
@@ -263,12 +262,12 @@ const rowStyle: React.CSSProperties = {
 /**
  * Three case rows as placeholder shapes, in the real list's box and row styles so the list
  * lands where the shapes were. `aria-hidden`: the live region above says "Loading your
- * cases…" to a screen reader, and shapes would only add noise. Shown after the shared
- * delay, so a fast load draws nothing.
+ * cases…" to a screen reader, and shapes would only add noise.
+ *
+ * Rendered at once, including in the server's HTML; each `Skeleton` holds itself back for
+ * 150ms in CSS, so a fast load shows only the row outlines for a moment.
  */
-function CaseListSkeleton(): React.JSX.Element | null {
-  const visible = useShowAfter();
-  if (!visible) return null;
+function CaseListSkeleton(): React.JSX.Element {
   return (
     <ul style={listStyle} aria-hidden="true" data-testid="case-list-skeleton">
       {["14rem", "11rem", "16rem"].map((width) => (

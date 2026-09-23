@@ -2774,12 +2774,10 @@ a.cw-button--secondary:hover {
 
 /* --- Skeleton --------------------------------------------------------------- */
 
-/* A destination on its way (`loading.tsx`). The shapes wait 150ms, then fade in, so a fast
-   tab switch shows an empty content area for a moment rather than a flash of grey. */
+/* A destination on its way (`loading.tsx`). */
 .cw-route-skeleton {
   display: grid;
   gap: var(--cw-space-3);
-  animation: cw-fade-in 200ms ease-out 150ms both;
 }
 
 @keyframes cw-fade-in {
@@ -2788,12 +2786,6 @@ a.cw-button--secondary:hover {
   }
   to {
     opacity: 1;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .cw-route-skeleton {
-    animation: none;
   }
 }
 
@@ -2813,7 +2805,14 @@ a.cw-button--secondary:hover {
   );
   background-size: 200% 100%;
   background-repeat: no-repeat;
-  animation: cw-skeleton-shimmer 1.4s ease-in-out infinite;
+  /* Invisible for 150ms, then fades in: a load that finishes sooner shows no grey flash.
+     The delay is here, in CSS, and not in a JavaScript timer, because the stylesheet
+     arrives with the server's HTML and a script may not. On slow 4G the page's JavaScript
+     took many seconds to download, and a timer-gated skeleton was simply absent from the
+     HTML for all of that time: the list area sat empty. */
+  animation:
+    cw-fade-in 200ms ease-out 150ms both,
+    cw-skeleton-shimmer 1.4s ease-in-out infinite;
 }
 
 .cw-skeleton[data-round] {
