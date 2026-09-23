@@ -96,7 +96,8 @@ export function Dialog({
       style={{
         position: "fixed",
         inset: 0,
-        background: "rgba(12, 16, 18, 0.45)",
+        // A token, heavier in dark mode: the old fixed 45% scrim hardly dimmed a dark page.
+        background: "var(--cw-backdrop)",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",

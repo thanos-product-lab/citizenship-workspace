@@ -139,6 +139,11 @@
   /* --- Elevation (minimal; prefer borders over shadows) --- */
   --cw-shadow-sm: 0 1px 2px rgba(12, 16, 18, 0.06);
   --cw-shadow-md: 0 4px 12px rgba(12, 16, 18, 0.08);
+  /* The scrim behind a dialog. A token, not a colour in the component, because the one
+     value cannot serve both themes: 45% of a near-black dims a white page strongly and a
+     dark page hardly at all, which left a dark-mode dialog on almost the same shade as
+     the page behind it. */
+  --cw-backdrop: rgba(12, 16, 18, 0.45);
 
   --cw-focus-ring: 0 0 0 2px var(--cw-surface), 0 0 0 4px var(--cw-focus);
 }
@@ -184,6 +189,7 @@
     --cw-accent-hover: var(--cw-primary-300);
     --cw-accent-contrast: var(--cw-neutral-950);
     --cw-focus: var(--cw-primary-400);
+    --cw-backdrop: rgba(0, 0, 0, 0.72);
   }
 }
 
@@ -223,4 +229,5 @@
   --cw-accent-hover: var(--cw-primary-300);
   --cw-accent-contrast: var(--cw-neutral-950);
   --cw-focus: var(--cw-primary-400);
+  --cw-backdrop: rgba(0, 0, 0, 0.72);
 }

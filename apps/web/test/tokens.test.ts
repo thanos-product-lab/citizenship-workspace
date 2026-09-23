@@ -55,6 +55,21 @@ describe("shell tint", () => {
 });
 
 
+describe("dialog backdrop", () => {
+  it("is defined in every theme", () => {
+    expect(valuesOf("cw-backdrop")).toHaveLength(3);
+  });
+
+  it("is heavier in dark mode, where the light theme's scrim barely dimmed the page", () => {
+    // Found in the dark-mode pass: 45% of a near-black over a near-black page left the
+    // dialog on almost the same shade as what it covered.
+    const alpha = (value: string) => Number(value.match(/,\s*([\d.]+)\s*\)$/)![1]);
+    const [light, systemDark, chosenDark] = valuesOf("cw-backdrop").map(alpha);
+    expect(systemDark).toBeGreaterThan(light!);
+    expect(chosenDark).toBe(systemDark);
+  });
+});
+
 describe("every token referenced is a token that exists", () => {
   /**
    * The bug this exists for is invisible to every other kind of test.
