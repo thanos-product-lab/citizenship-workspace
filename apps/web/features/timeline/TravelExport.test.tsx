@@ -143,7 +143,7 @@ describe("TravelExport", () => {
     expect(document.title).toBe("Travel list · Citizenship Workspace");
   });
 
-  it("tells the user how to keep the web address off the printout, on screen only", async () => {
+  it("keeps a fallback for browsers that print their own header and footer, on screen only", async () => {
     render(<TravelExport caseId="c1" />);
     const hint = await screen.findByText(/turn off/);
     expect(hint).toHaveTextContent("Headers and footers");

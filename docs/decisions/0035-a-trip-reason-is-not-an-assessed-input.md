@@ -67,6 +67,14 @@ the table header on every page and keeps each trip on one page. The MVP asks for
 layout (§8.14), and a server-side PDF library would be a dependency for nothing a browser
 does not already do.
 
+**The browser's own header and footer are suppressed.** Chrome prints the page title and
+the page's web address (here `localhost` and the case id) into every margin box the page
+leaves undeclared, deciding box by box. The print stylesheet declares all six: five empty,
+and the bottom-right numbering the pages. Verified by printing with headless Chrome and
+reading the PDF's text back. The title is also swapped to the list's heading for the length
+of a print, for browsers without margin boxes, and the page keeps a one-line fallback hint
+about the print dialog's Headers and footers setting.
+
 **The list names no product and claims no check.** It says it was prepared from the
 applicant's own records, and carries no day counts, which a caseworker could read as official.
 

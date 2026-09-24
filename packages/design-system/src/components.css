@@ -3276,8 +3276,38 @@ a.cw-button--secondary:hover {
    marked for the screen alone are dropped; the sheet loses its frame; the table header
    repeats on every page and no trip is split across two. */
 @media print {
+  /* All six margin boxes are declared, five of them empty, and that is the point. Chrome
+     prints its own header (the page title, the date) and footer (the page's web address)
+     into any margin box the page leaves undeclared, and it decides box by box: declaring
+     only the bottom-right one kept the title at the top. The address included the case's
+     id and `localhost`, on a file meant for the Home Office. Verified with headless Chrome
+     printing to PDF and reading the text back. Browsers without margin boxes fall back to
+     their own header and footer, which is what the on-screen hint is for. */
   @page {
     margin: 18mm 15mm;
+
+    @top-left {
+      content: "";
+    }
+    @top-center {
+      content: "";
+    }
+    @top-right {
+      content: "";
+    }
+    @bottom-left {
+      content: "";
+    }
+    @bottom-center {
+      content: "";
+    }
+    /* A list that runs over a page says so, for whoever reads it on paper. */
+    @bottom-right {
+      content: "Page " counter(page) " of " counter(pages);
+      font-family: var(--cw-font-sans);
+      font-size: 9pt;
+      color: #444444;
+    }
   }
 
   .cw-case-shell,

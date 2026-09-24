@@ -139,11 +139,12 @@ export function TravelExport({ caseId }: { caseId: string }): JSX.Element {
             Download CSV
           </button>
         </div>
-        {/* The page's title is handled above; its web address is not, because the page
-            cannot change what the browser prints in its footer. One line, on screen only. */}
+        {/* A fallback. Chrome and Edge print nothing of their own, because the print
+            stylesheet declares every margin box; a browser without margin boxes still
+            prints its header and footer. One line, on screen only. */}
         <p className="cw-travel-export__hint">
-          In the print dialog, turn off <strong>Headers and footers</strong> so the file does
-          not carry this page&rsquo;s web address.
+          If your printout still shows a web address or a date at the edges, turn off{" "}
+          <strong>Headers and footers</strong> in the print dialog.
         </p>
         {csvError ? (
           <p role="alert" style={errorTextStyle}>
