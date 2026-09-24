@@ -91,6 +91,12 @@ describe("TravelExport", () => {
     expect(sheet.textContent).not.toMatch(/verif|certif|workspace|approved/i);
   });
 
+  it("offers no choice of period, since the form asks about one", async () => {
+    render(<TravelExport caseId="c1" />);
+    await screen.findByRole("table");
+    expect(screen.queryByRole("radio")).toBeNull();
+  });
+
   it("drops the Note column when no trip needs one", async () => {
     get.mockResolvedValue({
       data: anExport({ trips: [anExport().trips[0]] }),
@@ -106,18 +112,6 @@ describe("TravelExport", () => {
     const cautions = await screen.findByRole("list", { name: "Before you rely on this list" });
     expect(cautions).toHaveTextContent(/may hold trips not listed here yet/);
     expect(cautions.closest(".cw-no-print")).not.toBeNull();
-  });
-
-  it("asks for every trip when the scope changes", async () => {
-    render(<TravelExport caseId="c1" />);
-    await screen.findByRole("table");
-    fireEvent.click(screen.getByRole("radio", { name: "Every trip you have recorded" }));
-    await waitFor(() =>
-      expect(get).toHaveBeenCalledWith(
-        "/api/v1/cases/{case_id}/travel-records/export",
-        { params: { path: { case_id: "c1" }, query: { scope: "ALL" } } },
-      ),
-    );
   });
 
   it("prints through the browser, which is where the PDF comes from", async () => {
@@ -139,7 +133,7 @@ describe("TravelExport", () => {
     await waitFor(() => expect(createObjectURL).toHaveBeenCalledWith(expect.any(Blob)));
     expect(click).toHaveBeenCalled();
     expect(get).toHaveBeenCalledWith("/api/v1/cases/{case_id}/travel-records/export.csv", {
-      params: { path: { case_id: "c1" }, query: { scope: "WINDOW" } },
+      params: { path: { case_id: "c1" } },
       // A blob keeps the byte-order mark that text decoding would strip.
       parseAs: "blob",
     });

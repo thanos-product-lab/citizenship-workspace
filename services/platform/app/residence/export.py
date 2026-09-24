@@ -32,6 +32,10 @@ from app.requirements.rules_core import Window, absent_dates, qualifying_window
 
 
 class ExportScope(StrEnum):
+    """Which trips the list covers. Decided by the case, not chosen: the form asks about the
+    five years before the application date, so that is the list. Only a case with no date
+    yet has no period to list, and gets every trip, with a caution saying so."""
+
     #: The five years before the application date (the qualifying period).
     WINDOW = "WINDOW"
     ALL = "ALL"
@@ -84,8 +88,7 @@ class CautionItem:
 
 @dataclass(frozen=True)
 class TravelExport:
-    #: What was asked for may differ: with no application date there is no period, so
-    #: `ALL` is what was built, and a caution says why.
+    #: `WINDOW` whenever there is an application date; `ALL` only when there is none.
     scope: ExportScope
     application_date: date | None
     window: Window | None
@@ -116,19 +119,14 @@ def build_export(
     *,
     trips: Sequence[ExportTripInput],
     application_date: date | None,
-    scope: ExportScope,
     documents_awaiting_review: int,
     prepared_on: date,
 ) -> TravelExport:
     window = qualifying_window(application_date) if application_date is not None else None
-    effective = scope if window is not None else ExportScope.ALL
+    scope = ExportScope.WINDOW if window is not None else ExportScope.ALL
 
     included = sorted(
-        (
-            trip
-            for trip in trips
-            if effective is ExportScope.ALL or (window is not None and overlaps(trip, window))
-        ),
+        (trip for trip in trips if window is None or overlaps(trip, window)),
         key=lambda trip: (trip.departure_date, trip.return_date, trip.destination_label),
     )
 
@@ -144,7 +142,7 @@ def build_export(
         )
 
     return TravelExport(
-        scope=effective,
+        scope=scope,
         application_date=application_date,
         window=window,
         trips=tuple(

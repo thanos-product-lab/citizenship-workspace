@@ -45,6 +45,12 @@ An `ExtractedClaim` is never a trip, so a value proposed by a document and never
 cannot appear (directive 1). If documents are waiting for review, the page says they may hold
 trips not listed yet.
 
+**The period is not a choice.** The list covers the five years before the application date,
+because that is what the form asks about. A first version also offered "every trip you have
+recorded", which added a decision to a one-click page for a list nobody uploads, and it was
+removed the same day. A case with no application date has no period, so it lists every trip
+and a caution says why.
+
 **A trip is in the period when its calendar dates overlap it**, not when it has counted days
 in it. A same-day trip, or one returning on the period's first day, counts zero days
 (RULES_SPEC §5) and is still a trip the form asks about.

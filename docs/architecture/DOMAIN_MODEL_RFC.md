@@ -807,7 +807,7 @@ is exactly "nothing an assessment depends on changed", not a check skipped.
 
 ```text
 TravelExport
-├── scope            (WINDOW: the qualifying period; ALL: every active trip)
+├── scope            (WINDOW whenever there is an application date; ALL only without one)
 ├── period           (RULES_SPEC §3 qualifying window, or none without an application date)
 ├── trips            (every ACTIVE record whose calendar dates overlap the period)
 │   ├── destination_label · reason · departure_date · return_date

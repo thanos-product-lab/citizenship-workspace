@@ -31,7 +31,7 @@ from app.evidence import links
 from app.requirements.messages import render_export_marker
 from app.residence import service, timeline
 from app.residence.domain import TravelRecordFields
-from app.residence.export import ExportScope, to_csv
+from app.residence.export import to_csv
 from app.residence.schemas import (
     ApplicationDateSimulationResponse,
     AttachEvidenceInput,
@@ -249,12 +249,9 @@ def _travel_record_with_coverage(
 def get_travel_export(
     case: Annotated[ApplicationCase, Depends(require_case_access)],
     session: Annotated[Session, Depends(get_tenant_session)],
-    scope: ExportScope = ExportScope.WINDOW,
 ) -> TravelExportResponse:
     """The trips as a list to hand over, for the print page (ADR-0035)."""
-    export = service.get_travel_export(
-        session, case=case, scope=scope, today=datetime.now(UTC).date()
-    )
+    export = service.get_travel_export(session, case=case, today=datetime.now(UTC).date())
     return TravelExportResponse.from_domain(export)
 
 
@@ -266,12 +263,11 @@ def get_travel_export(
 def get_travel_export_csv(
     case: Annotated[ApplicationCase, Depends(require_case_access)],
     session: Annotated[Session, Depends(get_tenant_session)],
-    scope: ExportScope = ExportScope.WINDOW,
 ) -> Response:
     """The same list as a CSV attachment. Built from the same export, so the two cannot
     list different trips."""
     today = datetime.now(UTC).date()
-    export = service.get_travel_export(session, case=case, scope=scope, today=today)
+    export = service.get_travel_export(session, case=case, today=today)
     return Response(
         content=to_csv(export, lambda marker: render_export_marker(marker) or marker.value),
         media_type="text/csv; charset=utf-8",

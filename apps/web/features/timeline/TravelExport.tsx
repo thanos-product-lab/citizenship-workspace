@@ -10,16 +10,15 @@ import { useApiClient } from "@/lib/api";
 import { caseKeys } from "@/lib/queries";
 
 type Export = components["schemas"]["TravelExportResponse"];
-type Scope = components["schemas"]["ExportScope"];
 
-function useTravelExport(caseId: string, scope: Scope) {
+function useTravelExport(caseId: string) {
   const api = useApiClient();
   return useQuery({
     // Under the case key, so a trip added or edited elsewhere refreshes the list.
-    queryKey: [...caseKeys.detail(caseId), "travel-export", scope],
+    queryKey: [...caseKeys.detail(caseId), "travel-export"],
     queryFn: async (): Promise<Export> => {
       const { data, error } = await api.GET("/api/v1/cases/{case_id}/travel-records/export", {
-        params: { path: { case_id: caseId }, query: { scope } },
+        params: { path: { case_id: caseId } },
       });
       if (error || !data) throw new Error("travel export unavailable");
       return data;
@@ -32,8 +31,13 @@ function useTravelExport(caseId: string, scope: Scope) {
  *
  * Two layers on one page. The **document** is what prints: a title, the period, the table
  * and one line saying whose record it is, black on white, the shape of the list people
- * already upload. The **controls** around it (scope, print, CSV, and the cautions) are for
+ * already upload. The **controls** around it (print, CSV, and the cautions) are for
  * the screen and are dropped by the print stylesheet.
+ *
+ * **No choice of period.** The form asks about the five years before the application date,
+ * so that is the list. Offering "every trip" as well added a decision to a page whose job
+ * is one click, for a list nobody uploads. A case with no application date gets every trip,
+ * and the server says so in a caution.
  *
  * Everything the list says comes from the server: which trips are in the period, their
  * order, why one is marked, and every sentence. This lays it out.
@@ -42,8 +46,7 @@ function useTravelExport(caseId: string, scope: Scope) {
  * and a stamp from a tool would suggest a check that never happened.
  */
 export function TravelExport({ caseId }: { caseId: string }): JSX.Element {
-  const [scope, setScope] = useState<Scope>("WINDOW");
-  const { data, status } = useTravelExport(caseId, scope);
+  const { data, status } = useTravelExport(caseId);
   const api = useApiClient();
   const [csvError, setCsvError] = useState(false);
 
@@ -54,7 +57,7 @@ export function TravelExport({ caseId }: { caseId: string }): JSX.Element {
     // server's bytes, unchanged.
     const { data: file, error } = await api.GET(
       "/api/v1/cases/{case_id}/travel-records/export.csv",
-      { params: { path: { case_id: caseId }, query: { scope } }, parseAs: "blob" },
+      { params: { path: { case_id: caseId } }, parseAs: "blob" },
     );
     if (error || !(file instanceof Blob)) {
       setCsvError(true);
@@ -82,28 +85,6 @@ export function TravelExport({ caseId }: { caseId: string }): JSX.Element {
           Your trips as one list, for when the application form has more trips than it has
           room for. Print it or save it as a PDF, or download it as a spreadsheet.
         </p>
-
-        <fieldset className="cw-travel-export__scope">
-          <legend>Which trips</legend>
-          <label>
-            <input
-              type="radio"
-              name="scope"
-              checked={scope === "WINDOW"}
-              onChange={() => setScope("WINDOW")}
-            />
-            The five years before your application date
-          </label>
-          <label>
-            <input
-              type="radio"
-              name="scope"
-              checked={scope === "ALL"}
-              onChange={() => setScope("ALL")}
-            />
-            Every trip you have recorded
-          </label>
-        </fieldset>
 
         {data && data.cautions.length > 0 ? (
           <ul className="cw-travel-export__cautions" aria-label="Before you rely on this list">

@@ -3177,26 +3177,6 @@ a.cw-button--secondary:hover {
   max-width: 66ch;
 }
 
-.cw-travel-export__scope {
-  display: grid;
-  gap: var(--cw-space-2);
-  margin: 0;
-  padding: 0;
-  border: 0;
-}
-
-.cw-travel-export__scope legend {
-  margin-bottom: var(--cw-space-2);
-  font-weight: var(--cw-weight-medium);
-}
-
-.cw-travel-export__scope label {
-  display: flex;
-  align-items: center;
-  gap: var(--cw-space-2);
-  min-height: 44px;
-}
-
 /* Things to know before relying on the list. A rule and words, not a colour: none of
    them is an error, and each says what to do. */
 .cw-travel-export__cautions {

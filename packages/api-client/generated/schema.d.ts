@@ -1188,6 +1188,9 @@ export interface components {
         };
         /**
          * ExportScope
+         * @description Which trips the list covers. Decided by the case, not chosen: the form asks about the
+         *     five years before the application date, so that is the list. Only a case with no date
+         *     yet has no period to list, and gets every trip, with a caution saying so.
          * @enum {string}
          */
         ExportScope: "WINDOW" | "ALL";
@@ -3510,9 +3513,7 @@ export interface operations {
     };
     get_travel_export_api_v1_cases__case_id__travel_records_export_get: {
         parameters: {
-            query?: {
-                scope?: components["schemas"]["ExportScope"];
-            };
+            query?: never;
             header?: never;
             path: {
                 case_id: string;
@@ -3543,9 +3544,7 @@ export interface operations {
     };
     get_travel_export_csv_api_v1_cases__case_id__travel_records_export_csv_get: {
         parameters: {
-            query?: {
-                scope?: components["schemas"]["ExportScope"];
-            };
+            query?: never;
             header?: never;
             path: {
                 case_id: string;

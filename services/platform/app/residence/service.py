@@ -50,7 +50,7 @@ from app.residence.domain import (
     counts_toward_trusted_total,
     version_matches,
 )
-from app.residence.export import ExportScope, ExportTripInput, TravelExport, build_export
+from app.residence.export import ExportTripInput, TravelExport, build_export
 from app.residence.repository import (
     ProposedApplicationDateRepository,
     TravelRecordRepository,
@@ -738,9 +738,7 @@ def _check_record_revision(record: TravelRecord, expected: int | None) -> None:
 # --- Travel export (ADR-0035) ---------------------------------------------------------
 
 
-def get_travel_export(
-    session: Session, *, case: ApplicationCase, scope: ExportScope, today: date
-) -> TravelExport:
+def get_travel_export(session: Session, *, case: ApplicationCase, today: date) -> TravelExport:
     """The trips as a list to hand over, with the same trust overlay the assessment uses.
 
     Trips come from `gather_trips`, so a trip a confirmed document disputes is marked here
@@ -778,7 +776,6 @@ def get_travel_export(
             for trip in gathered
         ],
         application_date=current.version.application_date if current else None,
-        scope=scope,
         documents_awaiting_review=awaiting,
         prepared_on=today,
     )

@@ -939,6 +939,7 @@
         "type": "object"
       },
       "ExportScope": {
+        "description": "Which trips the list covers. Decided by the case, not chosen: the form asks about the\nfive years before the application date, so that is the list. Only a case with no date\nyet has no period to list, and gets every trip, with a caution saying so.",
         "enum": [
           "WINDOW",
           "ALL"
@@ -5792,15 +5793,6 @@
               "title": "Case Id",
               "type": "string"
             }
-          },
-          {
-            "in": "query",
-            "name": "scope",
-            "required": false,
-            "schema": {
-              "$ref": "#/components/schemas/ExportScope",
-              "default": "WINDOW"
-            }
           }
         ],
         "responses": {
@@ -5849,15 +5841,6 @@
               "format": "uuid",
               "title": "Case Id",
               "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "scope",
-            "required": false,
-            "schema": {
-              "$ref": "#/components/schemas/ExportScope",
-              "default": "WINDOW"
             }
           }
         ],

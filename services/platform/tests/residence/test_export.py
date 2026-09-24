@@ -54,14 +54,12 @@ def _trip(
 
 def _export(
     *trips: ExportTripInput,
-    scope: ExportScope = ExportScope.WINDOW,
     awaiting: int = 0,
     application_date: date | None = APPLICATION_DATE,
 ) -> TravelExport:
     return build_export(
         trips=trips,
         application_date=application_date,
-        scope=scope,
         documents_awaiting_review=awaiting,
         prepared_on=TODAY,
     )
@@ -96,11 +94,6 @@ def test_a_trip_returning_on_the_first_day_is_listed() -> None:
 def test_a_same_day_trip_is_listed() -> None:
     day_trip = _trip(date(2024, 3, 3), date(2024, 3, 3))
     assert len(_export(day_trip).trips) == 1
-
-
-def test_all_lists_trips_before_the_period_too() -> None:
-    before = _trip(date(2019, 1, 1), date(2019, 1, 5))
-    assert len(_export(before, scope=ExportScope.ALL).trips) == 1
 
 
 def test_without_an_application_date_every_trip_is_listed_and_it_says_why() -> None:
@@ -294,13 +287,24 @@ def test_the_export_lists_the_period_with_reasons_and_markers(api: Api) -> None:
     assert body["trips"][0]["markers"] == [{"code": "ESTIMATED", "text": "Dates estimated"}]
     assert body["prepared_text"].startswith("Prepared from the applicant's own records on ")
 
-    everything = (
-        api("user_a")
-        .get(f"/api/v1/cases/{case_id}/travel-records/export", params={"scope": "ALL"})
-        .json()
+
+@pytest.mark.integration
+def test_a_case_with_no_application_date_lists_every_trip_and_says_why(api: Api) -> None:
+    """The one case the period cannot apply to. Not a choice offered on the page: with no
+    date there is no period, so the list is the whole history, labelled as such."""
+    case_id = _case(api, with_date=False)
+    _add(
+        api,
+        case_id,
+        destination_label="Italy",
+        departure_date="2019-05-01",
+        return_date="2019-05-05",
     )
-    assert [t["destination_label"] for t in everything["trips"]] == ["Italy", "France", "Greece"]
-    assert everything["period_text"] is None
+    body = api("user_a").get(f"/api/v1/cases/{case_id}/travel-records/export").json()
+    assert body["scope"] == "ALL"
+    assert body["period_text"] is None
+    assert [t["destination_label"] for t in body["trips"]] == ["Italy"]
+    assert [c["code"] for c in body["cautions"]] == ["NO_APPLICATION_DATE"]
 
 
 @pytest.mark.integration
