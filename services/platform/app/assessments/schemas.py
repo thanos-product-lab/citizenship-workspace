@@ -16,6 +16,7 @@ from pydantic import BaseModel
 
 from app.assessments.domain import AssessmentResult, AssessmentRun
 from app.assessments.groups import GroupMember, GroupSummary, total_conclusion_counts
+from app.assessments.next_steps import Destination, Done, DoneCode, NextSteps, Step, StepCode
 from app.assessments.priority import CandidateAction
 from app.assessments.provenance import ResolvedInput
 from app.requirements.domain import Conclusion, Currency
@@ -23,6 +24,9 @@ from app.requirements.evaluation import LinkInputKind
 from app.requirements.messages import (
     render_limitation,
     render_next_action,
+    render_next_step_body,
+    render_next_step_done,
+    render_next_step_title,
     render_stale_reason,
     render_summary,
 )
@@ -503,6 +507,59 @@ class PriorityActionView(BaseModel):
         )
 
 
+class NextStepView(BaseModel):
+    """One step of the case's Next steps (ADR-0034), with its prose rendered here like every
+    other code in the product, so the client never writes domain copy."""
+
+    code: StepCode
+    #: A named place, not a URL: the client owns its routes and maps each one.
+    destination: Destination
+    parameters: dict[str, object]
+    title: str
+    body: str
+    optional: bool
+
+    @classmethod
+    def of(cls, step: Step) -> "NextStepView":
+        return cls(
+            code=step.code,
+            destination=step.destination,
+            parameters=step.parameters,
+            # Every code has a template (tests/rules/test_messages.py); the fallback only
+            # keeps a read path from failing if one were ever missing.
+            title=render_next_step_title(step.code, step.parameters) or step.code.value,
+            body=render_next_step_body(step.code, step.parameters) or "",
+            optional=step.optional,
+        )
+
+
+class NextStepDoneView(BaseModel):
+    """Something the case already holds, shown ticked. A statement, never a tally."""
+
+    code: DoneCode
+    text: str
+
+    @classmethod
+    def of(cls, done: Done) -> "NextStepDoneView":
+        return cls(
+            code=done.code,
+            text=render_next_step_done(done.code, done.parameters) or done.code.value,
+        )
+
+
+class NextStepsView(BaseModel):
+    done: list[NextStepDoneView]
+    #: At most three, the first being the primary step. Never empty.
+    steps: list[NextStepView]
+
+    @classmethod
+    def of(cls, next_steps: NextSteps) -> "NextStepsView":
+        return cls(
+            done=[NextStepDoneView.of(d) for d in next_steps.done],
+            steps=[NextStepView.of(s) for s in next_steps.steps],
+        )
+
+
 class CaseOverview(BaseModel):
     """The case overview read model (Domain §44.1).
 
@@ -545,6 +602,8 @@ class CaseOverview(BaseModel):
     issue_action_count: int
     total_requirements: int
     last_assessed_at: datetime | None
+    #: The case's next steps, derived at read time (ADR-0034, Domain §44.6).
+    next_steps: NextStepsView
 
     @classmethod
     def from_view(cls, view: "CaseOverviewView") -> "CaseOverview":
@@ -570,4 +629,5 @@ class CaseOverview(BaseModel):
             issue_action_count=view.issue_action_count,
             total_requirements=sum(g.total for g in view.groups),
             last_assessed_at=view.last_assessed_at,
+            next_steps=NextStepsView.of(view.next_steps),
         )

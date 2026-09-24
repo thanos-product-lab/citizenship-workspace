@@ -273,3 +273,67 @@ def test_case_wide_counts_are_ordered_most_severe_first(api: Api) -> None:
     # The tally covers every assessed requirement and excludes the unassessed ones.
     overview = _overview(api, "user_a", case_id)
     assert sum(c["count"] for c in counts) + overview["not_yet_assessed"] == 15
+
+
+def _step_codes(overview: Json) -> list[str]:
+    return [s["code"] for s in overview["next_steps"]["steps"]]
+
+
+def _done_codes(overview: Json) -> list[str]:
+    return [d["code"] for d in overview["next_steps"]["done"]]
+
+
+def test_next_steps_follow_the_case_from_new_to_assessed(api: Api) -> None:
+    """ADR-0034 over the wire: each step the user takes moves to done, and the next one
+    becomes primary."""
+    case_id = _active_case(api, "user_a")
+    overview = _overview(api, "user_a", case_id)
+    assert _step_codes(overview) == ["SET_APPLICATION_DATE", "ADD_TRIPS"]
+    assert _done_codes(overview) == []
+    primary = overview["next_steps"]["steps"][0]
+    assert primary["title"] == "Set your proposed application date"
+    assert primary["destination"] == "CASE_DATA"
+
+    api("user_a").post(
+        f"/api/v1/cases/{case_id}/application-dates/select",
+        json={"application_date": "2027-04-15"},
+    )
+    api("user_a").post(
+        f"/api/v1/cases/{case_id}/travel-records",
+        json={
+            "destination_label": "Spain",
+            "departure_date": "2023-06-01",
+            "return_date": "2023-06-10",
+        },
+    )
+    overview = _overview(api, "user_a", case_id)
+    assert _step_codes(overview) == ["RUN_ASSESSMENT"]
+    assert [d["text"] for d in overview["next_steps"]["done"]] == [
+        "Application date set: 15 April 2027",
+        "1 trip recorded",
+    ]
+
+    api("user_a").post(f"/api/v1/cases/{case_id}/assessments/recalculate")
+    overview = _overview(api, "user_a", case_id)
+    assert "RUN_ASSESSMENT" not in _step_codes(overview)
+    assert _done_codes(overview) == ["DATE_SET", "TRIPS_RECORDED", "ASSESSED"]
+
+
+def test_moving_the_date_makes_updating_the_assessment_the_next_step(api: Api) -> None:
+    """And only once: the eight recheck issues are that one step, not a second one."""
+    case_id = _assessed_case(api, "user_a")
+    current = api("user_a").get(f"/api/v1/cases/{case_id}/application-dates").json()
+    api("user_a").post(
+        f"/api/v1/cases/{case_id}/application-dates/select",
+        json={"application_date": "2027-05-20", "expected_revision": current["revision"]},
+    )
+    overview = _overview(api, "user_a", case_id)
+    steps = overview["next_steps"]["steps"]
+    assert steps[0]["code"] == "UPDATE_ASSESSMENT"
+    assert steps[0]["parameters"] == {"count": 8}
+    assert "OPEN_ISSUES" not in _step_codes(overview)
+
+
+def test_an_assessed_case_with_no_trips_is_not_asked_for_them_again(api: Api) -> None:
+    overview = _overview(api, "user_a", _assessed_case(api, "user_a"))
+    assert "ADD_TRIPS" not in _step_codes(overview)

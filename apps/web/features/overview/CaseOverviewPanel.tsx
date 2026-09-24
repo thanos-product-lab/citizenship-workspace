@@ -9,6 +9,7 @@ import { GROUP_LABELS } from "@/features/requirements/groups";
 
 import { AssessmentGroups } from "./AssessmentGroups";
 import { busiestGroup, conclusionLines, readinessHeadline, unassessedLine } from "./narrative";
+import { NextSteps, PRIORITY_ACTIONS_ID } from "./NextSteps";
 
 type Overview = components["schemas"]["CaseOverview"];
 
@@ -33,8 +34,10 @@ function groupLabel(key: string): string {
  *   named-state counts beneath it, quieter. The counts are not dropped: CLAUDE.md §2.6
  *   requires the qualitative states, and they are the only place `NEAR_THRESHOLD` and the
  *   unassessed count are visible.
+ * - **Next steps** is the one answer to "what now" (ADR-0034), derived by the server.
  * - **Immediate action** is one card per action, each carrying the requirement's own
- *   conclusion badge and the server's action text. No sentence here is composed in this
+ *   conclusion badge and the server's action text. It is the detail of the
+ *   `RESOLVE_REQUIREMENTS` step, which links down to it. No sentence here is composed in this
  *   file — assessment copy comes from the deterministic templates.
  * - **Assessment** is one row per requirement group, stating what its members concluded
  *   and linking through to the group on the Requirements destination. It orchestrates the
@@ -88,69 +91,11 @@ export function CaseOverviewPanel({ overview }: { overview: Overview }): JSX.Ele
         <p className="cw-overview__empty">No requirements are catalogued for this route yet.</p>
       )}
 
-      <GettingStarted overview={overview} />
+      <NextSteps overview={overview} />
 
       <PriorityActions overview={overview} busiestGroupKey={busiest?.group_key ?? null} />
 
       <AssessmentGroups overview={overview} />
-    </section>
-  );
-}
-
-/**
- * What to do on a case nothing has assessed yet.
- *
- * **The walkthrough finding.** A new case read "This case hasn't been assessed yet", then
- * six group rows each saying "not yet assessed", and offered nothing else. Every word of
- * it was true and none of it told the user what to do — `priority_actions` is derived from
- * assessment results, so a case with no results has none, and the screen degraded from a
- * page that leads with the next action into a status readout.
- *
- * Shown **only** while nothing has been assessed. The moment there are results,
- * `PriorityActions` is the answer to "what now" and two competing answers would be worse
- * than the one that was missing.
- *
- * It states what the assessment needs and where to go, and claims nothing about any
- * requirement. That boundary is the point: the engine decides what a case concludes, and
- * this is navigation — the one thing the client is entitled to know, because it is about
- * this app's own shape rather than about the user's case.
- */
-function GettingStarted({ overview }: { overview: Overview }): JSX.Element | null {
-  const assessed = overview.conclusion_counts.reduce((total, c) => total + c.count, 0);
-  if (assessed > 0) return null;
-
-  const data = `/cases/${overview.case_id}/data`;
-  // Requirements, not the header. `RecalculateButton` renders only when `assessed > 0`
-  // and this block only when `assessed === 0`, so the two are mutually exclusive by
-  // construction: every time this list was on screen telling someone to press
-  // Recalculate, that button was guaranteed to be absent. The requirements list's empty
-  // state fires on `withResults.length === 0`, which is this same condition, so its
-  // "Run assessment" is the one control that is certain to be there.
-  const requirements = `/cases/${overview.case_id}/requirements`;
-
-  return (
-    <section className="cw-actions" aria-labelledby="getting-started-heading">
-      <h3 id="getting-started-heading">Start here</h3>
-      {/* Ordered, because these genuinely are in sequence: the qualifying period is
-          measured backwards from the application date, so travel entered before there is a
-          date has no window to be measured against. */}
-      <ol className="cw-overview__start">
-        {overview.application_date === null ? (
-          <li>
-            <a href={data}>Set the date you plan to apply</a>. Every residence check is
-            measured against the five years ending on it.
-          </li>
-        ) : null}
-        <li>
-          <a href={data}>Add the periods you spent outside the UK</a>, or import them from a
-          CSV file.
-        </li>
-        <li>
-          Then open <a href={requirements}>Requirements</a> and choose{" "}
-          <strong>Run assessment</strong>. Nothing is assessed until you ask for it, and you
-          can change your answers and ask again.
-        </li>
-      </ol>
     </section>
   );
 }
@@ -176,8 +121,8 @@ function PriorityActions({
   if (overview.priority_actions.length === 0) return null;
 
   return (
-    <section className="cw-actions" aria-labelledby="actions-heading">
-      <h3 id="actions-heading">Needs your attention</h3>
+    <section className="cw-actions" id={PRIORITY_ACTIONS_ID} aria-labelledby="actions-heading">
+      <h3 id="actions-heading">What your requirements ask</h3>
 
       <ol className="cw-actions__list">
         {overview.priority_actions.map((action) => (

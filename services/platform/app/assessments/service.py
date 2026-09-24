@@ -45,6 +45,7 @@ from app.assessments.domain import (
     RecalculationFailureCode,
 )
 from app.assessments.groups import GroupMember, GroupSummary, summarise_groups
+from app.assessments.next_steps import NextStepInputs, NextSteps, derive_next_steps
 from app.assessments.priority import CandidateAction, PriorityActions, select_priority_actions
 from app.assessments.provenance import ResolvedInput, resolve_input_links
 from app.assessments.repository import AssessmentRepository, RequirementCatalogRepository
@@ -52,10 +53,11 @@ from app.auth.schemas import CurrentUser
 from app.cases import service as cases_service
 from app.cases.domain import ApplicationCase, CasePhase, LifecycleStatus
 from app.cases.phase import RequirementState, derive_phase
-from app.evidence.repository import EvidenceLinkRepository
+from app.evidence.domain import EvidenceProcessingStatus
+from app.evidence.repository import EvidenceLinkRepository, EvidenceRepository
 from app.facts.repository import FactRepository
 from app.issues import service as issues_service
-from app.issues.domain import count_actions
+from app.issues.domain import RECHECK_TYPES, IssueType, count_actions
 from app.issues.repository import IssueRepository
 from app.requirements.domain import Conclusion
 from app.requirements.evaluation import (
@@ -498,6 +500,8 @@ class CaseOverviewView:
     issue_action_count: int
     actions: PriorityActions
     last_assessed_at: datetime | None
+    #: Derived at read time from the rest of this view and two counts (ADR-0034).
+    next_steps: NextSteps
 
 
 def get_case_overview(session: Session, *, case: ApplicationCase) -> CaseOverviewView:
@@ -546,17 +550,46 @@ def get_case_overview(session: Session, *, case: ApplicationCase) -> CaseOvervie
     open_issues = IssueRepository.open_types_and_severities(session, case.id)
 
     application_date = date_version.application_date if date_version else None
+    groups = summarise_groups(members)
+    actions = select_priority_actions(candidates)
+    next_steps = derive_next_steps(
+        NextStepInputs(
+            application_date=application_date,
+            trip_count=len(
+                TravelRecordRepository.list_active_with_current_version(session, case.id)
+            ),
+            documents_awaiting_review=sum(
+                1
+                for item, _ in EvidenceRepository.list_uploaded_for_case(session, case_id=case.id)
+                if item.processing_status == EvidenceProcessingStatus.AWAITING_CONFIRMATION.value
+            ),
+            assessed=last_assessed is not None,
+            last_assessed_on=last_assessed.date() if last_assessed else None,
+            stale_count=sum(g.stale for g in groups),
+            priority_action_count=actions.total,
+            # Rechecks are `UPDATE_ASSESSMENT`'s job, so they are not counted twice.
+            issue_actions_excluding_recheck=count_actions(
+                [(t, s) for t, s in open_issues if t not in RECHECK_TYPES]
+            ).actions,
+            # An open item per trip with no document, which already carries the issue
+            # rule's gate (only once the case holds a document) and the user's dismissals.
+            trips_without_document=sum(
+                1 for t, _ in open_issues if t == IssueType.MISSING_EVIDENCE.value
+            ),
+        )
+    )
     return CaseOverviewView(
         case=case,
         phase=derive_case_phase(session, case=case),
         application_date=application_date,
         application_date_has_passed=_application_date_has_passed(application_date),
-        groups=summarise_groups(members),
+        groups=groups,
         members=members,
         open_issue_count=len(open_issues),
         issue_action_count=count_actions(open_issues).actions,
-        actions=select_priority_actions(candidates),
+        actions=actions,
         last_assessed_at=last_assessed,
+        next_steps=next_steps,
     )
 
 

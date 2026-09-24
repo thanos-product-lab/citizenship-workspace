@@ -767,3 +767,82 @@ def render_issue_body(code: str | None, parameters: Parameters | None = None) ->
 
 def render_issue_impact(code: str | None, parameters: Parameters | None = None) -> str | None:
     return _render(ISSUE_IMPACT_TEMPLATES, code, parameters)
+
+
+# --- case next steps (ADR-0034) ---------------------------------------------
+#
+# The overview's Next steps panel (`app/assessments/next_steps.py`). Keyed by the step and
+# done codes there. Two registers apply. A step is an instruction with its reason, so the
+# user knows why it comes first. A done item is a plain statement of what the case holds,
+# never a tally of progress: no "2 of 3", no percentage (CLAUDE.md §2.6).
+
+
+def _count(value: object, one: str, many: str) -> str:
+    """ "1 document" / "3 documents"; a missing count degrades to "Some", never to 0."""
+    if value == 1:
+        return f"1 {one}"
+    return f"{value if isinstance(value, int) else 'Some'} {many}"
+
+
+NEXT_STEP_TITLE_TEMPLATES: dict[str, _Template] = {
+    "SET_APPLICATION_DATE": lambda p: "Set your proposed application date",
+    "ADD_TRIPS": lambda p: "Add your trips outside the UK",
+    "REVIEW_DOCUMENTS": lambda p: (
+        f"Review {_count(p.get('count'), 'document', 'documents')} waiting for you"
+    ),
+    "RUN_ASSESSMENT": lambda p: "Run your first assessment",
+    "UPDATE_ASSESSMENT": lambda p: "Update your assessment",
+    "RESOLVE_REQUIREMENTS": lambda p: "See what your requirements ask of you",
+    "OPEN_ISSUES": lambda p: "Work through your issues",
+    "ATTACH_TRIP_EVIDENCE": lambda p: "Attach documents to your trips",
+    # Never "ready" or "complete": the workspace checks part of an application, and a
+    # finish line here is the false reassurance the product exists to prevent (§2.7).
+    "NOTHING_LEFT": lambda p: "Nothing left that this workspace can check",
+}
+
+NEXT_STEP_BODY_TEMPLATES: dict[str, _Template] = {
+    "SET_APPLICATION_DATE": lambda p: "Every residence check counts back from this date.",
+    "ADD_TRIPS": lambda p: (
+        "The checks count your days outside the UK before your application date. "
+        "If you have not left the UK, you can skip this."
+    ),
+    "REVIEW_DOCUMENTS": lambda p: (
+        "Nothing read from a document counts until you confirm or correct it."
+    ),
+    "RUN_ASSESSMENT": lambda p: "It checks what you have confirmed against each requirement.",
+    "UPDATE_ASSESSMENT": lambda p: (
+        "One conclusion is out of date because something it depends on changed."
+        if p.get("count") == 1
+        else f"{p.get('count', 'Some')} conclusions are out of date because something "
+        "they depend on changed."
+    ),
+    "RESOLVE_REQUIREMENTS": lambda p: (
+        f"{_count(p.get('count'), 'thing is', 'things are')} listed below."
+    ),
+    "OPEN_ISSUES": lambda p: f"{_count(p.get('count'), 'thing', 'things')} to do.",
+    "ATTACH_TRIP_EVIDENCE": lambda p: (
+        f"{_unevidenced_clause(_int(p, 'count'))}. Nothing in your assessment depends on this."
+    ),
+    "NOTHING_LEFT": lambda p: (
+        "Some requirements are not assessed here, and an application needs more than "
+        "this workspace checks."
+    ),
+}
+
+NEXT_STEP_DONE_TEMPLATES: dict[str, _Template] = {
+    "DATE_SET": lambda p: f"Application date set: {format_date(p.get('date'))}",
+    "TRIPS_RECORDED": lambda p: f"{_count(p.get('count'), 'trip', 'trips')} recorded",
+    "ASSESSED": lambda p: f"Assessed on {format_date(p.get('date'))}",
+}
+
+
+def render_next_step_title(code: str | None, parameters: Parameters | None = None) -> str | None:
+    return _render(NEXT_STEP_TITLE_TEMPLATES, code, parameters)
+
+
+def render_next_step_body(code: str | None, parameters: Parameters | None = None) -> str | None:
+    return _render(NEXT_STEP_BODY_TEMPLATES, code, parameters)
+
+
+def render_next_step_done(code: str | None, parameters: Parameters | None = None) -> str | None:
+    return _render(NEXT_STEP_DONE_TEMPLATES, code, parameters)

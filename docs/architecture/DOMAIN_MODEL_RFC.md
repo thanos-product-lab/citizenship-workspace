@@ -2489,6 +2489,7 @@ CaseOverviewProjection
 ├── priority actions
 ├── open issue count
 ├── evidence coverage
+├── next steps (§44.6)
 └── last updated
 ```
 
@@ -2547,6 +2548,38 @@ IssueQueueProjection
 ├── available actions
 └── resolution history
 ```
+
+### 44.6 CaseNextSteps
+
+Part of the overview projection (§44.1): the case's own answer to "what now". ADR-0034.
+
+```text
+CaseNextSteps
+├── done    (statements of what the case holds: date set, trips recorded, assessed on)
+└── steps   (at most three, the first primary; never empty)
+    ├── code         (SET_APPLICATION_DATE · ADD_TRIPS · REVIEW_DOCUMENTS · RUN_ASSESSMENT ·
+    │                 UPDATE_ASSESSMENT · RESOLVE_REQUIREMENTS · OPEN_ISSUES ·
+    │                 ATTACH_TRIP_EVIDENCE · NOTHING_LEFT)
+    ├── destination  (a named place in the workspace, not a URL)
+    ├── parameters
+    └── optional     (true only for ATTACH_TRIP_EVIDENCE)
+```
+
+**Not a result's next actions.** A `NextAction` (§34) belongs to one assessment result, is
+emitted by that requirement's rule and is stored immutably with it. A next step belongs to
+the case, is derived by `assessments.next_steps` from the case's current state on every
+read, and is never stored. `RESOLVE_REQUIREMENTS` points at the next actions; it does not
+copy them.
+
+**Deterministic and read-time**, like the case phase (ADR-0009): a pure function of the
+application date, the trip count, documents awaiting review, whether anything has been
+assessed, the stale count, the priority-action count, the open issue actions other than
+rechecks (ADR-0033) and the open `MISSING_EVIDENCE` issues. It is not cached, so it needs no
+invalidation.
+
+**No tally and no finish line.** Done items are never a fraction of anything (CLAUDE.md
+§2.6), and `NOTHING_LEFT` states what the workspace does not check rather than that the
+case is ready (§2.7).
 
 These projections may be cached but must be invalidated by domain events.
 

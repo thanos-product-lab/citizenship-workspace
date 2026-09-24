@@ -792,6 +792,7 @@ export interface components {
             lifecycle_status: string;
             /** Needs Attention */
             needs_attention: number;
+            next_steps: components["schemas"]["NextStepsView"];
             /** Not Yet Assessed */
             not_yet_assessed: number;
             /** Open Issue Count */
@@ -962,6 +963,18 @@ export interface components {
             /** Value */
             value: string | null;
         };
+        /**
+         * Destination
+         * @description Where a step's link goes, named rather than as a URL so the backend never owns the
+         *     frontend's routes. The client maps each to a path.
+         * @enum {string}
+         */
+        Destination: "CASE_DATA" | "EVIDENCE" | "REQUIREMENTS" | "ISSUES" | "PRIORITY_ACTIONS";
+        /**
+         * DoneCode
+         * @enum {string}
+         */
+        DoneCode: "DATE_SET" | "TRIPS_RECORDED" | "ASSESSED";
         /**
          * EvidenceCategory
          * @description Domain §14.2, verbatim.
@@ -1380,6 +1393,41 @@ export interface components {
             priority: number;
             /** Text */
             text: string | null;
+        };
+        /**
+         * NextStepDoneView
+         * @description Something the case already holds, shown ticked. A statement, never a tally.
+         */
+        NextStepDoneView: {
+            code: components["schemas"]["DoneCode"];
+            /** Text */
+            text: string;
+        };
+        /**
+         * NextStepView
+         * @description One step of the case's Next steps (ADR-0034), with its prose rendered here like every
+         *     other code in the product, so the client never writes domain copy.
+         */
+        NextStepView: {
+            /** Body */
+            body: string;
+            code: components["schemas"]["StepCode"];
+            destination: components["schemas"]["Destination"];
+            /** Optional */
+            optional: boolean;
+            /** Parameters */
+            parameters: {
+                [key: string]: unknown;
+            };
+            /** Title */
+            title: string;
+        };
+        /** NextStepsView */
+        NextStepsView: {
+            /** Done */
+            done: components["schemas"]["NextStepDoneView"][];
+            /** Steps */
+            steps: components["schemas"]["NextStepView"][];
         };
         /**
          * PendingField
@@ -2059,6 +2107,11 @@ export interface components {
          * @enum {string}
          */
         StatusType: "ILR" | "ILE" | "EU_SETTLED_STATUS" | "OTHER" | "UNKNOWN";
+        /**
+         * StepCode
+         * @enum {string}
+         */
+        StepCode: "SET_APPLICATION_DATE" | "ADD_TRIPS" | "REVIEW_DOCUMENTS" | "RUN_ASSESSMENT" | "UPDATE_ASSESSMENT" | "RESOLVE_REQUIREMENTS" | "OPEN_ISSUES" | "ATTACH_TRIP_EVIDENCE" | "NOTHING_LEFT";
         /**
          * TimelineResponse
          * @description The residence picture as the records currently stand.

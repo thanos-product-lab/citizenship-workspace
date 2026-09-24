@@ -151,6 +151,9 @@
             "title": "Needs Attention",
             "type": "integer"
           },
+          "next_steps": {
+            "$ref": "#/components/schemas/NextStepsView"
+          },
           "not_yet_assessed": {
             "title": "Not Yet Assessed",
             "type": "integer"
@@ -205,7 +208,8 @@
           "open_issue_count",
           "issue_action_count",
           "total_requirements",
-          "last_assessed_at"
+          "last_assessed_at",
+          "next_steps"
         ],
         "title": "CaseOverview",
         "type": "object"
@@ -558,6 +562,27 @@
         ],
         "title": "DecisionView",
         "type": "object"
+      },
+      "Destination": {
+        "description": "Where a step's link goes, named rather than as a URL so the backend never owns the\nfrontend's routes. The client maps each to a path.",
+        "enum": [
+          "CASE_DATA",
+          "EVIDENCE",
+          "REQUIREMENTS",
+          "ISSUES",
+          "PRIORITY_ACTIONS"
+        ],
+        "title": "Destination",
+        "type": "string"
+      },
+      "DoneCode": {
+        "enum": [
+          "DATE_SET",
+          "TRIPS_RECORDED",
+          "ASSESSED"
+        ],
+        "title": "DoneCode",
+        "type": "string"
       },
       "EvidenceCategory": {
         "description": "Domain \u00a714.2, verbatim.\n\n\u00a714.2: `OTHER` and `UNKNOWN` \"can be stored but cannot create trusted domain facts\nwithout a supported review path\". Nothing creates a fact from evidence until M8, so\nthat constraint has no enforcement point yet \u2014 it arrives with `FactEvidenceLink`.",
@@ -1520,6 +1545,86 @@
           "blocking"
         ],
         "title": "NextActionView",
+        "type": "object"
+      },
+      "NextStepDoneView": {
+        "description": "Something the case already holds, shown ticked. A statement, never a tally.",
+        "properties": {
+          "code": {
+            "$ref": "#/components/schemas/DoneCode"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "text"
+        ],
+        "title": "NextStepDoneView",
+        "type": "object"
+      },
+      "NextStepView": {
+        "description": "One step of the case's Next steps (ADR-0034), with its prose rendered here like every\nother code in the product, so the client never writes domain copy.",
+        "properties": {
+          "body": {
+            "title": "Body",
+            "type": "string"
+          },
+          "code": {
+            "$ref": "#/components/schemas/StepCode"
+          },
+          "destination": {
+            "$ref": "#/components/schemas/Destination"
+          },
+          "optional": {
+            "title": "Optional",
+            "type": "boolean"
+          },
+          "parameters": {
+            "additionalProperties": true,
+            "title": "Parameters",
+            "type": "object"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "destination",
+          "parameters",
+          "title",
+          "body",
+          "optional"
+        ],
+        "title": "NextStepView",
+        "type": "object"
+      },
+      "NextStepsView": {
+        "properties": {
+          "done": {
+            "items": {
+              "$ref": "#/components/schemas/NextStepDoneView"
+            },
+            "title": "Done",
+            "type": "array"
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/NextStepView"
+            },
+            "title": "Steps",
+            "type": "array"
+          }
+        },
+        "required": [
+          "done",
+          "steps"
+        ],
+        "title": "NextStepsView",
         "type": "object"
       },
       "PendingField": {
@@ -3194,6 +3299,21 @@
           "UNKNOWN"
         ],
         "title": "StatusType",
+        "type": "string"
+      },
+      "StepCode": {
+        "enum": [
+          "SET_APPLICATION_DATE",
+          "ADD_TRIPS",
+          "REVIEW_DOCUMENTS",
+          "RUN_ASSESSMENT",
+          "UPDATE_ASSESSMENT",
+          "RESOLVE_REQUIREMENTS",
+          "OPEN_ISSUES",
+          "ATTACH_TRIP_EVIDENCE",
+          "NOTHING_LEFT"
+        ],
+        "title": "StepCode",
         "type": "string"
       },
       "TimelineResponse": {

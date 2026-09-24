@@ -370,3 +370,32 @@ def test_every_issue_template_renders_without_its_parameters(code: str) -> None:
     assert render_issue_title(code, {})
     assert render_issue_body(code, {})
     assert render_issue_impact(code, {})
+
+
+def test_every_next_step_code_has_its_templates() -> None:
+    """ADR-0034. Keyed to the enums, so a new step fails here rather than reaching the
+    panel as a bare code."""
+    from app.assessments.next_steps import DoneCode, StepCode
+    from app.requirements.messages import (
+        NEXT_STEP_BODY_TEMPLATES,
+        NEXT_STEP_DONE_TEMPLATES,
+        NEXT_STEP_TITLE_TEMPLATES,
+    )
+
+    steps = {code.value for code in StepCode}
+    assert set(NEXT_STEP_TITLE_TEMPLATES) == steps == set(NEXT_STEP_BODY_TEMPLATES)
+    assert set(NEXT_STEP_DONE_TEMPLATES) == {code.value for code in DoneCode}
+
+
+def test_every_next_step_renders_without_its_parameters() -> None:
+    from app.assessments.next_steps import DoneCode, StepCode
+    from app.requirements.messages import (
+        render_next_step_body,
+        render_next_step_done,
+        render_next_step_title,
+    )
+
+    for code in StepCode:
+        assert render_next_step_title(code, {}) and render_next_step_body(code, {})
+    for done in DoneCode:
+        assert render_next_step_done(done, {})

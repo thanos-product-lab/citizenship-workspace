@@ -72,7 +72,8 @@ because code and tests cite them.
 [0009](decisions/0009-case-phase-is-derived-not-stored.md) the case phase is derived ·
 [0010](decisions/0010-group-currency-inherits-the-weakest-member.md) group currency inherits the weakest member ·
 [0016](decisions/0016-a-failed-recalculation-is-recorded-best-effort.md) a failed recalculation is recorded best-effort ·
-[0032](decisions/0032-an-application-date-that-has-passed.md) an application date that has passed
+[0032](decisions/0032-an-application-date-that-has-passed.md) an application date that has passed ·
+[0034](decisions/0034-the-case-next-step-is-derived-at-read-time.md) the case's next step is derived
 
 **Invalidation**
 [0008](decisions/0008-blunt-stale-invalidation-at-m3b.md) blunt invalidation (*superseded by 0014*) ·

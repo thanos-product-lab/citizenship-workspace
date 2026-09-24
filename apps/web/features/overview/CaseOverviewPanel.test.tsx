@@ -1,10 +1,38 @@
 import "@testing-library/jest-dom/vitest";
 
+import type { components } from "@cw/api-client";
 import { render, screen, within } from "@testing-library/react";
 import { axe } from "jest-axe";
 import { describe, expect, it } from "vitest";
 
 import { CaseOverviewPanel } from "./CaseOverviewPanel";
+
+// Typed, because its codes are enums in the generated client and a bare literal widens.
+const DEFAULT_NEXT_STEPS: components["schemas"]["NextStepsView"] = {
+  done: [
+    { code: "DATE_SET", text: "Application date set: 15 April 2027" },
+    { code: "TRIPS_RECORDED", text: "5 trips recorded" },
+    { code: "ASSESSED", text: "Assessed on 14 August 2026" },
+  ],
+  steps: [
+    {
+      code: "RESOLVE_REQUIREMENTS",
+      destination: "PRIORITY_ACTIONS",
+      parameters: { count: 2 },
+      title: "See what your requirements ask of you",
+      body: "2 things are listed below.",
+      optional: false,
+    },
+    {
+      code: "ATTACH_TRIP_EVIDENCE",
+      destination: "CASE_DATA",
+      parameters: { count: 3 },
+      title: "Attach documents to your trips",
+      body: "3 confirmed trips have no document attached. Nothing in your assessment depends on this.",
+      optional: true,
+    },
+  ],
+};
 
 function aGroup(overrides: Record<string, unknown> = {}) {
   return {
@@ -68,6 +96,7 @@ function anOverview(overrides: Record<string, unknown> = {}) {
     issue_action_count: 0,
     total_requirements: 7,
     last_assessed_at: "2026-08-14T11:36:00Z",
+    next_steps: DEFAULT_NEXT_STEPS,
     ...overrides,
   };
 }
@@ -403,108 +432,147 @@ describe("CaseOverviewPanel", () => {
     expect(await axe(container)).toHaveNoViolations();
   });
 
-  describe("a case nothing has assessed yet", () => {
+  describe("next steps", () => {
     /**
-     * The walkthrough finding. The screen said "This case hasn't been assessed yet", then
-     * six group rows each repeating "not yet assessed", and stopped — every word true and
-     * none of it a next step, because `priority_actions` derives from results and a case
-     * with no results has none.
+     * ADR-0034. The server decides which steps apply, their order and their words; the
+     * panel renders them. These pin what the rendering adds: links, emphasis, the optional
+     * label, the done list, and that it is the only answer to "what now".
      */
-    function anUnassessedOverview(overrides: Record<string, unknown> = {}) {
-      return anOverview({
-        conclusion_counts: [],
-        needs_attention: 0,
-        not_yet_assessed: 15,
-        priority_actions: [],
-        application_date: null,
-        ...overrides,
-      });
-    }
+    const newCase = {
+      conclusion_counts: [],
+      needs_attention: 0,
+      not_yet_assessed: 15,
+      priority_actions: [],
+      application_date: null,
+      last_assessed_at: null,
+      next_steps: {
+        done: [],
+        steps: [
+          {
+            code: "SET_APPLICATION_DATE",
+            destination: "CASE_DATA",
+            parameters: {},
+            title: "Set your proposed application date",
+            body: "Every residence check counts back from this date.",
+            optional: false,
+          },
+          {
+            code: "ADD_TRIPS",
+            destination: "CASE_DATA",
+            parameters: {},
+            title: "Add your trips outside the UK",
+            body: "The checks count your days outside the UK before your application date.",
+            optional: false,
+          },
+        ],
+      },
+    };
 
-    it("tells the user where to start", () => {
-      render(<CaseOverviewPanel overview={anUnassessedOverview()} />);
-
-      const start = screen.getByRole("region", { name: "Start here" });
-      expect(within(start).getByRole("link", { name: /Set the date you plan to apply/ }))
-        .toHaveAttribute("href", "/cases/c1/data");
-      expect(within(start).getByRole("link", { name: /periods you spent outside the UK/ }))
-        .toHaveAttribute("href", "/cases/c1/data");
+    it("leads a new case with its first step, linked to where it is done", () => {
+      render(<CaseOverviewPanel overview={anOverview(newCase)} />);
+      const panel = screen.getByRole("region", { name: "Next steps" });
+      const items = within(within(panel).getAllByRole("list").at(-1)!).getAllByRole("listitem");
+      expect(items).toHaveLength(2);
+      expect(items[0]).toHaveAttribute("data-primary", "true");
+      expect(items[1]).not.toHaveAttribute("data-primary");
+      expect(
+        within(items[0]!).getByRole("link", { name: "Set your proposed application date" }),
+      ).toHaveAttribute("href", "/cases/c1/data");
+      // Nothing is done yet, so there is no done list to be empty.
+      expect(within(panel).queryByRole("list", { name: "Already done" })).toBeNull();
     });
 
-    it("sends the last step to a control that exists in this state", () => {
-      /**
-       * The step used to read "Then choose **Recalculate** above", and that button was
-       * guaranteed to be absent whenever this list was on screen. `RecalculateButton`
-       * renders only when `assessed > 0`; this block renders only when `assessed === 0`.
-       * Two components keyed off one predicate in exact opposition, so the instruction was
-       * wrong every time it was shown.
-       *
-       * It pointed at nothing by name, too: the header control is labelled "Update
-       * assessment", argued for deliberately in `CaseHeader`.
-       *
-       * The requirements list's empty state fires on `withResults.length === 0`, which is
-       * this same condition, so its "Run assessment" is the one control certain to be
-       * there. Asserting the destination is what keeps the pair from drifting apart again.
-       */
-      render(<CaseOverviewPanel overview={anUnassessedOverview()} />);
-
-      const start = screen.getByRole("region", { name: "Start here" });
-      expect(within(start).getByRole("link", { name: "Requirements" })).toHaveAttribute(
-        "href",
-        "/cases/c1/requirements",
-      );
-      expect(start).toHaveTextContent(/Run assessment/);
-      expect(start).not.toHaveTextContent(/Recalculate/);
-    });
-
-    it("stops offering the application date once the case has one", () => {
-      /**
-       * **A date with no conclusions, which is a real state and not an arrangement of the
-       * fixture.** Worth saying, because the pair looks impossible from inside this app: the
-       * only control that saves a date is `ApplicationDateCard`, and it selects and
-       * recalculates in one action, so a user of the web form never sees it.
-       *
-       * It arises two ways. `POST /application-dates/select` with no following
-       * `/assessments/recalculate` produces it directly — pairing them is a convention of
-       * `useSaveApplicationDate`, not something the API requires, so any other client
-       * reaches this in one call. And when the recalculation half of that pair fails, the
-       * user is left here with a saved date and nothing assessed, which is exactly the
-       * moment the list below has to be right.
-       *
-       * Observed live rather than reasoned about: case `c128470c`, date saved, fifteen
-       * requirements unassessed, this two-step list on screen.
-       */
-      render(<CaseOverviewPanel overview={anUnassessedOverview({ application_date: "2027-04-15" })} />);
-
-      const start = screen.getByRole("region", { name: "Start here" });
-      expect(within(start).queryByRole("link", { name: /Set the date you plan to apply/ })).toBeNull();
-      expect(within(start).getByRole("link", { name: /periods you spent outside the UK/ })).toBeTruthy();
-      // The remaining steps still have to be a complete instruction on their own.
-      expect(within(start).getAllByRole("listitem")).toHaveLength(2);
-      expect(start).toHaveTextContent(/Run assessment/);
-    });
-
-    it("orders the steps, because the window is measured back from the date", () => {
-      // A list, not a set of cards: travel entered before there is an application date has
-      // no qualifying period to sit in, so the sequence is the information.
-      render(<CaseOverviewPanel overview={anUnassessedOverview()} />);
-      const items = within(screen.getByRole("region", { name: "Start here" })).getAllByRole("listitem");
-      expect(items).toHaveLength(3);
-      expect(items[0]).toHaveTextContent(/Set the date you plan to apply/);
-    });
-
-    it("disappears the moment anything has been assessed", () => {
-      // Two answers to "what now" is worse than the one that was missing: once there are
-      // results, `Needs your attention` is the answer.
-      render(<CaseOverviewPanel overview={anOverview()} />);
+    it("is the only answer to what now: Start here is gone", () => {
+      render(<CaseOverviewPanel overview={anOverview(newCase)} />);
       expect(screen.queryByRole("region", { name: "Start here" })).toBeNull();
     });
 
-    it("still shows no score, fraction or percentage", () => {
-      // The rule the empty state must not quietly break: "15 not yet assessed" beside
-      // three steps is a count and a sequence, never progress through them.
-      const { container } = render(<CaseOverviewPanel overview={anUnassessedOverview()} />);
-      expect(container.textContent).not.toMatch(/%|\d+\s*\/\s*\d+|\bof 15\b/);
+    it("says what is already done as statements, not a tally", () => {
+      render(<CaseOverviewPanel overview={anOverview()} />);
+      const done = screen.getByRole("list", { name: "Already done" });
+      expect(within(done).getAllByRole("listitem").map((li) => li.textContent)).toEqual([
+        "✓Application date set: 15 April 2027",
+        "✓5 trips recorded",
+        "✓Assessed on 14 August 2026",
+      ]);
+    });
+
+    it("labels an optional step in words", () => {
+      render(<CaseOverviewPanel overview={anOverview()} />);
+      const panel = screen.getByRole("region", { name: "Next steps" });
+      const optional = within(panel)
+        .getByRole("link", { name: "Attach documents to your trips" })
+        .closest("li")!;
+      expect(optional).toHaveTextContent("Optional");
+      expect(optional).not.toHaveAttribute("data-primary");
+    });
+
+    it("points the requirements step at the cards, which still render beneath it", () => {
+      render(
+        <CaseOverviewPanel
+          overview={anOverview({
+            priority_actions: [
+              {
+                requirement_key: "residence.total_absences",
+                requirement_title: "Total absences",
+                conclusion: "NEAR_THRESHOLD",
+                currency: "CURRENT",
+                code: "SELECT_APPLICATION_DATE",
+                parameters: {},
+                text: "Consider moving your proposed application date.",
+                blocking: false,
+              },
+            ],
+          })}
+        />,
+      );
+      expect(
+        screen.getByRole("link", { name: "See what your requirements ask of you" }),
+      ).toHaveAttribute("href", "#priority-actions");
+      const cards = screen.getByRole("region", { name: "What your requirements ask" });
+      expect(cards).toHaveAttribute("id", "priority-actions");
+      expect(cards).toHaveTextContent("Consider moving your proposed application date.");
+    });
+
+    it("maps every destination to a route in this case", () => {
+      const destinations = {
+        CASE_DATA: "/cases/c1/data",
+        EVIDENCE: "/cases/c1/evidence",
+        REQUIREMENTS: "/cases/c1/requirements",
+        ISSUES: "/cases/c1/issues",
+        PRIORITY_ACTIONS: "#priority-actions",
+      };
+      for (const [destination, href] of Object.entries(destinations)) {
+        const { unmount } = render(
+          <CaseOverviewPanel
+            overview={anOverview({
+              next_steps: {
+                done: [],
+                steps: [
+                  {
+                    code: "OPEN_ISSUES",
+                    destination,
+                    parameters: {},
+                    title: `Go ${destination}`,
+                    body: "",
+                    optional: false,
+                  },
+                ],
+              },
+            })}
+          />,
+        );
+        expect(screen.getByRole("link", { name: `Go ${destination}` })).toHaveAttribute(
+          "href",
+          href,
+        );
+        unmount();
+      }
+    });
+
+    it("has no axe violations on a new case", async () => {
+      const { container } = render(<CaseOverviewPanel overview={anOverview(newCase)} />);
+      expect(await axe(container)).toHaveNoViolations();
     });
   });
 });

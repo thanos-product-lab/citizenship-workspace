@@ -1506,30 +1506,108 @@ a.cw-button--secondary:hover {
   color: var(--cw-text-muted);
 }
 
-/* The getting-started list on a case nothing has assessed yet. Numbered, because the
-   steps are genuinely ordered: the qualifying period is measured back from the
-   application date, so travel entered first has no window to sit in. `decimal` markers
-   are kept rather than restyled — the sequence is the information. */
-.cw-overview__start {
+/* --- Next steps (ADR-0034) --------------------------------------------------
+   One answer to "what now". The first step is weighted as the primary one by size and a
+   rule on its left; the rest are quieter rows. Nothing here is colour-only: the primary
+   step is also first and larger, and "Optional" is a word, not a tint. */
+
+.cw-next-steps {
+  margin-top: var(--cw-space-6);
+}
+
+.cw-next-steps h3 {
+  margin: 0 0 var(--cw-space-3);
+  font-size: var(--cw-text-sm);
+  font-weight: var(--cw-weight-semibold);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--cw-text-muted);
+}
+
+/* Quiet: where the user left off, not a scoreboard. */
+.cw-next-steps__done {
+  list-style: none;
+  margin: 0 0 var(--cw-space-4);
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cw-space-2) var(--cw-space-5);
+  font-size: var(--cw-text-sm);
+  color: var(--cw-text-muted);
+}
+
+.cw-next-steps__done li {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--cw-space-2);
+}
+
+.cw-next-steps__tick {
+  color: var(--cw-text);
+  font-weight: var(--cw-weight-semibold);
+}
+
+.cw-next-steps__list {
+  list-style: none;
   margin: 0;
-  padding-left: var(--cw-space-5);
+  padding: 0;
   display: grid;
   gap: var(--cw-space-3);
-  max-width: 60ch;
+  max-width: 66ch;
+}
+
+.cw-next-step {
+  padding: var(--cw-space-2) 0 var(--cw-space-2) var(--cw-space-4);
+  border-left: 3px solid var(--cw-border);
+}
+
+.cw-next-step[data-primary="true"] {
+  padding: var(--cw-space-4);
+  border: 1px solid var(--cw-border);
+  border-left: 3px solid var(--cw-accent);
+  border-radius: 0 var(--cw-radius-md) var(--cw-radius-md) 0;
+  background: var(--cw-surface);
+}
+
+.cw-next-step__head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--cw-space-2) var(--cw-space-3);
+  margin: 0;
+}
+
+.cw-next-step__title {
+  color: var(--cw-accent);
+  font-weight: var(--cw-weight-medium);
+  line-height: var(--cw-leading-snug);
+  text-decoration: none;
+}
+
+.cw-next-step[data-primary="true"] .cw-next-step__title {
+  font-size: var(--cw-text-lg);
+}
+
+.cw-next-step__title:hover {
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+.cw-next-step__optional {
+  font-size: var(--cw-text-xs);
+  font-weight: var(--cw-weight-medium);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--cw-text-muted);
+  border: 1px solid var(--cw-border);
+  border-radius: var(--cw-radius-sm);
+  padding: 0 var(--cw-space-1);
+}
+
+.cw-next-step__body {
+  margin: var(--cw-space-1) 0 0;
   line-height: var(--cw-leading-normal);
   color: var(--cw-text-muted);
-}
-
-.cw-overview__start li::marker {
-  color: var(--cw-text-muted);
-  font-variant-numeric: tabular-nums;
-}
-
-/* The link carries the action, so it reads at full strength against the muted sentence
-   explaining it. */
-.cw-overview__start a {
-  color: var(--cw-text);
-  font-weight: var(--cw-weight-medium);
 }
 
 .cw-case-header__stale {
