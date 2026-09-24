@@ -73,7 +73,8 @@ because code and tests cite them.
 [0010](decisions/0010-group-currency-inherits-the-weakest-member.md) group currency inherits the weakest member ·
 [0016](decisions/0016-a-failed-recalculation-is-recorded-best-effort.md) a failed recalculation is recorded best-effort ·
 [0032](decisions/0032-an-application-date-that-has-passed.md) an application date that has passed ·
-[0034](decisions/0034-the-case-next-step-is-derived-at-read-time.md) the case's next step is derived
+[0034](decisions/0034-the-case-next-step-is-derived-at-read-time.md) the case's next step is derived ·
+[0035](decisions/0035-a-trip-reason-is-not-an-assessed-input.md) a trip's reason is not an assessed input
 
 **Invalidation**
 [0008](decisions/0008-blunt-stale-invalidation-at-m3b.md) blunt invalidation (*superseded by 0014*) ·

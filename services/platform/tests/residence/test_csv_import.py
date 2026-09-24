@@ -239,3 +239,26 @@ def test_commit_emits_one_import_event_per_record(api: Api, db_session: Session)
     assert all(e.payload["entry_source"] == "CSV_IMPORT" for e in events)
     # Two records, two versions — one v1 each.
     assert db_session.scalar(select(func.count()).select_from(TravelRecordVersion)) == 2
+
+
+def test_an_optional_reason_column_is_imported_onto_the_record(api: Api) -> None:
+    """ADR-0035: the reason travels on the stable record, and a history kept in a
+    spreadsheet usually has one."""
+    case_id = _active_case(api, "user_a")
+    header = f"{HEADER},reason"
+    resp = _commit(
+        api,
+        "user_a",
+        case_id,
+        _csv(f"{_row()},Holiday", f"{_row(dep='2023-01-02', ret='2023-01-05')},", header=header),
+    )
+    assert resp.status_code == 201, resp.text
+    assert [r["reason"] for r in resp.json()["records"]] == ["Holiday", None]
+
+
+def test_an_over_long_reason_is_a_row_error(api: Api) -> None:
+    case_id = _active_case(api, "user_a")
+    body = _validate(
+        api, "user_a", case_id, _csv(f"{_row()},{'x' * 201}", header=f"{HEADER},reason")
+    )
+    assert body["rows"][0]["errors"][0]["code"] == "REASON_TOO_LONG"

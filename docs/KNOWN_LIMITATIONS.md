@@ -167,6 +167,10 @@ It sits in M10, outside the M0 to M8 plan of record, so this is a scope decision
 an oversight. **Closing it** is a milestone rather than a fix, and the roadmap's cut list puts
 the print layout last within it.
 
+**One part now exists.** The travel list (ADR-0035) is the summary's "travel summary": the
+trips in the qualifying period, printable and as a CSV, reached from Case data. The rest of
+the summary, and the page assembling it, does not.
+
 ---
 
 ### 6. Immigration status documents are classified but never read

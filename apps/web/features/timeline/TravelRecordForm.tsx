@@ -23,6 +23,7 @@ export interface TravelFormValues {
   date_confidence: DateConfidence;
   review_state: ReviewState;
   notes: string;
+  reason: string;
 }
 
 export const EMPTY_TRAVEL_FORM: TravelFormValues = {
@@ -32,6 +33,7 @@ export const EMPTY_TRAVEL_FORM: TravelFormValues = {
   date_confidence: "EXACT",
   review_state: "CONFIRMED",
   notes: "",
+  reason: "",
 };
 
 // CONFLICTING/DRAFT are system states (they arise from evidence review, not manual
@@ -204,6 +206,23 @@ export function TravelRecordForm({
             </option>
           ))}
         </select>
+      </Field>
+
+      {/* Above Notes, because it is the one that leaves the workspace: it is the "Reason
+          for trip" column of the travel list handed over with an application. Changing it
+          alone changes no conclusion and makes nothing out of date (ADR-0035). */}
+      <Field
+        id={id("reason")}
+        label="Reason for trip"
+        hint="Optional. For example Holiday, or Visiting family. Shown on your travel list."
+      >
+        <input
+          id={id("reason")}
+          value={values.reason}
+          maxLength={200}
+          onChange={(e) => set("reason", e.target.value)}
+          style={inputStyle}
+        />
       </Field>
 
       <Field id={id("notes")} label="Notes" hint="Optional.">

@@ -29,6 +29,7 @@ function aRecord(overrides: Record<string, unknown> = {}) {
     review_state: "CONFIRMED",
     entry_source: "MANUAL",
     notes: null,
+    reason: null,
     lifecycle_status: "ACTIVE",
     supporting_evidence_item_ids: [],
     // The server's decision, not a restatement of the two fields above. A fixture that
@@ -201,6 +202,73 @@ describe("TravelHistory", () => {
         review_state: "CONFIRMED",
       }),
     });
+  });
+
+  it("sends the reason with a new trip, trimmed", async () => {
+    // ADR-0035: the reason is the "Reason for trip" column of the travel list.
+    let trips: unknown[] = [];
+    get.mockImplementation((path: string) =>
+      Promise.resolve(
+        path.endsWith("/evidence")
+          ? { data: { items: [] }, error: undefined }
+          : { data: trips, error: undefined },
+      ),
+    );
+    post.mockImplementation(() => {
+      trips = [aRecord({ reason: "Holiday" })];
+      return Promise.resolve({ data: aRecord({ reason: "Holiday" }) });
+    });
+    render(<TravelHistory caseId="c1" />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /add a trip/i }));
+    fireEvent.change(screen.getByLabelText("Destination"), { target: { value: "Spain" } });
+    fireEvent.change(screen.getByLabelText("Departure date"), { target: { value: "2022-04-14" } });
+    fireEvent.change(screen.getByLabelText("Return date"), { target: { value: "2022-04-26" } });
+    fireEvent.change(screen.getByLabelText("Reason for trip"), { target: { value: "  Holiday " } });
+    fireEvent.click(screen.getByRole("button", { name: /add trip/i }));
+
+    await waitFor(() => expect(screen.getByText("Trip added.")).toBeInTheDocument());
+    expect(post).toHaveBeenCalledWith(
+      "/api/v1/cases/{case_id}/travel-records",
+      expect.objectContaining({ body: expect.objectContaining({ reason: "Holiday" }) }),
+    );
+    expect(screen.getByRole("rowheader", { name: /Spain/ })).toHaveTextContent("Holiday");
+  });
+
+  it("keeps a stored country code on edit, so a reason-only save changes no version field", async () => {
+    // A CSV import without the optional code column stores none. Deriving "GR" on save
+    // would submit a changed version and stale the assessment over a typed reason.
+    const imported = aRecord({ destination_label: "Greece", destination_country_code: null });
+    mockGet({ trips: [imported] });
+    client.PATCH.mockResolvedValue({ data: { ...imported, reason: "Visiting family" } });
+    render(<TravelHistory caseId="c1" />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /^edit$/i }));
+    const dialog = screen.getByRole("dialog");
+    fireEvent.change(within(dialog).getByLabelText("Reason for trip"), {
+      target: { value: "Visiting family" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: /save changes/i }));
+
+    await waitFor(() => expect(client.PATCH).toHaveBeenCalled());
+    expect(client.PATCH.mock.calls[0]![1].body).toEqual(
+      expect.objectContaining({ destination_country_code: null, reason: "Visiting family" }),
+    );
+  });
+
+  it("links to the travel list once there are trips", async () => {
+    mockGet({ trips: [aRecord()] });
+    render(<TravelHistory caseId="c1" />);
+    expect(
+      await screen.findByRole("link", { name: "Export your trips as a list (PDF or CSV)" }),
+    ).toHaveAttribute("href", "/cases/c1/data/travel-export");
+  });
+
+  it("offers no travel list when there are no trips to list", async () => {
+    mockGet({ trips: [] });
+    render(<TravelHistory caseId="c1" />);
+    await screen.findByText(/No trips recorded yet/);
+    expect(screen.queryByRole("link", { name: /Export your trips/ })).toBeNull();
   });
 
   it("closes the add form when clicking outside it, returning focus to the trigger", async () => {

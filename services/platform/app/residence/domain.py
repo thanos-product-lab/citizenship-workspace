@@ -185,6 +185,10 @@ class EntrySource(StrEnum):
 # literal 120 by convention (a snapshot); changing this needs a matching migration.
 DESTINATION_LABEL_MAX_LENGTH = 120
 
+# The trip's reason ("Holiday", "Visiting family"), for the travel export. Same convention
+# as the label: the migration keeps a literal snapshot of this number.
+REASON_MAX_LENGTH = 200
+
 
 class TravelRecord(Base):
     """One reported period outside the UK. The stable identity; the values live on its
@@ -196,6 +200,12 @@ class TravelRecord(Base):
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     case_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("cases.id"), index=True)
     current_version_id: Mapped[uuid.UUID | None] = mapped_column()
+    #: Why the trip was taken, as the user put it. **On the stable record, not the version,
+    #: and deliberately** (ADR-0035): no rule reads it, so it is not an assessed input, and
+    #: putting it on the version would make every reason typed in append a version and stale
+    #: the residence results. It is an annotation for the travel export. Its changes are
+    #: audited (that one changed, never the text); its old values are not kept.
+    reason: Mapped[str | None] = mapped_column(String(REASON_MAX_LENGTH))
     # Private column: the tombstone transition below is the only writer (mirrors the
     # ApplicationCase lifecycle pattern), so REMOVED has exactly one code path in.
     _lifecycle_status: Mapped[str] = mapped_column("lifecycle_status", String(20))
@@ -219,6 +229,16 @@ class TravelRecord(Base):
     @property
     def lifecycle_status(self) -> TravelLifecycleStatus:
         return TravelLifecycleStatus(self._lifecycle_status)
+
+    def set_reason(self, reason: str | None) -> bool:
+        """Set the reason, blank meaning none. Returns whether it changed, so the caller
+        audits a change and not a save that left it as it was."""
+        cleaned = reason.strip() if reason else None
+        cleaned = cleaned or None
+        if cleaned == self.reason:
+            return False
+        self.reason = cleaned
+        return True
 
     def mark_removed(self) -> None:
         """ACTIVE → REMOVED (a tombstone). Idempotency is refused, not silent: removing
@@ -320,6 +340,18 @@ class TravelRecordVersionCreated(_TravelEvent):
 
 
 @dataclass(frozen=True)
+class TravelRecordReasonChanged(DomainEvent):
+    """The trip's reason was set, changed or cleared. The text is never in the payload: a
+    reason is often about family, and the audit only needs to know that it changed."""
+
+    aggregate_type: ClassVar[str] = "TravelRecord"
+    event_type: ClassVar[str] = "TravelRecordReasonChanged"
+
+    def payload(self) -> dict[str, Any]:
+        return {"travel_record_id": str(self.aggregate_id)}
+
+
+@dataclass(frozen=True)
 class TravelRecordRemoved(DomainEvent):
     """The record was tombstoned (lifecycle → REMOVED). Versions are untouched."""
 
@@ -343,6 +375,24 @@ class TravelRecordFields:
     review_state: TravelReviewState
     destination_country_code: str | None = None
     notes: str | None = None
+
+
+def version_matches(version: "TravelRecordVersion", fields: TravelRecordFields) -> bool:
+    """Whether `fields` would write a version identical to `version`.
+
+    Every field a version holds is compared, `notes` included; `entry_source`,
+    `created_by` and the ids are not fields the user submits. An edit that matches changes
+    nothing any rule reads, so it appends no version and stales nothing (ADR-0035).
+    """
+    return (
+        version.destination_label == fields.destination_label
+        and version.departure_date == fields.departure_date
+        and version.return_date == fields.return_date
+        and version.date_confidence == fields.date_confidence.value
+        and version.review_state == fields.review_state.value
+        and version.destination_country_code == fields.destination_country_code
+        and version.notes == fields.notes
+    )
 
 
 def counts_toward_trusted_total(record: "TravelRecord", version: "TravelRecordVersion") -> bool:

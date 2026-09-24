@@ -102,17 +102,28 @@ function trust(r: Travel): Trust {
       };
 }
 
-function toBody(values: TravelFormValues) {
+function toBody(values: TravelFormValues, previous?: Travel) {
   return {
     destination_label: values.destination_label,
     // The code is derived from the label, never asked for: a country name maps to its
     // ISO code, anything else has none. No rule depends on it (RULES_SPEC §11).
-    destination_country_code: countryCodeFor(values.destination_label),
+    //
+    // **On an edit, only when the label changed.** A trip imported from a CSV without the
+    // optional code column has none stored, and deriving one on every save made the form
+    // submit a field the user never touched. The server then saw a changed version, so
+    // typing a reason appended a version and staled the assessment (ADR-0035). Caught in
+    // the browser, on the path this feature exists for: import many trips, add reasons.
+    destination_country_code:
+      previous && previous.destination_label === values.destination_label
+        ? previous.destination_country_code
+        : countryCodeFor(values.destination_label),
     departure_date: values.departure_date,
     return_date: values.return_date,
     date_confidence: values.date_confidence,
     review_state: values.review_state,
     notes: values.notes || null,
+    // Always sent, so clearing the field clears the reason; blank is stored as none.
+    reason: values.reason.trim() || null,
   };
 }
 
@@ -124,6 +135,7 @@ function toForm(r: Travel): TravelFormValues {
     date_confidence: r.date_confidence as TravelFormValues["date_confidence"],
     review_state: r.review_state as TravelFormValues["review_state"],
     notes: r.notes ?? "",
+    reason: r.reason ?? "",
   };
 }
 
@@ -338,7 +350,7 @@ export function TravelHistory({
       "/api/v1/cases/{case_id}/travel-records/{travel_record_id}",
       {
         params: { path: { case_id: caseId, travel_record_id: id } },
-        body: { ...toBody(values), expected_revision: record.revision },
+        body: { ...toBody(values, record), expected_revision: record.revision },
       },
     );
     setFormBusy(false);
@@ -392,6 +404,16 @@ export function TravelHistory({
       <p style={{ marginTop: "var(--cw-space-2)", color: "var(--cw-text-muted)", fontSize: "var(--cw-text-sm)" }}>
         Every period you spent outside the UK.
       </p>
+      {/* A way out to the list people upload with the application. Offered whenever there
+          are trips rather than when the history is "complete": the workspace has no notion
+          of complete, and the list says itself what it is based on. */}
+      {state === "ready" && records.length > 0 ? (
+        <p style={{ margin: "var(--cw-space-2) 0 0", fontSize: "var(--cw-text-sm)" }}>
+          <a href={`/cases/${caseId}/data/travel-export`}>
+            Export your trips as a list (PDF or CSV)
+          </a>
+        </p>
+      ) : null}
 
       {/* Polite region for the result of an add / edit / remove / import. Styled as a
           distinct confirmation (accent, leading check) so it doesn't read as prose;
@@ -470,6 +492,7 @@ export function TravelHistory({
                             `ResidenceTimeline` already do this; this table had diverged. */}
                         <th role="rowheader" scope="row" className="cw-trips__destination">
                           {r.destination_label}
+                          {r.reason ? <span className="cw-trips__reason">{r.reason}</span> : null}
                           {/* Confirmed is the quiet default; only uncertain trips are
                               flagged — the exception is what needs the user's attention. */}
                           {!t.confirmed && (

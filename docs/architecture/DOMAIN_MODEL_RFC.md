@@ -646,6 +646,7 @@ TravelRecord
 ├── case_id
 ├── current_version_id
 ├── lifecycle_status
+├── reason            (not an assessed input; §11.10)
 ├── created_at
 ├── updated_at
 └── revision
@@ -733,7 +734,8 @@ Provisional output must be labelled and cannot replace the trusted current asses
 - Departure date cannot be after return date.
 - An active confirmed version requires both dates.
 - A confirmed exact record is immutable.
-- Editing creates a new version.
+- Editing creates a new version. More precisely, changing a version field does; a save that
+  changes none (only the reason, or nothing) appends no version and stales nothing (§11.10).
 - Removing or versioning a current record marks affected residence assessments stale.
 - Overlapping records are permitted temporarily but create issues.
 - Duplicate detection proposes an issue; it does not merge automatically.
@@ -785,6 +787,39 @@ so M8 widens the graph rather than rewriting the rule.
 - A link is not a judgement that the document is the *right* document. Nothing in M7
   inspects a linked document's contents to decide whether it supports the trip; that is a
   model's job and belongs to M8.
+
+### 11.10 Reason and the Travel Export
+
+Added with ADR-0035.
+
+**`reason` is an annotation on the stable record, not an assessed input.** It is why the
+user travelled ("Holiday", "Visiting family"), kept for the "Reason for trip" column of the
+list handed over with an application. No rule reads it. On the version it would make every
+reason typed in append a version and stale every result declaring a travel dependency, over
+a trip whose dates never moved. Its changes are audited (`TravelRecordReasonChanged`, a
+structural payload with no text); its earlier values are not kept.
+
+**The edit rule.** An edit whose version fields equal the current version's appends no
+version and invalidates nothing. Every field a rule can read is a version field, so this
+is exactly "nothing an assessment depends on changed", not a check skipped.
+
+**TravelExport** is a read model (§44) over the case's trips:
+
+```text
+TravelExport
+├── scope            (WINDOW: the qualifying period; ALL: every active trip)
+├── period           (RULES_SPEC §3 qualifying window, or none without an application date)
+├── trips            (every ACTIVE record whose calendar dates overlap the period)
+│   ├── destination_label · reason · departure_date · return_date
+│   └── markers      (DISPUTED · NOT_CONFIRMED · ESTIMATED; why §11.7 would not count it)
+├── cautions         (NO_APPLICATION_DATE · OVERLAPPING_TRIPS · DOCUMENTS_AWAITING_REVIEW)
+└── prepared_on
+```
+
+- A held-back trip is **listed and marked**, never omitted: leaving a trip off a list handed
+  to the Home Office is the dangerous direction.
+- An `ExtractedClaim` is never a trip, so an unconfirmed document value cannot appear.
+- The export carries no day counts.
 
 ---
 

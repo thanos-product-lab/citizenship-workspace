@@ -19,6 +19,7 @@ from datetime import date, datetime
 
 from app.residence.domain import (
     DESTINATION_LABEL_MAX_LENGTH,
+    REASON_MAX_LENGTH,
     DateConfidence,
     TravelRecordFields,
     TravelReviewState,
@@ -27,7 +28,7 @@ from app.shared.dates import MAX_ENTERED_DATE, MIN_ENTERED_DATE
 from app.shared.errors import CsvImportMalformed
 
 REQUIRED_HEADERS = ("destination_label", "departure_date", "return_date", "date_confidence")
-OPTIONAL_HEADERS = ("destination_country_code", "review_state", "notes")
+OPTIONAL_HEADERS = ("destination_country_code", "review_state", "notes", "reason")
 
 # Bounds so one import cannot do unbounded work in a single transaction (holding the case
 # row lock). Generous for a five-year travel history; both fail closed as CsvImportMalformed.
@@ -51,6 +52,9 @@ class RowDiagnostic:
     row_number: int  # 1-based line in the file; the header is line 1
     errors: tuple[RowError, ...]
     fields: TravelRecordFields | None  # parsed values when the row is valid, else None
+    #: The trip's reason, beside the version fields rather than among them: it is set on
+    #: the stable record (ADR-0035).
+    reason: str | None = None
 
     @property
     def valid(self) -> bool:
@@ -74,8 +78,8 @@ class ParsedImport:
         return all(r.valid for r in self.rows)
 
     @property
-    def valid_fields(self) -> list[TravelRecordFields]:
-        return [r.fields for r in self.rows if r.fields is not None]
+    def valid_rows(self) -> list[tuple[TravelRecordFields, str | None]]:
+        return [(r.fields, r.reason) for r in self.rows if r.fields is not None]
 
 
 def parse_import(content: str) -> ParsedImport:
@@ -137,6 +141,12 @@ def _validate_row(raw: dict[str, str | None], *, row_number: int) -> RowDiagnost
             RowError("destination_country_code", "COUNTRY_CODE_INVALID", "expected a 2-letter code")
         )
 
+    reason = _clean(raw.get("reason")) or None
+    if reason is not None and len(reason) > REASON_MAX_LENGTH:
+        errors.append(
+            RowError("reason", "REASON_TOO_LONG", f"must be at most {REASON_MAX_LENGTH} characters")
+        )
+
     if errors:
         return RowDiagnostic(row_number=row_number, errors=tuple(errors), fields=None)
 
@@ -150,7 +160,7 @@ def _validate_row(raw: dict[str, str | None], *, row_number: int) -> RowDiagnost
         destination_country_code=code.upper() if code else None,
         notes=_clean(raw.get("notes")) or None,
     )
-    return RowDiagnostic(row_number=row_number, errors=(), fields=fields)
+    return RowDiagnostic(row_number=row_number, errors=(), fields=fields, reason=reason)
 
 
 def _clean(value: str | None) -> str:

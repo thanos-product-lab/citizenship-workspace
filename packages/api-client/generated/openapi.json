@@ -889,6 +889,114 @@
         "title": "EvidenceTextResponse",
         "type": "object"
       },
+      "ExportCaution": {
+        "description": "Something to know before relying on the list.",
+        "enum": [
+          "NO_APPLICATION_DATE",
+          "OVERLAPPING_TRIPS",
+          "DOCUMENTS_AWAITING_REVIEW"
+        ],
+        "title": "ExportCaution",
+        "type": "string"
+      },
+      "ExportCautionResponse": {
+        "properties": {
+          "code": {
+            "$ref": "#/components/schemas/ExportCaution"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "count",
+          "text"
+        ],
+        "title": "ExportCautionResponse",
+        "type": "object"
+      },
+      "ExportMarkerResponse": {
+        "properties": {
+          "code": {
+            "$ref": "#/components/schemas/TripMarker"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "text"
+        ],
+        "title": "ExportMarkerResponse",
+        "type": "object"
+      },
+      "ExportScope": {
+        "enum": [
+          "WINDOW",
+          "ALL"
+        ],
+        "title": "ExportScope",
+        "type": "string"
+      },
+      "ExportTripResponse": {
+        "properties": {
+          "departure_date": {
+            "format": "date",
+            "title": "Departure Date",
+            "type": "string"
+          },
+          "destination_label": {
+            "title": "Destination Label",
+            "type": "string"
+          },
+          "markers": {
+            "items": {
+              "$ref": "#/components/schemas/ExportMarkerResponse"
+            },
+            "title": "Markers",
+            "type": "array"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "return_date": {
+            "format": "date",
+            "title": "Return Date",
+            "type": "string"
+          },
+          "travel_record_id": {
+            "format": "uuid",
+            "title": "Travel Record Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "travel_record_id",
+          "destination_label",
+          "reason",
+          "departure_date",
+          "return_date",
+          "markers"
+        ],
+        "title": "ExportTripResponse",
+        "type": "object"
+      },
       "FactView": {
         "description": "A trusted value, with where its trust came from.",
         "properties": {
@@ -3507,6 +3615,97 @@
         "title": "TimelineTripResponse",
         "type": "object"
       },
+      "TravelExportResponse": {
+        "description": "The travel list to hand over (ADR-0035). Every sentence is rendered here, so the\nprint page and the CSV say the same thing.",
+        "properties": {
+          "application_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Application Date"
+          },
+          "cautions": {
+            "items": {
+              "$ref": "#/components/schemas/ExportCautionResponse"
+            },
+            "title": "Cautions",
+            "type": "array"
+          },
+          "period_end": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period End"
+          },
+          "period_start": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period Start"
+          },
+          "period_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period Text"
+          },
+          "prepared_on": {
+            "format": "date",
+            "title": "Prepared On",
+            "type": "string"
+          },
+          "prepared_text": {
+            "title": "Prepared Text",
+            "type": "string"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/ExportScope"
+          },
+          "trips": {
+            "items": {
+              "$ref": "#/components/schemas/ExportTripResponse"
+            },
+            "title": "Trips",
+            "type": "array"
+          }
+        },
+        "required": [
+          "scope",
+          "application_date",
+          "period_start",
+          "period_end",
+          "period_text",
+          "trips",
+          "cautions",
+          "prepared_on",
+          "prepared_text"
+        ],
+        "title": "TravelExportResponse",
+        "type": "object"
+      },
       "TravelRecordEditInput": {
         "properties": {
           "date_confidence": {
@@ -3558,6 +3757,18 @@
               }
             ],
             "title": "Notes"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
           },
           "return_date": {
             "format": "date",
@@ -3618,6 +3829,18 @@
               }
             ],
             "title": "Notes"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
           },
           "return_date": {
             "format": "date",
@@ -3705,6 +3928,17 @@
             ],
             "title": "Notes"
           },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
           "return_date": {
             "format": "date",
             "title": "Return Date",
@@ -3749,6 +3983,7 @@
           "review_state",
           "entry_source",
           "notes",
+          "reason",
           "lifecycle_status",
           "is_trusted",
           "is_disputed_by_document",
@@ -3766,6 +4001,16 @@
           "UNCERTAIN"
         ],
         "title": "TravelReviewState",
+        "type": "string"
+      },
+      "TripMarker": {
+        "description": "Why the assessment would not count a listed trip, most serious first.",
+        "enum": [
+          "DISPUTED",
+          "NOT_CONFIRMED",
+          "ESTIMATED"
+        ],
+        "title": "TripMarker",
         "type": "string"
       },
       "UploadGrantResponse": {
@@ -5528,6 +5773,122 @@
           }
         ],
         "summary": "Add Travel Record",
+        "tags": [
+          "travel-records"
+        ]
+      }
+    },
+    "/api/v1/cases/{case_id}/travel-records/export": {
+      "get": {
+        "description": "The trips as a list to hand over, for the print page (ADR-0035).",
+        "operationId": "get_travel_export_api_v1_cases__case_id__travel_records_export_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Case Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scope",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/ExportScope",
+              "default": "WINDOW"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TravelExportResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Travel Export",
+        "tags": [
+          "travel-records"
+        ]
+      }
+    },
+    "/api/v1/cases/{case_id}/travel-records/export.csv": {
+      "get": {
+        "description": "The same list as a CSV attachment. Built from the same export, so the two cannot\nlist different trips.",
+        "operationId": "get_travel_export_csv_api_v1_cases__case_id__travel_records_export_csv_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Case Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scope",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/ExportScope",
+              "default": "WINDOW"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Travel Export Csv",
         "tags": [
           "travel-records"
         ]

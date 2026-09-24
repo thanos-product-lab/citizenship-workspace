@@ -24,15 +24,23 @@ from app.assessments.simulation import (
     SimulatedWindows,
     SimulationView,
 )
-from app.requirements.messages import render_summary
+from app.requirements.messages import (
+    render_export_caution,
+    render_export_marker,
+    render_export_period,
+    render_export_prepared,
+    render_summary,
+)
 from app.residence.csv_import import CONTENT_MAX_LENGTH, ParsedImport, RowDiagnostic
 from app.residence.domain import (
     DESTINATION_LABEL_MAX_LENGTH,
+    REASON_MAX_LENGTH,
     DateConfidence,
     ProposedApplicationDate,
     ProposedApplicationDateVersion,
     TravelReviewState,
 )
+from app.residence.export import ExportCaution, ExportScope, TravelExport, TripMarker
 from app.residence.timeline import TimelineProjection
 
 if TYPE_CHECKING:  # the service imports nothing from here today, and this keeps it that way
@@ -97,6 +105,10 @@ class TravelRecordInput(BaseModel):
     review_state: TravelReviewState = TravelReviewState.CONFIRMED
     destination_country_code: str | None = Field(default=None, min_length=2, max_length=2)
     notes: str | None = None
+    #: Why the trip was taken, for the travel export. Kept on the stable record, so changing
+    #: it alone appends no version and stales nothing (ADR-0035). On an edit, leaving it out
+    #: keeps the current reason; `null` or blank clears it.
+    reason: str | None = Field(default=None, max_length=REASON_MAX_LENGTH)
 
     @field_validator("destination_country_code")
     @classmethod
@@ -129,6 +141,7 @@ class TravelRecordResponse(BaseModel):
     review_state: str
     entry_source: str
     notes: str | None
+    reason: str | None
     lifecycle_status: str
     #: Documents the user has attached to this trip (Domain §11.9).
     #:
@@ -187,6 +200,7 @@ class TravelRecordResponse(BaseModel):
             review_state=version.review_state,
             entry_source=version.entry_source,
             notes=version.notes,
+            reason=record.reason,
             lifecycle_status=record.lifecycle_status.value,
             revision=record.revision,
             created_at=record.created_at,
@@ -578,4 +592,81 @@ class TimelineResponse(BaseModel):
                 TimelineTripResponse(**{**vars(trip), "overlaps_with": list(trip.overlaps_with)})
                 for trip in view.trips
             ],
+        )
+
+
+class ExportMarkerResponse(BaseModel):
+    code: TripMarker
+    text: str
+
+
+class ExportTripResponse(BaseModel):
+    travel_record_id: uuid.UUID
+    destination_label: str
+    reason: str | None
+    departure_date: date
+    return_date: date
+    #: Why the assessment would not count this trip, in words. Empty for one it counts.
+    markers: list[ExportMarkerResponse]
+
+
+class ExportCautionResponse(BaseModel):
+    code: ExportCaution
+    count: int
+    text: str
+
+
+class TravelExportResponse(BaseModel):
+    """The travel list to hand over (ADR-0035). Every sentence is rendered here, so the
+    print page and the CSV say the same thing."""
+
+    #: What was built. `ALL` when asked for `WINDOW` but there is no application date.
+    scope: ExportScope
+    application_date: date | None
+    period_start: date | None
+    period_end: date | None
+    #: "Trips between … and …", or null when every trip is listed.
+    period_text: str | None
+    trips: list[ExportTripResponse]
+    cautions: list[ExportCautionResponse]
+    prepared_on: date
+    prepared_text: str
+
+    @classmethod
+    def from_domain(cls, export: TravelExport) -> "TravelExportResponse":
+        window = export.window if export.scope is ExportScope.WINDOW else None
+        return cls(
+            scope=export.scope,
+            application_date=export.application_date,
+            period_start=window.start if window else None,
+            period_end=window.end if window else None,
+            period_text=(
+                render_export_period(window.start, window.end, export.application_date)
+                if window
+                else None
+            ),
+            trips=[
+                ExportTripResponse(
+                    travel_record_id=trip.travel_record_id,
+                    destination_label=trip.destination_label,
+                    reason=trip.reason,
+                    departure_date=trip.departure_date,
+                    return_date=trip.return_date,
+                    markers=[
+                        ExportMarkerResponse(code=m, text=render_export_marker(m) or m.value)
+                        for m in trip.markers
+                    ],
+                )
+                for trip in export.trips
+            ],
+            cautions=[
+                ExportCautionResponse(
+                    code=c.code,
+                    count=c.count,
+                    text=render_export_caution(c.code, {"count": c.count}) or c.code.value,
+                )
+                for c in export.cautions
+            ],
+            prepared_on=export.prepared_on,
+            prepared_text=render_export_prepared(export.prepared_on),
         )

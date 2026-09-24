@@ -813,6 +813,15 @@ a.cw-button--secondary:hover {
   overflow-wrap: anywhere;
 }
 
+/* The trip's reason, under its destination: quieter than the name it qualifies. */
+.cw-trips__reason {
+  display: block;
+  margin-top: var(--cw-space-1);
+  font-size: var(--cw-text-sm);
+  font-weight: var(--cw-weight-regular);
+  color: var(--cw-text-muted);
+}
+
 .cw-trips__flag {
   display: block;
   margin-top: var(--cw-space-2);
@@ -3150,4 +3159,171 @@ a.cw-button--secondary:hover {
   display: flex;
   gap: var(--cw-space-5);
   padding-block: var(--cw-space-4);
+}
+
+
+/* --- Travel list (ADR-0035) ---------------------------------------------------
+   The list handed over with an application. On screen it sits on a white sheet so what
+   prints is what you see; the controls around it are for the screen only. */
+
+.cw-travel-export {
+  display: grid;
+  gap: var(--cw-space-5);
+}
+
+.cw-travel-export__controls {
+  display: grid;
+  gap: var(--cw-space-4);
+  max-width: 66ch;
+}
+
+.cw-travel-export__scope {
+  display: grid;
+  gap: var(--cw-space-2);
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.cw-travel-export__scope legend {
+  margin-bottom: var(--cw-space-2);
+  font-weight: var(--cw-weight-medium);
+}
+
+.cw-travel-export__scope label {
+  display: flex;
+  align-items: center;
+  gap: var(--cw-space-2);
+  min-height: 44px;
+}
+
+/* Things to know before relying on the list. A rule and words, not a colour: none of
+   them is an error, and each says what to do. */
+.cw-travel-export__cautions {
+  display: grid;
+  gap: var(--cw-space-2);
+  margin: 0;
+  padding: var(--cw-space-3) var(--cw-space-4);
+  list-style: none;
+  border-left: 3px solid var(--cw-currency-stale);
+  background: var(--cw-surface-sunken);
+  font-size: var(--cw-text-sm);
+}
+
+.cw-travel-export__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cw-space-3);
+}
+
+/* The sheet is paper-coloured in both themes. It is a preview of a printed page, and a
+   dark sheet would preview something that never prints. */
+.cw-travel-list {
+  padding: var(--cw-space-6) var(--cw-space-5);
+  border: 1px solid var(--cw-border);
+  border-radius: var(--cw-radius-md);
+  background: #ffffff;
+  color: #111111;
+  /* A grid item sizes to its content by default, so without this a wide table widened
+     the sheet and the whole page scrolled sideways instead of the table alone. */
+  min-width: 0;
+}
+
+.cw-travel-list__scroll {
+  overflow-x: auto;
+}
+
+.cw-travel-list__scroll:focus-visible {
+  outline: 2px solid var(--cw-focus);
+  outline-offset: 2px;
+}
+
+.cw-travel-list__title {
+  margin: 0;
+  font-size: var(--cw-text-xl);
+  font-weight: var(--cw-weight-semibold);
+  text-align: center;
+}
+
+.cw-travel-list__period {
+  margin: var(--cw-space-2) 0 var(--cw-space-5);
+  text-align: center;
+  font-size: var(--cw-text-sm);
+}
+
+.cw-travel-list__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--cw-text-sm);
+}
+
+.cw-travel-list__table th,
+.cw-travel-list__table td {
+  padding: var(--cw-space-2) var(--cw-space-3);
+  border: 1px solid #9a9a9a;
+  text-align: left;
+  vertical-align: top;
+}
+
+.cw-travel-list__table thead th {
+  background: #d9d9d9;
+  font-weight: var(--cw-weight-semibold);
+}
+
+/* A date is one value; "3 September / 2022" across two lines reads as two. */
+.cw-travel-list__date {
+  white-space: nowrap;
+}
+
+.cw-travel-list__table tbody th {
+  font-weight: var(--cw-weight-semibold);
+}
+
+.cw-travel-list__prepared {
+  margin: var(--cw-space-5) 0 0;
+  font-size: var(--cw-text-xs);
+  color: #444444;
+}
+
+/* --- Print ----------------------------------------------------------------------
+   Only the sheet reaches paper. The case shell, navigation, skip link and anything
+   marked for the screen alone are dropped; the sheet loses its frame; the table header
+   repeats on every page and no trip is split across two. */
+@media print {
+  @page {
+    margin: 18mm 15mm;
+  }
+
+  .cw-case-shell,
+  .cw-skip-link,
+  .cw-no-print {
+    display: none !important;
+  }
+
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+
+  .cw-travel-list {
+    padding: 0;
+    border: 0;
+  }
+
+  .cw-travel-list__scroll {
+    overflow: visible;
+  }
+
+  .cw-travel-list__table thead {
+    display: table-header-group;
+  }
+
+  .cw-travel-list__table tr {
+    break-inside: avoid;
+  }
+
+  .cw-travel-list__table thead th {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
 }

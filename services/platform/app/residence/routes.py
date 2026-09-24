@@ -16,9 +16,10 @@ first, and both are POSTs only because they carry a body.
 """
 
 import uuid
+from datetime import UTC, datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Query, Response, status
 from sqlalchemy.orm import Session
 
 from app.assessments import simulation
@@ -27,8 +28,10 @@ from app.auth.schemas import CurrentUser
 from app.cases.dependencies import require_case_access
 from app.cases.domain import ApplicationCase
 from app.evidence import links
+from app.requirements.messages import render_export_marker
 from app.residence import service, timeline
 from app.residence.domain import TravelRecordFields
+from app.residence.export import ExportScope, to_csv
 from app.residence.schemas import (
     ApplicationDateSimulationResponse,
     AttachEvidenceInput,
@@ -39,6 +42,7 @@ from app.residence.schemas import (
     SelectApplicationDateInput,
     SimulateApplicationDateInput,
     TimelineResponse,
+    TravelExportResponse,
     TravelRecordEditInput,
     TravelRecordInput,
     TravelRecordResponse,
@@ -241,6 +245,44 @@ def _travel_record_with_coverage(
     return TravelRecordResponse.from_domain(outcome, coverage.get(outcome.record.id, ()))
 
 
+@travel_records_router.get("/export", response_model=TravelExportResponse)
+def get_travel_export(
+    case: Annotated[ApplicationCase, Depends(require_case_access)],
+    session: Annotated[Session, Depends(get_tenant_session)],
+    scope: ExportScope = ExportScope.WINDOW,
+) -> TravelExportResponse:
+    """The trips as a list to hand over, for the print page (ADR-0035)."""
+    export = service.get_travel_export(
+        session, case=case, scope=scope, today=datetime.now(UTC).date()
+    )
+    return TravelExportResponse.from_domain(export)
+
+
+@travel_records_router.get(
+    "/export.csv",
+    response_class=Response,
+    responses={200: {"content": {"text/csv": {"schema": {"type": "string"}}}}},
+)
+def get_travel_export_csv(
+    case: Annotated[ApplicationCase, Depends(require_case_access)],
+    session: Annotated[Session, Depends(get_tenant_session)],
+    scope: ExportScope = ExportScope.WINDOW,
+) -> Response:
+    """The same list as a CSV attachment. Built from the same export, so the two cannot
+    list different trips."""
+    today = datetime.now(UTC).date()
+    export = service.get_travel_export(session, case=case, scope=scope, today=today)
+    return Response(
+        content=to_csv(export, lambda marker: render_export_marker(marker) or marker.value),
+        media_type="text/csv; charset=utf-8",
+        headers={
+            "Content-Disposition": f'attachment; filename="travel-history-{today.isoformat()}.csv"',
+            # A travel history is personal; no shared cache should keep a copy.
+            "Cache-Control": "no-store",
+        },
+    )
+
+
 @travel_records_router.post(
     "", response_model=TravelRecordResponse, status_code=status.HTTP_201_CREATED
 )
@@ -250,7 +292,9 @@ def add_travel_record(
     session: Annotated[Session, Depends(get_tenant_session)],
     user: Annotated[CurrentUser, Depends(get_current_user)],
 ) -> TravelRecordResponse:
-    outcome = service.add_travel_record(session, case=case, user=user, fields=_fields(body))
+    outcome = service.add_travel_record(
+        session, case=case, user=user, fields=_fields(body), reason=body.reason
+    )
     return TravelRecordResponse.from_domain(outcome)
 
 
@@ -269,6 +313,8 @@ def edit_travel_record(
         travel_record_id=travel_record_id,
         fields=_fields(body),
         expected_revision=body.expected_revision,
+        # Omitted keeps the reason; sent as null or blank clears it.
+        reason=body.reason if "reason" in body.model_fields_set else ...,
     )
     return TravelRecordResponse.from_domain(outcome)
 

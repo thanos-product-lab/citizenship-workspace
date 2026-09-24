@@ -79,6 +79,9 @@ NO_CONSUMER: frozenset[str] = frozenset(
         "TravelRecordCreated",
         "TravelRecordVersionCreated",
         "TravelRecordRemoved",
+        # A trip's reason (ADR-0035). An annotation no rule reads, so nothing is staled or
+        # recomputed when it changes; the event exists for the audit trail alone.
+        "TravelRecordReasonChanged",
         # Evidence coverage: same reasoning as the residence inputs above. Attaching or
         # detaching a document stales `residence.travel_consistency` synchronously, in the
         # link change's own transaction. Nothing asynchronous is owed — and in particular

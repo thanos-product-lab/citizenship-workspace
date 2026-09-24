@@ -846,3 +846,51 @@ def render_next_step_body(code: str | None, parameters: Parameters | None = None
 
 def render_next_step_done(code: str | None, parameters: Parameters | None = None) -> str | None:
     return _render(NEXT_STEP_DONE_TEMPLATES, code, parameters)
+
+
+# --- travel export (ADR-0035) -------------------------------------------------
+#
+# The list a user hands over with an application. Plain and neutral: it is their own
+# record of their own trips, so nothing here claims a check was made or names this product.
+
+EXPORT_MARKER_TEMPLATES: dict[str, _Template] = {
+    "DISPUTED": lambda p: "Dates disputed by a document",
+    "NOT_CONFIRMED": lambda p: "Not confirmed",
+    "ESTIMATED": lambda p: "Dates estimated",
+}
+
+EXPORT_CAUTION_TEMPLATES: dict[str, _Template] = {
+    "NO_APPLICATION_DATE": lambda p: (
+        "There is no application date yet, so this lists every trip rather than the five "
+        "years before one."
+    ),
+    "OVERLAPPING_TRIPS": lambda p: (
+        f"{_count(p.get('count'), 'trip shares', 'trips share')} days abroad with another. "
+        "One of them is probably wrong; check them on Issues before relying on this list."
+    ),
+    "DOCUMENTS_AWAITING_REVIEW": lambda p: (
+        f"{_count(p.get('count'), 'document is', 'documents are')} waiting for your review "
+        "and may hold trips not listed here yet."
+    ),
+}
+
+
+def render_export_marker(code: str | None) -> str | None:
+    return _render(EXPORT_MARKER_TEMPLATES, code, {})
+
+
+def render_export_caution(code: str | None, parameters: Parameters | None = None) -> str | None:
+    return _render(EXPORT_CAUTION_TEMPLATES, code, parameters)
+
+
+def render_export_period(start: object, end: object, application_date: object) -> str:
+    """The period line. Both ends are inclusive (RULES_SPEC §4.2), so the sentence names the
+    first and last days in it, never "from 15 November 2021", which would be a day early."""
+    return (
+        f"Trips between {format_date(start)} and {format_date(end)}: the five years up to the "
+        f"application date of {format_date(application_date)}."
+    )
+
+
+def render_export_prepared(prepared_on: object) -> str:
+    return f"Prepared from the applicant's own records on {format_date(prepared_on)}."

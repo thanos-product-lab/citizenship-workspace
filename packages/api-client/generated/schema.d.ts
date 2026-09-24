@@ -526,6 +526,47 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/cases/{case_id}/travel-records/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Travel Export
+         * @description The trips as a list to hand over, for the print page (ADR-0035).
+         */
+        get: operations["get_travel_export_api_v1_cases__case_id__travel_records_export_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cases/{case_id}/travel-records/export.csv": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Travel Export Csv
+         * @description The same list as a CSV attachment. Built from the same export, so the two cannot
+         *     list different trips.
+         */
+        get: operations["get_travel_export_csv_api_v1_cases__case_id__travel_records_export_csv_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/cases/{case_id}/travel-records/import": {
         parameters: {
             query?: never;
@@ -1124,6 +1165,55 @@ export interface components {
             pages_read: number;
             /** Truncated */
             truncated: boolean;
+        };
+        /**
+         * ExportCaution
+         * @description Something to know before relying on the list.
+         * @enum {string}
+         */
+        ExportCaution: "NO_APPLICATION_DATE" | "OVERLAPPING_TRIPS" | "DOCUMENTS_AWAITING_REVIEW";
+        /** ExportCautionResponse */
+        ExportCautionResponse: {
+            code: components["schemas"]["ExportCaution"];
+            /** Count */
+            count: number;
+            /** Text */
+            text: string;
+        };
+        /** ExportMarkerResponse */
+        ExportMarkerResponse: {
+            code: components["schemas"]["TripMarker"];
+            /** Text */
+            text: string;
+        };
+        /**
+         * ExportScope
+         * @enum {string}
+         */
+        ExportScope: "WINDOW" | "ALL";
+        /** ExportTripResponse */
+        ExportTripResponse: {
+            /**
+             * Departure Date
+             * Format: date
+             */
+            departure_date: string;
+            /** Destination Label */
+            destination_label: string;
+            /** Markers */
+            markers: components["schemas"]["ExportMarkerResponse"][];
+            /** Reason */
+            reason: string | null;
+            /**
+             * Return Date
+             * Format: date
+             */
+            return_date: string;
+            /**
+             * Travel Record Id
+             * Format: uuid
+             */
+            travel_record_id: string;
         };
         /**
          * FactView
@@ -2224,6 +2314,33 @@ export interface components {
              */
             travel_record_id: string;
         };
+        /**
+         * TravelExportResponse
+         * @description The travel list to hand over (ADR-0035). Every sentence is rendered here, so the
+         *     print page and the CSV say the same thing.
+         */
+        TravelExportResponse: {
+            /** Application Date */
+            application_date: string | null;
+            /** Cautions */
+            cautions: components["schemas"]["ExportCautionResponse"][];
+            /** Period End */
+            period_end: string | null;
+            /** Period Start */
+            period_start: string | null;
+            /** Period Text */
+            period_text: string | null;
+            /**
+             * Prepared On
+             * Format: date
+             */
+            prepared_on: string;
+            /** Prepared Text */
+            prepared_text: string;
+            scope: components["schemas"]["ExportScope"];
+            /** Trips */
+            trips: components["schemas"]["ExportTripResponse"][];
+        };
         /** TravelRecordEditInput */
         TravelRecordEditInput: {
             /** @default EXACT */
@@ -2241,6 +2358,8 @@ export interface components {
             expected_revision?: number | null;
             /** Notes */
             notes?: string | null;
+            /** Reason */
+            reason?: string | null;
             /**
              * Return Date
              * Format: date
@@ -2269,6 +2388,8 @@ export interface components {
             destination_label: string;
             /** Notes */
             notes?: string | null;
+            /** Reason */
+            reason?: string | null;
             /**
              * Return Date
              * Format: date
@@ -2315,6 +2436,8 @@ export interface components {
             lifecycle_status: string;
             /** Notes */
             notes: string | null;
+            /** Reason */
+            reason: string | null;
             /**
              * Return Date
              * Format: date
@@ -2342,6 +2465,12 @@ export interface components {
          * @enum {string}
          */
         TravelReviewState: "DRAFT" | "CONFIRMED" | "UNCERTAIN";
+        /**
+         * TripMarker
+         * @description Why the assessment would not count a listed trip, most serious first.
+         * @enum {string}
+         */
+        TripMarker: "DISPUTED" | "NOT_CONFIRMED" | "ESTIMATED";
         /**
          * UploadGrantResponse
          * @description The presigned PUT, and the signed token that carries the storage key back.
@@ -3366,6 +3495,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TravelRecordResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_travel_export_api_v1_cases__case_id__travel_records_export_get: {
+        parameters: {
+            query?: {
+                scope?: components["schemas"]["ExportScope"];
+            };
+            header?: never;
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TravelExportResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_travel_export_csv_api_v1_cases__case_id__travel_records_export_csv_get: {
+        parameters: {
+            query?: {
+                scope?: components["schemas"]["ExportScope"];
+            };
+            header?: never;
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": string;
                 };
             };
             /** @description Validation Error */

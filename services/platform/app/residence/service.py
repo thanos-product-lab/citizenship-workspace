@@ -15,6 +15,7 @@ it is just not ready, and the user needs to understand that rather than have it 
 import uuid
 from dataclasses import dataclass
 from datetime import date
+from types import EllipsisType
 
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
@@ -24,8 +25,6 @@ from app.auth.schemas import CurrentUser
 from app.cases import service as cases_service
 from app.cases.domain import ApplicationCase, LifecycleStatus
 
-# , not  importing evidence *service*: the link module reads the
-# travel repository, never this file, so the dependency runs one way only.
 # The link *module*, not the evidence service: it reads the travel repository and never
 # this file, so the dependency between the two modules runs one way only.
 from app.evidence import links
@@ -43,12 +42,15 @@ from app.residence.domain import (
     TravelRecord,
     TravelRecordCreated,
     TravelRecordFields,
+    TravelRecordReasonChanged,
     TravelRecordRemoved,
     TravelRecordVersion,
     TravelRecordVersionCreated,
     TravelReviewState,
     counts_toward_trusted_total,
+    version_matches,
 )
+from app.residence.export import ExportScope, ExportTripInput, TravelExport, build_export
 from app.residence.repository import (
     ProposedApplicationDateRepository,
     TravelRecordRepository,
@@ -280,11 +282,19 @@ def list_travel_records(session: Session, *, case: ApplicationCase) -> list[Trav
 
 
 def add_travel_record(
-    session: Session, *, case: ApplicationCase, user: CurrentUser, fields: TravelRecordFields
+    session: Session,
+    *,
+    case: ApplicationCase,
+    user: CurrentUser,
+    fields: TravelRecordFields,
+    reason: str | None = None,
 ) -> TravelRecordOutcome:
     _require_active_writable_case(session, case)
 
     record = TravelRecord.start(case_id=case.id)
+    # Set before the first flush, as part of creating the trip: a reason given on creation
+    # is covered by the created event and needs no audit entry of its own.
+    record.set_reason(reason)
     TravelRecordRepository.add_record(session, record)
     session.flush()
     version = _build_version(
@@ -323,7 +333,20 @@ def edit_travel_record(
     travel_record_id: uuid.UUID,
     fields: TravelRecordFields,
     expected_revision: int | None,
+    reason: str | EllipsisType | None = ...,
 ) -> TravelRecordOutcome:
+    """Save the trip form: a new version when a version field changed, and the reason.
+
+    **An edit that changes no version field appends no version and stales nothing**
+    (ADR-0035). The reason is not on the version, so typing one in, or saving the form
+    unchanged, used to be (or would have been) a new version and eight stale conclusions
+    over a trip whose dates never moved. Anything a rule reads is on the version, so "no
+    version field changed" is exactly "nothing an assessment depends on changed": the
+    results stay current because they are still true, not because a check was skipped.
+
+    `reason=...` (omitted) keeps the reason; `None` or blank clears it. The edit is a whole
+    snapshot of the version, but a client that predates the reason must not erase one.
+    """
     _require_active_writable_case(session, case)
     record = _load_record_in_case(session, case, travel_record_id)
     if record.lifecycle_status is not TravelLifecycleStatus.ACTIVE:
@@ -335,6 +358,23 @@ def edit_travel_record(
         if record.current_version_id is not None
         else None
     )
+    uow = UnitOfWork(session, actor_id=user.user_id)
+
+    if current is not None and version_matches(current, fields):
+        if not isinstance(reason, EllipsisType) and record.set_reason(reason):
+            uow.emit(
+                TravelRecordReasonChanged(aggregate_id=record.id),
+                case_id=case.id,
+                action="residence.travel_record_reason_changed",
+                target_type="TravelRecord",
+                target_id=record.id,
+            )
+            uow.commit()
+            session.refresh(record)
+        return TravelRecordOutcome.of(
+            record, current, disputed_record_ids(session, case_id=case.id)
+        )
+
     version = _build_version(
         record_id=record.id,
         fields=fields,
@@ -345,21 +385,39 @@ def edit_travel_record(
     )
     TravelRecordRepository.add_version(session, version)
     _advance_record(record, version)
+    reason_changed = not isinstance(reason, EllipsisType) and record.set_reason(reason)
 
-    _emit_travel(
-        session,
-        user,
-        case_id=case.id,
-        event=TravelRecordVersionCreated(
+    uow.emit(
+        TravelRecordVersionCreated(
             aggregate_id=record.id,
             version_number=version.version_number,
             date_confidence=version.date_confidence,
             review_state=version.review_state,
             entry_source=version.entry_source,
         ),
+        case_id=case.id,
         action="residence.travel_record_edited",
+        target_type="TravelRecord",
         target_id=version.id,
     )
+    if reason_changed:
+        uow.emit(
+            TravelRecordReasonChanged(aggregate_id=record.id),
+            case_id=case.id,
+            action="residence.travel_record_reason_changed",
+            target_type="TravelRecord",
+            target_id=record.id,
+        )
+    # A version field changed, so the rules declaring a travel dependency are stale, in
+    # the same transaction (§41.2).
+    invalidate_for_input_change(
+        session,
+        uow,
+        case_id=case.id,
+        input_kind=DependencyInputKind.TRAVEL_RECORD,
+        reason_code=StaleReason.TRAVEL_RECORD_CHANGED,
+    )
+    uow.commit()
     session.refresh(record)
     return TravelRecordOutcome.of(record, version, disputed_record_ids(session, case_id=case.id))
 
@@ -556,8 +614,9 @@ def import_travel_records(
     # would go stale silently.
     disputed = disputed_record_ids(session, case_id=case.id)
     uow = UnitOfWork(session, actor_id=user.user_id)
-    for fields in parsed.valid_fields:
+    for fields, reason in parsed.valid_rows:
         record = TravelRecord.start(case_id=case.id)
+        record.set_reason(reason)
         TravelRecordRepository.add_record(session, record)
         session.flush()
         version = _build_version(
@@ -674,3 +733,52 @@ def _advance_record(record: TravelRecord, version: TravelRecordVersion) -> None:
 def _check_record_revision(record: TravelRecord, expected: int | None) -> None:
     if expected is not None and expected != record.revision:
         raise ConcurrencyConflict()
+
+
+# --- Travel export (ADR-0035) ---------------------------------------------------------
+
+
+def get_travel_export(
+    session: Session, *, case: ApplicationCase, scope: ExportScope, today: date
+) -> TravelExport:
+    """The trips as a list to hand over, with the same trust overlay the assessment uses.
+
+    Trips come from `gather_trips`, so a trip a confirmed document disputes is marked here
+    exactly when the assessment holds it back (ADR-0028). Imported lazily for the cycle
+    `disputed_record_ids` describes.
+    """
+    from app.assessments.service import gather_trips
+    from app.evidence.domain import EvidenceProcessingStatus
+    from app.evidence.repository import EvidenceRepository
+
+    gathered, _conflicts = gather_trips(session, case.id)
+    reasons = {
+        record.id: record.reason
+        for record, _version in TravelRecordRepository.list_active_with_current_version(
+            session, case.id
+        )
+    }
+    current = get_current(session, case=case)
+    awaiting = sum(
+        1
+        for item, _file in EvidenceRepository.list_uploaded_for_case(session, case_id=case.id)
+        if item.processing_status == EvidenceProcessingStatus.AWAITING_CONFIRMATION.value
+    )
+    return build_export(
+        trips=[
+            ExportTripInput(
+                travel_record_id=trip.travel_record_id,
+                destination_label=trip.destination_label,
+                reason=reasons.get(trip.travel_record_id),
+                departure_date=trip.departure_date,
+                return_date=trip.return_date,
+                review_state=trip.review_state,
+                date_confidence=trip.date_confidence,
+            )
+            for trip in gathered
+        ],
+        application_date=current.version.application_date if current else None,
+        scope=scope,
+        documents_awaiting_review=awaiting,
+        prepared_on=today,
+    )
