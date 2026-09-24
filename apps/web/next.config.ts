@@ -83,6 +83,17 @@ const FRAME_ORIGIN = (() => {
   return "'self'";
 })();
 
+/**
+ * Cloudflare Turnstile, the bot check Clerk runs when someone signs in or signs up. It
+ * renders in an iframe from this origin, which Clerk's documentation lists for `frame-src`.
+ *
+ * Needed since sign-in moved onto this app's own `/sign-in` and `/sign-up` pages. On
+ * Clerk's hosted pages the challenge ran under Clerk's policy; embedded here it runs under
+ * this one, and without this entry the browser refused the frame and sign-in stalled at
+ * the challenge. One origin, not a wildcard: every other host stays unframeable.
+ */
+const CLERK_CHALLENGE_ORIGIN = "https://challenges.cloudflare.com";
+
 const config: NextConfig = {
   // Workspace TypeScript packages are transpiled by Next rather than pre-built.
   transpilePackages: ["@cw/api-client", "@cw/design-system"],
@@ -96,7 +107,7 @@ const config: NextConfig = {
             value: [
               // `'self'` twice when the origin is unset is harmless and keeps the
               // fallback a one-token change rather than a second code path.
-              `frame-src 'self' ${FRAME_ORIGIN}`,
+              `frame-src 'self' ${FRAME_ORIGIN} ${CLERK_CHALLENGE_ORIGIN}`,
               "object-src 'none'",
             ].join("; "),
           },
