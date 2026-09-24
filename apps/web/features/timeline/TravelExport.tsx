@@ -2,7 +2,7 @@
 
 import type { components } from "@cw/api-client";
 import { useQuery } from "@tanstack/react-query";
-import { type JSX, useState } from "react";
+import { type JSX, useEffect, useState } from "react";
 
 import { errorTextStyle } from "@/components/ui";
 import { formatDate } from "@/features/requirements/dates";
@@ -10,6 +10,9 @@ import { useApiClient } from "@/lib/api";
 import { caseKeys } from "@/lib/queries";
 
 type Export = components["schemas"]["TravelExportResponse"];
+
+/** What the browser's print header shows: the list's own heading, never the product. */
+export const PRINT_TITLE = "Travel outside the UK";
 
 function useTravelExport(caseId: string) {
   const api = useApiClient();
@@ -49,6 +52,30 @@ export function TravelExport({ caseId }: { caseId: string }): JSX.Element {
   const { data, status } = useTravelExport(caseId);
   const api = useApiClient();
   const [csvError, setCsvError] = useState(false);
+
+  // The title the browser prints in its page header. The tab's own title names this
+  // product ("Travel list · Citizenship Workspace"), and Chrome printed it at the top of the
+  // PDF, stamping a tool's name on the applicant's own record. So for the length of a print
+  // the title is the document's own heading, and afterwards it is put back. Any print
+  // counts, the button or Cmd+P, because both fire these events.
+  useEffect(() => {
+    let previous: string | null = null;
+    const before = () => {
+      previous = document.title;
+      document.title = PRINT_TITLE;
+    };
+    const after = () => {
+      if (previous !== null) document.title = previous;
+      previous = null;
+    };
+    window.addEventListener("beforeprint", before);
+    window.addEventListener("afterprint", after);
+    return () => {
+      after();
+      window.removeEventListener("beforeprint", before);
+      window.removeEventListener("afterprint", after);
+    };
+  }, []);
 
   async function downloadCsv() {
     setCsvError(false);
@@ -112,6 +139,12 @@ export function TravelExport({ caseId }: { caseId: string }): JSX.Element {
             Download CSV
           </button>
         </div>
+        {/* The page's title is handled above; its web address is not, because the page
+            cannot change what the browser prints in its footer. One line, on screen only. */}
+        <p className="cw-travel-export__hint">
+          In the print dialog, turn off <strong>Headers and footers</strong> so the file does
+          not carry this page&rsquo;s web address.
+        </p>
         {csvError ? (
           <p role="alert" style={errorTextStyle}>
             The CSV could not be downloaded. Try again.
@@ -133,7 +166,7 @@ export function TravelExport({ caseId }: { caseId: string }): JSX.Element {
       {data ? (
         <article className="cw-travel-list">
           <h2 id="travel-export-heading" className="cw-travel-list__title">
-            Travel outside the UK
+            {PRINT_TITLE}
           </h2>
           <p className="cw-travel-list__period">
             {data.period_text ?? "Every trip recorded, in the order taken."}

@@ -122,6 +122,34 @@ describe("TravelExport", () => {
     expect(print).toHaveBeenCalled();
   });
 
+  it("prints under the list's own title, never the product's, and puts it back", async () => {
+    // The browser prints the page title in its header; the tab's title names the product.
+    document.title = "Travel list · Citizenship Workspace";
+    render(<TravelExport caseId="c1" />);
+    await screen.findByRole("table");
+
+    window.dispatchEvent(new Event("beforeprint"));
+    expect(document.title).toBe("Travel outside the UK");
+    window.dispatchEvent(new Event("afterprint"));
+    expect(document.title).toBe("Travel list · Citizenship Workspace");
+  });
+
+  it("restores the title if the page is left mid-print", async () => {
+    document.title = "Travel list · Citizenship Workspace";
+    const { unmount } = render(<TravelExport caseId="c1" />);
+    await screen.findByRole("table");
+    window.dispatchEvent(new Event("beforeprint"));
+    unmount();
+    expect(document.title).toBe("Travel list · Citizenship Workspace");
+  });
+
+  it("tells the user how to keep the web address off the printout, on screen only", async () => {
+    render(<TravelExport caseId="c1" />);
+    const hint = await screen.findByText(/turn off/);
+    expect(hint).toHaveTextContent("Headers and footers");
+    expect(hint.closest(".cw-no-print")).not.toBeNull();
+  });
+
   it("downloads the CSV through the generated client", async () => {
     const createObjectURL = vi.fn(() => "blob:x");
     Object.assign(URL, { createObjectURL, revokeObjectURL: vi.fn() });

@@ -3196,6 +3196,12 @@ a.cw-button--secondary:hover {
   gap: var(--cw-space-3);
 }
 
+.cw-travel-export__hint {
+  margin: 0;
+  font-size: var(--cw-text-sm);
+  color: var(--cw-text-muted);
+}
+
 /* The sheet is paper-coloured in both themes. It is a preview of a printed page, and a
    dark sheet would preview something that never prints. */
 .cw-travel-list {
