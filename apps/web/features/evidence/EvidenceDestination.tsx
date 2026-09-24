@@ -1,22 +1,24 @@
 "use client";
 
-import { type JSX, useEffect, useRef, useState } from "react";
+import { type JSX, type ReactNode, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { flushSync } from "react-dom";
 
 import {
   EvidenceState,
+  StatusGlyph,
   evidenceProcessingTokens,
   toEvidenceProcessingState,
 } from "@cw/design-system";
 
-import { cardStyle, errorTextStyle, linkButtonStyle, secondaryButtonStyle } from "@/components/ui";
+import { cardStyle, errorTextStyle, secondaryButtonStyle } from "@/components/ui";
 
 
 import {
   CATEGORY_LABELS,
   disagreement,
-  reviewSummary,
+  distinctFilename,
+  reviewTally,
   stateNote,
   TERMINAL_PROCESSING_STATES,
   type EvidenceItem,
@@ -117,10 +119,44 @@ export function EvidenceDestination({ caseId }: { caseId: string }): JSX.Element
   // decides: open when there is nothing in it, because adding a document is then the
   // only thing to do here, and collapsed otherwise, so the documents are the page.
   const [adding, setAdding] = useState<boolean | null>(null);
+  // The row a finished upload handed over to, marked for a moment so the eye follows the
+  // card's disappearance to the place the document now lives.
+  const [highlightId, setHighlightId] = useState<string | null>(null);
   const deletingItem =
     deletingId && data?.items
       ? ((data.items as EvidenceItem[]).find((i) => i.id === deletingId) ?? null)
       : null;
+
+  // The upload card follows a document only while it is being read. Once reading ends,
+  // the row carries the outcome and the action, and the card went on repeating them: the
+  // same document shown twice, as "Ready to review" and "Needs your confirmation". So it
+  // hands over. Focus moves with it when it was on the card, since the card is about to
+  // unmount under it.
+  const recentItem =
+    recent && data?.items
+      ? (data.items as EvidenceItem[]).find((item) => item.id === recent.id)
+      : undefined;
+  const recentSettled =
+    recentItem !== undefined && TERMINAL_PROCESSING_STATES.has(recentItem.processing_status);
+  useEffect(() => {
+    if (!recent || !recentSettled) return;
+    // Also when focus is on <body>: the submit button it was on has unmounted, and a fast
+    // read can settle before the card has taken focus at all.
+    const card = document.getElementById(UPLOAD_PROGRESS_ID);
+    const active = document.activeElement;
+    const focusWasOnCard =
+      active === null || active === document.body || (card !== null && card.contains(active));
+    setRecent(null);
+    setHighlightId(recent.id);
+    // Reuses the retry path's row focus, which runs after the card has unmounted.
+    if (focusWasOnCard) setReturnFocusToRow(recent.id);
+  }, [recent, recentSettled]);
+
+  useEffect(() => {
+    if (!highlightId) return;
+    const timer = window.setTimeout(() => setHighlightId(null), 4000);
+    return () => window.clearTimeout(timer);
+  }, [highlightId]);
 
   useEffect(() => {
     if (!returnFocusToRow || retry.isPending) return;
@@ -220,8 +256,8 @@ export function EvidenceDestination({ caseId }: { caseId: string }): JSX.Element
             version said "nothing here has been read yet", which slice 3 made false; the
             second said "their text has been read", which is false on a case with no
             documents. A sentence about the capability is true in both. */}
-        Documents you upload to support this case. Reading one extracts its text —
-        nothing here is checked against your case, so every figure in your assessment
+        Documents you upload to support this case. Reading one extracts its text; it
+        does not check anything against your case, so every figure in your assessment
         still rests on dates you entered yourself.
       </p>
 
@@ -311,11 +347,7 @@ export function EvidenceDestination({ caseId }: { caseId: string }): JSX.Element
           ) : null}
 
           {recent ? (
-            <UploadProgress
-              caseId={caseId}
-              displayName={recent.name}
-              item={(data.items as EvidenceItem[]).find((item) => item.id === recent.id)}
-            />
+            <UploadProgress displayName={recent.name} />
           ) : null}
 
           {data.items.length === 0 ? (
@@ -323,7 +355,7 @@ export function EvidenceDestination({ caseId }: { caseId: string }): JSX.Element
               No documents yet. Uploading one stores it privately against this case.
             </p>
           ) : (
-            <EvidenceTable
+            <EvidenceList
               caseId={caseId}
               items={data.items as EvidenceItem[]}
               retryingId={retryingId}
@@ -332,6 +364,7 @@ export function EvidenceDestination({ caseId }: { caseId: string }): JSX.Element
               // outcome is reported nowhere. Blocking all of them while any one is
               // pending is the same answer the issue queue reached for Dismiss.
               anyRetryPending={retry.isPending}
+              highlightId={highlightId}
               onDelete={(id) => setDeletingId(id)}
               onRetry={(id) => {
                 setRetryingId(id);
@@ -482,13 +515,47 @@ function describeText(item: EvidenceItem): string {
   return read < pages ? `${pageLabel}, first ${read} read` : `${pageLabel}, partly read`;
 }
 
-function EvidenceTable({
+/**
+ * The name with a line-break opportunity after each underscore, dot and hyphen.
+ *
+ * Uploads are usually named after their file, and `italy_booking_amended_return` has no
+ * spaces, so the browser broke it wherever it ran out of room: "italy_booking_a /
+ * mended_return". `<wbr>` lets it break between the words instead and adds nothing to
+ * the accessible name.
+ */
+function breakable(name: string): ReactNode[] {
+  return name.split(/(?<=[_.-])/).flatMap((part, index) =>
+    index === 0 ? [part] : [<wbr key={index} />, part],
+  );
+}
+
+const DECISION_GLYPHS = { confirmed: "check", corrected: "pencil", rejected: "slash" } as const;
+
+/**
+ * The library: one row per document, newest first.
+ *
+ * **A list, not a table.** The table had six columns and nothing to sort or compare down
+ * them, so the width went to column structure and the names broke mid-word. A row reads
+ * across in the order a person asks: which document, what state, what have I decided,
+ * what can I do.
+ *
+ * **One action per row, weighted by whether there is work.** A document waiting on the
+ * user gets a filled button naming the work ("Review 6 values"); one with nothing left
+ * gets a plain link to what was read. Delete is set apart and quiet, because it is the
+ * only irreversible control on the page and was drawn with the same weight as the work.
+ *
+ * **A rejection is not an error.** Turning down a value the model misread is the trust
+ * model doing its job, so rejected is drawn in the same neutral tone as confirmed, told
+ * apart by its glyph and its word, never by red.
+ */
+function EvidenceList({
   caseId,
   items,
   onDelete,
   onRetry,
   retryingId,
   anyRetryPending,
+  highlightId,
 }: {
   caseId: string;
   items: EvidenceItem[];
@@ -496,157 +563,118 @@ function EvidenceTable({
   onRetry: (id: string) => void;
   retryingId: string | null;
   anyRetryPending: boolean;
+  highlightId: string | null;
 }): JSX.Element {
   return (
-    <div className="cw-trips-wrap">
-      {/* No `aria-busy` from background polling. It tells assistive technology to
-          suppress reporting changes inside the region, and flapping it twice a second
-          at a table someone may be arrow-keying through is not what it is for. A
-          user-initiated retry announces itself through the live region instead. */}
-      <table className="cw-trips" role="table">
-        <caption className="cw-trips__caption">
-          Documents uploaded to this case, newest first. Reading a document extracts its
-          text; it does not check anything against your case.
-        </caption>
-        <thead role="rowgroup">
-          <tr role="row">
-            {/* Explicit roles, matching `TravelHistory`: the ≤34rem reflow sets
-                `display: block` on the table elements, which strips implicit table
-                semantics in engines that do not special-case it. */}
-            <th role="columnheader" scope="col">
-              Document
-            </th>
-            <th role="columnheader" scope="col">
-              Type
-            </th>
-            <th role="columnheader" scope="col">
-              State
-            </th>
-            <th role="columnheader" scope="col">
-              What we read
-            </th>
-            <th role="columnheader" scope="col">
-              Added
-            </th>
-            <th role="columnheader" scope="col">
-              <span className="cw-visually-hidden">Actions</span>
-            </th>
-          </tr>
-        </thead>
-        <tbody role="rowgroup">
-          {items.map((item) => (
-            <tr key={item.id} role="row">
-              <th
-                role="rowheader"
-                scope="row"
-                className="cw-trips__destination"
-                id={`evidence-row-${item.id}`}
-                // Focusable only programmatically: it is a landing place for focus that
-                // would otherwise be dropped, not another stop in the tab order.
+    // No `aria-busy` from background polling. It tells assistive technology to suppress
+    // reporting changes inside the region, and flapping it twice a second at a list
+    // someone may be reading is not what it is for. A user-initiated retry announces
+    // itself through the live region instead.
+    <ul className="cw-evidence-list" aria-label="Documents, newest first">
+      {items.map((item) => {
+        const tally = reviewTally(item);
+        const filename = distinctFilename(item);
+        const suggestion = disagreement(item);
+        // The awaiting-confirmation note repeats the page's own sentence, so the row
+        // leaves it to the page. Every other note answers a question only this row has.
+        const note =
+          item.processing_status === "AWAITING_CONFIRMATION" ? null : stateNote(item);
+        const awaiting = item.processing_status === "AWAITING_CONFIRMATION";
+        const reviewLabel = awaiting
+          ? tally && tally.pendingCount > 0
+            ? `Review ${tally.pendingCount} ${tally.pendingCount === 1 ? "value" : "values"}`
+            : "Confirm what we read"
+          : reviewLinkLabel(item.processing_status);
+        const headingId = `evidence-row-${item.id}`;
+
+        return (
+          <li
+            key={item.id}
+            className="cw-evidence-item"
+            aria-labelledby={headingId}
+            data-attention={awaiting ? "true" : undefined}
+            data-highlight={highlightId === item.id ? "true" : undefined}
+          >
+            <div className="cw-evidence-item__main">
+              <h3
+                id={headingId}
+                className="cw-evidence-item__name"
+                // Focusable only programmatically: a landing place for focus that would
+                // otherwise be dropped, not another stop in the tab order.
                 tabIndex={-1}
               >
-                {item.display_name}
-                {item.original_filename ? (
-                  <span
-                    style={{
-                      display: "block",
-                      color: "var(--cw-text-muted)",
-                      fontSize: "var(--cw-text-xs)",
-                      fontWeight: "var(--cw-weight-regular)",
-                    }}
-                  >
-                    {item.original_filename}
-                  </span>
-                ) : null}
-              </th>
-              <td role="cell">
-                {CATEGORY_LABELS[item.category] ?? item.category}
-                {/* The model's reading of the document, shown *only* where it differs
-                    from the user's own answer, and never replacing it. The category is
-                    the person's; a disagreement is information for them, not a
-                    correction to apply on their behalf — nothing in the server writes
-                    this over `item.category` either.
+                {breakable(item.display_name)}
+              </h3>
+              {filename ? (
+                <p className="cw-evidence-item__filename">{breakable(filename)}</p>
+              ) : null}
 
-                    Text, not a colour or an icon: "these two disagree" is a sentence,
-                    and a coloured dot would need a legend to say the same thing. */}
-                {disagreement(item) ? (
-                  <span
-                    style={{
-                      display: "block",
-                      color: "var(--cw-text-muted)",
-                      fontSize: "var(--cw-text-xs)",
-                      fontWeight: "var(--cw-weight-regular)",
-                    }}
-                  >
-                    Analysis suggests: {disagreement(item)}
-                  </span>
-                ) : null}
-              </td>
-              <td role="cell">
-                {/* No `withMeaning` here: the caption says it once. Repeating it per
-                    row means a screen-reader user hears the same sentence twenty times
-                    down a twenty-document library. */}
-                <EvidenceState status={item.processing_status} size="sm" />
-                {/* A document reading "Unsupported" with no reason is a dead end: the
-                    user cannot tell whether to re-export the file, try a different one,
-                    or give up. The sentence comes from the server so the client never
-                    has to guess at a failure it did not observe. */}
-                {/* A note, but only where the state does not explain itself.
-                    The accessibility review objected to `withMeaning` repeating the same
-                    sentence on every row — and it was right about that. This is the
-                    narrower case: a *specific* state that leaves the user with a
-                    question ("no text found" — is my document broken?), shown on the few
-                    rows that need it rather than all of them. */}
-                {stateNote(item) ? (
-                  <span
-                    style={{
-                      display: "block",
-                      color: "var(--cw-text-muted)",
-                      fontSize: "var(--cw-text-xs)",
-                      marginTop: "var(--cw-space-1)",
-                    }}
-                  >
-                    {stateNote(item)}
-                  </span>
-                ) : null}
-                {reviewSummary(item) ? (
-                  <span
-                    style={{
-                      display: "block",
-                      color: "var(--cw-text)",
-                      fontSize: "var(--cw-text-xs)",
-                      marginTop: "var(--cw-space-1)",
-                    }}
-                  >
-                    {reviewSummary(item)}
-                  </span>
-                ) : null}
-                {/* The route from the state to the act. Until M8 slice 3b this row named
-                    work — "needs your confirmation" — and offered nowhere to do it, which
-                    is why the label was temporarily softened to "Values proposed". A link
-                    rather than a button: it is a navigation to a page with its own URL,
-                    and a keyboard user opening it in a new tab should get the review
-                    screen rather than nothing. */}
-                {reviewLinkLabel(item.processing_status) ? (
+              <p className="cw-evidence-item__meta">
+                <span>{CATEGORY_LABELS[item.category] ?? item.category}</span>
+                <span>{describeText(item)}</span>
+                <span>Added {formatDate(item.uploaded_at)}</span>
+              </p>
+
+              {/* The model's reading of the document, shown *only* where it differs
+                  from the user's own answer, and never replacing it. The category is the
+                  person's; a disagreement is information for them, not a correction to
+                  apply on their behalf. Text, not a coloured dot, because "these two
+                  disagree" is a sentence. */}
+              {suggestion ? (
+                <p className="cw-evidence-item__note">Analysis suggests: {suggestion}</p>
+              ) : null}
+
+              {/* Only where the state leaves a question ("no text found": is my document
+                  broken?). A failure always carries its reason from the server, so the
+                  client never guesses at a failure it did not observe. */}
+              {note ? <p className="cw-evidence-item__note">{note}</p> : null}
+
+              {tally && (tally.open || tally.decided.length > 0) ? (
+                <ul className="cw-evidence-item__tally" aria-label="Your review">
+                  {tally.open ? (
+                    <li data-kind="open">
+                      <StatusGlyph name="proposed" size={14} />
+                      <span>{tally.open}</span>
+                    </li>
+                  ) : null}
+                  {tally.decided.map(({ word, count }) => (
+                    <li key={word} data-kind={word}>
+                      <StatusGlyph name={DECISION_GLYPHS[word]} size={14} />
+                      <span>
+                        {count} {word}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </div>
+
+            <div className="cw-evidence-item__side">
+              {/* No `withMeaning`: the page says it once. Repeating it per row means a
+                  screen-reader user hears the same sentence down the whole library. */}
+              <EvidenceState status={item.processing_status} size="sm" />
+
+              <div className="cw-evidence-item__actions">
+                {/* A link rather than a button: it navigates to a page with its own URL.
+                    The document's name is in the accessible name, not on screen, so a
+                    links list is not a column of identical entries. */}
+                {reviewLabel ? (
                   <Link
                     href={`/cases/${caseId}/evidence/${item.id}/review`}
-                    style={{ ...linkButtonStyle, display: "inline-block", marginTop: "var(--cw-space-1)" }}
+                    className={awaiting ? "cw-button" : "cw-evidence-item__link"}
                   >
-                    {reviewLinkLabel(item.processing_status)}
-                    {/* The document's name is in the accessible name, not on screen: a
-                        column of identical links is unusable from a links list, and
-                        repeating the name visually in every row is noise. */}
+                    {reviewLabel}
                     <span className="cw-visually-hidden"> from {item.display_name}</span>
+                    {awaiting ? null : <span aria-hidden="true">{"\u00a0→"}</span>}
                   </Link>
                 ) : null}
-                {/* Offered only where the server says a retry could do something. The
-                    rule lives on the server so the client cannot decide, for instance,
-                    that an UNSUPPORTED file is worth trying again — it is not, and a
+
+                {/* Offered only where the server says a retry could do something: a
                     button that cannot work invites the user to keep pressing it. */}
                 {item.can_retry ? (
                   <button
                     type="button"
-                    style={{ ...linkButtonStyle, marginTop: "var(--cw-space-1)" }}
+                    className="cw-evidence-item__link"
                     aria-disabled={anyRetryPending}
                     onClick={() => {
                       if (anyRetryPending) return;
@@ -663,37 +691,29 @@ function EvidenceTable({
                     )}
                   </button>
                 ) : null}
-              </td>
-              <td role="cell">{describeText(item)}</td>
-              <td role="cell">{formatDate(item.uploaded_at)}</td>
-              {/* `cw-trips__actions` / `cw-action` give this a 44px target under the
-                  narrow-width rules in components.css — the same treatment the *reversible*
-                  "Remove" beside each document already gets. A bare inline button at text
-                  height is a poor target for the one irreversible control in the product. */}
-              <td role="cell" className="cw-trips__actions">
+
+                {/* Quiet and last, with a 44px target at narrow widths: the one
+                    irreversible control in the library, confirmed by a dialog. */}
                 <button
                   type="button"
                   id={`delete-${item.id}`}
-                  className="cw-action"
-                  style={linkButtonStyle}
+                  className="cw-evidence-item__delete"
                   onClick={() => onDelete(item.id)}
                 >
                   <span aria-hidden="true">Delete</span>
-                  {/* Named, because a column of bare "Delete" controls is indistinguishable
-                      heard in sequence — and this is the one action in the library that
-                      cannot be undone. */}
+                  {/* Named, because a run of bare "Delete" controls is indistinguishable
+                      heard in sequence. */}
                   <span className="cw-visually-hidden">Delete {item.display_name}</span>
                 </button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+              </div>
+            </div>
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 
-/** A date, in the form the timeline already uses. */
 function formatDate(value: string): string {
   return new Date(value).toLocaleDateString("en-GB", {
     day: "numeric",

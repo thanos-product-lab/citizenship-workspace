@@ -73,7 +73,7 @@ describe("EvidenceDestination", () => {
 
     // Scoped to the row: "Travel booking" is also a category option in the upload form,
     // and asserting on the document is not the same as asserting on the form.
-    const row = within(await screen.findByRole("row", { name: /Athens booking/ }));
+    const row = within(await screen.findByRole("listitem", { name: /Athens booking/ }));
     expect(row.getByText("Uploaded")).toBeTruthy();
     expect(row.getByText("Travel booking")).toBeTruthy();
     // No extraction has run on this fixture, so the "What we read" column says so rather
@@ -92,15 +92,17 @@ describe("EvidenceDestination", () => {
     // stay true is the distinction the product turns on — reading a document is not
     // checking it, and no figure in the assessment rests on anything but what the user
     // typed.
+    // Said once, at the top of the page. It used to be said three times: in this
+    // sentence, in the table's caption and again on every row awaiting confirmation.
     expect(await screen.findByText(/does not check anything against your case/)).toBeTruthy();
     expect(screen.getByText(/rests on dates you entered yourself/)).toBeTruthy();
-    expect(screen.getByText(/nothing here is checked against your case/)).toBeTruthy();
+    expect(screen.getAllByText(/against your case/)).toHaveLength(1);
   });
 
   it("draws no path through the stages", async () => {
     get.mockResolvedValue({ data: aLibrary([anItem()]) });
     const { container } = renderWithQuery(<EvidenceDestination caseId={CASE_ID} />);
-    await screen.findByRole("row", { name: /Athens booking/ });
+    await screen.findByRole("listitem", { name: /Athens booking/ });
 
     // No stepper, no progress bar, no "next: …". A document's route is not a fixed
     // pipeline — it can stop at UNSUPPORTED, at PARTIALLY_COMPLETED, or wait at
@@ -160,7 +162,7 @@ describe("EvidenceDestination", () => {
     });
     renderWithQuery(<EvidenceDestination caseId={CASE_ID} />);
 
-    const rowElement = await screen.findByRole("row", { name: /Athens booking/ });
+    const rowElement = await screen.findByRole("listitem", { name: /Athens booking/ });
     const row = within(rowElement);
     expect(row.getByText("Needs your confirmation")).toBeTruthy();
     expect(row.queryByText(/state not recognised/)).toBeNull();
@@ -186,7 +188,7 @@ describe("EvidenceDestination", () => {
     get.mockResolvedValue({ data: aLibrary([anItem({ processing_status: "COMPLETED" })]) });
     renderWithQuery(<EvidenceDestination caseId={CASE_ID} />);
 
-    const row = within(await screen.findByRole("row", { name: /Athens booking/ }));
+    const row = within(await screen.findByRole("listitem", { name: /Athens booking/ }));
     expect(row.queryByRole("link", { name: /Confirm what we read/ })).toBeNull();
 
     const link = row.getByRole("link", { name: /See what we read from Athens booking/ });
@@ -201,7 +203,7 @@ describe("EvidenceDestination", () => {
     });
     renderWithQuery(<EvidenceDestination caseId={CASE_ID} />);
 
-    const row = within(await screen.findByRole("row", { name: /Athens booking/ }));
+    const row = within(await screen.findByRole("listitem", { name: /Athens booking/ }));
     expect(row.getByRole("link", { name: /See what we read/ })).toBeTruthy();
   });
 
@@ -213,7 +215,7 @@ describe("EvidenceDestination", () => {
     get.mockResolvedValue({ data: aLibrary([anItem({ processing_status: "UPLOADED" })]) });
     renderWithQuery(<EvidenceDestination caseId={CASE_ID} />);
 
-    const row = within(await screen.findByRole("row", { name: /Athens booking/ }));
+    const row = within(await screen.findByRole("listitem", { name: /Athens booking/ }));
     expect(row.queryByRole("link", { name: /what we read/ })).toBeNull();
   });
 
@@ -231,7 +233,7 @@ describe("EvidenceDestination", () => {
     });
     renderWithQuery(<EvidenceDestination caseId={CASE_ID} />);
 
-    const row = within(await screen.findByRole("row", { name: /Athens booking/ }));
+    const row = within(await screen.findByRole("listitem", { name: /Athens booking/ }));
     expect(row.getByText("Unsupported")).toBeTruthy();
     expect(row.getByText("This file is not a PDF.")).toBeTruthy();
   });
@@ -240,7 +242,7 @@ describe("EvidenceDestination", () => {
     get.mockResolvedValue({ data: aLibrary([anItem({ processing_status: "VALIDATING" })]) });
     renderWithQuery(<EvidenceDestination caseId={CASE_ID} />);
 
-    const row = within(await screen.findByRole("row", { name: /Athens booking/ }));
+    const row = within(await screen.findByRole("listitem", { name: /Athens booking/ }));
     expect(row.getByText("Validating")).toBeTruthy();
   });
 
@@ -506,7 +508,7 @@ describe("what extraction found", () => {
     });
     renderWithQuery(<EvidenceDestination caseId={CASE_ID} />);
 
-    const row = within(await screen.findByRole("row", { name: /Athens booking/ }));
+    const row = within(await screen.findByRole("listitem", { name: /Athens booking/ }));
     // "Text read", not "Read": heard as a bare word in a cell, "Read" is a homograph
     // that flips from "this was done" to an instruction.
     expect(row.getByText("Text read")).toBeTruthy();
@@ -523,7 +525,7 @@ describe("what extraction found", () => {
     });
     renderWithQuery(<EvidenceDestination caseId={CASE_ID} />);
 
-    const row = within(await screen.findByRole("row", { name: /Athens booking/ }));
+    const row = within(await screen.findByRole("listitem", { name: /Athens booking/ }));
     expect(row.getByText("No text found")).toBeTruthy();
     expect(row.getByText(/scan or a photo/)).toBeTruthy();
   });
@@ -542,7 +544,7 @@ describe("what extraction found", () => {
     });
     renderWithQuery(<EvidenceDestination caseId={CASE_ID} />);
 
-    const row = within(await screen.findByRole("row", { name: /Athens booking/ }));
+    const row = within(await screen.findByRole("listitem", { name: /Athens booking/ }));
     expect(row.getByText(/60 pages, first 40 read/)).toBeTruthy();
   });
 
@@ -563,7 +565,7 @@ describe("what extraction found", () => {
     });
     renderWithQuery(<EvidenceDestination caseId={CASE_ID} />);
 
-    const row = within(await screen.findByRole("row", { name: /Athens booking/ }));
+    const row = within(await screen.findByRole("listitem", { name: /Athens booking/ }));
     expect(row.getByText("10 pages, partly read")).toBeTruthy();
     expect(row.queryByText(/first 10 read/)).toBeNull();
   });
@@ -581,7 +583,7 @@ describe("retrying", () => {
     });
     renderWithQuery(<EvidenceDestination caseId={CASE_ID} />);
 
-    await screen.findByRole("row", { name: /Athens booking/ });
+    await screen.findByRole("listitem", { name: /Athens booking/ });
     expect(screen.getAllByRole("button", { name: /Read it again/ })).toHaveLength(1);
   });
 
@@ -687,7 +689,7 @@ describe("copy that must hold in every state", () => {
     renderWithQuery(<EvidenceDestination caseId={CASE_ID} />);
 
     await screen.findByTestId("evidence-empty");
-    expect(screen.getByText(/nothing here is checked against your case/)).toBeTruthy();
+    expect(screen.getByText(/does not check anything against your case/)).toBeTruthy();
     expect(screen.queryByText(/has been read/)).toBeNull();
   });
 });
@@ -734,7 +736,7 @@ describe("what the screen says out loud", () => {
       data: aLibrary([anItem({ processing_status: "VALIDATING" })]),
     });
     renderWithQuery(<EvidenceDestination caseId={CASE_ID} />);
-    await screen.findByRole("row", { name: /Athens booking/ });
+    await screen.findByRole("listitem", { name: /Athens booking/ });
 
     get.mockResolvedValue({
       data: aLibrary([
@@ -755,7 +757,7 @@ describe("what the screen says out loud", () => {
     });
     renderWithQuery(<EvidenceDestination caseId={CASE_ID} />);
 
-    await screen.findByRole("row", { name: /Athens booking/ });
+    await screen.findByRole("listitem", { name: /Athens booking/ });
     expect(screen.queryByText(/Athens booking: Text read/)).toBeNull();
   });
 
@@ -994,7 +996,7 @@ describe("what the analysis proposed", () => {
     });
     renderWithQuery(<EvidenceDestination caseId={CASE_ID} />);
 
-    const row = within(await screen.findByRole("row", { name: /Athens booking/ }));
+    const row = within(await screen.findByRole("listitem", { name: /Athens booking/ }));
     expect(row.getByText("Travel booking")).toBeTruthy();
     expect(row.queryByText(/Analysis suggests/)).toBeNull();
   });
@@ -1014,7 +1016,7 @@ describe("what the analysis proposed", () => {
 
     // Both are present. The user's answer is not corrected, moved or struck through:
     // the model proposes, the person decides.
-    const row = within(await screen.findByRole("row", { name: /Athens booking/ }));
+    const row = within(await screen.findByRole("listitem", { name: /Athens booking/ }));
     expect(row.getByText("Travel booking")).toBeTruthy();
     expect(row.getByText(/Analysis suggests: English language/)).toBeTruthy();
   });
@@ -1033,7 +1035,7 @@ describe("what the analysis proposed", () => {
 
     // Plain English, not the enum name: "AMBIGUOUS" tells a user nothing about what to
     // do, and it is the model's vocabulary rather than theirs.
-    const row = within(await screen.findByRole("row", { name: /Athens booking/ }));
+    const row = within(await screen.findByRole("listitem", { name: /Athens booking/ }));
     expect(row.getByText(/Analysis suggests: Could not tell/)).toBeTruthy();
   });
 
@@ -1055,14 +1057,20 @@ describe("what the analysis proposed", () => {
     });
     renderWithQuery(<EvidenceDestination caseId={CASE_ID} />);
 
-    const row = within(await screen.findByRole("row", { name: /Athens booking/ }));
+    const row = within(await screen.findByRole("listitem", { name: /Athens booking/ }));
     expect(row.getByText(/paused until tomorrow/)).toBeTruthy();
   });
 });
 
 describe("following an upload", () => {
   /** Run an upload that records `recorded`, with the library then holding `after`. */
+  /** Upload a document and return its progress card; the library then holds `after`. */
   async function uploadWithLibrary(after: unknown[]) {
+    await upload(after);
+    return screen.findByRole("region", { name: "Rome booking" });
+  }
+
+  async function upload(after: unknown[]) {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true }));
     post.mockImplementation((path: string) => {
       if (path.endsWith("/uploads")) {
@@ -1087,7 +1095,6 @@ describe("following an upload", () => {
       target: { value: "Rome booking" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Upload document" }));
-    return screen.findByRole("region", { name: "Rome booking" });
   }
 
   it("keeps the library first and the form behind Add document once there are documents", async () => {
@@ -1136,14 +1143,16 @@ describe("following an upload", () => {
     ]);
 
     await within(card).findByText("Reading document…");
-    expect(within(card).queryByText("Ready to review")).toBeNull();
     expect(within(card).queryByRole("link")).toBeNull();
 
     vi.unstubAllGlobals();
   });
 
-  it("offers the review once there is something to review", async () => {
-    const card = await uploadWithLibrary([
+  it("hands a finished upload over to its row, and focus with it", async () => {
+    // The card follows a document while it is read. Once reading ends it would only
+    // repeat the row ("Ready to review" above "Needs your confirmation"), so it goes, and
+    // focus lands on the row that now carries the action rather than on <body>.
+    await upload([
       anItem({
         id: "ev-new",
         display_name: "Rome booking",
@@ -1151,17 +1160,21 @@ describe("following an upload", () => {
       }),
     ]);
 
-    expect(await within(card).findByText("Ready to review")).toBeTruthy();
-    expect(within(card).getByText("Document read")).toBeTruthy();
+    const row = await screen.findByRole("listitem", { name: /Rome booking/ });
+    await waitFor(() =>
+      expect(screen.queryByRole("region", { name: "Rome booking" })).toBeNull(),
+    );
     expect(
-      within(card).getByRole("link", { name: "Review extracted information" }),
+      within(row).getByRole("link", { name: /Confirm what we read from Rome booking/ }),
     ).toHaveAttribute("href", `/cases/${CASE_ID}/evidence/ev-new/review`);
+    await waitFor(() => expect(document.activeElement?.id).toBe("evidence-row-ev-new"));
+    expect(row).toHaveAttribute("data-highlight", "true");
 
     vi.unstubAllGlobals();
   });
 
-  it("ends in the real outcome when reading cannot finish", async () => {
-    const card = await uploadWithLibrary([
+  it("leaves the real outcome on the row when reading cannot finish", async () => {
+    await upload([
       anItem({
         id: "ev-new",
         display_name: "Rome booking",
@@ -1170,10 +1183,86 @@ describe("following an upload", () => {
       }),
     ]);
 
-    expect(await within(card).findByText("Unsupported")).toBeTruthy();
-    expect(within(card).getByText(/not a document this product can read/)).toBeTruthy();
-    expect(within(card).queryByText("Ready to review")).toBeNull();
+    const row = within(await screen.findByRole("listitem", { name: /Rome booking/ }));
+    expect(row.getByText("Unsupported")).toBeTruthy();
+    expect(row.getByText(/not a document this product can read/)).toBeTruthy();
+    await waitFor(() =>
+      expect(screen.queryByRole("region", { name: "Rome booking" })).toBeNull(),
+    );
 
     vi.unstubAllGlobals();
+  });
+});
+
+describe("a document row", () => {
+  function reviewed(overrides: Record<string, unknown> = {}) {
+    return anItem({
+      processing_status: "AWAITING_CONFIRMATION",
+      review: {
+        confirmed: 4,
+        corrected: 1,
+        rejected: 1,
+        pending: [
+          { claim_type: "travel.departure_date", journey_index: 0 },
+          { claim_type: "travel.return_date", journey_index: 0 },
+        ],
+        journey_count: 1,
+        ...overrides,
+      },
+    });
+  }
+
+  it("names the work in its button, counted", async () => {
+    get.mockResolvedValue({ data: aLibrary([reviewed()]) });
+    renderWithQuery(<EvidenceDestination caseId={CASE_ID} />);
+
+    const row = await screen.findByRole("listitem", { name: /Athens booking/ });
+    expect(row).toHaveAttribute("data-attention", "true");
+    expect(
+      within(row).getByRole("link", { name: /Review 2 values from Athens booking/ }),
+    ).toHaveAttribute("href", `/cases/${CASE_ID}/evidence/ev-1/review`);
+  });
+
+  it("states each kind of decision in words beside its glyph, never as a fraction", async () => {
+    get.mockResolvedValue({ data: aLibrary([reviewed()]) });
+    renderWithQuery(<EvidenceDestination caseId={CASE_ID} />);
+
+    const row = await screen.findByRole("listitem", { name: /Athens booking/ });
+    const tally = within(within(row).getByRole("list", { name: "Your review" }));
+    expect(tally.getAllByRole("listitem").map((li) => li.textContent)).toEqual([
+      "2 values still need review",
+      "4 confirmed",
+      "1 corrected",
+      "1 rejected",
+    ]);
+    // Counts of named states, side by side. "6 of 8 reviewed" would be a completion
+    // measure (CLAUDE.md §2.6).
+    expect(row.textContent).not.toMatch(/\d+\s*(of|\/)\s*\d+|%/);
+  });
+
+  it("does not repeat the page's sentence about confirming on the row", async () => {
+    get.mockResolvedValue({ data: aLibrary([reviewed()]) });
+    renderWithQuery(<EvidenceDestination caseId={CASE_ID} />);
+
+    const row = await screen.findByRole("listitem", { name: /Athens booking/ });
+    expect(row.textContent).not.toMatch(/until you confirm/);
+  });
+
+  it("shows the filename only when it says more than the name", async () => {
+    get.mockResolvedValue({
+      data: aLibrary([
+        anItem({
+          id: "ev-2",
+          display_name: "italy_booking_amended_return",
+          original_filename: "italy_booking_amended_return.pdf",
+        }),
+      ]),
+    });
+    renderWithQuery(<EvidenceDestination caseId={CASE_ID} />);
+
+    const row = await screen.findByRole("listitem", { name: /italy/ });
+    expect(within(row).queryByText(/\.pdf/)).toBeNull();
+    // A line-break opportunity after each underscore, so the name never breaks mid-word.
+    expect(row.querySelectorAll("h3 wbr")).toHaveLength(3);
   });
 });

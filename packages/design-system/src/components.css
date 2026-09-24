@@ -2786,10 +2786,9 @@ a.cw-button--secondary:hover {
   color: var(--cw-text-muted);
 }
 
-/* Weight, not only colour, marks the step that is happening or the one that decides what
-   to do next; the glyph beside each carries the same meaning without colour. */
-.cw-upload-progress__steps li[data-step="current"],
-.cw-upload-progress__steps li[data-step="outcome"] {
+/* Weight, not only colour, marks the step that is happening; the glyph beside each
+   carries the same meaning without colour. */
+.cw-upload-progress__steps li[data-step="current"] {
   color: var(--cw-text);
   font-weight: var(--cw-weight-medium);
 }
@@ -2798,6 +2797,224 @@ a.cw-button--secondary:hover {
   margin: var(--cw-space-1) 0 0;
   font-size: var(--cw-text-sm);
   color: var(--cw-text-muted);
+}
+
+/* --- Evidence library ------------------------------------------------------
+   One row per document: what it is on the left, its state and its action on the right.
+   A document waiting on the user carries an accent rule on its left edge as well as a
+   filled button, so the row that needs something is findable without reading every one
+   and without relying on the colour alone. */
+
+.cw-evidence-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--cw-border);
+  border-radius: var(--cw-radius-md);
+  background: var(--cw-surface);
+}
+
+.cw-evidence-item {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--cw-space-4);
+  padding: var(--cw-space-4);
+  border-left: 3px solid transparent;
+  transition: background-color 600ms ease;
+}
+
+.cw-evidence-item + .cw-evidence-item {
+  border-top: 1px solid var(--cw-border);
+}
+
+.cw-evidence-item:first-child {
+  border-top-left-radius: var(--cw-radius-md);
+  border-top-right-radius: var(--cw-radius-md);
+}
+
+.cw-evidence-item:last-child {
+  border-bottom-left-radius: var(--cw-radius-md);
+  border-bottom-right-radius: var(--cw-radius-md);
+}
+
+.cw-evidence-item[data-attention="true"] {
+  border-left-color: var(--cw-accent);
+}
+
+/* A finished upload has just handed over to this row. A tint that fades, so the eye
+   follows the card's disappearance to where the document now lives; reduced motion keeps
+   the tint and drops the fade. */
+.cw-evidence-item[data-highlight="true"] {
+  background: color-mix(in srgb, var(--cw-accent) 10%, var(--cw-surface));
+}
+
+.cw-evidence-item__main {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.cw-evidence-item__name {
+  margin: 0;
+  font-size: var(--cw-text-base);
+  font-weight: var(--cw-weight-medium);
+  line-height: var(--cw-leading-snug);
+  color: var(--cw-text);
+}
+
+.cw-evidence-item__name:focus-visible {
+  outline: 2px solid var(--cw-focus);
+  outline-offset: 2px;
+  border-radius: var(--cw-radius-sm);
+}
+
+.cw-evidence-item__filename {
+  margin: var(--cw-space-1) 0 0;
+  font-size: var(--cw-text-xs);
+  color: var(--cw-text-muted);
+}
+
+.cw-evidence-item__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 var(--cw-space-2);
+  margin: var(--cw-space-1) 0 0;
+  font-size: var(--cw-text-sm);
+  color: var(--cw-text-muted);
+}
+
+/* The separator is drawn, not written, so a screen reader hears three facts rather than
+   "dot" between them. After each item rather than before the next: when the line wraps,
+   a dot left at the end of a line reads as a pause, one starting a line reads as a stray. */
+.cw-evidence-item__meta > span:not(:last-child)::after {
+  content: "·";
+  margin-left: var(--cw-space-2);
+  color: var(--cw-text-subtle);
+}
+
+.cw-evidence-item__note {
+  margin: var(--cw-space-2) 0 0;
+  font-size: var(--cw-text-sm);
+  color: var(--cw-text-muted);
+  max-width: 60ch;
+}
+
+/* What the person decided. Every kind is the same neutral tone and told apart by glyph and
+   word: a rejection is the review working, not an error, so it is never red. Only what is
+   still open is drawn at full strength, because it is the part that asks for something. */
+.cw-evidence-item__tally {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cw-space-1) var(--cw-space-4);
+  margin: var(--cw-space-3) 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--cw-text-sm);
+  color: var(--cw-text-muted);
+}
+
+.cw-evidence-item__tally li {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--cw-space-1);
+}
+
+.cw-evidence-item__tally li[data-kind="open"] {
+  color: var(--cw-text);
+  font-weight: var(--cw-weight-medium);
+}
+
+.cw-evidence-item__side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--cw-space-3);
+  flex: none;
+}
+
+/* Evidence states draw no chip, so the badge's horizontal padding only indented its glyph
+   from the row's edge. The unknown state keeps it: that one is drawn as a chip. */
+.cw-evidence-item__side .cw-status-badge:not([data-evidence-state="unknown"]) {
+  padding-inline: 0;
+}
+
+.cw-evidence-item__actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--cw-space-2) var(--cw-space-4);
+}
+
+.cw-evidence-item__link {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: var(--cw-text-sm);
+  font-weight: var(--cw-weight-medium);
+  color: var(--cw-accent);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.cw-evidence-item__link:hover:not([aria-disabled="true"]) {
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+.cw-evidence-item__link[aria-disabled="true"] {
+  color: var(--cw-text-muted);
+  cursor: default;
+}
+
+/* Quiet: the only irreversible control here, and the least often wanted. The dialog
+   behind it does the warning; the button only has to be findable. */
+.cw-evidence-item__delete {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: var(--cw-text-sm);
+  color: var(--cw-text-muted);
+  cursor: pointer;
+}
+
+.cw-evidence-item__delete:hover {
+  color: var(--cw-text);
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+/* Narrow: the state and actions drop beneath the document, left-aligned, and every
+   control gets a 44px target (WCAG 2.5.8 asks 24px; the trip table set 44 here). */
+@media (max-width: 34rem) {
+  .cw-evidence-item {
+    flex-direction: column;
+    gap: var(--cw-space-3);
+  }
+  .cw-evidence-item__side {
+    align-items: flex-start;
+    width: 100%;
+  }
+  .cw-evidence-item__actions {
+    justify-content: flex-start;
+    width: 100%;
+  }
+  .cw-evidence-item__actions > * {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+  }
+  .cw-evidence-item__delete {
+    margin-left: auto;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cw-evidence-item {
+    transition: none;
+  }
 }
 
 /* The end of a review. Settled rather than alarming: a completed review is the outcome

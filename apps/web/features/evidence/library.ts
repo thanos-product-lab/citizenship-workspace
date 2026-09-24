@@ -139,6 +139,34 @@ export function pollInterval(items: readonly EvidenceItem[], now: number): numbe
  * the user to revisit a choice they already made.
  */
 export function reviewSummary(item: EvidenceItem): string | null {
+  const tally = reviewTally(item);
+  if (!tally) return null;
+
+  const decided = tally.decided.map(({ count, word }) => `${count} ${word}`).join(" · ");
+  const parts = [tally.open, decided].filter((part): part is string => Boolean(part));
+  return parts.length > 0 ? `${parts.join(". ")}.` : null;
+}
+
+/** How a person decided about a proposed value. Each has its own glyph in the row. */
+export type Decision = "confirmed" | "corrected" | "rejected";
+
+export interface ReviewTally {
+  /** What is still open, as a phrase: one value named, or several counted. */
+  open: string | null;
+  /** How many values are still open, for the review button's label. */
+  pendingCount: number;
+  /** Only the decisions that happened, in a fixed order. */
+  decided: { word: Decision; count: number }[];
+}
+
+/**
+ * `reviewSummary` as parts, so the row can give each its own glyph.
+ *
+ * Counts of named states, side by side, and never one over another: "4 confirmed · 1
+ * rejected" is what happened, while "5 of 6 reviewed" would be a completion measure
+ * (CLAUDE.md §2.6).
+ */
+export function reviewTally(item: EvidenceItem): ReviewTally | null {
   const review = item.review;
   if (!review) return null;
 
@@ -154,17 +182,28 @@ export function reviewSummary(item: EvidenceItem): string | null {
 
   const decided = (
     [
-      [review.confirmed, "confirmed"],
-      [review.corrected, "corrected"],
-      [review.rejected, "rejected"],
+      ["confirmed", review.confirmed],
+      ["corrected", review.corrected],
+      ["rejected", review.rejected],
     ] as const
   )
-    .filter(([count]) => count > 0)
-    .map(([count, word]) => `${count} ${word}`)
-    .join(" · ");
+    .filter(([, count]) => count > 0)
+    .map(([word, count]) => ({ word, count }));
 
-  const parts = [open, decided].filter((part): part is string => Boolean(part));
-  return parts.length > 0 ? `${parts.join(". ")}.` : null;
+  return { open, pendingCount: review.pending.length, decided };
+}
+
+/**
+ * The original filename, or `null` when it only repeats the display name.
+ *
+ * An upload named after its file showed the same words twice, once with ".pdf". The
+ * filename stays whenever it says something the name does not.
+ */
+export function distinctFilename(item: EvidenceItem): string | null {
+  const filename = item.original_filename;
+  if (!filename) return null;
+  const stem = filename.replace(/\.[^.]+$/, "");
+  return stem.toLowerCase() === item.display_name.toLowerCase() ? null : filename;
 }
 
 /**
