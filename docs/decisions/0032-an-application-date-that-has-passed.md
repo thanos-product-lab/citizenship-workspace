@@ -4,7 +4,8 @@
 before building** — the shape this ADR originally proposed, and which entry 11 had recorded,
 turned out to be the wrong one; the argument is under "Decision, part 2".
 **Closes:** `KNOWN_LIMITATIONS.md` entry 11, in full
-**Found by:** scenario 11 of the walkthrough, recorded as finding 12 in `SCENARIO_FINDINGS.md`
+**Found by:** the September 2026 manual walkthrough (scenario 11). The walkthrough notes
+were retired once every finding was closed; the fixes are commits `0c18a65` and `a8e5313`.
 
 ## Context
 

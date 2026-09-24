@@ -88,7 +88,7 @@ the purge would abandon a case half-destroyed.
 - Case deletion is terminal in fact and not only in the state machine (Domain §52).
 - Verified against the running stack, not only in tests: 11 objects gone from MinIO
   (`head` → `None`), 166 rows, 80 events, 22 hashes scrubbed. See
-  `docs/demo-assets/m11/m11-case-deletion-completes.txt`.
+  `docs/demo-assets/m11/m11-case-deletion-completes.txt` (retired; in git history at `a37b05a`).
 - **Cases deleted before this shipped will never be purged.** Their outbox rows are
   already marked published, and the relay does not revisit them. Any deployment carrying
   `DELETION_PENDING` cases from before this deploy needs them re-emitted by hand. Recorded

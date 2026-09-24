@@ -21,7 +21,7 @@
  * — an explanation with layers silently missing invites the reader to assume they were
  * satisfied.
  *
- * **Compact when empty, never removed** (finding 18). An empty layer keeps its heading and
+ * **Compact when empty, never removed**. An empty layer keeps its heading and
  * its finding, and drops the framing note, which introduces content that is not there.
  * `data-empty` lets the stylesheet set the two on one line and close the space between
  * consecutive empty layers, so a mostly-empty explanation no longer takes a screen of

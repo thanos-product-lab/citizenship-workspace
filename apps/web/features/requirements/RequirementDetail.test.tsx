@@ -111,7 +111,7 @@ describe("RequirementDetail", () => {
     }
   });
 
-  it("puts the answer before the working (finding 18)", async () => {
+  it("puts the answer before the working", async () => {
     // What reduces confidence and what to do sit under the conclusion; the calculation,
     // inputs, evidence and rule follow; history is last. UI/UX §7.2.
     get.mockResolvedValue({ data: aDetail() });

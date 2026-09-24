@@ -5,10 +5,20 @@ start of every session. It is deliberately high-signal: it encodes the
 invariants and conventions that must hold, and points to the RFCs in `docs/`
 for depth.
 
-**Source-of-truth precedence.** The RFCs in `docs/` are authoritative for
-product, UX, architecture, MVP scope, and the domain model. If code and an RFC
-disagree, the RFC wins — fix the code. If you believe an RFC is wrong, stop and
-propose a change to the RFC; do not diverge silently in code.
+**Source-of-truth precedence.** `docs/README.md` is the map, and it sorts every
+document into one of three tiers:
+
+- **Current** documents are authoritative. If code and a current document disagree,
+  the document wins: fix the code. If you believe the document is wrong, stop and
+  propose a change to it; do not diverge silently in code.
+- **Reference** documents are authoritative for the sections the code cites, but are
+  not maintained as a whole. Use them for the reasoning behind a decision, not as a
+  description of today's build.
+- **Retired** history (walkthrough findings, milestone notes) lives in git, not the
+  working tree, and is never authoritative.
+
+Documents are cited from code by section number, so never renumber a section or an
+entry; add new material instead.
 
 ---
 
@@ -366,28 +376,33 @@ milestone it affects, and what gets removed to make room.
 
 ---
 
-## 12. Source of truth — read in this order
+## 12. Source of truth
 
-1. `docs/product/Evidence_First_Citizenship_Workspace_Product_Thesis.md` — why/what.
-2. `docs/product/MVP_SCOPE_AND_ACCEPTANCE_CRITERIA.md` — the exact boundary, acceptance criteria, canonical demo case.
-3. `docs/architecture/DOMAIN_MODEL_RFC.md` — the model, enums, invariants, first vertical slice. **Most-consulted file during implementation.**
-4. `docs/architecture/DETERMINISTIC_RULES_SPEC.md` — date semantics, day counting, thresholds, banding. **Authoritative for anything touching rules or dates.**
-5. `docs/architecture/Evidence_First_Citizenship_Workspace_Technical_Architecture_RFC.md` — stack, boundaries, pipelines, rejected alternatives.
-6. `docs/design/Evidence_First_Citizenship_Workspace_UI_UX.md` — UX principles, screens, design language, states to build.
-7. `docs/IMPLEMENTATION_ROADMAP.md` — milestones, cut lines, task pattern, delivery order.
+`docs/README.md` indexes every document, with a four-item "start here" path. The ones
+consulted most during implementation:
 
-Full tree:
+1. `docs/architecture/DOMAIN_MODEL_RFC.md`: the model, enums, invariants, state machines.
+   **Most-consulted file during implementation.**
+2. `docs/architecture/DETERMINISTIC_RULES_SPEC.md`: date semantics, day counting,
+   thresholds, banding. **Authoritative for anything touching rules or dates.**
+3. `docs/architecture/EVIDENCE_AND_CLAIM_LIFECYCLE_RFC.md`: documents, claims, review.
+4. `docs/product/MVP_SCOPE_AND_ACCEPTANCE_CRITERIA.md`: the boundary and acceptance
+   criteria.
+5. `docs/KNOWN_LIMITATIONS.md`: open gaps, deliberate boundaries, resolved entries.
+6. `docs/IMPLEMENTATION_ROADMAP.md` (reference): milestone numbering, the task pattern
+   (§9) and the Definition of Done (§10).
 
 ```
 docs/
-├── IMPLEMENTATION_ROADMAP.md
-├── product/      thesis · MVP scope · synthetic demo case
-├── design/       UI/UX direction · design system foundations
-├── architecture/ technical RFC · domain model · rules spec · evidence lifecycle
-├── evaluations/  AI evaluation plan · results
-├── security/     threat model
-├── decisions/    ADRs
-└── demo-assets/  per-milestone screenshots and captures
+├── README.md       the map: current, reference, decisions, retired
+├── KNOWN_LIMITATIONS.md · DEPLOYMENT.md · DEMO_SCRIPT.md
+├── IMPLEMENTATION_ROADMAP.md · MILESTONE_GATES.md · RELEASE_GATE_AUDIT.md   (reference)
+├── product/        MVP scope · synthetic demo case · thesis · case study outline
+├── design/         design system foundations · UI/UX direction
+├── architecture/   overview · rules spec · domain model · evidence lifecycle · technical RFC
+├── evaluations/    report · per-run results · evaluation plan · spike findings
+├── security/       threat model · accessibility pass
+└── decisions/      ADRs
 ```
 
 When you complete a meaningful decision or deviation, record it in

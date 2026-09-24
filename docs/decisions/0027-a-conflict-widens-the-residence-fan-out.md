@@ -82,4 +82,4 @@ until an unrelated action refreshes it is the false reassurance directive 7 exis
 
 The suite was green, because two of its tests asserted the defect. It was found by driving the
 canonical demo case in Chrome and reading the total-absences page, which was also printing four
-false sentences about its own inputs — see `docs/demo-assets/README.md` §M8 slice 4.
+false sentences about its own inputs — see `docs/demo-assets/README.md` §M8 slice 4 (retired; in git history at `a37b05a`).

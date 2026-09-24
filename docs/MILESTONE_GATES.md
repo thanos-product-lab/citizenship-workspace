@@ -34,7 +34,7 @@ reason to extend the gate.
 | 10 | Automated smoke test green, locally and deployed |
 | 25 | Manual walkthrough of the user journey, **including one failure path** |
 | 25 | Explain-back — answer this milestone's questions in writing, no notes |
-| 10 | Capture demo assets into `docs/demo-assets/` |
+| 10 | ~~Capture demo assets~~ Retired September 2026: the demo is one video recorded at the end (roadmap §3.6) |
 | 20 | Buffer: fix what the walkthrough exposed, or note it as a known gap |
 
 ### The walkthrough rule
@@ -48,7 +48,8 @@ Most defects that survive a green test suite are in states nobody looked at.
 ### The explain-back rule
 
 Answer in writing, in your own words, without opening the codebase. Append to
-`docs/decisions/milestone-notes.md`.
+`docs/decisions/milestone-notes.md`, creating it if needed (earlier milestones' notes are
+in git history: `git show a37b05a:docs/decisions/milestone-notes.md`).
 
 If an answer needs the code open, you do not own that part yet. Read it properly,
 then answer again.

@@ -11,7 +11,8 @@ and would be wrong to close. And it is not a list of defects: a defect is behavi
 contradicts what the product claims, and those get fixed rather than recorded.
 
 Twenty entries, grouped by kind. Each names what is missing, why it was left, and what
-closing it would take.
+closing it would take. Closed entries move to **Resolved** at the end and keep their numbers,
+because code and tests cite them by number.
 
 **One of them runs through four others.** Entry 1 is that the product cross checks dates
 and nothing else. It is also the reason immigration status documents are never read (6),
@@ -256,9 +257,16 @@ browser viewer, which is a real slice.
 
 ### 10. A document being read looks exactly like a document that will never be read
 
-**Status:** outstanding · found at the M8 gate, confirmed again by the release-slice
-walkthrough
+**Status:** **partly closed**, 23 September 2026 · found at the M8 gate, confirmed again by
+the release-slice walkthrough
 **Affects:** the Evidence destination, every upload
+
+**What changed.** The first half below is fixed: a new upload now gets a card on screen that
+follows it (Uploaded, then Reading document, then its real outcome), and the library leads
+the page with the upload form behind Add document (commit `6330301`). **The worse half is
+not:** a run that never starts still reads "Reading document…" on that card and "Not read
+yet" on the row, indefinitely, with no timeout. The text below is the entry as it was
+recorded; its failure-path paragraph and "What closing it takes" still stand.
 
 Uploading announces *"Uploading …"* and then *"… uploaded. Reading will start shortly."*
 into an `aria-live` region that is `cw-visually-hidden`. **Nothing appears on screen.**
@@ -306,52 +314,6 @@ One open question decides the size of the work: **whether the row updates live o
 refetch.** Live means touching the polling cadence, and ADR-0020 deferred SSE behind
 polling deliberately; refetch-only makes it a copy change. That question is why this is its
 own slice rather than a gate-buffer fix.
-
----
-
-### 11. A saved application date is believed after it has passed
-
-**Status:** **closed**, 22 September 2026 · **Found:** M8 gate walkthrough
-
-Setting an application date in the past produced every requirement green against a five year
-window that had already closed, with the last months of travel silently outside it. That is
-the false reassurance shape the product exists to prevent.
-
-A *new* bad selection cannot be made. It does nothing for a saved date that drifts into the
-past, which happens to every case eventually, including the seeded demo case when April 2027
-arrives.
-
-**This entry used to say the date field closed the first half, and that was wrong.** The
-field's `min` attribute was the whole enforcement, and `POST /application-dates/select`
-accepted 15 January 2020 with a 200 — found by scenario 11 of the walkthrough, recorded as
-finding 12. A control that lives only in a React component is not a control. The command now
-raises `ApplicationDateInPast` (422, `APPLICATION_DATE_IN_PAST`), so the first half is closed
-by the product rather than by the browser.
-
-**Still deliberately not fixed with schema validation.** A `ge=today` rule would reject cases
-nobody touched, purely because time passed, and would break on a calendar boundary rather than
-a code change. The guard is on the *command* for exactly that reason: it only ever fires on a
-date somebody is choosing right now, and a stored date that has since passed still reads back
-(`test_a_date_that_drifted_into_the_past_is_still_read_back`).
-
-**The remaining half is closed too, and not the way this entry said.** It proposed a derived
-limitation computed at assessment time. ADR-0032 rejected that before building it, for the
-reason this entry had not accounted for and then for a better one.
-
-The one this entry missed: staleness is event-driven, so a limitation computed when the
-assessment runs would never reach a case nobody recalculates — the case it exists to protect.
-
-The better one: a `Limitation` reduces confidence in a *result*, and no result's confidence
-changes here. "451 days across 16 April 2022 to 15 April 2027" stays true of that window
-permanently. What changes is whether that window is still the one the applicant means, which
-is a fact about the case today, not about the run. Typing it as a limitation is what created
-the staleness problem in the first place.
-
-So it is **derived at read time**, like the case phase (ADR-0009): `application_date_has_passed`
-on the overview and the requirement detail, with a notice naming the date and offering a new
-one. No rule change, no migration, no scheduled job. `DETERMINISTIC_RULES_SPEC.md` §4.0 now
-states that the rules do not constrain the date and that its passing is a read-model
-condition rather than a rule outcome.
 
 ---
 
@@ -526,3 +488,56 @@ jumping by level one always lands on the case name and never on what the page is
 
 Rejected on cost rather than on principle. It touches six destinations and their tests,
 which is a refactor rather than a fix, and no success criterion requires it.
+
+---
+
+## Resolved
+
+Entries that are closed keep their numbers, because code and tests cite them by number.
+Each says what closed it; the reasoning stays, because the way a gap was closed is often the
+useful part.
+
+### 11. A saved application date is believed after it has passed
+
+**Status:** **closed**, 22 September 2026, by commits `0c18a65` and `a8e5313` (ADR-0032) ·
+**Found:** M8 gate walkthrough
+
+Setting an application date in the past produced every requirement green against a five year
+window that had already closed, with the last months of travel silently outside it. That is
+the false reassurance shape the product exists to prevent.
+
+A *new* bad selection cannot be made. It does nothing for a saved date that drifts into the
+past, which happens to every case eventually, including the seeded demo case when April 2027
+arrives.
+
+**This entry used to say the date field closed the first half, and that was wrong.** The
+field's `min` attribute was the whole enforcement, and `POST /application-dates/select`
+accepted 15 January 2020 with a 200, found in the September 2026 walkthrough (fixed in
+commit `0c18a65`). A control that lives only in a React component is not a control. The command now
+raises `ApplicationDateInPast` (422, `APPLICATION_DATE_IN_PAST`), so the first half is closed
+by the product rather than by the browser.
+
+**Still deliberately not fixed with schema validation.** A `ge=today` rule would reject cases
+nobody touched, purely because time passed, and would break on a calendar boundary rather than
+a code change. The guard is on the *command* for exactly that reason: it only ever fires on a
+date somebody is choosing right now, and a stored date that has since passed still reads back
+(`test_a_date_that_drifted_into_the_past_is_still_read_back`).
+
+**The remaining half is closed too, and not the way this entry said.** It proposed a derived
+limitation computed at assessment time. ADR-0032 rejected that before building it, for the
+reason this entry had not accounted for and then for a better one.
+
+The one this entry missed: staleness is event-driven, so a limitation computed when the
+assessment runs would never reach a case nobody recalculates — the case it exists to protect.
+
+The better one: a `Limitation` reduces confidence in a *result*, and no result's confidence
+changes here. "451 days across 16 April 2022 to 15 April 2027" stays true of that window
+permanently. What changes is whether that window is still the one the applicant means, which
+is a fact about the case today, not about the run. Typing it as a limitation is what created
+the staleness problem in the first place.
+
+So it is **derived at read time**, like the case phase (ADR-0009): `application_date_has_passed`
+on the overview and the requirement detail, with a notice naming the date and offering a new
+one. No rule change, no migration, no scheduled job. `DETERMINISTIC_RULES_SPEC.md` §4.0 now
+states that the rules do not constrain the date and that its passing is a read-model
+condition rather than a rule outcome.

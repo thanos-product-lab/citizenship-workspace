@@ -59,7 +59,7 @@ returns to the navigation the user just asked to skip. That is the usual half-wo
 link, and the tests pin against it.
 
 Verified in Chrome: first tabbable in the document, target exists, focus moves to
-`MAIN#case-main`. Capture: `docs/demo-assets/m11/`.
+`MAIN#case-main`. Capture: `docs/demo-assets/m11/` (retired; in git history at `a37b05a`).
 
 ### 2. Two `h1`s on the requirement detail, now fixed
 

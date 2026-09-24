@@ -1,7 +1,7 @@
 # ADR-0033: What the issue count counts
 
 **Status:** Accepted, 23 September 2026
-**Closes:** finding 14 in `SCENARIO_FINDINGS.md`
+**Closes:** the issue-count note from the September 2026 manual UX pass (commit `297f256`)
 **Amends:** Domain RFC §36.3 (a definition over existing values; no enum changes)
 
 ## Context

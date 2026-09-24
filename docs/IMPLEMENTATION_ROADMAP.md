@@ -23,7 +23,7 @@ Initial route: UK naturalisation under Section 6(1), standard five-year route
 | 6 | **Deployment moved into M1** | Every milestone becomes demoable; removes a week-7 risk |
 | 7 | **Throwaway AI spike added in week 2** | De-risks extraction quality/cost before M8 depends on assumptions |
 | 8 | **Model spend limits and timeouts moved from M11 to M8** | First live model calls are when runaway cost becomes possible |
-| 9 | **Demo assets captured per milestone** | Avoids reconstructing seven weeks of work at the end |
+| 9 | **Demo assets captured per milestone** (*retired September 2026: one demo video is recorded at the end instead*) | Avoids reconstructing seven weeks of work at the end |
 | 10 | Guidance **registry** retained in the cut; only the **AI explainer** is optional | Rule-to-source provenance is load-bearing for the requirement panel |
 
 ---
@@ -142,6 +142,11 @@ or security boundaries until the end.
 At the end of each milestone, record a short screen capture and 1–2 screenshots
 of the new capability into `docs/demo-assets/`. M12 then edits existing material
 rather than reconstructing seven weeks of work.
+
+**Retired, September 2026.** The per-milestone captures showed a design that had since
+changed, so they were deleted and the demo is recorded once, as a single video, when the
+project is finished. The old captures are in git history
+(`git show a37b05a:docs/demo-assets/README.md` lists them).
 
 ---
 
@@ -913,8 +918,9 @@ compacted context is where invariants quietly get dropped.
 A milestone is done only when its user journey works, acceptance criteria pass,
 the domain model remains consistent, API contracts are generated, tests pass,
 empty/loading/error/retry states exist, accessibility has been reviewed, logs and
-traces are present, docs are updated, the synthetic case works, demo assets are
-captured, and no hidden out-of-scope dependency remains.
+traces are present, docs are updated, the synthetic case works, and no hidden
+out-of-scope dependency remains. (Per-milestone demo assets were retired in September
+2026; see §3.6.)
 
 A milestone is **not** done because the primary component renders, an endpoint
 returns 200, a model produces plausible output, or a happy path worked once.

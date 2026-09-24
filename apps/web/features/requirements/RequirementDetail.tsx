@@ -34,7 +34,7 @@ type Detail = components["schemas"]["RequirementDetail"];
  * version it ran under, its structured limitations and its next actions. Nothing on this
  * page is generated prose: every sentence is either a server-rendered template or a field.
  *
- * **The answer comes first** (UI/UX §7.2, finding 18). Limitations and the next action sit
+ * **The answer comes first** (UI/UX §7.2). Limitations and the next action sit
  * under the conclusion; the calculation, inputs, evidence and rule follow; history is
  * last. The order used to be the tree's reading order, which put "what do I do" below
  * every table on the page. Nothing was collapsed to fix it: every layer stays open, and

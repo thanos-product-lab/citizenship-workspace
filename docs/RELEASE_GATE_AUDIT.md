@@ -1,5 +1,9 @@
 # Release gate audit
 
+> **Captures cited below** (`m4-*.jpg`, `m6-*.gif` and so on) were retired from the working
+> tree in September 2026. Read any of them from git history, for example
+> `git show a37b05a:docs/demo-assets/m4-case-overview.jpg > m4-case-overview.jpg`.
+
 **Date:** 19 September 2026 · **Scope:** MVP §15's thirty seven gate items and §16's twelve
 done conditions · **Build:** `de95f0b`, equal to `origin/main`
 
@@ -26,7 +30,7 @@ Rules held to while writing it:
 |---|---|---|
 | The full supported journey works | **Partial** | 14 of MVP §14's 15 steps run. Driven deployed on 13 September and locally since; `docs/DEMO_SCRIPT.md` records the click path and which steps need setup. Step 15 has no screen. That walkthrough found four defects, all fixed in `53dc1f0`. |
 | The product does not rely on a chatbot | **Pass** | There is no chat surface in the product. `apps/web/features/` holds nine features and none of them is an assistant. Verifiable by absence. |
-| The explainability model is visible | **Pass** | The requirement detail renders eight real headings, confirmed in the browser: why this assessment was made, facts used, travel records used, evidence used, rule used, limitations, next action, assessment history. `m4-explanation-stack.jpg`. Reordered on 23 September 2026 (finding 18) to lead with limitations and next action; every layer is still open and still a heading, empty ones stated in one line. |
+| The explainability model is visible | **Pass** | The requirement detail renders eight real headings, confirmed in the browser: why this assessment was made, facts used, travel records used, evidence used, rule used, limitations, next action, assessment history. `m4-explanation-stack.jpg`. Reordered on 23 September 2026 (commit `80f3930`) to lead with limitations and next action; every layer is still open and still a heading, empty ones stated in one line. |
 | Unsupported routes stop safely | **Pass** | `tests/applicants/test_confirm.py::test_spouse_route_is_stopped_in_draft` and `::test_unsupported_status_is_stopped`. |
 | The final preparation summary is coherent | **Gap** | It does not exist. M10, outside the M0 to M8 plan of record. `KNOWN_LIMITATIONS.md`. |
 

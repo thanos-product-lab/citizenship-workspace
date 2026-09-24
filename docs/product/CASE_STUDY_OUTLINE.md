@@ -233,6 +233,12 @@ and is worth reusing.
 Worth knowing it is there.
 
 - `milestone-notes.md`, 1,800 lines of what went wrong per milestone, written at the time.
+  Retired from the working tree in the September 2026 docs review; read it with
+  `git show a37b05a:docs/decisions/milestone-notes.md`.
+- The captures cited as evidence above (`m4-*.jpg`, `m5/*.gif`, `m8/*` and the rest) were
+  retired the same way; they show an earlier design, and the case study will use the final
+  demo video. Retrieve one with, for example,
+  `git show a37b05a:docs/demo-assets/m8/m8-slice3b-blind-entry.jpg > blind-entry.jpg`.
   This is the richest source in the repository and almost none of it is in the outline
   above.
 - The three hard gates from `MILESTONE_GATES.md` §3 (M3B, M6, M8) are written as an

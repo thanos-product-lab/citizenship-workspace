@@ -482,7 +482,7 @@ Status must never rely on colour alone.
 
 The answer comes first: the assessment, what limits it, and what to do. The working that
 produced it follows. Every layer stays open, and a layer with nothing in it states that
-in one line rather than being removed (finding 18, 23 September 2026).
+in one line rather than being removed (23 September 2026, commit `80f3930`).
 
 #### Assessment
 

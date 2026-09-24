@@ -33,11 +33,15 @@ assessment. Do not mark a gate passed; only the human does that.
    invariants relied on, decisions taken. Enough for the human to know what they
    are being asked to own.
 
-5. **Prompt for demo assets** — remind which captures belong in
-   `docs/demo-assets/` for this milestone, named `m<N>-<slug>.<ext>`.
+5. **No demo assets.** Per-milestone captures were retired in September 2026; the demo is
+   one video recorded when the project is finished (roadmap §3.6). Note anything worth
+   showing in that video instead.
 
 6. **Offer to append** the human's written answers to
-   `docs/decisions/milestone-notes.md` once they provide them.
+   `docs/decisions/milestone-notes.md` once they provide them, creating the file if it does
+   not exist. The notes for M0 to M11 and the release slice were retired from the working
+   tree in the September 2026 docs review; they remain in git history
+   (`git show a37b05a:docs/decisions/milestone-notes.md`).
 
 ## Hard gates
 

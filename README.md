@@ -13,6 +13,25 @@ is that model output is stored as a *claim* and never used for anything until a 
 confirms it. All the arithmetic (qualifying periods, absence totals, thresholds) is
 ordinary Python with tests. Prompts decide nothing.
 
+## Start here
+
+1. **See it working.** [`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md) walks the canonical demo
+   in fifteen steps. A recorded video will replace this link once it exists.
+2. **Read the story.** The case study is not published yet; its
+   [outline](docs/product/CASE_STUDY_OUTLINE.md) holds the decisions and evidence it will draw on.
+3. **Inspect the engineering.**
+   [Architecture overview](docs/architecture/ARCHITECTURE_OVERVIEW.md) (three diagrams: what
+   runs where, and the path model output takes before it can affect anything), the
+   [decision records](docs/README.md#decisions) (ADR-0001 and ADR-0014 shape everything
+   else), the [rules spec](docs/architecture/DETERMINISTIC_RULES_SPEC.md) (the date
+   arithmetic, where the real difficulty is), the
+   [evaluation report](docs/evaluations/EVAL_REPORT.md) and the
+   [known limitations](docs/KNOWN_LIMITATIONS.md).
+4. **Run it.** [Running it](#running-it), below.
+
+Every document, and which ones describe the product as it is today:
+[`docs/README.md`](docs/README.md).
+
 ## What it does
 
 You enter your travel history and the date you plan to apply. The rules engine works out
@@ -134,20 +153,3 @@ Not built: the preparation summary, guidance source versioning, and an extractor
 immigration status documents. [`docs/KNOWN_LIMITATIONS.md`](docs/KNOWN_LIMITATIONS.md) has
 twenty entries covering those and the rest, each with the reason it was left and what
 closing it would take.
-
-## Worth reading first
-
-If you are here to look rather than to run it:
-
-- [`docs/architecture/ARCHITECTURE_OVERVIEW.md`](docs/architecture/ARCHITECTURE_OVERVIEW.md),
-  three diagrams: what runs where, the path model output takes before it can affect
-  anything, and how a write becomes background work.
-- [`docs/decisions/`](docs/decisions/), every significant decision with the alternative
-  it rejected. ADR-0001 (conclusion and currency are separate) and ADR-0014
-  (selective invalidation) are the two that shape everything else.
-- [`docs/demo-assets/`](docs/demo-assets/), screenshots and terminal captures from each
-  milestone, kept side by side so the figures in both can be checked against each other.
-- [`docs/architecture/DETERMINISTIC_RULES_SPEC.md`](docs/architecture/DETERMINISTIC_RULES_SPEC.md),
-  the date arithmetic, which is where the real difficulty is.
-- [`docs/evaluations/EVAL_REPORT.md`](docs/evaluations/EVAL_REPORT.md), what the AI
-  evaluation measures and which cases the corpus leaves out.

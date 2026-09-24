@@ -32,7 +32,7 @@ Everything above, plus:
       assessment path was touched, `rules-conformance-reviewer` for rule changes,
       `accessibility-reviewer` for UI, `security-reviewer` for auth, storage,
       uploads, or model calls
-- [ ] Demo assets captured into `docs/demo-assets/` while the work is fresh
+- [ ] No per-milestone demo assets: the demo is one video recorded when the project is finished (roadmap §3.6)
 - [ ] CI green on main
 - [ ] Deployed environment still works, not just local
 
