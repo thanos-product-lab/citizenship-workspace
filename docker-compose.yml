@@ -28,22 +28,15 @@ services:
       retries: 10
 
   minio:
-    # Pinned to the same release CI runs, **registry included**. `latest` on both sides
-    # looks like agreement and is not: the two resolve whenever each last pulled, so a
-    # storage behaviour can differ between a green local run and a red CI one with nothing
-    # in the diff to explain it.
-    #
-    # `quay.io` rather than Docker Hub since September 2026. `docker.io/minio/minio` stopped
-    # being publicly pullable — the whole repository, not one tag: `docker pull
-    # minio/minio:latest` answers "repository does not exist or may require 'docker login'".
-    # Locally that was invisible, because the image had been in the layer cache for a year;
-    # CI pulls fresh every run, so it broke there and only there. Same digest on quay, which
-    # is a registry MinIO publishes to itself.
-    #
-    # Second time an upstream registry has moved under this file — the first was Bitnami,
-    # recorded in `ci.yml`. Hence the registry is written out rather than relying on the
-    # default, so the next move is a one-line diff in a place someone will look.
-    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+    # Built from source, like CI, from `infra/docker/minio.Dockerfile`: the only place the
+    # release is pinned. MinIO stopped publishing images and binaries (Docker Hub, then
+    # quay.io and dl.min.io by late September 2026), so pulling is no longer possible; the
+    # Dockerfile header has the history. The first `just up` compiles it, which takes a
+    # couple of minutes; after that it is cached like any other image.
+    build:
+      context: infra/docker
+      dockerfile: minio.Dockerfile
+    image: citizenship-workspace/minio:local
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: minioadmin
@@ -54,7 +47,9 @@ services:
     volumes:
       - miniodata:/data
     healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
+      # The same endpoint CI polls. `mc`, MinIO's client, was in the upstream image and is not
+      # in ours.
+      test: ["CMD", "curl", "-sf", "http://localhost:9000/minio/health/live"]
       interval: 5s
       timeout: 3s
       retries: 10

@@ -1,21 +1,22 @@
-"""The container images CI and Compose agree on, and the two times they stopped existing.
+"""The MinIO server CI and Compose run, and the three times its source went away.
 
-Not a unit test of anything in `app/`. It reads two files at the repository root and
-asserts they say the same thing, because the failure it guards is the one a test suite
-cannot otherwise see: a storage behaviour differing between a green local run and a red CI
-one, with nothing in the diff to explain it.
+Not a unit test of anything in `app/`. It reads files at the repository root and asserts
+they agree, because the failure it guards is the one a test suite cannot otherwise see: a
+storage behaviour differing between a green local run and a red CI one, with nothing in the
+diff to explain it.
 
-**Twice now an upstream registry has dropped this image out from under the build.** First
+**Three upstream sources have dropped this server out from under the build.** First
 `bitnami/minio`, whose repository went to zero tags when Bitnami moved everything to
-`bitnamilegacy/`. Then `docker.io/minio/minio`, which in September 2026 stopped serving
-*any* tag — `docker pull minio/minio:latest` answers "repository does not exist or may
-require 'docker login'". Pinning the tag did not help, because the repository went, not
-the tag.
+`bitnamilegacy/`. Then `docker.io/minio/minio`, which in September 2026 stopped serving any
+tag. Then `quay.io/minio/minio` and the `dl.min.io` binaries, which by late September 2026
+answered 401 and 410 Gone for every release: MinIO no longer distributes the community
+server except as source. Each time the break showed in CI first, because CI pulls fresh and a
+developer machine keeps its cache.
 
-The second one was invisible locally: `just up` kept working from a layer cached a year
-earlier, so only CI — which pulls fresh every run — went red, and the error read as a CI
-problem rather than an upstream one. That asymmetry is the reason the registry is written
-out explicitly in both files rather than left to the `docker.io` default.
+So the server is now **built from its source tag**, in `infra/docker/minio.Dockerfile`, by
+both Compose and CI. That file is the only place the release is pinned, and these tests keep
+it that way: both sides build it, neither pulls a MinIO image from a registry, neither
+overrides the pin, and the pin is a real release.
 """
 
 import pathlib
@@ -26,6 +27,7 @@ import pytest
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[4]
 COMPOSE = REPO_ROOT / "docker-compose.yml"
 WORKFLOW = REPO_ROOT / ".github" / "workflows" / "ci.yml"
+DOCKERFILE = REPO_ROOT / "infra" / "docker" / "minio.Dockerfile"
 
 
 def _require(path: pathlib.Path) -> str:
@@ -34,43 +36,44 @@ def _require(path: pathlib.Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def test_compose_and_ci_pin_the_same_minio_image() -> None:
-    """Identical reference, registry and tag included.
+def _code(text: str) -> str:
+    """The file without its comments, so a history note naming an old registry is not
+    mistaken for a reference to it."""
+    return "\n".join(line.split("#", 1)[0] for line in text.splitlines())
 
-    Compared as whole strings rather than by tag alone. A tag match with a registry
-    mismatch is exactly the state this file exists to prevent — and is what the codebase
-    was in for the hour between Docker Hub dropping the image and CI being told.
-    """
-    compose = _require(COMPOSE)
-    workflow = _require(WORKFLOW)
 
-    compose_image = re.search(r"^\s*image:\s*(\S*minio\S*)\s*$", compose, re.MULTILINE)
-    ci_image = re.search(r"^\s*MINIO_IMAGE:\s*(\S+)\s*$", workflow, re.MULTILINE)
+def test_compose_and_ci_build_the_same_dockerfile() -> None:
+    """One Dockerfile for both sides, so they cannot run different servers."""
+    compose = _code(_require(COMPOSE))
+    workflow = _code(_require(WORKFLOW))
 
-    assert compose_image, "no minio image found in docker-compose.yml"
-    assert ci_image, "no MINIO_IMAGE found in ci.yml"
-    assert compose_image.group(1) == ci_image.group(1), (
-        f"compose runs {compose_image.group(1)}, CI runs {ci_image.group(1)}. The storage "
-        "security tests are the only place that can assert a bucket is private or a URL "
-        "expires, and two different images can answer those differently."
+    assert re.search(r"dockerfile:\s*minio\.Dockerfile", compose), (
+        "docker-compose.yml does not build infra/docker/minio.Dockerfile"
+    )
+    assert re.search(r"file:\s*infra/docker/minio\.Dockerfile", workflow), (
+        "ci.yml does not build infra/docker/minio.Dockerfile"
     )
 
 
-def test_the_minio_image_names_its_registry_and_pins_a_tag() -> None:
-    """Neither half is optional.
+def test_neither_side_pulls_a_minio_image_from_a_registry() -> None:
+    """Every published MinIO image is gone; a reference to one is a build that will fail."""
+    for path in (COMPOSE, WORKFLOW):
+        code = _code(_require(path))
+        pulled = re.findall(r"(?:quay\.io/|docker\.io/|bitnami/)?minio/minio:\S+", code)
+        assert not pulled, f"{path.name} pulls {pulled}; MinIO no longer publishes images"
 
-    A bare `minio/minio:TAG` resolves to whatever `docker.io` currently serves — which as
-    of September 2026 is nothing. A `:latest` on either side resolves to whenever each
-    machine last pulled. Both failure modes present as "works here, red in CI".
-    """
-    image = re.search(r"^\s*MINIO_IMAGE:\s*(\S+)\s*$", _require(WORKFLOW), re.MULTILINE)
-    assert image
-    reference = image.group(1)
 
-    assert reference.count("/") >= 2 and "." in reference.split("/")[0], (
-        f"{reference} does not name a registry; it will resolve against docker.io, which "
-        "no longer serves this repository"
-    )
-    tag = reference.rsplit(":", 1)[-1]
-    assert tag != "latest", "a moving tag is how the two sides drift apart unnoticed"
-    assert tag.startswith("RELEASE."), f"{tag} is not a MinIO release tag"
+def test_neither_side_overrides_the_pinned_release() -> None:
+    """The Dockerfile's default is the pin. A build argument on one side would quietly make
+    that side a different server."""
+    for path in (COMPOSE, WORKFLOW):
+        assert "MINIO_RELEASE" not in _code(_require(path)), (
+            f"{path.name} overrides MINIO_RELEASE; the pin must live only in the Dockerfile"
+        )
+
+
+def test_the_dockerfile_pins_a_release_tag() -> None:
+    """Not `master`, not a branch: a tag, so the same source builds the same server."""
+    match = re.search(r"^ARG MINIO_RELEASE=(\S+)$", _require(DOCKERFILE), re.MULTILINE)
+    assert match, "infra/docker/minio.Dockerfile does not pin MINIO_RELEASE"
+    assert match.group(1).startswith("RELEASE."), f"{match.group(1)} is not a MinIO release tag"

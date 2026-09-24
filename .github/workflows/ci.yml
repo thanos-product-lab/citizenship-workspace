@@ -62,42 +62,42 @@ jobs:
       STORAGE_ACCESS_KEY: minioadmin
       STORAGE_SECRET_KEY: minioadmin
       CW_EXPECT_MINIO: "1"
-      # Pinned rather than `latest`: an image tag that moves is an image tag that can
-      # vanish, which is exactly how this job first broke.
-      #
-      # The registry is part of the pin now, and that is the second lesson. Pinning the tag
-      # did not help when `docker.io/minio/minio` stopped serving *any* tag in September
-      # 2026 — "repository does not exist or may require 'docker login'". A local `just up`
-      # kept working on a year-old cached layer, so the failure was CI-only and looked like
-      # a CI problem rather than an upstream one.
-      MINIO_IMAGE: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v9.0.0
         with:
           python-version-file: services/platform/.python-version
       - run: uv sync
-      # MinIO is a step, not a service container. The official image needs `server /data`
-      # as a command, and a `services:` block cannot supply one — which is why the first
-      # attempt reached for `bitnami/minio`, whose repository now has zero tags (Bitnami
-      # moved everything to `bitnamilegacy/` in 2025). Starting it here keeps the
-      # official image, a pinned tag, and a readiness check we control.
+      # MinIO is built from source, not pulled. MinIO stopped publishing the community server
+      # as an image or binary: `bitnami/minio`, then `docker.io/minio/minio`, then `quay.io`
+      # and `dl.min.io` all went (401 and 410 Gone by late September 2026). The source tag is
+      # still on GitHub, so this builds the exact release from
+      # `infra/docker/minio.Dockerfile`, the same file `docker-compose.yml` builds and the
+      # only place the release is pinned (`test_pinned_images.py` checks both use it).
       #
-      # Two registries have now dropped this image out from under the build. Both times the
-      # symptom was the same and the cause was upstream, so: `docker-compose.yml` must carry
-      # the identical reference including the registry, and a mismatch between them is what
-      # `test_the_compose_and_ci_minio_images_match` exists to catch.
+      # The build layers are cached in GitHub Actions, so the Go compile (about two minutes)
+      # only reruns when the Dockerfile or its pin changes.
       #
       # The storage security tests are the only place that can assert a bucket is
       # private, that a URL expires, or that a deleted object is gone — the in-process
       # fake cannot. `CW_EXPECT_MINIO` below makes their absence a failure, not a skip,
       # so this step failing is meant to take the build down with it.
+      - uses: docker/setup-buildx-action@v4.4.1
+      - name: Build MinIO from source
+        uses: docker/build-push-action@v7.4.0
+        with:
+          context: infra/docker
+          file: infra/docker/minio.Dockerfile
+          tags: citizenship-workspace/minio:ci
+          load: true
+          cache-from: type=gha,scope=minio
+          cache-to: type=gha,mode=max,scope=minio
       - name: Start MinIO
         run: |
           docker run -d --name minio -p 9000:9000 \
             -e MINIO_ROOT_USER=minioadmin \
             -e MINIO_ROOT_PASSWORD=minioadmin \
-            ${{ env.MINIO_IMAGE }} server /data
+            citizenship-workspace/minio:ci server /data
           for attempt in $(seq 1 30); do
             if curl -sf -o /dev/null http://localhost:9000/minio/health/live; then
               echo "MinIO ready after ${attempt} attempt(s)"
