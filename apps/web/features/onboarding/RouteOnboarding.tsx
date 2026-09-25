@@ -213,8 +213,8 @@ export function RouteOnboarding({ caseId }: { caseId: string }) {
         Your route
       </h1>
       <p style={{ color: "var(--cw-text-muted)", marginTop: "var(--cw-space-2)" }}>
-        A few questions confirm this workspace fits your application. You can save and return
-        at any time.
+        A few questions to check this workspace fits your application. You can save and come
+        back at any time.
       </p>
 
       {state === "loading" && (
@@ -345,7 +345,7 @@ export function RouteOnboarding({ caseId }: { caseId: string }) {
             )}
             {confirmState === "conflict" && (
               <span role="alert" style={{ color: "var(--cw-status-not-satisfied)" }}>
-                These answers changed elsewhere; reload before confirming.
+                These answers changed elsewhere. Reload them before confirming.
               </span>
             )}
             {confirmState === "incomplete" && (
@@ -389,14 +389,14 @@ function outcomeView(decision: RouteSupport): OutcomeView {
         tone: "unsupported",
         label: "Not supported",
         heading: "This prototype doesn’t cover the spouse route",
-        body: "Applying as the spouse or civil partner of a British citizen follows a different route that this prototype doesn’t handle.",
+        body: "Spouses and civil partners of British citizens apply on a different route, which this prototype doesn’t cover.",
       };
     case "ROUTE_MAY_BE_BRITISH":
       return {
         tone: "review",
         label: "Needs review",
         heading: "You may already be a British citizen",
-        body: "If you are already British you may not need to naturalise at all. This needs a person to check before going further.",
+        body: "If you are already British, you may not need to naturalise. Someone should check this before you go further.",
       };
     case "ROUTE_PREREQUISITES_UNDETERMINED":
       // "I'm not sure" is an answer, and this is what the product says back to it. Not
@@ -407,7 +407,7 @@ function outcomeView(decision: RouteSupport): OutcomeView {
         tone: "review",
         label: "Needs an answer",
         heading: "We need to know your immigration status",
-        body: "Every residence check is measured against the status you hold, so we can’t assess this case until that is settled. Your status is on the letter or email granting it, or on your UKVI account. Come back and change your answer once you know.",
+        body: "Every check depends on your status. You’ll find it on the letter or email that granted it, or in your UKVI account. Come back and update your answer when you know.",
       };
     default: {
       // ROUTE_PREREQUISITES_UNMET — distinguish age from status for a useful message.

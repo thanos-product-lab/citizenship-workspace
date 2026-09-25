@@ -93,7 +93,7 @@ export function ApplicationDateCard({ caseId }: { caseId: string }) {
     const parts = [`Preview ready for ${formatDate(preview.candidate_application_date)}.`];
     parts.push(
       changes.length === 0
-        ? "No conclusion changes."
+        ? "No results change."
         : `${changes.length} ${changes.length === 1 ? "requirement changes" : "requirements change"}.`,
     );
     // Said, not just shown. Counting only the changes made this announce "No conclusion
@@ -115,7 +115,7 @@ export function ApplicationDateCard({ caseId }: { caseId: string }) {
     setAwaitingSave(false);
     if (save.isSuccess) {
       setAnnouncement(
-        `Saved. ${save.data.assessedCount} requirements reassessed against ${formatDate(value)}.`,
+        `Saved. ${save.data.assessedCount} requirements updated for ${formatDate(value)}.`,
       );
       // No `flushSync` here, and not by preference: React rejects it from inside a
       // lifecycle method ("React cannot flush when React is already rendering"). It is
@@ -238,8 +238,8 @@ export function ApplicationDateCard({ caseId }: { caseId: string }) {
           fontSize: "var(--cw-text-sm)",
         }}
       >
-        The date your case is assessed against. Moving it moves your whole five-year
-        qualifying period, so preview a date before you save it.
+        Your five-year qualifying period is measured back from this date, so preview a new
+        date before you save it.
       </p>
 
       {/* Mounted unconditionally, and owned by the section rather than by any control
@@ -476,9 +476,9 @@ function PreviewPanel({
           </>
         ) : (
           <>
-            What the rules conclude if you apply on{" "}
+            Your results if you apply on{" "}
             <strong>{formatDate(preview.candidate_application_date)}</strong> instead of{" "}
-            {formatDate(preview.current_application_date)}. Nothing has been changed yet.
+            {formatDate(preview.current_application_date)}. Nothing is saved yet.
           </>
         )}
       </p>
@@ -519,8 +519,8 @@ function PreviewPanel({
       {changes.length === 0 ? (
         <p style={{ marginTop: "var(--cw-space-4)" }}>
           {isCurrentDate
-            ? "This is the date your case is already assessed against."
-            : "No conclusion changes. The window moves, but every requirement reaches the same conclusion it does today."}
+            ? "This is the date your case already uses."
+            : "No results change. The period moves, but every requirement has the same result as today."}
         </p>
       ) : (
         <ul className="cw-preview__changes">
@@ -604,7 +604,7 @@ function PreviewPanel({
             id="app-date-resolving-reason"
             style={{ color: "var(--cw-text-muted)", fontSize: "var(--cw-text-sm)" }}
           >
-            the nearest later date whose first day is clear of confirmed absence
+            the nearest later date that avoids this
           </span>
         </p>
       )}
@@ -632,7 +632,7 @@ function PreviewPanel({
         </button>
         {!isCurrentDate && (
           <span style={{ color: "var(--cw-text-muted)", fontSize: "var(--cw-text-sm)" }}>
-            Saving reassesses your case against this date.
+            Saving updates your assessment for this date.
           </span>
         )}
       </div>
@@ -657,7 +657,7 @@ function saveErrorMessage(error: Error): string {
     return "This date changed elsewhere while you were previewing, so this comparison is out of date. Reload the page and preview again.";
   }
   if (error instanceof RecalculationIncomplete) {
-    return "Your date was saved, but the reassessment didn’t finish. Your conclusions are marked stale — open Issues to recheck them.";
+    return "Your date was saved, but the update didn’t finish. Your results are out of date until you update your assessment.";
   }
   return "We couldn’t save this date. Please try again.";
 }

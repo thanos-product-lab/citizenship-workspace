@@ -769,7 +769,7 @@ describe("documents attached to a trip", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: /Attach a document/ }));
     const dialog = within(screen.getByRole("dialog"));
-    expect(dialog.getByText(/Nothing reads it/)).toBeInTheDocument();
+    expect(dialog.getByText(/totals still use the dates you entered/)).toBeInTheDocument();
     expect(dialog.getByText(/dates you entered/)).toBeInTheDocument();
   });
 

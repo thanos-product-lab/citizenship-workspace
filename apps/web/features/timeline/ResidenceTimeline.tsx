@@ -58,8 +58,7 @@ export function ResidenceTimeline({ caseId }: { caseId: string }) {
     return (
       <div style={cardStyle}>
         <p>
-          Your timeline is measured against your proposed application date, and you haven’t
-          chosen one yet.
+          Your timeline is measured from your application date, which you haven’t set yet.
         </p>
         <p style={{ marginTop: "var(--cw-space-3)" }}>
           <a href={`/cases/${caseId}/data`} style={{ color: "var(--cw-accent)" }}>
@@ -214,8 +213,8 @@ function TimelineTable({ timeline, caseId }: { timeline: Timeline; caseId: strin
 
         {timeline.assessment_is_stale && (
           <p className="cw-timeline__behind" role="status">
-            These figures are current. Your residence conclusions were reached before your
-            latest change — recheck them on Requirements.
+            These figures are current, but your residence results are from before your last
+            change. Update your assessment to recheck them.
           </p>
         )}
       </section>
@@ -232,8 +231,8 @@ function TimelineTable({ timeline, caseId }: { timeline: Timeline; caseId: strin
 
         {timeline.trips.length === 0 ? (
           <p style={{ marginTop: "var(--cw-space-3)", color: "var(--cw-text-muted)" }}>
-            You haven’t recorded any trips. With none recorded, your absence totals are
-            zero — add them on the Case data page so they can be counted.
+            You haven’t recorded any trips, so your absence totals are zero. Add them on Case
+            data.
           </p>
         ) : (
           <div className="cw-trips-wrap">
@@ -369,7 +368,7 @@ function TripRow({
         {trip.overlaps_with.length > 0 && (
           <span className="cw-timeline-table__note">
             Shares days with another trip. The overlap is counted once, but one of the two
-            records is likely wrong.
+            trips is probably wrong.
           </span>
         )}
       </td>

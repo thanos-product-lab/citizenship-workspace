@@ -705,8 +705,8 @@ export function TravelHistory({
                 product having checked the document against it — which nothing has done,
                 and which is the false reassurance this whole product is built against. */}
             <p id="attach-note" className="cw-case-data__note" style={{ marginTop: 0 }}>
-              This records that the document belongs with this trip. Nothing reads it, and
-              your absence totals still come from the dates you entered.
+              This links the document to the trip. Your totals still use the dates you
+              entered.
             </p>
             <label htmlFor="attach-select" style={{ display: "block", marginBottom: "0.25rem" }}>
               Document

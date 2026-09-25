@@ -43,7 +43,7 @@ describe("CaseDataDestination", () => {
     // The consequence stated up front is what makes the header's stale notice read as a
     // result of the user's own edit rather than as a surprise.
     render(<CaseDataDestination caseId="c1" />);
-    expect(screen.getByText(/marks the conclusions drawn from it stale/i)).toBeInTheDocument();
+    expect(screen.getByText(/results that depend on it go out of date/i)).toBeInTheDocument();
   });
 
   it("separates deletion from the work above it and explains what it does", () => {

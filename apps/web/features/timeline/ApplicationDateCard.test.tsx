@@ -349,7 +349,7 @@ describe("ApplicationDateCard", () => {
     const offer = await screen.findByRole("button", { name: /preview 25 April 2027 instead/i });
     expect(offer).toBeInTheDocument();
     expect(
-      screen.getByText(/nearest later date whose first day is clear of confirmed absence/i),
+      screen.getByText(/nearest later date that avoids this/i),
     ).toBeInTheDocument();
 
     // There is no one-day stepper anywhere on this surface: clearing an absent anchor
@@ -437,7 +437,7 @@ describe("ApplicationDateCard", () => {
     // that already happened, and hide that their conclusions are now stale.
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent(/was saved/i);
-    expect(alert).toHaveTextContent(/stale/i);
+    expect(alert).toHaveTextContent(/out of date/i);
   });
 
   it("offers a retry when the preview itself fails", async () => {
@@ -519,7 +519,7 @@ describe("ApplicationDateCard", () => {
     // file written without a wait, which is why it was the one that broke.
     const live = container.querySelector('[aria-live="polite"]');
     await waitFor(() => {
-      expect(live).toHaveTextContent(/no conclusion changes/i);
+      expect(live).toHaveTextContent(/no results change/i);
       expect(live).toHaveTextContent(/1 requirement is still not satisfied on this date/i);
     });
   });
@@ -541,7 +541,7 @@ describe("ApplicationDateCard", () => {
     // Moving control to control never reaches a sibling span, so the reason has to be
     // bound to the button rather than sitting beside it.
     expect(container.querySelector(`#${describedBy}`)).toHaveTextContent(
-      /nearest later date whose first day is clear of confirmed absence/i,
+      /nearest later date that avoids this/i,
     );
   });
 

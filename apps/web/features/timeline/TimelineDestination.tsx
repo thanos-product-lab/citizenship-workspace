@@ -28,8 +28,8 @@ export function TimelineDestination({ caseId }: { caseId: string }) {
         Residence timeline
       </h2>
       <p className="cw-case-data__note">
-        Every period you spent outside the UK, and how each one counts against the five-year
-        period your case is measured over.
+        Your trips outside the UK, and how each one counts towards your five-year qualifying
+        period.
       </p>
       <ResidenceTimeline caseId={caseId} />
     </section>

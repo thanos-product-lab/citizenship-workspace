@@ -41,8 +41,8 @@ export function CaseDataDestination({ caseId }: { caseId: string }): JSX.Element
           Case data
         </h2>
         <p className="cw-case-data__note">
-          The facts your case is assessed against. Changing any of them marks the
-          conclusions drawn from it stale until you recalculate.
+          The information your case is assessed on. If you change something, the results
+          that depend on it go out of date until you update your assessment.
         </p>
 
         <ApplicationDateCard caseId={caseId} />

@@ -115,7 +115,7 @@ export function CsvImport({ caseId, onImported }: { caseId: string; onImported: 
         <summary>What goes in each column</summary>
         <dl className="cw-csv-columns">
           <dt>destination_label</dt>
-          <dd>Where you went, in your own words.</dd>
+          <dd>Where you went, for example Spain.</dd>
           <dt>departure_date, return_date</dt>
           <dd>
             The day you left the UK and the day you came back, written as year-month-day,
@@ -123,8 +123,8 @@ export function CsvImport({ caseId, onImported }: { caseId: string; onImported: 
           </dd>
           <dt>date_confidence</dt>
           <dd>
-            EXACT if you know the dates, ESTIMATED if you are working from memory. An estimated
-            trip is kept but left out of confirmed totals, and flagged for you to firm up.
+            EXACT if you know the dates, ESTIMATED if you are going from memory. Estimated
+            trips are kept but left out of your confirmed totals.
           </dd>
           <dt>destination_country_code, notes</dt>
           <dd>Optional. A two-letter country code such as FR, and anything you want to note.</dd>
@@ -143,8 +143,8 @@ export function CsvImport({ caseId, onImported }: { caseId: string; onImported: 
 
       <p style={mutedStyle}>
         Have a booking PDF?{" "}
-        <Link href={`/cases/${caseId}/evidence`}>Upload it as evidence</Link> instead. Evidence
-        is read for you, and nothing from it is used until you have checked it.
+        <Link href={`/cases/${caseId}/evidence`}>Upload it as evidence</Link> instead. We read it
+        for you, and nothing from it is used until you check it.
       </p>
 
       <input

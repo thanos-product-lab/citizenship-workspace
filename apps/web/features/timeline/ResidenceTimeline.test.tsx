@@ -282,14 +282,14 @@ describe("ResidenceTimeline", () => {
 
     const row = (await screen.findByText("Spain")).closest("tr")!;
     expect(row).toHaveTextContent(/overlap is counted once/i);
-    expect(row).toHaveTextContent(/one of the two records is likely wrong/i);
+    expect(row).toHaveTextContent(/one of the two trips is probably wrong/i);
   });
 
   it("says when the conclusions are behind the records", async () => {
     get.mockResolvedValue({ data: aTimeline({ assessment_is_stale: true }), error: undefined });
     render(<ResidenceTimeline caseId="c1" />);
 
-    expect(await screen.findByText(/conclusions were reached before your latest change/i))
+    expect(await screen.findByText(/residence results are from before your last change/i))
       .toBeInTheDocument();
   });
 

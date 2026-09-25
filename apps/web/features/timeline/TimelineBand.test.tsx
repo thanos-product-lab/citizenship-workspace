@@ -74,7 +74,7 @@ describe("TimelineBand", () => {
     // The disclaimer specifically. It is what makes an `aria-hidden` drawing legitimate —
     // it tells a sighted user the shape is not the authority — so it stays visible prose
     // and never becomes hover-only content (UI/UX §15).
-    expect(screen.getByText(/every figure here is in the table below/i)).toBeInTheDocument();
+    expect(screen.getByText(/every figure is also in the table below/i)).toBeInTheDocument();
   });
 
   it("places a trip proportionally within the five-year window", () => {

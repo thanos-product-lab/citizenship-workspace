@@ -206,7 +206,7 @@ export function TimelineBand({ timeline }: { timeline: Timeline }) {
       </div>
 
       <figcaption className="cw-band__caption">
-        Earliest on the left; each bar is a trip. Every figure here is in the table below.
+        Earliest on the left. Each bar is a trip, and every figure is also in the table below.
       </figcaption>
     </figure>
   );
