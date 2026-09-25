@@ -14,7 +14,7 @@ evals/
 ```
 
 At present only `fixtures/` and `manifests/` exist. They came out of the M8
-throwaway spike (`IMPLEMENTATION_ROADMAP.md` §3.3); the spike itself is deleted,
+throwaway spike (the retired roadmap's §3.3); the spike itself is deleted,
 and its numbers are in `docs/evaluations/EVAL_REPORT.md` §12.
 
 ## Fixtures

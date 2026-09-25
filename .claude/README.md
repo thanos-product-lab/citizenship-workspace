@@ -16,8 +16,8 @@ Drop the `.claude/` directory at the repository root, alongside `CLAUDE.md`.
 └── skills/
     ├── vertical-slice/                  the standard task procedure
     ├── new-rule/                        adding a deterministic requirement rule
-    ├── definition-of-done/              the completion gate
-    └── milestone-gate/                  the end-of-milestone human-verification gate
+    ├── new-capability/                  adding an AI capability
+    └── definition-of-done/              the completion gate
 ```
 
 ## Organising principle
@@ -53,8 +53,7 @@ All four reviewers exist in `agents/`. Run the ones the change touches.
 
 - **`format-and-vet.sh`** — not included. If you want format + typecheck on every
   edit, add the script (ruff + mypy for `services/platform`, eslint + tsc for
-  `apps/web`) and wire it into `settings.json` `PreToolUse`. It is intentionally
-  absent until the toolchain lands in M1.
+  `apps/web`) and wire it into `settings.json` `PreToolUse`.
 
 ## Deliberately not built
 
@@ -63,9 +62,6 @@ All four reviewers exist in `agents/`. Run the ones the change touches.
   spot drift is slower and less reliable than the check you have.
 - **`tenant-isolation-reviewer`** — no analogue. Single-owner case ownership is
   covered by the `security-reviewer`.
-- **`new-capability` skill** — defer to M8. Writing it now means writing it
-  against untested assumptions about extraction schemas. Write it after the
-  week-2 spike shows you the real shape.
 
 ## Hook behaviour
 

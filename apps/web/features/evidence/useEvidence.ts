@@ -11,7 +11,7 @@ import { pollInterval, type EvidenceItem } from "./library";
  * The case's evidence library, plus the upload vocabulary the server will accept.
  *
  * Polls while anything is still moving and stops when nothing is — rather than SSE,
- * which the roadmap names and ADR-0020 defers. `EventSource` cannot send an
+ * which the original plan named and ADR-0020 defers. `EventSource` cannot send an
  * `Authorization` header, and this API authenticates with a Clerk bearer token, so SSE
  * would mean either a credential in a query string (which threat model §6.4 forbids for
  * signed URLs, and the same reasoning applies) or a second auth mechanism with its own

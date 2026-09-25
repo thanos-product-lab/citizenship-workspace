@@ -60,7 +60,7 @@ class Capability(StrEnum):
     TRAVEL_RECORD_EXTRACTOR = "TravelRecordExtractor"
     ENGLISH_LANGUAGE_EXTRACTOR = "EnglishLanguageExtractor"
     LIFE_IN_UK_EXTRACTOR = "LifeInUkExtractor"
-    # `DOCUMENT_CLAIM_EXTRACTOR` was here and is gone (ADR-0029). The roadmap names one
+    # `DOCUMENT_CLAIM_EXTRACTOR` was here and is gone (ADR-0029). The original plan named one
     # `DocumentClaimExtractor` for three document kinds, and it cannot be one member:
     # `invoke` resolves the prompt from `REGISTRY[capability]`, so one capability is one
     # prompt, and these documents need different schemas and different instructions.

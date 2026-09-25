@@ -1,6 +1,6 @@
 ---
 name: definition-of-done
-description: The completion gate for a slice or milestone. Use before claiming any work is finished, and at the end of every milestone. Encodes IMPLEMENTATION_ROADMAP.md section 10.
+description: The completion gate for a change. Use before claiming any work is finished.
 ---
 
 # Definition of done
@@ -23,22 +23,18 @@ a model produced plausible output, or the happy path worked once.
 - [ ] The canonical synthetic case still produces its expected results
 - [ ] No hidden out-of-scope dependency introduced
 
-## Milestone gate
+## Before pushing
 
-Everything above, plus:
-
-- [ ] The milestone's user journey demoable start to finish
 - [ ] Reviewers run and findings resolved: `trust-model-reviewer` where the
       assessment path was touched, `rules-conformance-reviewer` for rule changes,
       `accessibility-reviewer` for UI, `security-reviewer` for auth, storage,
       uploads, or model calls
-- [ ] No per-milestone demo assets: the demo is one video recorded when the project is finished (roadmap §3.6)
-- [ ] CI green on main
-- [ ] Deployed environment still works, not just local
+- [ ] User-facing changes driven in a real browser, not only tested
+- [ ] CI green on main after the push
 
 ## Invariant spot-check
 
-Before closing any milestone that touched the assessment path, verify by
+Before calling done any change that touched the assessment path, verify by
 inspection rather than assumption:
 
 - [ ] No unconfirmed claim can reach a trusted assessment
@@ -48,5 +44,5 @@ inspection rather than assumption:
 - [ ] Every current trusted result references exact input versions and a rule version
 - [ ] No readiness percentage exists anywhere in the product
 
-If any of these cannot be confirmed, the milestone is not done regardless of
+If any of these cannot be confirmed, the change is not done regardless of
 what the checklist above says.

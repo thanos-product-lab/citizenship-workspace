@@ -1,6 +1,6 @@
 ---
 name: vertical-slice
-description: The standard procedure for implementing any milestone slice in this repo. Use at the start of any task that adds or changes product behaviour — a new endpoint, screen, rule, or capability. Encodes the task pattern from IMPLEMENTATION_ROADMAP.md section 9.
+description: The standard procedure for implementing a slice in this repo. Use at the start of any task that adds or changes product behaviour, such as a new endpoint, screen, rule, or capability.
 ---
 
 # Implementing a vertical slice
@@ -13,7 +13,6 @@ one layer, it is probably too thin or wrongly scoped.
 State this back explicitly:
 
 ```
-Milestone:
 Vertical slice:
 User outcome:
 Source docs read:
@@ -25,7 +24,7 @@ Then:
    `docs/product/PRODUCT.md` for the product boundary,
    `DOMAIN_MODEL_RFC.md` for entities and invariants,
    `DETERMINISTIC_RULES_SPEC.md` for anything touching rules or dates,
-   `Evidence_First_Citizenship_Workspace_UI_UX.md` for anything visual.
+   `design/DESIGN_SYSTEM_FOUNDATIONS.md` for anything visual.
 2. **Inspect what already exists.** Do not assume greenfield.
 3. **State your assumptions.** Explicitly, as a list. Assumptions that go
    unstated become defects.
@@ -78,5 +77,5 @@ For a slice touching the assessment path, `trust-model-reviewer` is not optional
 
 ## Context hygiene
 
-Start a fresh session per milestone. Long sessions drift from `CLAUDE.md`, and a
+Start a fresh session for each large slice. Long sessions drift from `CLAUDE.md`, and a
 compacted context is exactly where invariants get quietly dropped.

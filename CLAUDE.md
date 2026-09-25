@@ -192,8 +192,7 @@ module's internals.
 
 ## 5. Commands
 
-> ⚠️ **Confirm/finalise these recipes in Milestone 1** and keep this section in
-> sync with the real `justfile`. Placeholders below reflect intended behaviour.
+> Keep this section in sync with the real `justfile`.
 
 ```bash
 just up            # docker compose up: postgres, redis, minio, api, worker
@@ -278,17 +277,11 @@ Do not invent new enum values or requirement keys without updating that RFC.
 - **Read the relevant RFC section before implementing a slice.** For anything
   touching the domain model, migrations, rules, or the claim→fact→assessment
   path, use plan mode and get the plan agreed before writing code.
-- **Follow the implementation order.** Start with the deterministic vertical
-  slice in Domain Model RFC §58 (no AI, no evidence): case → route profile →
-  application date → confirmed travel records → residence assessments → stale →
-  recalculate → historical result. Then follow the Roadmap's build order (M0–M8
-  plan of record). Evidence, claims, and live AI come *after* the deterministic
-  core is proven.
-- **Milestone numbering.** When any document says "M*n*", it refers to the
-  Roadmap's numbering (`docs/IMPLEMENTATION_ROADMAP.md`, M0–M12). The Technical
-  Architecture RFC's phases and the MVP Scope's milestones are alternative
-  framings, not the build order; where they disagree on sequence, the Roadmap
-  wins.
+- **Milestone labels are history.** "M0" to "M12" in code, docs and ADRs name the
+  milestones the project was built in. The roadmap and gate documents that defined
+  them are retired; read them with `git show aad44b0:docs/IMPLEMENTATION_ROADMAP.md`
+  (or `MILESTONE_GATES.md`). A label says when something was built, never what to
+  build next.
 - **Tests are part of the definition of done, not a follow-up.** The property-
   based invariants in §9 are specified requirements — write them alongside the
   rules they protect.
@@ -389,19 +382,17 @@ consulted most during implementation:
 3. `docs/architecture/EVIDENCE_AND_CLAIM_LIFECYCLE_RFC.md`: documents, claims, review.
 4. `docs/product/PRODUCT.md`: who it is for, what it does, and what it does not do.
 5. `docs/KNOWN_LIMITATIONS.md`: open gaps, deliberate boundaries, resolved entries.
-6. `docs/IMPLEMENTATION_ROADMAP.md` (reference): milestone numbering, the task pattern
-   (§9) and the Definition of Done (§10).
 
 ```
 docs/
 ├── README.md       the map: current, reference, decisions, retired
 ├── KNOWN_LIMITATIONS.md · DEPLOYMENT.md · DEMO_SCRIPT.md
-├── IMPLEMENTATION_ROADMAP.md · MILESTONE_GATES.md · RELEASE_GATE_AUDIT.md   (reference)
+├── RELEASE_GATE_AUDIT.md   (reference: the record of the release decision)
 ├── product/        the product guide · case study outline
 ├── design/         the design document: visual system and interface rules
-├── architecture/   overview · rules spec · domain model · evidence lifecycle · technical RFC
+├── architecture/   overview · rules spec · domain model · evidence lifecycle
 ├── evaluations/    the evaluation report: results, principles, gates, the spike, run history
-├── security/       threat model · accessibility pass
+├── security/       the threat model, with a two-minute summary at the top
 └── decisions/      ADRs
 ```
 

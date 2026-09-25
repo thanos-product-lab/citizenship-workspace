@@ -204,7 +204,8 @@ Pick three:
 - **Cross case duplicate detection.** Not a gap. Matching across cases means reading another
   user's rows, and a checksum is a fingerprint.
 
-**Evidence:** `KNOWN_LIMITATIONS.md` entries 2, 6 and 8. Roadmap §7.3's cut order.
+**Evidence:** `KNOWN_LIMITATIONS.md` entries 2, 6 and 8. The retired roadmap's §7.3 cut order
+(`git show aad44b0:docs/IMPLEMENTATION_ROADMAP.md`).
 
 **Trap:** do not list everything cut. Three that show different kinds of judgement beats ten
 that show one.
@@ -241,7 +242,8 @@ Worth knowing it is there.
   `git show a37b05a:docs/demo-assets/m8/m8-slice3b-blind-entry.jpg > blind-entry.jpg`.
   This is the richest source in the repository and almost none of it is in the outline
   above.
-- The three hard gates from `MILESTONE_GATES.md` §3 (M3B, M6, M8) are written as an
+- The three hard gates from the retired milestone gates §3 (M3B, M6, M8;
+  `git show aad44b0:docs/MILESTONE_GATES.md`) are written as an
   interviewer would ask them. Answering them in writing is the fastest route to a draft.
 - The M9 to M12 gate questions are unanswered and double as a closing section: "what in this
   product is most likely to be wrong, and how would a user find out?"

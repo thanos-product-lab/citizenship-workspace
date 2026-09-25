@@ -18,7 +18,7 @@ import type { Timeline, TimelineTrip } from "./useTimeline";
  *
  * **No charting library.** A linear date→x scale over a fixed five-year domain is the
  * arithmetic below; D3 would be a dependency and a build-size cost to replace nine lines
- * (CLAUDE.md §10 and the roadmap's "do not add dependencies without asking").
+ * (CLAUDE.md §8 and §10: do not add dependencies without asking).
  *
  * **No SVG text.** Labels are real DOM outside the drawing, so they inherit the page's
  * font scaling and reflow instead of scaling with the viewBox — SVG text at 200% zoom

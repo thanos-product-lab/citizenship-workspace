@@ -26,8 +26,9 @@ hand-written strings would exercise a pipeline the product does not have.
 Every identity, reference and date is fictional and consistent with
 the demo case in `app/seed/demo_case.py` (CLAUDE.md 2.9 - synthetic data only).
 
-Written for the M8 throwaway spike (IMPLEMENTATION_ROADMAP 3.3). The spike is
-gone; the documents it produced are the eval corpus's starting point.
+Written for the M8 throwaway spike (the retired roadmap's §3.3, in
+`git show aad44b0:docs/IMPLEMENTATION_ROADMAP.md`). The spike is gone; the
+documents it produced are the eval corpus's starting point.
 """
 
 import pathlib

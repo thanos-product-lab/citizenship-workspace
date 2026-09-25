@@ -1,7 +1,8 @@
 """The daily spend ceiling: a hard stop, not a warning.
 
 Moved forward from M11 because the first live model call is when runaway cost
-becomes possible (IMPLEMENTATION_ROADMAP §1, change 8).
+becomes possible (the retired roadmap's §1, change 8; read it with
+`git show aad44b0:docs/IMPLEMENTATION_ROADMAP.md`).
 
 **Why a hard stop and not a log line.** A budget that only warns is not a budget.
 But the more interesting half is what happens to the *user*: a refused call must

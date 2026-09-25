@@ -42,9 +42,7 @@ the reasoning behind a decision, not as a description of the current build.
 
 | Document | Why it is kept |
 |---|---|
-| [Implementation roadmap](IMPLEMENTATION_ROADMAP.md) | Milestone numbering (M0 to M12), the task pattern (§9) and the Definition of Done (§10) the skills encode |
-| [Milestone gates](MILESTONE_GATES.md) | The end-of-milestone gate the `milestone-gate` skill runs |
-| [Release gate audit](RELEASE_GATE_AUDIT.md) | The current state of every release gate, including the open items |
+| [Release gate audit](RELEASE_GATE_AUDIT.md) | The record of the release decision: every release gate and its state |
 | [Case study outline](product/CASE_STUDY_OUTLINE.md) | Raw material for the case study, until the case study itself exists |
 
 ## Decisions
@@ -115,3 +113,8 @@ synthetic demo case specification (the product guide replaces the first two; the
 `app/seed/demo_case.py` now defines the demo case), and the per-milestone demo captures with their shot list (the
 demo will be one video recorded at the end). Read any of them with, for example,
 `git show a37b05a:docs/decisions/milestone-notes.md`.
+
+The implementation roadmap and the milestone gates were retired once the build finished.
+Code, docs and ADRs still use their milestone labels (M0 to M12) to say when something was
+built; read the originals with `git show aad44b0:docs/IMPLEMENTATION_ROADMAP.md` and
+`git show aad44b0:docs/MILESTONE_GATES.md`.

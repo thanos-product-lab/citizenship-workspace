@@ -76,7 +76,7 @@ affected results out of date (ADR-0014), and the matching eval fixtures.
 
 ### 2. Guidance links carry no version or retrieval date
 
-**Status:** waits for the guidance registry (M9) · **Affects:** every requirement detail
+**Status:** waits for the guidance registry · **Affects:** every requirement detail
 
 Each requirement links to the guidance it relies on, but not to a particular revision of it.
 The API returns `guidance_version_recorded: false` and the screen says so, rather than
@@ -126,7 +126,7 @@ and what happens when one document supports two of them.
 
 ### 5. There is no preparation summary
 
-**Status:** partly built · **Related:** the last step of the demo journey, M10
+**Status:** partly built · **Related:** the last step of the demo journey
 
 The demo journey ends with a summary page that has no screen yet. Everything it would show
 already exists on the requirement pages. What is missing is one page that brings it together
@@ -135,8 +135,8 @@ and prints well.
 **One part exists.** The travel list (ADR-0035) is the summary's travel section: the trips in
 the qualifying period, printable and as a CSV, reached from Case data.
 
-It sits in M10, outside the M0 to M8 plan of record, so **closing it** is a milestone, not a
-fix.
+It was planned after the core build (M10) and never started, so **closing it** is a
+project of its own, not a fix.
 
 ---
 

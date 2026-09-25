@@ -1,7 +1,8 @@
 """The ceiling, the ledger, and the task deadline.
 
-The controls moved forward from M11 (IMPLEMENTATION_ROADMAP §1, change 8) because
-the first live model call is when runaway cost becomes possible.
+The controls moved forward from M11 because the first live model call is when
+runaway cost becomes possible (the retired roadmap's §1, change 8; read it with
+`git show aad44b0:docs/IMPLEMENTATION_ROADMAP.md`).
 
 Two of these tests assert things that are easy to get subtly wrong and impossible to
 notice in production until the bill arrives: that a *failed* call still costs, and
