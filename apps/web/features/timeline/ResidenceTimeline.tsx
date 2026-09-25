@@ -171,10 +171,10 @@ function TimelineTable({ timeline, caseId }: { timeline: Timeline; caseId: strin
                     says what is known and what is not, matching the presence rule's own
                     INCOMPLETE rather than picking one of its other two answers. */}
                 {timeline.presence_anchor_is_absent
-                  ? " — you were outside the UK on this day."
+                  ? ": you were outside the UK on this day."
                   : timeline.presence_anchor_is_absent_including_all_records
-                    ? " — a trip that is left out of your confirmed totals covers this day, so whether you were in the UK is unsettled."
-                    : " — you were in the UK on this day."}
+                    ? ": a trip left out of your confirmed totals covers this day, so whether you were in the UK is not settled."
+                    : ": you were in the UK on this day."}
               </span>
             </dd>
           </div>
@@ -189,7 +189,7 @@ function TimelineTable({ timeline, caseId }: { timeline: Timeline; caseId: strin
             <dd>
               {formatDate(timeline.application_date)}
               <span className="cw-timeline__note">
-                {" — "}
+                {" · "}
                 <a href={`/cases/${caseId}/data`}>preview a different date</a>
               </span>
             </dd>

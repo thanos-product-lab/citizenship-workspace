@@ -69,7 +69,7 @@ const REJECTION_OPTIONS: readonly RejectionOption[] = [
  * carry: which formats are accepted, and why the slashed one is not.
  */
 const DATE_HINT =
-  "Use the month's name — day, month, year — or the form YYYY-MM-DD. A slashed date such " +
+  "Use the month's name (day, month, year) or the form YYYY-MM-DD. A slashed date such " +
   "as 03/04/2025 can be read two ways, so it is refused.";
 
 interface FieldState {

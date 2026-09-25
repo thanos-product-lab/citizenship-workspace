@@ -80,9 +80,9 @@ export function ReviewComplete({
       {stale > 0 ? (
         <p className="cw-review-complete__note">
           {stale === 1
-            ? "1 conclusion in your case has"
-            : `${stale} conclusions in your case have`}{" "}
-          not been rechecked since your inputs changed.
+            ? "1 result in your case is"
+            : `${stale} results in your case are`}{" "}
+          out of date. Update your assessment to recheck.
         </p>
       ) : null}
 

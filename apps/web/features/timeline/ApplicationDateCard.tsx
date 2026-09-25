@@ -459,7 +459,7 @@ function PreviewPanel({
         // card. Found by `test/tokens.test.ts`, not by looking.
         style={{ margin: 0, fontSize: "var(--cw-text-base)" }}
       >
-        {isCurrentDate ? "Your current date" : "Preview — not saved"}
+        {isCurrentDate ? "Your current date" : "Preview, not saved"}
       </h4>
       <p
         style={{

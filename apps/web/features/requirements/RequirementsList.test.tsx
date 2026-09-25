@@ -312,7 +312,7 @@ describe("RequirementsList", () => {
       />,
     );
     await screen.findByText("Total absences");
-    expect(screen.getByText("2 conclusions are stale")).toBeInTheDocument();
+    expect(screen.getByText("2 results are out of date")).toBeInTheDocument();
   });
 
   it("falls back to a count-only heading when no summary is available", async () => {
@@ -322,7 +322,7 @@ describe("RequirementsList", () => {
     render(<RequirementsList caseId="c1" groupSummaries={[]} />);
     await screen.findByText("Total absences");
     expect(screen.getByText("1 requirement")).toBeInTheDocument();
-    expect(screen.queryByText(/conclusions are stale/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/results are out of date/)).not.toBeInTheDocument();
   });
 
   it("shows no percentage, score or fraction anywhere", async () => {

@@ -702,7 +702,7 @@ describe("what the screen says about itself", () => {
 
     const panel = await screen.findByRole("region", { name: "Review complete" });
     expect(
-      await within(panel).findByText(/4 conclusions in your case have not been rechecked/),
+      await within(panel).findByText(/4 results in your case are out of date/),
     ).toBeTruthy();
     fireEvent.click(within(panel).getByRole("button", { name: "Update assessment" }));
     await waitFor(() =>

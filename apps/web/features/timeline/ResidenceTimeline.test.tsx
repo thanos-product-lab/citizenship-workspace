@@ -270,7 +270,7 @@ describe("ResidenceTimeline", () => {
     await screen.findByRole("table");
 
     expect(container).not.toHaveTextContent(/you were in the UK on this day/i);
-    expect(container).toHaveTextContent(/whether you were in the UK is unsettled/i);
+    expect(container).toHaveTextContent(/whether you were in the UK is not settled/i);
   });
 
   it("names an overlap without implying it inflated a total", async () => {

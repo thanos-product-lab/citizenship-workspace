@@ -184,7 +184,7 @@ describe("ApplicationDateCard", () => {
     render(<ApplicationDateCard caseId="c1" />);
     await previewADate();
 
-    expect(await screen.findByText(/preview — not saved/i)).toBeInTheDocument();
+    expect(await screen.findByText(/preview, not saved/i)).toBeInTheDocument();
     expect(screen.getByText("439 days")).toBeInTheDocument();
     expect(screen.getByText("429 days")).toBeInTheDocument();
     // The window moved as a whole, not just the anchor (ADR-0002).
@@ -209,7 +209,7 @@ describe("ApplicationDateCard", () => {
     const invalidate = vi.spyOn(client, "invalidateQueries");
     await previewADate();
 
-    await screen.findByText(/preview — not saved/i);
+    await screen.findByText(/preview, not saved/i);
     expect(invalidate).not.toHaveBeenCalled();
   });
 
@@ -217,7 +217,7 @@ describe("ApplicationDateCard", () => {
     post.mockResolvedValueOnce({ data: aSimulation(), error: undefined });
     const { client } = render(<ApplicationDateCard caseId="c1" />);
     await previewADate();
-    await screen.findByText(/preview — not saved/i);
+    await screen.findByText(/preview, not saved/i);
 
     const invalidate = vi.spyOn(client, "invalidateQueries");
     post.mockResolvedValueOnce({ data: aDate({ application_date: "2027-04-25" }) });
@@ -232,7 +232,7 @@ describe("ApplicationDateCard", () => {
     render(<ApplicationDateCard caseId="c1" />);
     await previewADate();
 
-    await screen.findByText(/preview — not saved/i);
+    await screen.findByText(/preview, not saved/i);
     // The `after` side carries the Preview currency badge; a CURRENT badge is never
     // rendered at all, so "Current" must appear nowhere on this surface.
     expect(screen.getAllByText("Preview").length).toBeGreaterThan(0);
@@ -244,7 +244,7 @@ describe("ApplicationDateCard", () => {
     render(<ApplicationDateCard caseId="c1" />);
     await previewADate();
 
-    await screen.findByText(/preview — not saved/i);
+    await screen.findByText(/preview, not saved/i);
     expect(screen.getByText("Presence on the first day")).toBeInTheDocument();
     expect(screen.getByText("Total absences")).toBeInTheDocument();
     // `route.adult_applicant` republishes the applicant's age on every candidate date.
@@ -303,7 +303,7 @@ describe("ApplicationDateCard", () => {
     render(<ApplicationDateCard caseId="c1" />);
     await previewADate();
 
-    await screen.findByText(/preview — not saved/i);
+    await screen.findByText(/preview, not saved/i);
     // Presence changes here, so it belongs in the changes list and nowhere else.
     expect(screen.getAllByText("Presence on the first day")).toHaveLength(1);
     expect(screen.queryByText(/still not satisfied on this date/i)).not.toBeInTheDocument();
@@ -370,7 +370,7 @@ describe("ApplicationDateCard", () => {
     post.mockResolvedValueOnce({ data: aSimulation(), error: undefined });
     render(<ApplicationDateCard caseId="c1" />);
     await previewADate();
-    await screen.findByText(/preview — not saved/i);
+    await screen.findByText(/preview, not saved/i);
 
     post.mockResolvedValueOnce({ data: aDate({ application_date: "2027-04-25", revision: 3 }) });
     post.mockResolvedValueOnce({
@@ -389,7 +389,7 @@ describe("ApplicationDateCard", () => {
     // The preview closes once the save settles — leaving it up would show an unsaved
     // comparison against a date that is now the saved one.
     await waitFor(() =>
-      expect(screen.queryByText(/preview — not saved/i)).not.toBeInTheDocument(),
+      expect(screen.queryByText(/preview, not saved/i)).not.toBeInTheDocument(),
     );
   });
 
@@ -397,12 +397,12 @@ describe("ApplicationDateCard", () => {
     post.mockResolvedValue({ data: aSimulation(), error: undefined });
     render(<ApplicationDateCard caseId="c1" />);
     await previewADate();
-    await screen.findByText(/preview — not saved/i);
+    await screen.findByText(/preview, not saved/i);
 
     fireEvent.click(screen.getByRole("button", { name: /^cancel$/i }));
 
     await waitFor(() =>
-      expect(screen.queryByText(/preview — not saved/i)).not.toBeInTheDocument(),
+      expect(screen.queryByText(/preview, not saved/i)).not.toBeInTheDocument(),
     );
     const input = screen.getByLabelText("Application date") as HTMLInputElement;
     expect(input.value).toBe("2027-04-15");
@@ -414,7 +414,7 @@ describe("ApplicationDateCard", () => {
     post.mockResolvedValueOnce({ data: aSimulation(), error: undefined });
     render(<ApplicationDateCard caseId="c1" />);
     await previewADate();
-    await screen.findByText(/preview — not saved/i);
+    await screen.findByText(/preview, not saved/i);
 
     post.mockResolvedValueOnce({ data: undefined, response: { status: 409 } });
     fireEvent.click(screen.getByRole("button", { name: /save 25 April 2027/i }));
@@ -427,7 +427,7 @@ describe("ApplicationDateCard", () => {
     post.mockResolvedValueOnce({ data: aSimulation(), error: undefined });
     render(<ApplicationDateCard caseId="c1" />);
     await previewADate();
-    await screen.findByText(/preview — not saved/i);
+    await screen.findByText(/preview, not saved/i);
 
     post.mockResolvedValueOnce({ data: aDate({ application_date: "2027-04-25" }) });
     post.mockResolvedValueOnce({ data: undefined, error: {} });
@@ -448,7 +448,7 @@ describe("ApplicationDateCard", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(/couldn’t work out/i);
     post.mockResolvedValue({ data: aSimulation(), error: undefined });
     fireEvent.click(screen.getByRole("button", { name: /try again/i }));
-    expect(await screen.findByText(/preview — not saved/i)).toBeInTheDocument();
+    expect(await screen.findByText(/preview, not saved/i)).toBeInTheDocument();
   });
 
   it("does not act on a control it has announced as unavailable", async () => {
@@ -473,7 +473,7 @@ describe("ApplicationDateCard", () => {
 
     expect(post).toHaveBeenCalledTimes(1);
     resolvePreview?.({ data: aSimulation(), error: undefined });
-    await screen.findByText(/preview — not saved/i);
+    await screen.findByText(/preview, not saved/i);
   });
 
   it("announces what the date does not fix, not only what it changes", async () => {

@@ -90,7 +90,7 @@ function GroupRow({ group, caseId }: { group: Group; caseId: string }): JSX.Elem
         <span className="cw-group-row__stale">
           <StatusGlyph name="clock" size={14} />
           <span>
-            {group.stale === 1 ? "1 stale" : `${group.stale} stale`}
+            {`${group.stale} out of date`}
           </span>
         </span>
       ) : null}

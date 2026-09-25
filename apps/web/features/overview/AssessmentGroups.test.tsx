@@ -140,7 +140,7 @@ describe("AssessmentGroups", () => {
     render(<AssessmentGroups overview={anOverview(groups)} />);
 
     const residence = screen.getByRole("link", { name: "Residence" }).closest("li");
-    expect(within(residence!).getByText("5 stale")).toBeInTheDocument();
+    expect(within(residence!).getByText("5 out of date")).toBeInTheDocument();
 
     // And only that group — a group with current conclusions is not marked.
     const identity = screen.getByRole("link", { name: "Identity and status" }).closest("li");
@@ -151,7 +151,7 @@ describe("AssessmentGroups", () => {
     const groups = canonicalGroups();
     groups[1] = aGroup({ ...groups[1], stale: 1, currency: "STALE" });
     render(<AssessmentGroups overview={anOverview(groups)} />);
-    expect(screen.getByText("1 stale")).toBeInTheDocument();
+    expect(screen.getByText("1 out of date")).toBeInTheDocument();
   });
 
   it("renders nothing when the case has no groups", () => {

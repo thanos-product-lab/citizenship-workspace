@@ -233,7 +233,7 @@ function GroupHeadingSummary({
           <span aria-hidden="true">·</span>
           <StatusGlyph name="clock" size={14} />
           <span>
-            {summary.stale === 1 ? "1 conclusion is stale" : `${summary.stale} conclusions are stale`}
+            {summary.stale === 1 ? "1 result is out of date" : `${summary.stale} results are out of date`}
           </span>
         </span>
       ) : null}

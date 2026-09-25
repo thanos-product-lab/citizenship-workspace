@@ -74,7 +74,7 @@ export function EvidenceState({
         {/* An unrecognised value is rendered verbatim so it cannot pass for a state this
             build understands — but verbatim alone leaves a screen-reader user hearing
             "ANALYSING" with nothing to say the product does not know what that is. */}
-        {token ? null : <span className="cw-visually-hidden"> — state not recognised</span>}
+        {token ? null : <span className="cw-visually-hidden"> (state not recognised)</span>}
       </span>
       {withMeaning && token ? (
         <span className="cw-evidence-state__meaning">{token.meaning}</span>
