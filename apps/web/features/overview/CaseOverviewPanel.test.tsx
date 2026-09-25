@@ -282,7 +282,7 @@ describe("CaseOverviewPanel", () => {
 
     expect(screen.getAllByText(/Do thing/)).toHaveLength(3);
     expect(
-      screen.getByText(/2 more actions aren’t shown here/),
+      screen.getByText(/2 more actions are on the requirements themselves/),
     ).toBeInTheDocument();
   });
 
@@ -396,7 +396,7 @@ describe("CaseOverviewPanel", () => {
     });
     render(<CaseOverviewPanel overview={overview} />);
     expect(
-      screen.getByText(/Requirements that haven’t been assessed yet aren’t counted/),
+      screen.getByText(/Requirements not yet assessed aren’t included/),
     ).toBeInTheDocument();
   });
 

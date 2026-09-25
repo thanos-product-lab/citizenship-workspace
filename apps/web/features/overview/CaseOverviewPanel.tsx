@@ -88,7 +88,7 @@ export function CaseOverviewPanel({ overview }: { overview: Overview }): JSX.Ele
           ) : null}
         </ul>
       ) : (
-        <p className="cw-overview__empty">No requirements are catalogued for this route yet.</p>
+        <p className="cw-overview__empty">There are no requirements for this route yet.</p>
       )}
 
       <NextSteps overview={overview} />
@@ -160,13 +160,13 @@ function PriorityActions({
       {busiestGroupKey || overview.priority_actions_hidden > 0 ? (
         <p className="cw-actions__more">
           {overview.priority_actions_hidden > 0
-            ? `${overview.priority_actions_hidden === 1 ? "1 more action isn’t" : `${overview.priority_actions_hidden} more actions aren’t`} shown here — open the requirement to see it. `
+            ? `${overview.priority_actions_hidden === 1 ? "1 more action is" : `${overview.priority_actions_hidden} more actions are`} on the requirements themselves. `
             : ""}
           {busiestGroupKey
             ? `Most of what needs attention is in ${groupLabel(busiestGroupKey)}.`
             : ""}
           {overview.not_yet_assessed > 0
-            ? " Requirements that haven’t been assessed yet aren’t counted."
+            ? " Requirements not yet assessed aren’t included."
             : ""}
         </p>
       ) : null}

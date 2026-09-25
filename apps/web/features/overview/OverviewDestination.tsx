@@ -29,8 +29,7 @@ export function OverviewDestination({ caseId }: { caseId: string }): JSX.Element
     // "nothing to report": the priority actions, and the case-level stale signal.
     return (
       <p className="cw-overview__unavailable">
-        This summary couldn’t be loaded, so any outstanding actions aren’t shown. Open
-        Requirements to see the current conclusions.
+        We couldn’t load this summary. Your results are on Requirements.
       </p>
     );
   }

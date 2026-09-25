@@ -146,7 +146,7 @@ describe("RequirementsList", () => {
     // Not "nothing has changed": a timeout or a dropped response after commit would make
     // that false, and the user would be told the case is unchanged while looking at a
     // list that is out of date.
-    expect(alert).toHaveTextContent("couldn’t confirm whether that recalculation ran");
+    expect(alert).toHaveTextContent("couldn’t tell whether that assessment ran");
   });
 
   describe("group deep links from the Overview", () => {

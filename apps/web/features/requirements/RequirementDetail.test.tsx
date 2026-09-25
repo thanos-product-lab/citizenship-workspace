@@ -99,9 +99,9 @@ describe("RequirementDetail", () => {
 
     await screen.findByRole("heading", { name: "Total absences", level: 2 });
     for (const layer of [
-      "Why this assessment was made",
-      "Facts used",
-      "Travel records used",
+      "How this was worked out",
+      "Answers used",
+      "Trips used",
       "Evidence used",
       "Rule used",
       "Limitations",
@@ -124,9 +124,9 @@ describe("RequirementDetail", () => {
     expect(order).toEqual([
       "Limitations",
       "Next action",
-      "Why this assessment was made",
-      "Facts used",
-      "Travel records used",
+      "How this was worked out",
+      "Answers used",
+      "Trips used",
       "Evidence used",
       "Rule used",
       "Assessment history",
@@ -139,16 +139,16 @@ describe("RequirementDetail", () => {
     get.mockResolvedValue({ data: aDetail({ facts_used: [] }) });
     render(<RequirementDetail caseId="c1" requirementKey="residence.total_absences" />);
 
-    const heading = await screen.findByRole("heading", { name: "Facts used", level: 3 });
+    const heading = await screen.findByRole("heading", { name: "Answers used", level: 3 });
     const layer = heading.closest("section")!;
     expect(layer).toHaveAttribute("data-empty", "true");
-    expect(layer).toHaveTextContent("No facts were recorded against this result.");
-    expect(layer).not.toHaveTextContent(/exact versions of your answers/);
+    expect(layer).toHaveTextContent("None.");
+    expect(layer).not.toHaveTextContent(/as they were when this result/);
 
     // A layer with content keeps its note and is not marked empty.
     const rule = screen.getByRole("heading", { name: "Rule used", level: 3 }).closest("section")!;
     expect(rule).not.toHaveAttribute("data-empty");
-    expect(rule).toHaveTextContent("The exact rule version that produced this conclusion.");
+    expect(rule).toHaveTextContent("The exact version of the rule behind this result.");
   });
 
   it("renders the server's summary and never composes its own", async () => {
@@ -165,8 +165,8 @@ describe("RequirementDetail", () => {
     render(<RequirementDetail caseId="c1" requirementKey="residence.total_absences" />);
 
     await screen.findByRole("heading", { name: "Evidence used" });
-    expect(screen.getByText(/No documents are linked to these records/)).toBeInTheDocument();
-    expect(screen.getByText(/dates you entered yourself/)).toBeInTheDocument();
+    expect(screen.getByText(/No documents are attached to these trips/)).toBeInTheDocument();
+    expect(screen.getByText(/use the dates you entered/)).toBeInTheDocument();
   });
 
   it("says how many travel records actually counted", async () => {
@@ -189,7 +189,7 @@ describe("RequirementDetail", () => {
     render(<RequirementDetail caseId="c1" requirementKey="residence.total_absences" />);
 
     expect(
-      await screen.findByText(/1 of the 2 travel records this assessment read counted/),
+      await screen.findByText(/1 of the 2 trips count/),
     ).toBeInTheDocument();
     expect(screen.getByText(/Did not count towards the confirmed figure/)).toBeInTheDocument();
   });
@@ -223,12 +223,12 @@ describe("RequirementDetail", () => {
     render(<RequirementDetail caseId="c1" requirementKey="residence.total_absences" />);
 
     expect(
-      await screen.findByText(/1 of the 2 travel records this assessment read counted/),
+      await screen.findByText(/1 of the 2 trips count/),
     ).toBeInTheDocument();
     // Not "All 2 ... were confirmed with exact dates, so all of them counted".
     expect(screen.queryByText(/so all of them counted/)).not.toBeInTheDocument();
     expect(screen.getByText("italy_booking_amended_return")).toBeInTheDocument();
-    expect(screen.queryByText(/No documents are linked to these records/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/No documents are attached to these trips/)).not.toBeInTheDocument();
   });
 
   it("declares the guidance gap rather than filling it", async () => {
@@ -368,7 +368,7 @@ describe("RequirementDetail", () => {
 
     expect(await screen.findByText(/hasn’t been assessed yet/)).toBeInTheDocument();
     // No calculation, no facts, no limitations invented for it.
-    expect(screen.queryByRole("heading", { name: "Facts used" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Answers used" })).not.toBeInTheDocument();
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
     // But the rule that would apply is still shown.
     expect(screen.getByRole("heading", { name: "Rule that would apply" })).toBeInTheDocument();
@@ -677,7 +677,7 @@ describe("RequirementDetail", () => {
 
     await screen.findByText(/The dates on this trip conflict between sources/);
     expect(screen.queryByText(/nothing to do for this requirement/)).not.toBeInTheDocument();
-    expect(screen.getByText(/Anything listed under Limitations is still unresolved/)).toBeInTheDocument();
+    expect(screen.getByText(/The limitations above are still open/)).toBeInTheDocument();
   });
 
   it("does not point at the Limitations layer when it is empty", async () => {
@@ -689,7 +689,7 @@ describe("RequirementDetail", () => {
     render(<RequirementDetail caseId="c1" requirementKey="residence.total_absences" />);
 
     await screen.findByRole("heading", { name: "Next action" });
-    expect(screen.getByText("No next action has been recorded for this result.")).toBeInTheDocument();
+    expect(screen.getByText("No action is listed for this result.")).toBeInTheDocument();
     expect(screen.queryByText(/Anything listed under Limitations/)).not.toBeInTheDocument();
     // And it still must not claim there is nothing to do.
     expect(screen.queryByText(/nothing to do for this requirement/)).not.toBeInTheDocument();
@@ -711,15 +711,15 @@ describe("RequirementDetail", () => {
     get.mockResolvedValue({ data: aDetail() });
     render(<RequirementDetail caseId="c1" requirementKey="residence.total_absences" />);
     expect(
-      await screen.findByText(/travel records this assessment read were confirmed/),
+      await screen.findByText(/trips were confirmed with exact dates/),
     ).toBeInTheDocument();
   });
 
   it("keeps the travel layer when no records were read", async () => {
     get.mockResolvedValue({ data: aDetail({ travel_inputs: [] }) });
     render(<RequirementDetail caseId="c1" requirementKey="residence.total_absences" />);
-    await screen.findByRole("heading", { name: "Travel records used" });
-    expect(screen.getByText("This assessment read no travel records.")).toBeInTheDocument();
+    await screen.findByRole("heading", { name: "Trips used" });
+    expect(within(screen.getByRole("region", { name: "Trips used" })).getByText("None.")).toBeInTheDocument();
   });
 
   it("404s for an unknown requirement key", async () => {

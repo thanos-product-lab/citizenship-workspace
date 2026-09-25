@@ -188,13 +188,13 @@ export function RequirementDetail({
           <ExplanationLayer
             id="layer-unassessed"
             title="Assessment"
-            emptyMessage="This requirement hasn’t been assessed yet, so there’s nothing to explain. No rule has run against your case for it and no inputs have been read."
+            emptyMessage="This requirement hasn’t been assessed yet."
           />
           {detail.rule ? (
             <ExplanationLayer
               id="layer-rule-unassessed"
               title="Rule that would apply"
-              note="The rule and guidance this requirement will be assessed against."
+              note="The rule and guidance this requirement will be checked against."
             >
               <SourceReference
                 semanticVersion={detail.rule.semantic_version}
@@ -217,8 +217,8 @@ export function RequirementDetail({
           <ExplanationLayer
             id="layer-limitations"
             title="Limitations"
-            note="Things that reduce confidence in this conclusion."
-            emptyMessage="No limitations were recorded against this result."
+            note="Anything that makes this result less certain."
+            emptyMessage="None."
           >
             {detail.limitations.length > 0 ? (
               <ul className="cw-notes">
@@ -276,9 +276,9 @@ export function RequirementDetail({
 
           <ExplanationLayer
             id="layer-why"
-            title="Why this assessment was made"
-            note="Every figure here is calculated on the server from the inputs below."
-            emptyMessage="This requirement has no calculation behind it — the conclusion comes from the answers alone."
+            title="How this was worked out"
+            note="Calculated from the information below."
+            emptyMessage="No calculation. This result comes from your answers alone."
           >
             {rows.length > 0 ? (
               <CalculationBreakdown
@@ -290,9 +290,9 @@ export function RequirementDetail({
 
           <ExplanationLayer
             id="layer-facts"
-            title="Facts used"
-            note="The exact versions of your answers this conclusion was reached from."
-            emptyMessage="No facts were recorded against this result."
+            title="Answers used"
+            note="Your answers as they were when this result was worked out."
+            emptyMessage="None."
           >
             {detail.facts_used.length > 0 ? (
               <ul className="cw-input-list">
@@ -314,9 +314,9 @@ export function RequirementDetail({
 
           <ExplanationLayer
             id="layer-travel"
-            title="Travel records used"
+            title="Trips used"
             note={detail.travel_inputs.length > 0 ? travelNote(detail) : undefined}
-            emptyMessage="This assessment read no travel records."
+            emptyMessage="None."
           >
             {detail.travel_inputs.length > 0 ? (
               <ul className="cw-input-list">
@@ -346,7 +346,7 @@ export function RequirementDetail({
           <ExplanationLayer
             id="layer-evidence"
             title="Evidence used"
-            emptyMessage="No documents are linked to these records. Every figure above rests on dates you entered yourself, not on evidence the system has checked."
+            emptyMessage="No documents are attached to these trips. The figures above use the dates you entered."
           >
             {detail.evidence_inputs.length > 0 ? (
               <ul className="cw-input-list">
@@ -369,8 +369,8 @@ export function RequirementDetail({
           <ExplanationLayer
             id="layer-rule"
             title="Rule used"
-            note="The exact rule version that produced this conclusion."
-            emptyMessage="No rule version was recorded for this result."
+            note="The exact version of the rule behind this result."
+            emptyMessage="Not recorded."
           >
             {detail.rule ? (
               <SourceReference
@@ -388,8 +388,8 @@ export function RequirementDetail({
           <ExplanationLayer
             id="layer-history"
             title="Assessment history"
-            note="Every conclusion reached for this requirement, newest first. Nothing is overwritten."
-            emptyMessage="This requirement has been assessed once."
+            note="Every result for this requirement, newest first. Earlier results are kept."
+            emptyMessage="This is the only result so far."
           >
             {detail.history.length > 1 ? (
               <>
@@ -477,12 +477,12 @@ function FigureChange({ history }: { history: Detail["history"] }): JSX.Element 
  */
 function nextActionEmptyMessage(detail: Detail): string {
   if (detail.limitations.length > 0) {
-    return "No next action has been recorded for this result. Anything listed under Limitations is still unresolved.";
+    return "No action is listed for this result. The limitations above are still open.";
   }
   if (detail.conclusion === "SUPPORTED") {
-    return "There’s nothing to do for this requirement right now.";
+    return "Nothing to do for this requirement right now.";
   }
-  return "No next action has been recorded for this result.";
+  return "No action is listed for this result.";
 }
 
 /**
@@ -525,12 +525,12 @@ function travelNote(detail: Detail): string {
   // Scoped to this run, not to the user's current records: under a stale result the two
   // sets differ, and "all of your travel records" would be a false claim about the present.
   if (counted === total) {
-    return `All ${total} travel records this assessment read were confirmed with exact dates, so all of them counted towards the figure.`;
+    return `All ${total} trips were confirmed with exact dates, so all of them count towards the figure.`;
   }
   // `counts_as_confirmed` is the *result's* verdict, not the row's: a trip whose dates a
   // document disputes is stored as confirmed with exact dates and still did not count
   // (RFC §42). So the sentence says how many counted, and leaves why to each row's own
   // "Confirmed · conflicting dates" — saying "were confirmed with exact dates" of the
   // counted ones was accurate only while unconfirmed was the sole way to fail the gate.
-  return `${counted} of the ${total} travel records this assessment read counted towards the figure. Each record below says whether it did, and why.`;
+  return `${counted} of the ${total} trips count towards the figure. Each trip below says whether it does, and why.`;
 }

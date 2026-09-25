@@ -83,7 +83,7 @@ export function buildCalculationRows(
   const tripCount = num(parameters, "trip_count");
   if (tripCount !== null) {
     rows.push({
-      label: "Travel records read",
+      label: "Trips read",
       value: String(tripCount),
       note: "every active record, confirmed or not",
     });

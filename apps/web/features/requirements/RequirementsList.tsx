@@ -110,8 +110,8 @@ export function RequirementsList({
             Requirements
           </h2>
           <p className="cw-section__note">
-            Each requirement shows what was concluded and whether that conclusion is still
-            current. Open a requirement to see the facts and rule behind it.
+            Each requirement shows its result and whether it is up to date. Open one to see
+            how it was worked out.
           </p>
         </div>
       </div>
@@ -147,15 +147,14 @@ export function RequirementsList({
 
       {status === "success" && requirements.length === 0 ? (
         <div className="cw-empty">
-          <p>No requirements are catalogued for this route yet.</p>
+          <p>There are no requirements for this route yet.</p>
         </div>
       ) : null}
 
       {status === "success" && requirements.length > 0 && withResults.length === 0 ? (
         <div className="cw-empty">
           <p>
-            Nothing has been assessed yet. Once you’ve set an application date, run an
-            assessment to see where this case stands.
+            Nothing has been assessed yet. Set your application date, then run an assessment.
           </p>
           <div className="cw-empty__actions">
             <button
@@ -175,8 +174,7 @@ export function RequirementsList({
           {/* Deliberately not "nothing has changed": a timeout or a dropped response
               after commit would make that false, and the user would be told the case is
               unchanged while looking at a list that is out of date. */}
-          We couldn’t confirm whether that recalculation ran. Reload the page to see the
-          current state.
+          We couldn’t tell whether that assessment ran. Reload the page to check.
         </p>
       ) : null}
 

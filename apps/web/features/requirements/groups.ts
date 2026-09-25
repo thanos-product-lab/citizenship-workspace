@@ -60,7 +60,7 @@ export const REQUIREMENT_TITLES: Record<string, string> = {
   "residence.physical_presence_start_date": "Presence on the first day",
   "residence.total_absences": "Total absences",
   "residence.final_year_absences": "Final-year absences",
-  "residence.travel_consistency": "Travel record consistency",
+  "residence.travel_consistency": "Trip consistency",
   "knowledge.life_in_uk": "Life in the UK test",
   "knowledge.english_language": "English language",
   "referees.first": "First referee",
