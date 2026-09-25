@@ -1102,7 +1102,7 @@ confirm/correct/reject without saying how a user is asked. Both gaps had to be c
 before slice 3a could be written, because inventing them in code would be the
 divergence CLAUDE.md's precedence rule exists to prevent.
 
-Informed by `docs/evaluations/AI_SPIKE_FINDINGS.md` — the shapes below are what the
+Informed by the spike in `docs/evaluations/EVAL_REPORT.md` §12 — the shapes below are what the
 model was observed to produce reliably, not what would be convenient to ask for.
 
 ### 41.1 Two value schemas, not one per field

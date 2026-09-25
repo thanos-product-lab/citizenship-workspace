@@ -27,6 +27,6 @@ def get_provider() -> AIProvider:
     # `max_retries=0`: retrying is `provider.py`'s decision, because only it knows
     # which failures are terminal. Leaving the SDK's own retries on would multiply
     # the attempt cap by the SDK's default and quietly retry the exhausted-credit
-    # case the M8 spike found (AI_SPIKE_FINDINGS §5) — three attempts becoming nine
+    # case the M8 spike found (EVAL_REPORT §12.6) — three attempts becoming nine
     # requests, none of which could have succeeded.
     return OpenAIProvider(OpenAI(api_key=settings.openai_api_key or None, max_retries=0))

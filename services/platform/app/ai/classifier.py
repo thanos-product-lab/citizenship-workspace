@@ -45,7 +45,7 @@ class ClassifiedCategory(StrEnum):
     """The classifier's closed output set: the four supported categories, plus the two
     ways of declining to choose.
 
-    `UNSUPPORTED` and `AMBIGUOUS` are outcomes, not errors. AI_EVALUATION_PLAN §3.2:
+    `UNSUPPORTED` and `AMBIGUOUS` are outcomes, not errors. EVAL_REPORT §8:
     *"correct abstention is a success"* — a document the classifier refuses to force
     into a category is a document whose fields will not be read out with the wrong
     schema, which is the failure this enum exists to make avoidable.

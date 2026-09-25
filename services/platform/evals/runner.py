@@ -1,6 +1,6 @@
 """The evaluation harness, at its foundation.
 
-`AI_EVALUATION_PLAN.md` §41 Phase 1. What exists today is the part that needs no
+EVAL_REPORT §7. What exists today is the part that needs no
 model: loading the manifests, and checking that what they claim is internally
 coherent. Capability runners and graders arrive with the capabilities themselves
 (§41 Phase 2), because a grader written before the thing it grades is a guess.
@@ -10,7 +10,7 @@ or two fixtures sharing an id, or an `expected` value that is also listed under
 `must_not_extract`, are all failures that would otherwise surface as a confusing
 *model* result — and the M8 spike is the reason to take that seriously: its first run
 reported the model correctly abstaining when in fact every call had failed
-(AI_SPIKE_FINDINGS §5). A harness that cannot tell "the fixture is broken" from "the
+(EVAL_REPORT §12.6). A harness that cannot tell "the fixture is broken" from "the
 model was wrong" will eventually tell you the second when it means the first.
 
 Run with `just eval`.

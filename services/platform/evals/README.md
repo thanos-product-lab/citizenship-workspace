@@ -1,6 +1,6 @@
 # AI evaluation suite
 
-Structure per `docs/evaluations/AI_EVALUATION_PLAN.md` §6. Run with `just eval`.
+Structure per EVAL_REPORT §7. Run with `just eval`.
 **Not run on every commit** (CLAUDE.md §9) — it makes real model calls and costs
 real money.
 
@@ -15,7 +15,7 @@ evals/
 
 At present only `fixtures/` and `manifests/` exist. They came out of the M8
 throwaway spike (`IMPLEMENTATION_ROADMAP.md` §3.3); the spike itself is deleted,
-and its numbers are in `docs/evaluations/AI_SPIKE_FINDINGS.md`.
+and its numbers are in `docs/evaluations/EVAL_REPORT.md` §12.
 
 ## Fixtures
 

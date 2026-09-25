@@ -510,7 +510,7 @@
         "type": "string"
       },
       "DecisionView": {
-        "description": "What a person decided about one claim, and when.\n\n`value` is what the decision authorised \u2014 the user's entry on a correction, the\nproposal on a pre-filled confirm \u2014 and is null for a rejection, because a rejection\ncreates no trusted value (RFC \u00a710).\n\n`review_mode` is here rather than inferred from `claim_type`, so the record says how\nthe decision was actually taken. A field that was blind-confirmed and one that was\npre-filled are different acts, and AI_EVALUATION_PLAN \u00a715's confirmed-without-change\nrate only means anything if the two can be told apart after the fact.",
+        "description": "What a person decided about one claim, and when.\n\n`value` is what the decision authorised \u2014 the user's entry on a correction, the\nproposal on a pre-filled confirm \u2014 and is null for a rejection, because a rejection\ncreates no trusted value (RFC \u00a710).\n\n`review_mode` is here rather than inferred from `claim_type`, so the record says how\nthe decision was actually taken. A field that was blind-confirmed and one that was\npre-filled are different acts, and EVAL_REPORT \u00a710's confirmed-without-change\nrate only means anything if the two can be told apart after the fact.",
         "properties": {
           "decision": {
             "title": "Decision",
@@ -2037,7 +2037,7 @@
         "type": "object"
       },
       "RejectionReason": {
-        "description": "RFC \u00a710. Structured, so \"why was this wrong\" is answerable across a corpus rather\nthan only by reading prose one claim at a time (AI_EVALUATION_PLAN \u00a715).",
+        "description": "RFC \u00a710. Structured, so \"why was this wrong\" is answerable across a corpus rather\nthan only by reading prose one claim at a time (EVAL_REPORT \u00a710).",
         "enum": [
           "VALUE_NOT_PRESENT",
           "WRONG_FIELD",

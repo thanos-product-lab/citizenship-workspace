@@ -984,7 +984,7 @@ export interface components {
          *
          *     `review_mode` is here rather than inferred from `claim_type`, so the record says how
          *     the decision was actually taken. A field that was blind-confirmed and one that was
-         *     pre-filled are different acts, and AI_EVALUATION_PLAN §15's confirmed-without-change
+         *     pre-filled are different acts, and EVAL_REPORT §10's confirmed-without-change
          *     rate only means anything if the two can be told apart after the fact.
          */
         DecisionView: {
@@ -1666,7 +1666,7 @@ export interface components {
         /**
          * RejectionReason
          * @description RFC §10. Structured, so "why was this wrong" is answerable across a corpus rather
-         *     than only by reading prose one claim at a time (AI_EVALUATION_PLAN §15).
+         *     than only by reading prose one claim at a time (EVAL_REPORT §10).
          * @enum {string}
          */
         RejectionReason: "VALUE_NOT_PRESENT" | "WRONG_FIELD" | "WRONG_DOCUMENT" | "DUPLICATE" | "AMBIGUOUS" | "OTHER";

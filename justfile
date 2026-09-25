@@ -132,7 +132,7 @@ api-client:
 e2e:
     pnpm --filter @cw/web exec playwright test
 
-# AI evaluation suite — NOT run on every commit (AI_EVALUATION_PLAN.md §27).
+# AI evaluation suite — NOT run on every commit (EVAL_REPORT §7).
 # Generates the fixture documents first: they are gitignored, for the same reason
 # scripts/make_fixtures.py's are — a checked-in PDF is a binary nobody reviews.
 eval:

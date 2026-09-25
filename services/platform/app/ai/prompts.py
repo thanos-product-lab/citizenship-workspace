@@ -54,7 +54,7 @@ prompt change is a reviewable diff of prose, and so that `prompt_version` on a
 date-ambiguity rule in a block every capability shared; the extractor obeyed it and
 the *classifier* began reporting documents as AMBIGUOUS because their dates were —
 answering the extractor's question, wrongly, and suppressing extraction entirely
-(AI_SPIKE_FINDINGS §3.2). Shared prose couples capabilities in ways that surface as
+(EVAL_REPORT §12.3). Shared prose couples capabilities in ways that surface as
 one capability's behaviour changing when another's prompt is edited. If two prompts
 need the same sentence, prefer repeating it.
 """

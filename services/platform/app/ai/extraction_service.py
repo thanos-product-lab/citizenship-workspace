@@ -103,7 +103,7 @@ def extract_travel(
     # The same three refusals the classifier has, in the same order and for the same
     # reasons. Duplicated rather than shared: a helper spanning both capabilities would
     # be the shared-prompt mistake in another register — one capability's change quietly
-    # altering another's behaviour (AI_SPIKE_FINDINGS §3.2).
+    # altering another's behaviour (EVAL_REPORT §12.3).
     used = ExtractionRunRepository.calls_today(session, case_id=case_id, at=started_at)
     if used >= settings.ai_case_daily_call_limit:
         return _refused(_run(ExtractionRunStatus.REFUSED_QUOTA), ExtractionRunStatus.REFUSED_QUOTA)
@@ -292,7 +292,7 @@ def _extract_flat[T: BaseModel](
     `extract_travel`.** The note above `extract_travel`'s quota checks explains why that
     body is duplicated rather than shared with the classifier: a helper spanning two
     capabilities lets one capability's change quietly alter another's behaviour
-    (AI_SPIKE_FINDINGS §3.2). The same reasoning gives the opposite answer here. These two
+    (EVAL_REPORT §12.3). The same reasoning gives the opposite answer here. These two
     are *one operation over two configurations* — read a flat document, map its fields to
     claim types — differing only in schema and field map, both passed in. Travel's is a
     different operation: its claims are journey-scoped, and a booking describing two

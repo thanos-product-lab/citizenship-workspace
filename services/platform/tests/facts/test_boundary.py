@@ -323,7 +323,7 @@ def test_the_high_risk_set_is_exactly_the_date_fields() -> None:
 
 
 def test_the_normaliser_ignores_what_the_model_said() -> None:
-    """The spike's central finding, as an assertion (AI_SPIKE_FINDINGS §3.1).
+    """The spike's central finding, as an assertion (EVAL_REPORT §12.2).
 
     The model's `iso` is present and confident and the written form is ambiguous, so the
     normaliser returns None. If it ever consulted `model_iso`, a behaviour that swung
@@ -463,7 +463,7 @@ def test_a_model_guess_on_an_ambiguous_date_reaches_nothing(db_session: Session)
     asked what the document means.
 
     That is the whole argument for putting the normaliser in Python rather than trusting
-    the prompt (AI_SPIKE_FINDINGS §3.1), demonstrated rather than predicted. If this
+    the prompt (EVAL_REPORT §12.2), demonstrated rather than predicted. If this
     test ever fails, a model's guess is deciding a high-risk date.
     """
     guessed = ExtractedClaim.propose(

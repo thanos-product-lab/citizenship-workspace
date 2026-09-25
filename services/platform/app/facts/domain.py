@@ -153,7 +153,7 @@ class ReviewMode(StrEnum):
 
 class RejectionReason(StrEnum):
     """RFC §10. Structured, so "why was this wrong" is answerable across a corpus rather
-    than only by reading prose one claim at a time (AI_EVALUATION_PLAN §15)."""
+    than only by reading prose one claim at a time (EVAL_REPORT §10)."""
 
     VALUE_NOT_PRESENT = "VALUE_NOT_PRESENT"
     WRONG_FIELD = "WRONG_FIELD"

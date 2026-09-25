@@ -67,7 +67,7 @@ finished.
 **Share as little text between capabilities as possible.** The M8 spike put a
 date-ambiguity rule in a shared block; the extractor obeyed it and the *classifier*
 started reporting documents as `AMBIGUOUS` because their dates were — answering the
-wrong question and suppressing extraction entirely (AI_SPIKE_FINDINGS §3.2). If two
+wrong question and suppressing extraction entirely (EVAL_REPORT §12.3). If two
 prompts need the same sentence, repeat it.
 
 **Pin formats explicitly.** An unconstrained `str` field is an open question, and open

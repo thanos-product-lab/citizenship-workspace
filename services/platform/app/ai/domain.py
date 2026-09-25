@@ -79,7 +79,7 @@ class ModelRunStatus(StrEnum):
     #: Structured output came back and validated.
     SUCCEEDED = "SUCCEEDED"
     #: The provider declined. Recoverable, and never a fabricated fallback
-    #: (AI_EVALUATION_PLAN §8.14).
+    #: (EVAL_REPORT §8).
     REFUSED = "REFUSED"
     #: Output did not satisfy the schema on any attempt. No claim is created.
     INVALID_OUTPUT = "INVALID_OUTPUT"
@@ -87,7 +87,7 @@ class ModelRunStatus(StrEnum):
     FAILED = "FAILED"
     #: The provider errored in a way no retry could fix — an exhausted credit
     #: balance, a rejected key. Distinct from FAILED because retrying it is the
-    #: defect the spike found (AI_SPIKE_FINDINGS §5).
+    #: defect the spike found (EVAL_REPORT §12.6).
     TERMINAL = "TERMINAL"
     #: One call exceeded `ai_request_timeout_seconds`.
     TIMED_OUT = "TIMED_OUT"

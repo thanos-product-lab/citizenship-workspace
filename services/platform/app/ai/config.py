@@ -4,14 +4,14 @@ Architecture overview §8: each capability defines its own model, prompt version
 version and retry policy. A registry keyed by capability rather than one global
 model setting, because "which model does the classifier use" and "which model does
 the extractor use" are questions that will have different answers as soon as
-`AI_EVALUATION_PLAN.md` §22's model-selection work happens, and a single setting
+EVAL_REPORT §11's model-selection work happens, and a single setting
 would make that a code change rather than a config one.
 
 **On the prices.** They are recorded per capability alongside the model they price,
 so a `ModelRun`'s cost is computed from the same object that chose the model — a
 global price table can drift from the models it prices, and a cost figure derived
 from a stale table is worse than none. They are **not verified against live
-pricing**: AI_SPIKE_FINDINGS §2 makes the same caveat and it still stands. Token
+pricing**: EVAL_REPORT §12.1 makes the same caveat and it still stands. Token
 counts come from the provider and are exact; the USD figure is arithmetic on a
 constant a human must check.
 """
@@ -83,8 +83,8 @@ REGISTRY: dict[Capability, CapabilityConfig] = {
         capability=Capability.DOCUMENT_CLASSIFIER,
         # 100% classification accuracy over 18 spike calls, including the
         # misleading-filename and injection documents, at ~$0.0001 per call
-        # (AI_SPIKE_FINDINGS §2). Model selection proper belongs to the eval harness
-        # with a representative corpus (AI_EVALUATION_PLAN §22), not to a registry
+        # (EVAL_REPORT §12.1). Model selection proper belongs to the eval harness
+        # with a representative corpus (EVAL_REPORT §11), not to a registry
         # edit — this is the baseline, not a claim that nothing better exists.
         model="gpt-4o-mini",
         prompt_version=PromptVersion.CLASSIFY_DOCUMENT_V2,

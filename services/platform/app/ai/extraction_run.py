@@ -47,7 +47,7 @@ class ExtractionRunStatus(StrEnum):
 
     SUCCEEDED = "SUCCEEDED"
     #: The capability ran and declined to choose — `UNSUPPORTED` or `AMBIGUOUS`. A
-    #: success in every sense that matters (AI_EVALUATION_PLAN §3.2), recorded
+    #: success in every sense that matters (EVAL_REPORT §8), recorded
     #: separately so abstention can be measured rather than inferred.
     ABSTAINED = "ABSTAINED"
     #: The provider was reached and nothing usable came back.

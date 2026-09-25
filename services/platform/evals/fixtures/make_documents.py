@@ -15,7 +15,7 @@ clean, content-rich documents written to exercise extraction *quality*, laid out
 category because the manifests address them by path. Its injection fixture is also
 distinct: `make_fixtures.py` has a minimal injection page, sufficient to prove the
 reader treats it as inert text, while this one carries injection text *and* real
-extractable dates, because AI_EVALUATION_PLAN 14 requires that genuine evidence
+extractable dates, because EVAL_REPORT §9 requires that genuine evidence
 extraction still succeeds on an attacked document - which a page with nothing to
 extract cannot test.
 
@@ -38,7 +38,7 @@ OUT = pathlib.Path(__file__).parent
 
 #: 11pt Helvetica at 72dpi, one column, generous margins. Deliberately plain: the
 #: fixtures measure extraction from a clean native text layer, which is the best case.
-#: Poor scans and visual fallback are a separate fixture class (eval plan 8.2).
+#: Poor scans and visual fallback are a separate fixture class (EVAL_REPORT §3).
 LEFT, TOP, LEADING, SIZE = 60, 80, 16, 11
 
 
@@ -247,7 +247,7 @@ DOCUMENTS: dict[str, list[str]] = {
     # ambiguous date not being silently resolved. The spike found the model *does*
     # resolve it under a mild instruction (0/3 abstentions) and does not under a
     # forceful one (3/3) - which is exactly why the deterministic normaliser rather
-    # than the prompt is what the product relies on. See AI_SPIKE_FINDINGS.md.
+    # than the prompt is what the product relies on. See EVAL_REPORT.md §12.
     # UNSUPPORTED, and deliberately not one of the prompt's own examples.
     #
     # `classify_document` already names a bank statement, a payslip and a tenancy

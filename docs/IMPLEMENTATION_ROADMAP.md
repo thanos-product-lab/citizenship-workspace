@@ -68,7 +68,7 @@ docs/architecture/ARCHITECTURE_OVERVIEW.md (replaced the technical architecture 
 docs/architecture/DOMAIN_MODEL_RFC.md
 docs/architecture/DETERMINISTIC_RULES_SPEC.md
 docs/architecture/EVIDENCE_AND_CLAIM_LIFECYCLE_RFC.md
-docs/evaluations/AI_EVALUATION_PLAN.md
+docs/evaluations/EVAL_REPORT.md (replaced the evaluation plan and the spike findings)
 docs/security/SECURITY_AND_PRIVACY_THREAT_MODEL.md
 docs/decisions/            # ADRs
 ```
@@ -91,7 +91,7 @@ whole project. Write documents just in time, immediately before their milestone.
 | `DESIGN_SYSTEM_FOUNDATIONS.md` | **M4** | ⬜ write in week 1 (tokens can be thin) |
 | `SECURITY_AND_PRIVACY_THREAT_MODEL.md` | **M7** (lightweight) / M11 (full) | ⬜ |
 | `EVIDENCE_AND_CLAIM_LIFECYCLE_RFC.md` | **M8** | ⬜ |
-| `AI_EVALUATION_PLAN.md` | **M8** | ⬜ |
+| `AI_EVALUATION_PLAN.md` | **M8** | retired; folded into `evaluations/EVAL_REPORT.md` |
 
 **M1 has no blocking documents.** Start scaffolding immediately and write the
 rules spec in parallel.

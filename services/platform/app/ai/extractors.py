@@ -14,8 +14,8 @@ about dates — is the standing reason not to merge prompt text.
 **Every date is two fields.** `as_written` is verbatim; `iso` is the model's reading and
 is null whenever the document does not determine one. `iso` is then *ignored* — the
 deterministic normaliser in `facts/values.py` decides, because the M8 spike measured
-this behaviour swinging from 0/3 to 3/3 on prompt wording alone (AI_SPIKE_FINDINGS
-§3.1) and something that moves with a prompt is not a guarantee.
+this behaviour swinging from 0/3 to 3/3 on prompt wording alone (EVAL_REPORT §12.2), and
+something that moves with a prompt is not a guarantee.
 
 **The output schema carries no authority.** No `confirmed`, `eligible`, `approved`,
 `valid` or `status`. A document instructing the model to mark a trip confirmed has

@@ -249,7 +249,7 @@ def test_typing_something_else_records_a_correction_and_the_users_value_wins(
 def test_a_correction_preserves_the_original_proposal(api: Api, db_session: Session) -> None:
     """CLAUDE.md §9. The claim still says what the model said; the correction lives on
     the decision. Without this, "what did the system propose before you fixed it" has no
-    answer, and the evaluation signal in AI_EVALUATION_PLAN §15 is gone."""
+    answer, and the evaluation signal in EVAL_REPORT §10 is gone."""
     case_id, claim = _case_with_claim(api, db_session)
     _review(api, case_id, claim.id, entered_value="11 May 2026")
 

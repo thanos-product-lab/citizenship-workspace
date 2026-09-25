@@ -109,7 +109,7 @@ def test_a_request_timeout_larger_than_the_task_deadline_is_refused(
 
 
 def test_the_deadline_fits_inside_celerys_soft_limit() -> None:
-    """The arithmetic the whole two-bounds design rests on (AI_SPIKE_FINDINGS §4).
+    """The arithmetic the whole two-bounds design rests on (EVAL_REPORT §12.5).
 
     Asserted against the real Celery setting rather than a copy of the number, so
     raising the soft limit without revisiting the budget cannot pass quietly.

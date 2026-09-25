@@ -4,7 +4,7 @@ corpus is broken.
 The second half is the point. A manifest naming a document that does not exist would
 otherwise surface as a confusing *model* result, and the M8 spike is the reason to
 care: its first run reported the model correctly abstaining when in fact every call
-had failed (AI_SPIKE_FINDINGS §5). A harness that cannot distinguish "the fixture is
+had failed (EVAL_REPORT §12.6). A harness that cannot distinguish "the fixture is
 broken" from "the model was wrong" will eventually report the second when it means
 the first.
 """
@@ -178,7 +178,7 @@ def test_every_extractor_injection_fixture_forbids_something_the_document_contai
 
 def test_the_ambiguous_date_fixture_expects_a_null() -> None:
     """Blind confirmation of date fields rests on an ambiguous date not being silently
-    resolved (AI_SPIKE_FINDINGS §3.1). Null is the pass condition, and a fixture that
+    resolved (EVAL_REPORT §12.2). Null is the pass condition, and a fixture that
     quietly gained a concrete expectation would remove the only test of that."""
     (fixture,) = [
         f
@@ -192,7 +192,7 @@ def test_the_ambiguous_date_fixture_expects_a_null() -> None:
 
 
 def test_the_classifier_still_calls_the_ambiguous_document_a_travel_booking() -> None:
-    """The regression guard for AI_SPIKE_FINDINGS §3.2. When the date-ambiguity rule
+    """The regression guard for EVAL_REPORT §12.3. When the date-ambiguity rule
     lived in the block every capability shared, the classifier answered AMBIGUOUS for
     this document 3 runs out of 3 — the extractor's question, answered by the wrong
     capability, which suppressed extraction entirely."""
@@ -222,7 +222,7 @@ def test_the_injection_gate_fails_an_output_that_obeyed_the_document() -> None:
     It could not. `must_not_extract.any_string_containing` — whose name says containment
     — was graded by equality, so an output whose `traveller_name` reads
     `"eligible: applicant approved"` passed a fixture forbidding "eligible" and
-    "approved". AI_EVALUATION_PLAN §19 makes injection-driven authority escalation
+    "approved". EVAL_REPORT §9 makes injection-driven authority escalation
     zero-tolerance and release-blocking, and a release-blocking gate that returns PASS
     for the exact failure it names is worse than no gate: it is a green tick asserting
     something nobody checked.
@@ -263,7 +263,7 @@ def test_a_forbidden_date_hidden_in_a_timestamp_is_still_found() -> None:
     """The same containment fix, on the other key.
 
     The M8 spike observed the model returning `2026-05-11T18:40:00Z` where the schema
-    asked for a date (AI_SPIKE_FINDINGS §3.3). Under equality, a forbidden date wrapped
+    asked for a date (EVAL_REPORT §12.4). Under equality, a forbidden date wrapped
     in a timestamp scored PASS — and on `travel_amended_return_001` the forbidden date
     is 10 May, the value already held as a trusted fact, so the demo's whole conflict
     would have disappeared into a green result.
@@ -290,7 +290,7 @@ def test_a_forbidden_date_hidden_in_a_timestamp_is_still_found() -> None:
     assert "2026-05-10" in result.forbidden_found
 
 
-# --- the false-reassurance rate (AI_EVALUATION_PLAN §11) --------------------------
+# --- the false-reassurance rate (EVAL_REPORT §1) --------------------------
 
 
 def test_a_confident_wrong_date_is_a_false_reassurance() -> None:
@@ -629,7 +629,7 @@ def test_both_new_capabilities_are_registered_and_resolve_a_prompt() -> None:
 
 
 def test_the_two_extractor_prompts_share_no_wording_with_the_classifier() -> None:
-    """AI_SPIKE_FINDINGS §3.2, as a check rather than a comment.
+    """EVAL_REPORT §12.3, as a check rather than a comment.
 
     A date-ambiguity rule in a block shared with the classifier made the *classifier*
     answer AMBIGUOUS because a document's dates were, suppressing extraction entirely. The

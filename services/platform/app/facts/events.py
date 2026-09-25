@@ -21,7 +21,7 @@ class ClaimReviewed(DomainEvent):
     and it created nothing" from "decided, and here is what it created" — the difference
     prime directive 1 turns on.
 
-    `review_mode` rides along because it is what makes AI_EVALUATION_PLAN §15's
+    `review_mode` rides along because it is what makes EVAL_REPORT §10's
     confirmed-without-change rate mean anything: under `PREFILLED` that rate measures
     button placement, and under `BLIND_ENTRY` it measures agreement between a model and
     a person who read the document.

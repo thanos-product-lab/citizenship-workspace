@@ -3,7 +3,7 @@
 `check_ai_configuration` proves a key is *present*. It cannot prove the key is
 accepted, that the account has credit, or that the model name still exists — and the
 M8 spike's first live run failed on exactly the second of those, with a perfectly
-well-formed key (AI_SPIKE_FINDINGS §5). Presence is not reachability, and the gap
+well-formed key (EVAL_REPORT §12.6). Presence is not reachability, and the gap
 between them is where the local-green/deployed-red failures live.
 
 So the deployed smoke calls this, and it is deliberately the smallest thing that can

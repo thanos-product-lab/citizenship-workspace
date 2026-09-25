@@ -58,7 +58,7 @@ extract `holder_name`. Nothing anywhere compares a confirmed name to the applica
 
 #### Why the capabilities cannot notice this themselves
 
-`AI_EVALUATION_PLAN.md` §8.9 already anticipated it, and its wording is the reason it was
+The original evaluation plan already anticipated it (`EVAL_REPORT.md` §4), and its wording is the reason it was
 never built: a mismatch signal is expected *"where the capability has case identity
 context"*. **No capability has one, deliberately.** The classifier and the extractors are
 given the document's text and nothing about the case. That is the same reasoning that

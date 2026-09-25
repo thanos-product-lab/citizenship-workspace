@@ -32,7 +32,7 @@ applied to the more dangerous boundary.
 *says* and, separately, what that means — and the second is null whenever the document
 does not determine it.
 
-The split is the M8 spike's central finding made structural (AI_SPIKE_FINDINGS §3.1).
+The split is the M8 spike's central finding made structural (EVAL_REPORT §12.2).
 Given `03/04/2025` with no month in words anywhere, the model resolved it to a confident
 `2025-04-03` three times out of three under a mild instruction, and abstained three times
 out of three under a forceful one. A behaviour that swings entirely on prompt wording is

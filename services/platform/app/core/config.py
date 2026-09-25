@@ -83,7 +83,7 @@ class Settings(BaseSettings):
     ai_provider: Literal["openai", "fake"] = "openai"
 
     # One provider call. 5x the P95 and 4.6x the slowest single call the spike
-    # observed (AI_SPIKE_FINDINGS §4) — generous for a slow-but-honest response.
+    # observed (EVAL_REPORT §12.5) — generous for a slow-but-honest response.
     ai_request_timeout_seconds: float = 15.0
     # The bound that actually matters. A per-request timeout bounds one call; a task
     # makes several, and it is the *task* Celery kills. 45s leaves 15s of headroom

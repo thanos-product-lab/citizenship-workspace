@@ -175,7 +175,7 @@ def test_the_prompt_module_reads_only_from_its_own_directory() -> None:
 
 
 def test_a_refusal_is_a_verdict_not_an_error() -> None:
-    """AI_EVALUATION_PLAN §8.14: a refusal produces a recoverable state and never a
+    """EVAL_REPORT §8: a refusal produces a recoverable state and never a
     fabricated fallback. Asserted on the status rather than on an exception, because
     a caller must be able to tell "declined" from "broke"."""
     fake = FakeProvider(

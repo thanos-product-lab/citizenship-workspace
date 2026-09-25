@@ -1,6 +1,6 @@
 """Deterministic graders. No LLM judge anywhere.
 
-`AI_EVALUATION_PLAN.md` §17: deterministic graders before LLM judges. Everything a
+EVAL_REPORT §8: deterministic graders before LLM judges. Everything a
 classifier can be wrong about is checkable by comparing strings, so nothing here needs
 a model to decide whether a model was right.
 
@@ -8,7 +8,7 @@ a model to decide whether a model was right.
 The M8 spike's first run reported the model correctly abstaining on an ambiguous date
 when in fact every call had failed on a 429 — a measuring instrument reading success
 off a failed call, which is the false-reassurance failure inside the tool built to
-detect it (AI_SPIKE_FINDINGS §5). So a fixture whose call never produced output is
+detect it (EVAL_REPORT §12.6). So a fixture whose call never produced output is
 scored as neither pass nor fail and is excluded from both sides of every ratio.
 """
 

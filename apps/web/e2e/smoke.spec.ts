@@ -31,7 +31,7 @@ test("API is ready, including its AI provider configuration", async ({ request }
  *
  * `/health/ready` reports that a key is *present*. A revoked key, or an account with no
  * credit, passes that and fails every real document — which is exactly what the M8 spike
- * hit on its first live run (AI_SPIKE_FINDINGS §5). Configuration presence is not
+ * hit on its first live run (EVAL_REPORT §12.6). Configuration presence is not
  * reachability, and no amount of checking the former substitutes for one real call.
  *
  * Skipped rather than failed when SMOKE_AI_PROBE_SECRET is unset: the endpoint is disabled

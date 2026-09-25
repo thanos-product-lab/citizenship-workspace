@@ -45,7 +45,7 @@ class DecisionView(BaseModel):
 
     `review_mode` is here rather than inferred from `claim_type`, so the record says how
     the decision was actually taken. A field that was blind-confirmed and one that was
-    pre-filled are different acts, and AI_EVALUATION_PLAN §15's confirmed-without-change
+    pre-filled are different acts, and EVAL_REPORT §10's confirmed-without-change
     rate only means anything if the two can be told apart after the fact.
     """
 

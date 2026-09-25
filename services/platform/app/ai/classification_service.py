@@ -213,7 +213,7 @@ def validate_output(payload: dict[str, object]) -> ClassificationOutput | None:
 
     Used by the eval harness, which needs to distinguish "the model returned something
     the schema rejects" from "the harness crashed" — and treat only the first as a
-    measurement (AI_SPIKE_FINDINGS §5: an instrument that reads success off a failed
+    measurement (EVAL_REPORT §12.6: an instrument that reads success off a failed
     call is the false-reassurance failure in miniature).
     """
     try:

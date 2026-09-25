@@ -35,7 +35,7 @@ Maintained and authoritative. If the code disagrees with one of these, the code 
 | [Threat model](security/SECURITY_AND_PRIVACY_THREAT_MODEL.md) | Security and privacy controls, and what each one defends against |
 | [Accessibility pass](security/ACCESSIBILITY_PASS.md) | What was verified on the core flows, how, and what was not |
 | [Design](design/DESIGN_SYSTEM_FOUNDATIONS.md) | The one design document: tokens, themes and contrast, and how the interface behaves (§11) |
-| [Evaluation report](evaluations/EVAL_REPORT.md) and [evaluations index](evaluations/README.md) | What the AI evaluation measured, on which date, and what it does not cover |
+| [AI evaluation](evaluations/EVAL_REPORT.md) | The one evaluation document: the false-reassurance rate, what the corpus does not cover, the release gates, the spike, and every run |
 
 ## Reference
 
@@ -45,9 +45,6 @@ the reasoning behind a decision, not as a description of the current build.
 | Document | Why it is kept |
 |---|---|
 | [Product thesis](product/Evidence_First_Citizenship_Workspace_Product_Thesis.md) | Why the product exists and what signal it is meant to send |
-| [AI evaluation plan](evaluations/AI_EVALUATION_PLAN.md) | Fixture classes, metrics and methodology the harness implements |
-| [AI spike findings](evaluations/AI_SPIKE_FINDINGS.md) | What the pre-M8 spike measured; the model and pipeline choices rest on it |
-| Dated eval runs (`evaluations/EVAL_RESULTS_*.md`) | The evidence behind each published number, one file per run |
 | [Implementation roadmap](IMPLEMENTATION_ROADMAP.md) | Milestone numbering (M0 to M12), the task pattern (§9) and the Definition of Done (§10) the skills encode |
 | [Milestone gates](MILESTONE_GATES.md) | The end-of-milestone gate the `milestone-gate` skill runs |
 | [Release gate audit](RELEASE_GATE_AUDIT.md) | The current state of every release gate, including the open items |
@@ -115,6 +112,7 @@ Development history that no longer describes the product lives in git history, n
 the walkthrough scenarios and their findings, the milestone notes (M0 to the release slice),
 the July 2026 reconciliation, the original technical architecture RFC (its lasting content
 is in the architecture overview), the UI/UX direction document (its lasting rules are in the
-design document's §11), and the per-milestone demo captures with their shot list (the
+design document's §11), the AI evaluation plan, spike findings and per-run results (folded
+into the evaluation report), and the per-milestone demo captures with their shot list (the
 demo will be one video recorded at the end). Read any of them with, for example,
 `git show a37b05a:docs/decisions/milestone-notes.md`.

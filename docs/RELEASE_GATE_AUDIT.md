@@ -69,7 +69,7 @@ documents are amended.
 |---|---|---|
 | Structured outputs are validated | **Pass** | Pydantic schemas at the provider boundary; a refusal is handled as a verdict rather than an error (`tests/ai/test_provider_retries.py::test_a_refusal_stops_immediately`). |
 | Evaluation fixtures exist | **Pass** | 17 fixtures across three manifests, five capabilities. |
-| False reassurance is measured | **Pass** | 0.0%, 0 of 16 measured. `EVAL_RESULTS_2026-09-11.md`. Read with §3 of `EVAL_REPORT.md`, which names the fixture classes the corpus omits. |
+| False reassurance is measured | **Pass** | 0.0%, 0 of 16 measured (the 11 September run in `EVAL_REPORT.md` §13). Read with §3 of `EVAL_REPORT.md`, which names the fixture classes the corpus omits. |
 | Prompt injection fixtures pass | **Pass** | Three fixtures, one per extractor family, all passing. The report also records that one of them graded no authority channel until a security review caught it. |
 | Costs and latency are recorded | **Pass** | Recorded per provider call on `model_runs`. Measured during this audit over 98 successful runs: **p50 927ms, p95 2837ms, max 3051ms, total cost $0.0169**. Recorded is not the same as reported: the eval harness does not surface percentiles, which is a reporting gap rather than a missing measurement. |
 | AI output cannot bypass user confirmation | **Pass** | The trust boundary in `ARCHITECTURE_OVERVIEW.md`, carried by a type signature. Blind entry sends `proposed_value` as null for high risk claims; `DocumentReview.test.tsx` asserts no date shaped string appears anywhere on the panel. |

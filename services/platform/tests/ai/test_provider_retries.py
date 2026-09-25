@@ -2,7 +2,7 @@
 
 The centrepiece is the terminal-versus-retryable split, which is here because the M8
 spike's first live run got it wrong: an exhausted credit balance was retried three
-times, turning a 1.8s named failure into a 5.4s anonymous one (AI_SPIKE_FINDINGS §5).
+times, turning a 1.8s named failure into a 5.4s anonymous one (EVAL_REPORT §12.6).
 """
 
 from typing import Any

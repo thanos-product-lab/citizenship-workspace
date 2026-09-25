@@ -87,7 +87,7 @@ def test_a_supported_document_is_classified_and_recorded(
 def test_declining_to_choose_is_recorded_as_abstention_not_failure(
     db_session: Session, ai_settings: Settings, category: ClassifiedCategory
 ) -> None:
-    """AI_EVALUATION_PLAN §3.2: correct abstention is a success. Recorded under its own
+    """EVAL_REPORT §8: correct abstention is a success. Recorded under its own
     status so it can be *measured* — folded into SUCCEEDED it would be invisible, and
     folded into FAILED it would look like something went wrong."""
     provider = FakeProvider(responses=[succeeded(_output(category))])
@@ -232,7 +232,7 @@ def test_a_provider_failure_invents_no_category(db_session: Session, ai_settings
 
 
 def test_a_refusal_invents_no_category(db_session: Session, ai_settings: Settings) -> None:
-    """AI_EVALUATION_PLAN §8.14: a refusal is a recoverable state and never a
+    """EVAL_REPORT §8: a refusal is a recoverable state and never a
     fabricated fallback."""
     outcome = _classify(
         FakeProvider(responses=[failed(ModelRunStatus.REFUSED)]), ai_settings, db_session

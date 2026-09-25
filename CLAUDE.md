@@ -400,7 +400,7 @@ docs/
 ├── product/        MVP scope · synthetic demo case · thesis · case study outline
 ├── design/         the design document: visual system and interface rules
 ├── architecture/   overview · rules spec · domain model · evidence lifecycle · technical RFC
-├── evaluations/    report · per-run results · evaluation plan · spike findings
+├── evaluations/    the evaluation report: results, principles, gates, the spike, run history
 ├── security/       threat model · accessibility pass
 └── decisions/      ADRs
 ```

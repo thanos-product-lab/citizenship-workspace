@@ -31,7 +31,7 @@ the same mistake in a new module, found by review rather than by a test.
 
 **A terminal failure is not retried.** The spike's first live run hit
 `insufficient_quota` and this adapter's ancestor retried it three times, turning a
-1.8s named failure into a 5.4s anonymous one (AI_SPIKE_FINDINGS §5). No retry adds
+1.8s named failure into a 5.4s anonymous one (EVAL_REPORT §12.6). No retry adds
 credit to an account or fixes a rejected key. Retrying a terminal error is three
 more chances to occupy a worker — the same argument `evidence/extraction.py` makes
 about documents that exhaust the read deadline.
@@ -256,7 +256,7 @@ class OpenAIProvider:
             if getattr(message, "refusal", None):
                 # A refusal is a verdict, not an error: the provider understood and
                 # declined. Retrying would not change that, and fabricating a
-                # fallback is exactly what AI_EVALUATION_PLAN §8.14 forbids.
+                # fallback is exactly what EVAL_REPORT §8 forbids.
                 return _result(
                     ModelRunStatus.REFUSED,
                     None,
