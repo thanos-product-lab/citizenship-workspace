@@ -837,6 +837,8 @@ a.cw-button--secondary:hover {
 
 .cw-trip-dates__hint {
   margin: 0;
+  /* As wide as the fields it describes (FIELD_WIDTH in components/ui.tsx). */
+  max-width: 24rem;
   font-size: var(--cw-text-sm);
   color: var(--cw-text-muted);
 }

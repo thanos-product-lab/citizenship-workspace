@@ -511,7 +511,16 @@ function Field({
         {label}
       </label>
       {hint && (
-        <p id={hintId} style={{ margin: 0, fontSize: "var(--cw-text-sm)", color: "var(--cw-text-muted)" }}>
+        // As wide as the control it describes (`maxWidth` on `inputStyle` below).
+        <p
+          id={hintId}
+          style={{
+            margin: 0,
+            maxWidth: "24rem",
+            fontSize: "var(--cw-text-sm)",
+            color: "var(--cw-text-muted)",
+          }}
+        >
           {hint}
         </p>
       )}

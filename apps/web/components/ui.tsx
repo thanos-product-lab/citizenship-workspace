@@ -15,13 +15,17 @@ import type { ReactElement, ReactNode } from "react";
  * the location `apps/web/components/` is named for in CLAUDE.md §4.
  */
 
+/** How wide a form field runs: its control, and the hint and error that belong to it. One
+ *  width, so a hint does not run past the box it describes and read as overflowing it. */
+export const FIELD_WIDTH = "24rem";
+
 export const inputStyle: React.CSSProperties = {
   padding: "var(--cw-space-2) var(--cw-space-3)",
   border: "1px solid var(--cw-border)",
   borderRadius: "var(--cw-radius-md)",
   background: "var(--cw-surface)",
   color: "inherit",
-  maxWidth: "24rem",
+  maxWidth: FIELD_WIDTH,
 };
 
 /** `inputStyle` for a select, around the chevron every select draws (components.css).
@@ -170,7 +174,15 @@ export function Field({
         {label}
       </label>
       {hint && (
-        <p id={hintId} style={{ margin: 0, fontSize: "var(--cw-text-sm)", color: "var(--cw-text-muted)" }}>
+        <p
+          id={hintId}
+          style={{
+            margin: 0,
+            maxWidth: FIELD_WIDTH,
+            fontSize: "var(--cw-text-sm)",
+            color: "var(--cw-text-muted)",
+          }}
+        >
           {hint}
         </p>
       )}
@@ -178,7 +190,7 @@ export function Field({
         <p
           id={errorId}
           role={errorIsLive ? "alert" : undefined}
-          style={{ margin: 0, fontSize: "var(--cw-text-sm)", ...errorTextStyle }}
+          style={{ margin: 0, maxWidth: FIELD_WIDTH, fontSize: "var(--cw-text-sm)", ...errorTextStyle }}
         >
           {error}
         </p>
