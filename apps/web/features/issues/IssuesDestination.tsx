@@ -132,8 +132,8 @@ export function IssuesDestination({ caseId }: { caseId: string }): JSX.Element {
         Issues
       </h2>
       <p className="cw-case-data__note">
-        Data problems and conclusions awaiting a recheck. Requirement outcomes
-        live under Requirements.
+        Problems with your information, and results waiting to be rechecked. Each
+        requirement’s result is on Requirements.
       </p>
 
       {/* One live region for the destination, mounted unconditionally. It lives here
@@ -147,9 +147,8 @@ export function IssuesDestination({ caseId }: { caseId: string }): JSX.Element {
         <>
           <div role="alert" className="cw-overview__unavailable">
             <p>
-              This queue couldn’t be loaded, so we can’t tell you whether
-              anything needs your attention. This is not the same as nothing
-              being wrong.
+              We couldn’t load your issues, so we can’t tell whether anything needs
+              your attention.
             </p>
           </div>
           <button
@@ -225,7 +224,7 @@ export function IssuesDestination({ caseId }: { caseId: string }): JSX.Element {
                     // the document made no difference.
                     setAnnouncement(
                       `The dates from the document were applied to your trip. ` +
-                        `Your totals need working out again.`,
+                        `Update your assessment to recheck your totals.`,
                     );
                     setReturnFocus(true);
                   },
@@ -273,8 +272,7 @@ function NotRecheckedNote({
   if (!queue.recheck || queue.recheck.checks.length === 0) return null;
   return (
     <p className="cw-issue-queue__caveat">
-      Some of these were worked out before your last change and have not been
-      rechecked, so what they describe may have moved.
+      Some of these are from before your last change and have not been rechecked yet.
     </p>
   );
 }
@@ -293,15 +291,15 @@ function SettledStatement({ caseId }: { caseId: string }): JSX.Element {
   if (overview && overview.stale > 0) {
     return (
       <p className="cw-issue-queue__settled">
-        No problems were found in your case data. Some conclusions have not been
-        rechecked since your inputs changed — open Requirements to see which.
+        No problems were found in your information, but some results are out of date.
+        Update your assessment to recheck them.
       </p>
     );
   }
   return (
     <p className="cw-issue-queue__settled">
-      Nothing needs your attention. Every conclusion reached so far is current,
-      and no problems were found in your case data.
+      Nothing needs your attention. Your results are up to date and no problems were
+      found in your information.
     </p>
   );
 }
@@ -325,7 +323,7 @@ function QueueSummary({
   const notes =
     awareness === 0
       ? ""
-      : ` ${awareness === 1 ? "1 note" : `${awareness} notes`} for your awareness.`;
+      : ` ${awareness === 1 ? "1 note" : `${awareness} notes`} for information.`;
   return <p className="cw-issue-queue__summary">{todo + notes}</p>;
 }
 
@@ -365,7 +363,7 @@ function RecheckTask({
         impact={task.impact}
         details={
           task.checks.length > 0 ? (
-            <ul aria-label="Conclusions this update rechecks">
+            <ul aria-label="Results this update rechecks">
               {task.checks.map((check) => (
                 <li key={check.issue_id}>
                   <a
@@ -584,8 +582,7 @@ function RecheckAction({
           destination deliberately sets no polite message for this. */}
       {mutation.isError ? (
         <p role="alert" className="cw-case-header__error">
-          That update didn’t finish. This list has been refreshed with what the
-          server recorded, and anything it did record is shown below.
+          The update didn’t finish. This list shows what was saved.
         </p>
       ) : null}
     </div>

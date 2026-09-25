@@ -16,7 +16,7 @@ const GROUP_HEADINGS: Record<string, string> = {
   RECHECK_CONCLUSIONS: "Update your assessment",
   CONFIRM_INFORMATION: "Confirm information",
   REVIEW_CAREFULLY: "Review carefully",
-  FOR_YOUR_AWARENESS: "For your awareness",
+  FOR_YOUR_AWARENESS: "For information",
 };
 
 export function groupHeading(key: string): string {

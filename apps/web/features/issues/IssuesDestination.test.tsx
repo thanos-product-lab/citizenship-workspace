@@ -139,7 +139,7 @@ describe("issues destination", () => {
     renderWithQuery(<IssuesDestination caseId={CASE} />);
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      /couldn’t be loaded/i,
+      /couldn’t load your issues/i,
     );
     expect(
       screen.queryByText(/Nothing needs your attention/i),
@@ -307,7 +307,7 @@ describe("issues destination", () => {
 
     expect(
       await screen.findByText(
-        "2 things need your action. 3 notes for your awareness.",
+        "2 things need your action. 3 notes for information.",
       ),
     ).toBeInTheDocument();
   });
@@ -445,13 +445,11 @@ describe("issues destination accessibility", () => {
       return anIssue({
         id: "f1",
         issue_type: "PROCESSING_FAILURE",
-        title: "We could not recheck your conclusions",
+        title: "We could not recheck your results",
         body:
-          "The last attempt to recheck your conclusions did not finish. Nothing was " +
-          "changed: the figures on your case are still the ones worked out before your " +
-          "last edit.",
-        impact:
-          "Any conclusion awaiting a recheck stays out of date until one succeeds.",
+          "The last update did not finish, so nothing changed. Your figures are still the " +
+          "ones from before your last edit.",
+        impact: "Out-of-date results stay out of date until an update succeeds.",
         affected_object_type: "Case",
         affected_object_id: CASE,
         opened_at: "2026-08-20T11:00:00Z",
@@ -511,11 +509,11 @@ describe("issues destination accessibility", () => {
       // The two claims that must not appear beside a failed recheck.
       expect(screen.queryByText(/Nothing needs your attention/i)).toBeNull();
       expect(
-        screen.queryByText(/Every conclusion reached so far is current/i),
+        screen.queryByText(/Your results are up to date/i),
       ).toBeNull();
       // And the one that must: the figures did not move, which is why they are still old.
       expect(
-        screen.getByText(/still the ones worked out before your last edit/i),
+        screen.getByText(/still the ones from before your last edit/i),
       ).toBeInTheDocument();
     });
 
@@ -688,7 +686,7 @@ describe("issues destination accessibility", () => {
     const failure = anIssue({
       id: "f1",
       issue_type: "PROCESSING_FAILURE",
-      title: "We could not recheck your conclusions",
+      title: "We could not recheck your results",
       affected_object_type: "Case",
       affected_object_id: CASE,
     });
@@ -763,11 +761,11 @@ describe("issues destination accessibility", () => {
 
     expect(
       await screen.findByText(
-        /have not been rechecked since your inputs changed/i,
+        /some results are out of date/i,
       ),
     ).toBeInTheDocument();
     expect(
-      screen.queryByText(/Every conclusion reached so far is current/i),
+      screen.queryByText(/Your results are up to date/i),
     ).toBeNull();
   });
 });
@@ -1107,7 +1105,7 @@ describe("resolving a conflict", () => {
     );
 
     await waitFor(() =>
-      expect(screen.getByText(/need working out again/)).toBeTruthy(),
+      expect(screen.getByText(/Update your assessment to recheck your totals/)).toBeTruthy(),
     );
   });
 
