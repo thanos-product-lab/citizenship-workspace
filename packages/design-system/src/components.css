@@ -107,7 +107,7 @@
 }
 
 /*
- * A bordered list, not a stack of floating cards (UI/UX §13.4). One outer border and
+ * A bordered list, not a stack of floating cards (Design §11.8). One outer border and
  * hairline dividers keeps the page calm and the scan line vertical.
  */
 .cw-requirement-list {
@@ -539,7 +539,7 @@ a.cw-button--secondary:hover {
 
 /*
  * Motion explains state changes here and nowhere else, and it is always optional
- * (UI/UX §14, §15). Anyone who has asked for reduced motion gets none of it.
+ * (Design §11.9, §11.11). Anyone who has asked for reduced motion gets none of it.
  */
 @media (prefers-reduced-motion: reduce) {
   .cw-button,
@@ -1031,7 +1031,7 @@ a.cw-button--secondary:hover {
 /*
  * The §7.3 tree, drawn. A single rule runs down the left of the whole stack and each
  * layer marks itself against it, so the layers read as branches of one explanation
- * rather than as a series of unrelated cards (UI/UX §13.4 — avoid an interface made
+ * rather than as a series of unrelated cards (Design §11.8 — avoid an interface made
  * entirely of floating cards).
  */
 .cw-stack {
@@ -1888,7 +1888,7 @@ a.cw-button--secondary:hover {
 /*
  * Shown while a refetch is in flight and the figures on screen are still the previous
  * run's. Deliberately a statement rather than a spinner: what matters is not that work is
- * happening but that the numbers currently visible are out of date (UI/UX §16).
+ * happening but that the numbers currently visible are out of date (Design §11.10).
  */
 .cw-updating {
   display: flex;
@@ -1903,7 +1903,7 @@ a.cw-button--secondary:hover {
   flex: none;
 }
 
-/* --- Issue queue (UI/UX §10) -------------------------------------------------
+/* --- Issue queue (Design §11.7) -------------------------------------------------
    Calm, not alarming. No red banner and no alert colouring on the card itself:
    severity reads from a glyph, a word and a border weight, so the queue survives
    greyscale and does not train the reader to flinch at it. */

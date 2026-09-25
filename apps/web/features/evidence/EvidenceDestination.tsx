@@ -46,7 +46,7 @@ const ANNOUNCE_AFTER_FOCUS_MS = 150;
  *
  * Three decisions worth stating.
  *
- * **This is not a file manager.** UI/UX §9.1 asks each document to show how it contributes
+ * **This is not a file manager.** Design §11.6 asks each document to show how it contributes
  * to the case — what it supports, what was extracted, what needs confirming. In slice 1
  * none of that exists yet, and the honest version of that table is a column that says so
  * rather than one that is blank. "Not yet read by anything" is a true statement about a

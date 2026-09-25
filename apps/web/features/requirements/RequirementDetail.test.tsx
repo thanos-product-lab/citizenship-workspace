@@ -87,7 +87,7 @@ describe("RequirementDetail", () => {
   beforeEach(() => get.mockReset());
 
   it("renders every layer of the explanation stack as a real heading", async () => {
-    // UI/UX §7.3: the stack is the domain model rendered, and the document outline is the
+    // Design §11.5: the stack is the domain model rendered, and the document outline is the
     // explanation structure, not a set of disclosure widgets.
     //
     // `h3` under the requirement's `h2`. Both moved down one during the release slice,
@@ -113,7 +113,7 @@ describe("RequirementDetail", () => {
 
   it("puts the answer before the working", async () => {
     // What reduces confidence and what to do sit under the conclusion; the calculation,
-    // inputs, evidence and rule follow; history is last. UI/UX §7.2.
+    // inputs, evidence and rule follow; history is last. Design §11.5.
     get.mockResolvedValue({ data: aDetail() });
     render(<RequirementDetail caseId="c1" requirementKey="residence.total_absences" />);
 

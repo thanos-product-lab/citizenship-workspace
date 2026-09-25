@@ -60,7 +60,7 @@ _MONTHS = (
 
 
 def format_date(value: object) -> str:
-    """An ISO date string → "15 April 2027" (UI/UX §13.3: dates get deliberate
+    """An ISO date string → "15 April 2027" (Design §11.8: dates get deliberate
     emphasis, and an ISO string in a sentence reads as machine output). A value that
     is not a parseable date is returned unchanged rather than raising — a missing
     parameter must degrade to something honest, never to a 500 on a read path."""
@@ -529,7 +529,7 @@ def _conflicting_body(parameters: Parameters) -> str:
             continue
         label = labels.get(str(entry.get("field")), "You recorded")
         # `format_date`, not the raw parameter. The values arrive as ISO because that is
-        # how they are stored on the limitation, and UI/UX §13.3 is the reason this
+        # how they are stored on the limitation, and Design §11.8 is the reason this
         # function exists at all: an ISO string in a sentence reads as machine output, on
         # the one card whose job is to make two human-entered dates comparable.
         sentences.append(
@@ -569,9 +569,9 @@ def render_stale_reason(code: str | None, parameters: Parameters | None = None) 
     return _render(STALE_REASON_TEMPLATES, code, parameters)
 
 
-#: `Issue.title_code` → the queue's heading and body for that issue (Domain §36, UI/UX §10).
+#: `Issue.title_code` → the queue's heading and body for that issue (Domain §36, Design §11.7).
 #:
-#: UI/UX §10 governs the register: calm, specific, non-alarmist. No "Something went wrong",
+#: Design §11.7 governs the register: calm, specific, non-alarmist. No "Something went wrong",
 #: no urgency the situation does not carry, and — for a stale issue especially — nothing
 #: implying the preserved conclusion still holds. The same trap `StaleAssessmentNotice`
 #: names on the frontend: a stale conclusion has *not* been rechecked, so it may not be
@@ -635,7 +635,7 @@ ISSUE_BODY_TEMPLATES: dict[str, _Template] = {
         "On your proposed application date you will have held settled status for only "
         "just over the required 12 months."
     ),
-    # UI/UX §10.2, close to verbatim. The point of the wording is that stopping is a
+    # Design §11.7, close to verbatim. The point of the wording is that stopping is a
     # deliberate outcome, not a breakdown: the product says what it will not do and why.
     "ISSUE_UNSUPPORTED_COMPLEXITY": lambda p: (
         "This part of your case is outside what this prototype can assess reliably, so "

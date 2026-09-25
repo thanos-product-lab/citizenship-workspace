@@ -7,7 +7,7 @@ import type { Timeline, TimelineTrip } from "./useTimeline";
  *
  * **Decoration over the table, and nothing more.** It is `aria-hidden`, it introduces no
  * fact the table does not already carry, and the table is never hidden or collapsed to
- * make room for it. UI/UX §15 asks for a visualisation *and* a semantically equivalent
+ * make room for it. Design §11.11 asks for a visualisation *and* a semantically equivalent
  * table; building the table first (slice 4) is what makes "equivalent" checkable, and this
  * has to earn its place against something already complete rather than the other way round.
  *

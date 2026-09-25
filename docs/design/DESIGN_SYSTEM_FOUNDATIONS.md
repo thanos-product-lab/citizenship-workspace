@@ -1,13 +1,14 @@
-# Design System Foundations
+# Design
 
-### Status
+The one design document. Sections 1 to 10 are the visual system: colour, type, spacing, the
+status and provenance vocabularies, and the patterns components follow. Section 11 is how the
+interface behaves: the rules every screen keeps.
 
-Proposed for implementation
-Version: 0.3 — token foundation (M1 slice 4) + components (M4 slices 1–2)
+The code cites this document by section number, so sections are never renumbered; new
+material is appended. The original UI/UX direction document it replaced is in git history
+(`git show 77cc044:docs/design/Evidence_First_Citizenship_Workspace_UI_UX.md`).
 
-This document specifies the token layer: colour, typography, spacing, surfaces,
-and the status / provenance vocabularies. The implementation lives in
-`packages/design-system`:
+The implementation lives in `packages/design-system`:
 
 | File | Holds |
 |---|---|
@@ -17,15 +18,13 @@ and the status / provenance vocabularies. The implementation lives in
 | `src/StatusGlyph.tsx` | the glyph set, resolved from `GlyphName` |
 | `src/RequirementStatus.tsx` | conclusion + currency as two badges |
 | `src/AssessmentSummary.tsx` | the head of a requirement: status, figure, summary |
-| `src/ExplanationStack.tsx` | `ExplanationStack` + `ExplanationLayer` (UI/UX §7.3) |
+| `src/ExplanationStack.tsx` | `ExplanationStack` + `ExplanationLayer` (§11.5) |
 | `src/CalculationBreakdown.tsx` | the arithmetic, as a table |
 | `src/AssessedInput.tsx` | `AssessedInput` + `ProvenanceBadge` |
 | `src/SourceReference.tsx` | the rule version and its guidance citations |
 | `src/StaleAssessmentNotice.tsx` | why a conclusion is no longer current |
 
-See `Evidence_First_Citizenship_Workspace_UI_UX.md` §13 for the direction this
-makes concrete. `BeforeAfterValue` is the one M4 component still outstanding; it
-belongs with the recalculation loop in slice 4.
+Section 11.8 gives the direction the tokens make concrete.
 
 ---
 
@@ -260,7 +259,7 @@ does nothing at all.
 A row compressing several requirements carries, in order: the group **name** as a link
 to that group; **counts of named states**; and a **stale count** when the group has one.
 
-Never a fraction, ratio or `n of m` — see UI/UX §6.2 for why `4 / 5` is both a readiness
+Never a fraction, ratio or `n of m` — see Design §11.2 for why `4 / 5` is both a readiness
 score and a misreading of a failed conclusion. Never a single verdict for the group:
 that would be a claim about all its members on the strength of one.
 
@@ -289,3 +288,111 @@ This is a deliberate, accepted gap: fabricating provenance is the most damaging
 defect available to this product, and an unmet acceptance criterion stated openly
 is strictly better than a met one that lies. Closing it is M5 work, and the
 criterion should be re-checked then rather than marked complete at M4.
+
+---
+
+## 11. How the interface behaves
+
+The rules every screen keeps. Each is here because code relies on it.
+
+### 11.1 The workspace is destinations, not one page
+
+A case has six destinations in a horizontal navigation: Overview, Timeline, Requirements,
+Evidence, Issues and Case data (ADR-0012). The case header above them carries the case's
+identity, its application date and whether any result is out of date, so that is visible
+wherever the person is (ADR-0013).
+
+### 11.2 No score, and no fraction either
+
+There is never a readiness percentage. The rule is wider than the percent sign: no
+fraction, ratio or "4 of 5" anywhere, because a reader converts `4 / 5` to 80% and it hides
+a failure as something missing. Counts are of named states, side by side ("1 near threshold
+· 3 supported"), and "not yet assessed" is its own count, never the remainder. A group of
+requirements never gets a verdict of its own; no rule concludes anything about a group
+(ADR-0010).
+
+### 11.3 The overview answers "what now"
+
+The overview leads with the next steps, derived from the case (ADR-0034), and shows at most
+three actions from the requirements themselves. When nothing is left it says what the
+workspace does not check, never that the case is ready.
+
+### 11.4 Where a value came from is always visible
+
+The interface distinguishes a value the person entered, one a model proposed, one they
+confirmed or corrected, one the system calculated, one a document supports, one in
+conflict, and one out of date. A model's proposal must never look like a verified fact. The
+provenance tokens (§4) are how.
+
+### 11.5 A requirement explains itself
+
+The answer comes first, then the working:
+
+```text
+Assessment (the result, its figure and summary)
+├── Limitations
+├── Next action
+├── How this was worked out
+├── Answers used
+├── Trips used
+├── Evidence used
+├── Rule used
+└── Assessment history
+```
+
+Every layer is always shown. An empty layer says so in one line ("None.") rather than
+disappearing, because a missing section and an empty one look the same otherwise. The
+explanation is the domain model rendered, never a generated paragraph or a tooltip.
+
+### 11.6 Documents
+
+The document list shows, for each document, its type, its processing state, what the
+person has decided about the values read from it, and when it was added, with one action
+weighted by whether there is work to do. On the review screen the document sits beside the
+values, and every value has an explicit state: proposed, confirmed, corrected or rejected.
+For values that matter most, the model's reading is not shown until the person has typed
+what the document says (blind entry), so they cannot simply accept it.
+
+### 11.7 Issues
+
+Issues are grouped by what the person has to do: resolve to continue, update your
+assessment, confirm information, review carefully, or for information only. Every
+out-of-date result is one "Update assessment" task, not one issue each (ADR-0033). The language is calm and precise:
+say what was found and what it affects. Avoid alarming red banners, "Something went wrong",
+reassurance the system cannot back, and legal or technical wording. When the system cannot
+assess something it says so plainly and gives no result, which counts as a success.
+
+### 11.8 Dates, numbers, surfaces and icons
+
+Dates, thresholds and calculated figures get deliberate emphasis: the tabular mono face,
+never wrapped. Dates read "15 April 2027", never ISO. Surfaces are soft borders and quiet
+section backgrounds, not a page of floating cards. Icons are for domain ideas (a
+requirement, a document, a trip, a confirmation), each drawn from the one glyph set, and
+never generic AI sparkles.
+
+### 11.9 Motion
+
+Motion explains a change of state (a result going out of date, a value moving from
+proposed to confirmed) and is never decoration. Anyone who asks for reduced motion gets
+none.
+
+### 11.10 States every screen handles
+
+Loading, empty, failed to load, in progress, out of date and not supported are designed
+states, not afterthoughts. A failed load must never look like an empty one: "we couldn't
+load your documents" and "no documents yet" are different statements.
+
+### 11.11 Accessibility
+
+WCAG 2.2 AA on the core flows. Everything works from the keyboard, status never relies on
+colour alone, focus is always visible and never dropped to the page, errors are attached to
+their fields, nothing critical lives only in a tooltip, and layouts hold at 320px and 200%
+zoom. The timeline is both a picture and an equivalent table.
+
+### 11.12 Writing
+
+Plain, short and exact. One idea per sentence, UK English, "you" for the person. The same
+word for the same thing everywhere: a requirement has a **result**, which can be **out of
+date**; the person **updates their assessment**; a period abroad is a **trip**. Keep exact
+where exactness is the point: confirmed or not, counted or not, a threshold rather than a
+limit. No em dashes, and nothing that sounds like a score or a guarantee.

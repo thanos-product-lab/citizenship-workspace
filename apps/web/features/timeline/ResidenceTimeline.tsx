@@ -9,7 +9,7 @@ import { type Timeline, type TimelineTrip, useTimeline } from "./useTimeline";
 /**
  * The residence timeline as a chronological table.
  *
- * **The table is the artifact, not the fallback.** UI/UX §15 asks for the visualisation and
+ * **The table is the artifact, not the fallback.** Design §11.11 asks for the visualisation and
  * a semantically equivalent table; building the table first is what makes "equivalent"
  * checkable rather than aspirational, because the visual band that follows has to earn its
  * place against something already complete. Everything a sighted user will read off the

@@ -34,7 +34,7 @@ Maintained and authoritative. If the code disagrees with one of these, the code 
 | [Demo script](DEMO_SCRIPT.md) | Running and showing the canonical demo locally |
 | [Threat model](security/SECURITY_AND_PRIVACY_THREAT_MODEL.md) | Security and privacy controls, and what each one defends against |
 | [Accessibility pass](security/ACCESSIBILITY_PASS.md) | What was verified on the core flows, how, and what was not |
-| [Design system foundations](design/DESIGN_SYSTEM_FOUNDATIONS.md) | Tokens, themes, contrast, and the rules the components follow |
+| [Design](design/DESIGN_SYSTEM_FOUNDATIONS.md) | The one design document: tokens, themes and contrast, and how the interface behaves (§11) |
 | [Evaluation report](evaluations/EVAL_REPORT.md) and [evaluations index](evaluations/README.md) | What the AI evaluation measured, on which date, and what it does not cover |
 
 ## Reference
@@ -44,7 +44,6 @@ the reasoning behind a decision, not as a description of the current build.
 
 | Document | Why it is kept |
 |---|---|
-| [UI/UX direction](design/Evidence_First_Citizenship_Workspace_UI_UX.md) | Interaction principles; the requirement explanation (§7) is kept current |
 | [Product thesis](product/Evidence_First_Citizenship_Workspace_Product_Thesis.md) | Why the product exists and what signal it is meant to send |
 | [AI evaluation plan](evaluations/AI_EVALUATION_PLAN.md) | Fixture classes, metrics and methodology the harness implements |
 | [AI spike findings](evaluations/AI_SPIKE_FINDINGS.md) | What the pre-M8 spike measured; the model and pipeline choices rest on it |
@@ -115,6 +114,7 @@ New decisions start from the [template](decisions/000-adr-template.md).
 Development history that no longer describes the product lives in git history, not here:
 the walkthrough scenarios and their findings, the milestone notes (M0 to the release slice),
 the July 2026 reconciliation, the original technical architecture RFC (its lasting content
-is in the architecture overview), and the per-milestone demo captures with their shot list (the
+is in the architecture overview), the UI/UX direction document (its lasting rules are in the
+design document's §11), and the per-milestone demo captures with their shot list (the
 demo will be one video recorded at the end). Read any of them with, for example,
 `git show a37b05a:docs/decisions/milestone-notes.md`.

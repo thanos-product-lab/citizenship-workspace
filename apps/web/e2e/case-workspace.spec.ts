@@ -129,7 +129,7 @@ test.describe("the canonical case walkthrough", () => {
     // The M3B oracle, on screen: 439 confirmed days against a threshold of 450.
     await expect(page.getByText("439 confirmed days against a threshold of 450")).toBeVisible();
 
-    // Every layer of the explanation stack is a real heading (UI/UX §7.3).
+    // Every layer of the explanation stack is a real heading (Design §11.5).
     for (const layer of [
       "Why this assessment was made",
       "Facts used",

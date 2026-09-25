@@ -1,7 +1,7 @@
 /**
  * The readiness narrative, assembled from counts.
  *
- * UI/UX §6.2 asks for "a structured summary rather than a percentage", generated from
+ * Design §11.2 asks for "a structured summary rather than a percentage", generated from
  * trusted case state. Two rules keep that honest:
  *
  * 1. **Counts of named states, never a fraction.** "3 supported" and "6 not yet assessed"

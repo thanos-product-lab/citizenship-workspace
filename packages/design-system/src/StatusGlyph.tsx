@@ -17,7 +17,7 @@
  * the glyph, so every icon is `aria-hidden` and the accessible name comes from the label.
  * An icon that needed its own alt text would mean the label was missing.
  *
- * No icon library. UI/UX §13.5 wants icons that support recognition of *domain* concepts,
+ * No icon library. Design §11.8 wants icons that support recognition of *domain* concepts,
  * and a generic set has no shape for "near threshold" or "requires judgement".
  */
 

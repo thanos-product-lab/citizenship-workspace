@@ -46,7 +46,7 @@ LIMITATION_MISSING_EVIDENCE = "MISSING_TRAVEL_EVIDENCE"
 LIMITATION_DUPLICATE_RECORD = "DUPLICATE_TRAVEL_RECORD"
 LIMITATION_CONFLICTING = "CONFLICTING_SOURCE_DATES"
 
-#: Conclusions the prototype declines to assess on its own (UI/UX §10.2). Stopping is a
+#: Conclusions the prototype declines to assess on its own (Design §11.7). Stopping is a
 #: successful outcome, not a failure (CLAUDE.md §2.7), so these are surfaced as issues
 #: rather than buried in a requirement nobody opens.
 _UNSUPPORTED_CONCLUSIONS = frozenset(

@@ -79,7 +79,7 @@ function canonicalGroups(): Group[] {
 describe("AssessmentGroups", () => {
   it("shows no fraction, ratio or percentage anywhere", () => {
     // `4 / 4` and `0 / 2 assessed` are readiness scores arrived at sideways (CLAUDE.md
-    // §2.6, UI/UX §6.2), and this is the assertion that stops one coming back.
+    // §2.6, Design §11.2), and this is the assertion that stops one coming back.
     const { container } = render(<AssessmentGroups overview={anOverview(canonicalGroups())} />);
     expect(container.textContent).not.toMatch(/%|\d+\s*\/\s*\d+|\d+ of \d+|\d+ out of \d+/);
   });

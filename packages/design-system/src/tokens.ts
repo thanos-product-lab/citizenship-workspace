@@ -142,7 +142,7 @@ export const currencyTokens: Record<CurrencyState, CurrencyToken> = {
   provisional: { colorVar: "--cw-currency-provisional", glyph: "preview", label: "Preview" },
 };
 
-// --- Provenance (how a value came to be; UI/UX §3.4, §18.5) ---
+// --- Provenance (how a value came to be; Design §11.4) ---
 
 export const provenanceKinds = [
   "ai_proposed",

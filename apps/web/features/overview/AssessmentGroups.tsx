@@ -28,7 +28,7 @@ function groupLabel(key: string): string {
  * 80%. Worse, `Residence 4 / 5` renders a `NOT_CURRENTLY_SATISFIED` conclusion as
  * *missing* — as though finding a fifth thing would complete the set — silently converting
  * a reached failure into an incomplete. The sanctioned form is counts with no denominator:
- * UI/UX §6.2, CLAUDE.md §2.6.
+ * Design §11.2, CLAUDE.md §2.6.
  *
  * Nor is a group given a single verdict of its own. "Residence: not currently satisfied"
  * would be a claim about five requirements on the strength of one, and there is no rule

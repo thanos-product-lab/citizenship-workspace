@@ -656,7 +656,7 @@
         "type": "string"
       },
       "EvidenceProcessingStatus": {
-        "description": "Domain \u00a714.4, verbatim \u2014 and the *only* vocabulary the API may project.\n\nThese are domain states. Raw Celery states (`PENDING`, `STARTED`, `RETRY`, \u2026) are\nnever shown to a user (Technical Architecture RFC \u00a718, MVP \u00a78.9), and\n`tests/evidence/test_processing_states.py` asserts none of them can reach a\nresponse.\n\nReachability in M7: `UPLOADED` here in slice 1; `VALIDATING` in slice 2;\n`EXTRACTING_TEXT`, `ANALYSING`, `COMPLETED`, `PARTIALLY_COMPLETED`, `FAILED`,\n`UNSUPPORTED` in slice 3. `AWAITING_CONFIRMATION` has no producer until claims\nexist in M8, and ships unreachable rather than faked \u2014 the UI must not offer it as\na stage a document might enter.",
+        "description": "Domain \u00a714.4, verbatim \u2014 and the *only* vocabulary the API may project.\n\nThese are domain states. Raw Celery states (`PENDING`, `STARTED`, `RETRY`, \u2026) are\nnever shown to a user (architecture overview \u00a78, MVP \u00a78.9), and\n`tests/evidence/test_processing_states.py` asserts none of them can reach a\nresponse.\n\nReachability in M7: `UPLOADED` here in slice 1; `VALIDATING` in slice 2;\n`EXTRACTING_TEXT`, `ANALYSING`, `COMPLETED`, `PARTIALLY_COMPLETED`, `FAILED`,\n`UNSUPPORTED` in slice 3. `AWAITING_CONFIRMATION` has no producer until claims\nexist in M8, and ships unreachable rather than faked \u2014 the UI must not offer it as\na stage a document might enter.",
         "enum": [
           "UPLOADED",
           "VALIDATING",
@@ -1326,7 +1326,7 @@
         "type": "object"
       },
       "IssueGroupView": {
-        "description": "Open issues sharing one user action (UI/UX \u00a710).",
+        "description": "Open issues sharing one user action (Design \u00a711.7).",
         "properties": {
           "action_group": {
             "title": "Action Group",

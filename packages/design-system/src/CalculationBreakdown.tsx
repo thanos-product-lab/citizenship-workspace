@@ -6,7 +6,7 @@
  * and a date reads as a value rather than as prose.
  *
  * It is a real `<table>`: these are label/value pairs with a header relationship, and a
- * screen-reader user should be able to navigate them as such. UI/UX §15 asks for
+ * screen-reader user should be able to navigate them as such. Design §11.11 asks for
  * screen-reader descriptions of calculations specifically.
  *
  * The frontend never computes any of this. Every row comes from the server's

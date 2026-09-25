@@ -1068,7 +1068,7 @@ export interface components {
          * @description Domain §14.4, verbatim — and the *only* vocabulary the API may project.
          *
          *     These are domain states. Raw Celery states (`PENDING`, `STARTED`, `RETRY`, …) are
-         *     never shown to a user (Technical Architecture RFC §18, MVP §8.9), and
+         *     never shown to a user (architecture overview §8, MVP §8.9), and
          *     `tests/evidence/test_processing_states.py` asserts none of them can reach a
          *     response.
          *
@@ -1351,7 +1351,7 @@ export interface components {
         };
         /**
          * IssueGroupView
-         * @description Open issues sharing one user action (UI/UX §10).
+         * @description Open issues sharing one user action (Design §11.7).
          */
         IssueGroupView: {
             /** Action Group */

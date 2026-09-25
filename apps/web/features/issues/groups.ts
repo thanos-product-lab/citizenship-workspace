@@ -6,7 +6,7 @@ export type Issue = IssueGroup["issues"][number];
 export type RecheckTaskView = NonNullable<IssueQueue["recheck"]>;
 
 /**
- * Action-group key → its heading, following UI/UX §10's instruction to group issues by
+ * Action-group key → its heading, following Design §11.7's instruction to group issues by
  * *what the user does about them* rather than by type or by severity name. A reader
  * scanning the queue is deciding what to pick up next, and "Confirm information" answers
  * that where "Action required" does not.

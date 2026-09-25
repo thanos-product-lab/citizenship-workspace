@@ -168,7 +168,7 @@ def _resolve_case_fact(session: Session, link: AssessmentInputLink) -> ResolvedI
         input_version_id=link.input_version_id,
         contribution_role=link.contribution_role,
         label=label,
-        # Formatted, not the stored ISO string. `format_date` exists because UI/UX §13.3
+        # Formatted, not the stored ISO string. `format_date` exists because Design §11.8
         # reads an ISO date in a sentence as machine output — and this panel's whole job is
         # to look like the product's own account of what it read.
         value=_fact_value(version.normalised_value or version.raw_value),

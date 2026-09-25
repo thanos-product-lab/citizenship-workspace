@@ -323,7 +323,7 @@ def test_the_queue_names_both_values_and_the_document(api: Api, db_session: Sess
     assert issue["affected_object_id"] == trip_id
     assert "Rome" in issue["title"]
     assert "Rome booking" in issue["title"]
-    # Formatted, not ISO. `format_date` exists because UI/UX §13.3 says an ISO string in
+    # Formatted, not ISO. `format_date` exists because Design §11.8 says an ISO string in
     # a sentence reads as machine output, and this card's whole job is making two
     # human-entered dates comparable.
     assert "1 July 2023" in issue["body"]
@@ -623,7 +623,7 @@ def test_the_result_explains_itself_without_calling_the_trip_unconfirmed(
     assert "conflicting dates" in trip["detail"]
 
     # The fact that moved the figure is named, and reads as a date rather than as an ISO
-    # string (UI/UX §13.3).
+    # string (Design §11.8).
     fact = next(t for t in detail["facts_used"] if t["input_kind"] == "CASE_FACT_VERSION")
     assert fact["value"] == "2 July 2023"
 

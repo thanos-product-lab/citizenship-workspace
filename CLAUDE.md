@@ -398,7 +398,7 @@ docs/
 ├── KNOWN_LIMITATIONS.md · DEPLOYMENT.md · DEMO_SCRIPT.md
 ├── IMPLEMENTATION_ROADMAP.md · MILESTONE_GATES.md · RELEASE_GATE_AUDIT.md   (reference)
 ├── product/        MVP scope · synthetic demo case · thesis · case study outline
-├── design/         design system foundations · UI/UX direction
+├── design/         the design document: visual system and interface rules
 ├── architecture/   overview · rules spec · domain model · evidence lifecycle · technical RFC
 ├── evaluations/    report · per-run results · evaluation plan · spike findings
 ├── security/       threat model · accessibility pass

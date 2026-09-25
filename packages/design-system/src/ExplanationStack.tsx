@@ -1,7 +1,7 @@
 /**
  * The explanation stack — the product's signature interaction.
  *
- * UI/UX §7.3 is explicit about what this is *not*: not a tooltip, not a disclosure widget,
+ * Design §11.5 is explicit about what this is *not*: not a tooltip, not a disclosure widget,
  * and not an AI-generated paragraph. It is the domain model rendered:
  *
  *     Assessment

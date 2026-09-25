@@ -62,7 +62,7 @@ CLAUDE.md
 docs/product/Evidence_First_Citizenship_Workspace_Product_Thesis.md
 docs/product/MVP_SCOPE_AND_ACCEPTANCE_CRITERIA.md
 docs/product/SYNTHETIC_DEMO_CASE.md
-docs/design/Evidence_First_Citizenship_Workspace_UI_UX.md
+docs/design/DESIGN_SYSTEM_FOUNDATIONS.md (replaced the UI/UX direction document)
 docs/design/DESIGN_SYSTEM_FOUNDATIONS.md
 docs/architecture/ARCHITECTURE_OVERVIEW.md (replaced the technical architecture RFC)
 docs/architecture/DOMAIN_MODEL_RFC.md
@@ -82,7 +82,7 @@ whole project. Write documents just in time, immediately before their milestone.
 |---|---|---|
 | Product Thesis | — | ✅ exists |
 | MVP Scope | — | ✅ exists |
-| UI/UX Direction | — | ✅ exists |
+| UI/UX Direction | — | retired; its lasting rules are in `design/DESIGN_SYSTEM_FOUNDATIONS.md` §11 |
 | Technical Architecture RFC | — | retired; its lasting content is in `architecture/ARCHITECTURE_OVERVIEW.md` |
 | Domain Model RFC | — | ✅ exists |
 | `CLAUDE.md` | M1 | ✅ exists |
@@ -611,7 +611,7 @@ stop · cost recorded per `model_run` · dev-environment budget alert.
 
 ## Frontend Scope
 
-Split-view review screen (UI/UX §9.4) · **document preview**, moved here from M7 by
+Split-view review screen (Design §11.6) · **document preview**, moved here from M7 by
 ADR-0024 · extracted-field review with confirm / correct / reject · claim provenance back
 to the document.
 

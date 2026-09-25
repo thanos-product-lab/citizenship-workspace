@@ -1,7 +1,7 @@
 /**
  * One item in the issue queue.
  *
- * The register is the point, and UI/UX §10 sets it: this experience should feel
+ * The register is the point, and Design §11.7 sets it: this experience should feel
  * *manageable rather than alarming*. So there is no red banner, no exclamation, no
  * "Something went wrong" — an issue is a thing to do, not an emergency, and a queue that
  * shouts trains the reader to stop looking at it.

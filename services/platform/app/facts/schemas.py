@@ -11,7 +11,7 @@ screen that fetched the proposal could render it beside the empty input, which i
 pre-filled confirm with extra steps. `proposed_value` is `None` for those.
 
 **Once a decision exists, the proposal is returned.** MVP §8.11 requires that correcting
-a value preserves the original proposal and UI/UX §9.4 requires the split view to show it
+a value preserves the original proposal and Design §11.6 requires the split view to show it
 in history — neither is visible if the proposal is never returned at all. The nudge blind
 entry exists to remove is gone by then: the decision is immutable, `OPEN_STATUSES` is
 `PENDING_REVIEW` alone so no second review can act on it, and there is nothing left for

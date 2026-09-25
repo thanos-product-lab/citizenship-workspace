@@ -1,6 +1,6 @@
 """Choosing the three actions the overview shows.
 
-UI/UX §6.4 caps the overview at three high-priority actions. That cap is a promise about
+Design §11.3 caps the overview at three high-priority actions. That cap is a promise about
 attention, not about completeness — so the selection has to be deterministic, explainable,
 and honest about what it left out.
 

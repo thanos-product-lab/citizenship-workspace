@@ -18,7 +18,7 @@ export const MAIN_LANDMARK_ID = "case-main";
  * Issues joined at M6, ordered after Requirements: the queue is about the conclusions,
  * so it reads second.
  *
- * Timeline joined at M5, second — the position UI/UX §4 gives it. It sits before
+ * Timeline joined at M5, second — the position Design §11.1 gives it. It sits before
  * Requirements because it shows the *inputs* every residence conclusion is drawn from,
  * and the order of the nav is the order of the argument: here is what you told us, here
  * is what follows from it, here is what needs attention, here is where you change it.

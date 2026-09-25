@@ -36,7 +36,7 @@ from app.requirements.messages import (
 #: makes them one group.
 TYPE_ACTION_GROUPS: dict[str, str] = dict.fromkeys(RECHECK_TYPES, "RECHECK_CONCLUSIONS")
 
-#: Severity → the group a user acts on, per UI/UX §10 ("group issues by user action"). The
+#: Severity → the group a user acts on, per Design §11.7 ("group issues by user action"). The
 #: fallback when the type says nothing more specific.
 ACTION_GROUPS: dict[str, str] = {
     IssueSeverity.BLOCKING.value: "RESOLVE_TO_CONTINUE",
@@ -131,7 +131,7 @@ class IssueView(BaseModel):
 
 
 class IssueGroupView(BaseModel):
-    """Open issues sharing one user action (UI/UX §10)."""
+    """Open issues sharing one user action (Design §11.7)."""
 
     action_group: str
     issues: list[IssueView]

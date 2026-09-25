@@ -101,7 +101,7 @@ export function CaseOverviewPanel({ overview }: { overview: Overview }): JSX.Ele
 }
 
 /**
- * At most three actions (UI/UX §6.4).
+ * At most three actions (Design §11.3).
  *
  * Each card carries the requirement's **conclusion** badge, not a "Blocking" chip.
  * Blocking is a property of the action, not a conclusion, and putting it where a status
