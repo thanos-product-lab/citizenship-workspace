@@ -150,7 +150,7 @@ def test_an_absence_total_the_prototype_will_not_assess_raises_a_review_issue(
     # exercises discretion in this range, and nothing in the product is gated on it.
     assert issues[0]["severity"] == "REVIEW_REQUIRED"
     assert issues[0]["dismissibility"] == "NOT_DISMISSIBLE"
-    assert "paused" in (issues[0]["body"] or "")
+    assert "have not given a result" in (issues[0]["body"] or "")
     # And it does not also raise a near-threshold item for the same requirement.
     affected = {i["affected_object_id"] for i in _of_type(_queue(api, case_id), "NEAR_THRESHOLD")}
     assert "residence.total_absences" not in affected
@@ -699,7 +699,7 @@ def test_the_issue_never_tells_the_user_their_totals_are_affected(api: Api) -> N
     _recalc(api, case_id)
 
     issue = _of_type(_queue(api, case_id), "MISSING_EVIDENCE")[0]
-    assert "does not change any figure" in issue["body"]
+    assert "changes no figure" in issue["body"]
     assert "set this aside" in issue["impact"]
 
 
@@ -852,7 +852,7 @@ def test_the_duplicate_document_issue_is_information_the_user_may_set_aside(api:
     issue = _of_type(_queue(api, case_id), "DUPLICATE_EVIDENCE")[0]
     assert issue["severity"] == "INFORMATION"
     assert issue["dismissibility"] == "DISMISSIBLE"
-    assert "No conclusion depends on which copy you keep" in issue["body"]
+    assert "No result depends on which copy you keep" in issue["body"]
 
 
 def test_two_different_files_are_not_duplicates(api: Api) -> None:

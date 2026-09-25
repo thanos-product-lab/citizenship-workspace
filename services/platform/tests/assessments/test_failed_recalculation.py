@@ -304,7 +304,7 @@ def test_the_failure_opens_a_processing_failure_issue_that_outlives_the_request(
     assert failure["dismissibility"] == "NOT_DISMISSIBLE"
     assert failure["affected_object_type"] == "Case"
     assert "did not finish" in (failure["body"] or "")
-    assert "still the ones worked out before your last edit" in (failure["body"] or "")
+    assert "still the ones from before your last edit" in (failure["body"] or "")
 
 
 def test_the_failure_sorts_above_the_stale_items_it_explains(

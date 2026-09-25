@@ -104,7 +104,7 @@ def test_the_stale_issues_are_presented_as_one_update_task(api: Api) -> None:
     task = queue["recheck"]
     assert task["failed"] is False
     assert task["title"] == "Update assessment"
-    assert task["body"].startswith("4 conclusions were reached before")
+    assert task["body"].startswith("4 results are from before your last change")
     assert {c["requirement_key"] for c in task["checks"]} == _open_keys(queue)
     assert all(c["requirement_title"] != c["requirement_key"] for c in task["checks"])
     # Not shown twice: none of them is also in a group.

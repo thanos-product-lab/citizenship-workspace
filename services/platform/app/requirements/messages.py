@@ -111,12 +111,12 @@ def _held_back_records(p: Parameters) -> str:
     conflicted = _int(p, "conflicted_record_count") or 0
     unconfirmed = _int(p, "unconfirmed_record_count") or 0
     if conflicted and unconfirmed:
-        return "Records you have not confirmed, and records whose dates a document disputes,"
+        return "Trips you have not confirmed, and trips whose dates a document disputes,"
     if conflicted:
-        return "Records whose dates a document disputes"
+        return "Trips whose dates a document disputes"
     # Also the fallback for a result written before these counts existed: absent parameters
     # read as zero, and the original wording is what those results meant.
-    return "Records you have not confirmed"
+    return "Trips you have not confirmed"
 
 
 def _absence_summary(
@@ -149,7 +149,7 @@ def _absence_summary(
     if confirmed is None:
         return f"The number of days outside the UK {period} is not available on this result."
 
-    sentence = f"{_days(confirmed)} outside the UK {period}, from confirmed travel records"
+    sentence = f"{_days(confirmed)} outside the UK {period}, from confirmed trips"
     if threshold is not None:
         sentence += f", against a threshold of {threshold}"
     sentence += "."
@@ -172,22 +172,19 @@ def _absence_summary(
 SUMMARY_TEMPLATES: dict[str, _Template] = {
     # route.adult_applicant (§7.1)
     "ROUTE_ADULT_CONFIRMED": lambda p: (
-        f"You are 18 or over on {format_date(p.get('reference_date'))}, "
+        f"You will be 18 or over on {format_date(p.get('reference_date'))}, "
         "your proposed application date."
     ),
     "ROUTE_APPLICANT_UNDER_18": lambda p: (
-        f"You are under 18 on {format_date(p.get('reference_date'))}, your proposed "
-        "application date. Naturalisation is for adults; children register instead, "
-        "which this workspace does not cover."
+        f"You will be under 18 on {format_date(p.get('reference_date'))}, your proposed "
+        "application date. Children register rather than naturalise, and this workspace "
+        "does not cover that."
     ),
     # route.supported_status (§7.2)
-    "STATUS_TYPE_SUPPORTED": lambda p: (
-        "Your settled status is one of the three this route accepts: indefinite leave "
-        "to remain, indefinite leave to enter, or EU settled status."
-    ),
+    "STATUS_TYPE_SUPPORTED": lambda p: "Your settled status is one this route accepts.",
     "STATUS_TYPE_UNSUPPORTED": lambda p: (
-        "Your status is not one this workspace can assess. Only indefinite leave to "
-        "remain, indefinite leave to enter, and EU settled status are covered."
+        "This workspace can only assess indefinite leave to remain, indefinite leave to "
+        "enter or EU settled status."
     ),
     # route.standard_section_6_1 (§7.2b)
     "ROUTE_STANDARD_CONFIRMED": lambda p: (
@@ -195,50 +192,48 @@ SUMMARY_TEMPLATES: dict[str, _Template] = {
     ),
     "ROUTE_SPOUSE_UNSUPPORTED": lambda p: (
         "You told us you are married to a British citizen. That is the spouse route "
-        "under Section 6(2), which this workspace does not assess."
+        "(Section 6(2)), which this workspace does not cover."
     ),
     "ROUTE_MAY_BE_BRITISH": lambda p: (
-        "You told us you may already be a British citizen. If that is right, you would "
-        "not need to naturalise at all — this needs a person to look at."
+        "You told us you may already be a British citizen. If so, you would not need to "
+        "naturalise. This needs checking by a person."
     ),
     "ROUTE_PREREQUISITES_UNMET": lambda p: (
-        "The standard five-year route depends on being an adult and holding a settled "
-        "status this route accepts. At least one of those is not currently met."
+        "This route needs you to be an adult with a settled status it accepts. At least "
+        "one of those is not met."
     ),
     # Deliberately says nothing about whether the route fits. It cannot: the answer it
     # needs is not known yet, and the difference between "we cannot tell" and "no" is the
     # whole reason §7.2b has a row for this.
     "ROUTE_PREREQUISITES_UNDETERMINED": lambda p: (
-        "This route depends on being an adult and holding a settled status this route "
-        "accepts, and one of those answers is not known yet. Nothing has been concluded "
-        "about your case either way."
+        "This route needs you to be an adult with a settled status it accepts, and one "
+        "of those answers is missing. There is no result either way until it is given."
     ),
     # status.holding_period (§7.3)
     "STATUS_PERIOD_SATISFIED": lambda p: (
-        "You will have held your settled status free of immigration time restrictions "
-        "for at least 12 months by your proposed application date. The earliest date "
-        f"that holds is {format_date(p.get('earliest_application_date'))}."
+        "By your proposed application date you will have held settled status, free of "
+        "time limits, for at least 12 months. The earliest date that is true is "
+        f"{format_date(p.get('earliest_application_date'))}."
     ),
     "STATUS_PERIOD_NARROW_MARGIN": lambda p: (
-        "Your proposed application date falls within a week of the earliest date the "
-        f"12-month holding period allows, {format_date(p.get('earliest_application_date'))}. "
-        "Guidance does not state this boundary to the day."
+        "Your proposed application date is within a week of "
+        f"{format_date(p.get('earliest_application_date'))}, the earliest date the 12-month "
+        "rule allows. Guidance does not say exactly where that boundary falls."
     ),
     "STATUS_PERIOD_NOT_YET_MET": lambda p: (
-        "Your proposed application date is before the earliest date the 12-month "
-        "holding period allows, "
-        f"{format_date(p.get('earliest_application_date'))}."
+        "Your proposed application date is before "
+        f"{format_date(p.get('earliest_application_date'))}, the earliest date the 12-month "
+        "rule allows."
     ),
     # residence.qualifying_period (§7.4) — a calculation, not a test. Its dates live in
     # calculation_breakdown rather than summary_parameters, so this sentence names none.
     "QUALIFYING_PERIOD_DERIVED": lambda p: (
-        "Your five-year qualifying period is derived from your proposed application "
-        "date: the five years ending on that date, counted from the day after the "
-        "same date five years earlier."
+        "Your qualifying period is the five years up to and including your proposed "
+        "application date."
     ),
     # residence.physical_presence_start_date (§7.5)
     "PRESENCE_CONFIRMED": lambda p: (
-        "Your confirmed travel records place you in the UK on "
+        "Your confirmed trips show you in the UK on "
         f"{format_date(p.get('physical_presence_date'))}, the first day of your "
         "qualifying period."
     ),
@@ -248,12 +243,12 @@ SUMMARY_TEMPLATES: dict[str, _Template] = {
         f"qualifying period. {_covering_remedy(p)}"
     ),
     "PRESENCE_NOT_SUPPORTED": lambda p: (
-        "Your confirmed travel records place you outside the UK on "
+        "Your confirmed trips show you outside the UK on "
         f"{format_date(p.get('physical_presence_date'))}, the first day of your "
         "qualifying period."
         + (
-            " The earliest later application date whose first day is clear of confirmed "
-            f"absence is {format_date(p.get('resolving_application_date'))}."
+            " The earliest later application date that avoids this is "
+            f"{format_date(p.get('resolving_application_date'))}."
             if p.get("resolving_application_date")
             else (
                 f" No later date within the next {PRESENCE_SEARCH_HORIZON_DAYS} days"
@@ -276,7 +271,7 @@ SUMMARY_TEMPLATES: dict[str, _Template] = {
         p,
         period="across your five-year qualifying period",
         verdict="That is over the standard threshold, in the range where guidance normally "
-        "allows discretion to be exercised.",
+        "allows discretion.",
     ),
     "TOTAL_ABSENCES_REVIEW_REQUIRED": lambda p: _absence_summary(
         p,
@@ -291,8 +286,8 @@ SUMMARY_TEMPLATES: dict[str, _Template] = {
     "TOTAL_ABSENCES_UNCONFIRMED_REVIEW": lambda p: _absence_summary(
         p,
         period="across your five-year qualifying period",
-        verdict="Your confirmed records are within the threshold, but records you have not "
-        "confirmed would change that conclusion, so it cannot be settled yet.",
+        verdict="Your confirmed trips are within the threshold, but trips you have not "
+        "confirmed would change that result, so it cannot be settled yet.",
         verdict_covers_unconfirmed=True,
     ),
     # residence.final_year_absences (§7.7)
@@ -310,7 +305,7 @@ SUMMARY_TEMPLATES: dict[str, _Template] = {
         p,
         period="in the final 12 months",
         verdict="That is over the standard threshold, in the range where guidance normally "
-        "allows discretion to be exercised.",
+        "allows discretion.",
     ),
     "FINAL_YEAR_REVIEW_REQUIRED": lambda p: _absence_summary(
         p,
@@ -325,27 +320,25 @@ SUMMARY_TEMPLATES: dict[str, _Template] = {
     "FINAL_YEAR_UNCONFIRMED_REVIEW": lambda p: _absence_summary(
         p,
         period="in the final 12 months",
-        verdict="Your confirmed records are within the threshold, but records you have not "
-        "confirmed would change that conclusion, so it cannot be settled yet.",
+        verdict="Your confirmed trips are within the threshold, but trips you have not "
+        "confirmed would change that result, so it cannot be settled yet.",
         verdict_covers_unconfirmed=True,
     ),
     # residence.travel_consistency (§7.8) — a data-quality verdict, no figures attached.
     "TRAVEL_RECORDS_CONSISTENT": lambda p: (
-        "Your travel records are internally consistent: no overlaps, no conflicting "
-        "dates, and no uncertain dates inside the qualifying period."
+        "No overlapping, conflicting or uncertain dates in your trips within the qualifying period."
     ),
     "TRAVEL_RECORDS_CONFLICT": lambda p: (
-        "At least one travel record inside your qualifying period has conflicting "
-        "dates from different sources. Absence totals cannot be relied on until that "
-        "is resolved."
+        "At least one trip in your qualifying period has dates that disagree with a "
+        "document. Your absence totals cannot be relied on until that is resolved."
     ),
     "TRAVEL_RECORDS_OVERLAP": lambda p: (
-        "Two or more of your travel records cover the same days. One of them is "
-        "probably a duplicate or has the wrong dates."
+        "Two or more of your trips cover the same days. One is probably a duplicate or "
+        "has the wrong dates."
     ),
     "TRAVEL_RECORDS_UNCERTAIN": lambda p: (
-        "At least one travel record inside your qualifying period has dates marked as "
-        "estimated or unknown, so your absence totals are not yet settled."
+        "At least one trip in your qualifying period has estimated or unknown dates, so "
+        "your absence totals are not settled yet."
     ),
     # Says the records are consistent *first*. The unevidenced trips are a separate,
     # weaker fact, and leading with them would read as though something were wrong with
@@ -354,7 +347,7 @@ SUMMARY_TEMPLATES: dict[str, _Template] = {
     # "Some confirmed trips" for a single Greece booking is a small lie in the one sentence
     # the requirement card leads with.
     "TRAVEL_RECORDS_UNEVIDENCED": lambda p: (
-        "Your travel records are internally consistent. "
+        "No overlapping, conflicting or uncertain dates. "
         + _unevidenced_clause(_int(p, "unevidenced_count"))
         + ", which does not affect any total."
     ),
@@ -367,8 +360,8 @@ SUMMARY_TEMPLATES: dict[str, _Template] = {
 def _covering_record(p: Parameters) -> str:
     """How to describe the record covering the presence anchor, by why it is held back."""
     if (_int(p, "conflicted_record_count") or 0) > 0:
-        return "A travel record whose dates a document disputes"
-    return "A travel record you have not confirmed"
+        return "A trip whose dates a document disputes"
+    return "A trip you have not confirmed"
 
 
 def _covering_remedy(p: Parameters) -> str:
@@ -398,7 +391,7 @@ def _unconfirmed_records(p: Parameters) -> str:
     held_back = _held_back_records(p)
     if trusted is not None and provisional is not None:
         return (
-            f"Your confirmed records total {_days(trusted)}. Including "
+            f"Your confirmed trips total {_days(trusted)}. Including "
             f"{held_back[0].lower()}{held_back[1:]} would make it {provisional}, which "
             "lands in a different band."
         )
@@ -408,31 +401,31 @@ def _unconfirmed_records(p: Parameters) -> str:
             f"{format_date(p.get('physical_presence_date'))}, so presence on the first "
             "day of your qualifying period is unresolved."
         )
-    return "Records you have not confirmed would change this conclusion."
+    return "Trips you have not confirmed would change this result."
 
 
 LIMITATION_TEMPLATES: dict[str, _Template] = {
     "UNCONFIRMED_RECORDS_AFFECT_CONCLUSION": _unconfirmed_records,
     "STATUS_PERIOD_NARROW_MARGIN": lambda p: (
-        "Your proposed application date is within a week of the earliest the holding "
-        f"period allows ({format_date(p.get('earliest_application_date'))}), and the "
-        "date an application is received is not entirely in your control."
+        "Your proposed application date is within a week of the earliest the 12-month "
+        f"rule allows ({format_date(p.get('earliest_application_date'))}), and you do not "
+        "fully control the date an application is received."
     ),
     "CONFLICTING_SOURCE_DATES": lambda p: (
-        "The dates on this trip conflict between sources, so it is not counted as confirmed."
+        "This trip's dates disagree with a document, so it is not counted as confirmed."
     ),
     "OVERLAPPING_TRAVEL": lambda p: (
-        "These trips cover overlapping days. Overlapping days are counted once, not "
-        "twice, but one of the records is likely wrong."
+        "These trips share some days. Shared days are counted once, but one of the trips "
+        "is probably wrong."
     ),
     "UNCERTAIN_TRAVEL_DATE": lambda p: (
-        "The dates on this trip are marked estimated or unknown, so it does not count "
-        "towards your confirmed totals."
+        "This trip's dates are estimated or unknown, so it does not count towards your "
+        "confirmed totals."
     ),
     "NEAR_STANDARD_THRESHOLD": lambda p: (
         "This trip covers "
         f"{format_date(p.get('physical_presence_date'))}, the first day of your "
-        "qualifying period — the single day presence is tested on."
+        "qualifying period, which is the day presence is tested on."
     ),
     # Says what was found, not what to do about it. Two identical rows are almost always a
     # slip, and "almost always" is not "always" — the product cannot tell a mis-entry from
@@ -443,8 +436,8 @@ LIMITATION_TEMPLATES: dict[str, _Template] = {
     # ESTIMATED one contributes to the trusted total, and deleting the wrong one drops it
     # to zero. The sentence invited a removal it called inert.
     "DUPLICATE_TRAVEL_RECORD": lambda p: (
-        "This trip has the same dates and destination as another one. Days outside the UK "
-        "are counted once, so the second record is not adding days to your totals."
+        "This trip has the same dates and destination as another. Days are counted once, "
+        "so the second one adds nothing to your totals."
     ),
     # "no document attached", not "no evidence" — the user attaches documents, and
     # "evidence" invites them to think something has judged what they attached. Nothing
@@ -454,12 +447,12 @@ LIMITATION_TEMPLATES: dict[str, _Template] = {
     # people take trips they have no paperwork for — so this states the fact and leaves
     # the decision with them.
     "MISSING_TRAVEL_EVIDENCE": lambda p: (
-        "No document is attached to this trip. That does not affect your absence "
-        "totals, which are worked out from the dates you entered."
+        "No document is attached to this trip. That does not affect your totals, which "
+        "use the dates you entered."
     ),
     "TRAVEL_OUTSIDE_WINDOW": lambda p: (
-        "This trip falls entirely outside your qualifying period, so it does not "
-        "affect any total. It is kept for your records."
+        "This trip is entirely outside your qualifying period, so it does not affect any "
+        "total. It is kept for your records."
     ),
     "LEAP_DAY_BOUNDARY_ASSUMPTION": lambda p: (
         "Your application date is 29 February. Guidance does not say how the five-year "
@@ -490,7 +483,7 @@ STALE_REASON_TEMPLATES: dict[str, _Template] = {
     "APPLICATION_DATE_CHANGED": lambda p: (
         "Your proposed application date changed after this was worked out."
     ),
-    "TRAVEL_RECORD_CHANGED": lambda p: "Your travel records changed after this was worked out.",
+    "TRAVEL_RECORD_CHANGED": lambda p: "Your trips changed after this was worked out.",
     # No reachable writer yet: a confirmed route profile cannot be edited on an active case
     # (`confirm_route_profile` requires a draft). The reason code and this sentence exist so
     # that the invalidation service handles the kind its declarations already name, rather
@@ -501,7 +494,7 @@ STALE_REASON_TEMPLATES: dict[str, _Template] = {
     # "documents you attached", not "your evidence": the user attached them, and the
     # sentence has to work whether they added one, removed one, or deleted the file.
     "EVIDENCE_SUPPORT_CHANGED": lambda p: (
-        "The documents attached to your travel records changed after this was worked out."
+        "The documents attached to your trips changed after this was worked out."
     ),
     # Says the rules changed, and stops there. It deliberately does not say "your result
     # may change" — nobody has rechecked it yet, so that would be a guess, and a guess
@@ -626,41 +619,41 @@ ISSUE_TITLE_TEMPLATES: dict[str, _Template] = {
     "ISSUE_DUPLICATE_EVIDENCE": lambda p: (
         f"{p.get('display_name', 'This document')} is already in your documents"
     ),
-    "ISSUE_RECALCULATION_FAILED": lambda p: "We could not recheck your conclusions",
+    "ISSUE_RECALCULATION_FAILED": lambda p: "We could not recheck your results",
 }
 
 ISSUE_BODY_TEMPLATES: dict[str, _Template] = {
     "ISSUE_STALE_ASSESSMENT": lambda p: (
-        "An input behind this conclusion changed, so it has not been rechecked. "
-        "The conclusion shown is the one reached before that change."
+        "Something this result depends on changed, and it has not been rechecked. "
+        "The result shown is from before that change."
     ),
     "ISSUE_NEAR_THRESHOLD_ABSENCES": lambda p: (
-        "The number of days behind this conclusion sits close to the threshold it is "
-        "measured against. Small changes to your travel records could move it across."
+        "The number of days is close to the threshold. A small change to your trips "
+        "could move it across."
     ),
     "ISSUE_NEAR_THRESHOLD_STATUS_PERIOD": lambda p: (
-        "You will have held your settled status free of time restrictions for just over "
-        "the required 12 months on your proposed application date."
+        "On your proposed application date you will have held settled status for only "
+        "just over the required 12 months."
     ),
     # UI/UX §10.2, close to verbatim. The point of the wording is that stopping is a
     # deliberate outcome, not a breakdown: the product says what it will not do and why.
     "ISSUE_UNSUPPORTED_COMPLEXITY": lambda p: (
-        "This part of your case falls in a range the prototype cannot assess reliably. "
-        "We have paused this assessment rather than reaching an uncertain conclusion."
+        "This part of your case is outside what this prototype can assess reliably, so "
+        "we have not given a result."
     ),
     "ISSUE_OVERLAPPING_TRAVEL": lambda p: (
-        "Two of your trips cover some of the same dates. Overlapping records make the "
-        "days outside the UK ambiguous."
+        "Two of your trips cover some of the same dates, so it is unclear how many days "
+        "you were outside the UK."
     ),
     # Both values, spelled out. "These disagree" without saying what disagrees sends the
     # user hunting for the comparison the product has already made.
     "ISSUE_CONFLICTING_CLAIMS": lambda p: _conflicting_body(p),
     "ISSUE_UNCERTAIN_TRAVEL_DATE": lambda p: (
-        "These dates are recorded as uncertain, so they are not counted in the confirmed totals."
+        "These dates are marked as uncertain, so they are not in your confirmed totals."
     ),
     "ISSUE_UNCERTAIN_DATE_OUTSIDE": lambda p: (
-        "These dates are recorded as uncertain. This trip falls outside your qualifying "
-        "period, so it does not affect any figure."
+        "These dates are marked as uncertain. The trip is outside your qualifying period, "
+        "so it does not affect any figure."
     ),
     # No "something went wrong", no apology, and above all no suggestion that the figures
     # on screen are fine. The one thing this sentence must establish is that the numbers
@@ -671,18 +664,16 @@ ISSUE_BODY_TEMPLATES: dict[str, _Template] = {
     # until documents arrive, which is false — they are worked out from the dates the
     # user entered, and nothing here has read any document (ADR-0021).
     "ISSUE_MISSING_TRAVEL_EVIDENCE": lambda p: (
-        "Your absence totals are worked out from the dates you entered, so this does not "
-        "change any figure. A booking or ticket is the kind of thing that supports a trip "
-        "if you are asked about it later."
+        "Your totals use the dates you entered, so this changes no figure. A booking or "
+        "ticket can support the trip if you are asked about it later."
     ),
     # The reassurance about the total comes first and is unconditional, because a user
     # seeing "recorded twice" will assume their days have been counted twice. They have
     # not: absence totals are a union of dates, so a duplicate adds nothing.
     "ISSUE_DUPLICATE_TRAVEL_RECORD": lambda p: (
-        "Days outside the UK are counted once even when a trip appears twice, so the "
-        "second record is not adding days. If one was entered by mistake, removing it will "
-        "tidy your travel history — check which of the two you confirmed before you do, "
-        "because only confirmed records with exact dates count towards your totals."
+        "Days are counted once, so the second entry adds nothing. If one was a mistake, "
+        "remove it, but check which one you confirmed first: only confirmed trips with "
+        "exact dates count towards your totals."
     ),
     # "the same contents", not "the same document": what matched is a checksum, and two
     # files with identical bytes may well have been uploaded deliberately under different
@@ -693,11 +684,11 @@ ISSUE_BODY_TEMPLATES: dict[str, _Template] = {
     # items. No *conclusion* moves, which is the honest narrowing.
     "ISSUE_DUPLICATE_EVIDENCE": lambda p: (
         f"This file has the same contents as {p.get('other_name', 'another document')} in "
-        "your documents. No conclusion depends on which copy you keep."
+        "your documents. No result depends on which copy you keep."
     ),
     "ISSUE_RECALCULATION_FAILED": lambda p: (
-        "The last attempt to recheck your conclusions did not finish. Nothing was changed: "
-        "the figures on your case are still the ones worked out before your last edit."
+        "The last update did not finish, so nothing changed. Your figures are still the "
+        "ones from before your last edit."
     ),
 }
 
@@ -705,13 +696,13 @@ ISSUE_BODY_TEMPLATES: dict[str, _Template] = {
 #: consequence, never a prediction and never advice.
 ISSUE_IMPACT_TEMPLATES: dict[str, _Template] = {
     "ISSUE_STALE_ASSESSMENT": lambda p: (
-        "Until it is rechecked, this conclusion may no longer match your case data."
+        "Until it is rechecked, this result may not match your information."
     ),
     # States the sensitivity, never the outcome. "You may be refused" is a prediction this
     # product does not make (CLAUDE.md §1); "a few days either way changes the band" is a
     # property of the calculation the user can check.
     "ISSUE_NEAR_THRESHOLD_ABSENCES": lambda p: (
-        "A small correction to your travel records could change which band this falls in."
+        "A small correction to your trips could change this result."
     ),
     # Names the inputs that actually move this figure. Travel records cannot: the holding
     # period reads the grant date and the application date, and has no bands.
@@ -720,11 +711,10 @@ ISSUE_IMPACT_TEMPLATES: dict[str, _Template] = {
         "below the required period."
     ),
     "ISSUE_UNSUPPORTED_COMPLEXITY": lambda p: (
-        "This requirement has no conclusion from us. It needs a person who can advise on "
-        "your circumstances."
+        "We have not given a result here. It needs someone who can advise on your circumstances."
     ),
     "ISSUE_OVERLAPPING_TRAVEL": lambda p: (
-        "While the records overlap, the total days outside the UK cannot be relied on."
+        "While the trips overlap, your total days outside the UK cannot be relied on."
     ),
     # Says the figure is *held back*, never that it is wrong. Neither value has been
     # established, so calling either one an error would be the product taking a side it
@@ -752,7 +742,7 @@ ISSUE_IMPACT_TEMPLATES: dict[str, _Template] = {
     # Points at the same consequence a stale conclusion has, because that is exactly the
     # state the case is left in — the failure is why it is still in it.
     "ISSUE_RECALCULATION_FAILED": lambda p: (
-        "Any conclusion awaiting a recheck stays out of date until one succeeds."
+        "Out-of-date results stay out of date until an update succeeds."
     ),
 }
 
@@ -811,9 +801,9 @@ NEXT_STEP_BODY_TEMPLATES: dict[str, _Template] = {
     ),
     "RUN_ASSESSMENT": lambda p: "It checks what you have confirmed against each requirement.",
     "UPDATE_ASSESSMENT": lambda p: (
-        "One conclusion is out of date because something it depends on changed."
+        "One result is out of date because something it depends on changed."
         if p.get("count") == 1
-        else f"{p.get('count', 'Some')} conclusions are out of date because something "
+        else f"{p.get('count', 'Some')} results are out of date because something "
         "they depend on changed."
     ),
     "RESOLVE_REQUIREMENTS": lambda p: (

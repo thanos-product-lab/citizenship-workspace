@@ -165,7 +165,7 @@ def test_counts_are_pluralised() -> None:
     )
     assert render_next_step_done("TRIPS_RECORDED", {"count": 1}) == "1 trip recorded"
     assert render_next_step_body("UPDATE_ASSESSMENT", {"count": 1}) == (
-        "One conclusion is out of date because something it depends on changed."
+        "One result is out of date because something it depends on changed."
     )
 
 

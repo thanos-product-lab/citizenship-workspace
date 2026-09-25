@@ -164,7 +164,7 @@ def test_absence_summary_names_the_figure_as_confirmed() -> None:
     )
     assert text is not None
     assert "439 days" in text
-    assert "confirmed travel records" in text
+    assert "confirmed trips" in text
     assert "threshold of 450" in text
 
 
@@ -192,7 +192,7 @@ def test_the_verdict_follows_the_provisional_figure_when_the_two_diverge() -> No
     )
     assert text is not None
     assert "Including those, that is close to the standard threshold." in text
-    assert "confirmed travel records, against a threshold of 450. That is close" not in text
+    assert "confirmed trips, against a threshold of 450. That is close" not in text
     assert text.index("400") < text.index("440") < text.index("close to the standard")
 
 

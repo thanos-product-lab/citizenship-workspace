@@ -213,15 +213,13 @@ def _recheck_task(
         failed=False,
         title="Update assessment",
         body=(
-            f"{n} {'conclusion was' if n == 1 else 'conclusions were'} reached before "
-            "your inputs last changed, and "
-            f"{'has' if n == 1 else 'have'} not been rechecked. One update rechecks "
+            f"{n} {'result is' if n == 1 else 'results are'} from before your last change "
+            f"and {'has' if n == 1 else 'have'} not been rechecked. One update rechecks "
             f"{'it' if n == 1 else 'all of them'}."
         ),
         impact=(
-            "Until you update, "
-            f"{'this conclusion' if n == 1 else 'these conclusions'} may no longer match "
-            "your case data."
+            f"Until you update, {'this result' if n == 1 else 'these results'} may not match "
+            "your information."
         ),
         checks=checks,
         issues=behind,

@@ -250,7 +250,7 @@ def test_requirement_list_carries_code_parameters_and_rendered_text(api: Api) ->
     assert summary["code"] == total["summary_code"] == "TOTAL_ABSENCES_WITHIN_THRESHOLD"
     assert _nested(summary, "parameters")["threshold"] == 450
     text = summary["text"]
-    assert isinstance(text, str) and "confirmed travel records" in text
+    assert isinstance(text, str) and "confirmed trips" in text
 
 
 def test_an_unassessed_requirement_has_no_summary_and_no_currency(api: Api) -> None:
