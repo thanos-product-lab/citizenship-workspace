@@ -58,12 +58,17 @@ function mockGet({
   trips = [],
   documents = [],
   tripsError = false,
+  timeline = null,
 }: {
   trips?: unknown[];
   documents?: unknown[];
   tripsError?: boolean;
+  timeline?: unknown;
 } = {}) {
   get.mockImplementation((path: string) => {
+    if (path.endsWith("/timeline")) {
+      return Promise.resolve({ data: timeline, error: undefined });
+    }
     if (path.endsWith("/evidence")) {
       return Promise.resolve({ data: { items: documents }, error: undefined });
     }
@@ -254,6 +259,128 @@ describe("TravelHistory", () => {
     expect(client.PATCH.mock.calls[0]![1].body).toEqual(
       expect.objectContaining({ destination_country_code: null, reason: "Visiting family" }),
     );
+  });
+
+  describe("the trip form's dates", () => {
+    it("follows the departure date while it is typed, not the half-typed year", async () => {
+      // Typing "10 12 2021" into a native date input passes through year 0002, 0020 and
+      // 0202, each a valid date that fires a change. The return date kept 0002 while the
+      // departure went on to 2021. Found by typing into the form in Chrome.
+      mockGet();
+      render(<TravelHistory caseId="c1" />);
+      fireEvent.click(await screen.findByRole("button", { name: /add a trip/i }));
+      const dep = screen.getByLabelText(/Departure date/) as HTMLInputElement;
+      const ret = screen.getByLabelText("Return date") as HTMLInputElement;
+
+      for (const partial of ["0002-12-10", "0020-12-10", "0202-12-10", "2021-12-10"]) {
+        fireEvent.change(dep, { target: { value: partial } });
+      }
+      expect(ret.value).toBe("2021-12-10");
+    });
+
+    it("stops following once the return date is the user's own", async () => {
+      mockGet();
+      render(<TravelHistory caseId="c1" />);
+      fireEvent.click(await screen.findByRole("button", { name: /add a trip/i }));
+      const dep = screen.getByLabelText(/Departure date/) as HTMLInputElement;
+      const ret = screen.getByLabelText("Return date") as HTMLInputElement;
+
+      fireEvent.change(dep, { target: { value: "2023-05-01" } });
+      fireEvent.change(ret, { target: { value: "2023-05-09" } });
+      fireEvent.change(dep, { target: { value: "2023-05-02" } });
+      expect(ret.value).toBe("2023-05-09");
+    });
+
+    it("says where trips count, from the server's period", async () => {
+      mockGet({
+        timeline: { qualifying_period_start: "2021-11-13", qualifying_period_end: "2026-11-12" },
+      });
+      render(<TravelHistory caseId="c1" />);
+      fireEvent.click(await screen.findByRole("button", { name: /add a trip/i }));
+      expect(
+        await screen.findByText(
+          "Trips between 13 November 2021 and 12 November 2026 count towards your application.",
+        ),
+      ).toBeInTheDocument();
+    });
+
+    it("lets an older trip be edited, below the usual floor", async () => {
+      // Without this the browser refuses to submit the form (rangeUnderflow), so an old
+      // imported trip could not even have its reason changed.
+      mockGet({ trips: [aRecord({ departure_date: "2012-03-01", return_date: "2012-03-09" })] });
+      render(<TravelHistory caseId="c1" />);
+      fireEvent.click(await screen.findByRole("button", { name: /^edit$/i }));
+      const dep = within(screen.getByRole("dialog")).getByLabelText(/Departure date/);
+      expect(dep).toHaveAttribute("min", "2012-03-01");
+      expect((dep as HTMLInputElement).validity.rangeUnderflow).toBe(false);
+    });
+  });
+
+  describe("how sure the user is", () => {
+    it("asks one question and writes both fields", async () => {
+      let trips: unknown[] = [];
+      get.mockImplementation((path: string) =>
+        Promise.resolve(
+          path.endsWith("/evidence")
+            ? { data: { items: [] }, error: undefined }
+            : path.endsWith("/timeline")
+              ? { data: null, error: undefined }
+              : { data: trips, error: undefined },
+        ),
+      );
+      post.mockImplementation(() => {
+        trips = [aRecord()];
+        return Promise.resolve({ data: aRecord() });
+      });
+      render(<TravelHistory caseId="c1" />);
+      fireEvent.click(await screen.findByRole("button", { name: /add a trip/i }));
+
+      expect(screen.queryByLabelText("Date certainty")).toBeNull();
+      expect(screen.queryByLabelText("Status")).toBeNull();
+      const question = screen.getByLabelText("How sure are you about this trip?");
+      expect(within(question).getAllByRole("option").map((o) => o.textContent)).toEqual([
+        "I have the exact dates",
+        "The dates are approximate",
+        "I'm not sure about this trip",
+      ]);
+
+      fireEvent.change(screen.getByLabelText("Destination"), { target: { value: "Spain" } });
+      fireEvent.change(screen.getByLabelText(/Departure date/), {
+        target: { value: "2023-04-14" },
+      });
+      fireEvent.change(question, { target: { value: "ESTIMATED:CONFIRMED" } });
+      fireEvent.click(screen.getByRole("button", { name: /add trip/i }));
+
+      await waitFor(() => expect(post).toHaveBeenCalled());
+      expect(post.mock.calls.at(-1)![1].body).toEqual(
+        expect.objectContaining({ date_confidence: "ESTIMATED", review_state: "CONFIRMED" }),
+      );
+    });
+
+    it("keeps a stored combination the three answers do not cover", async () => {
+      // Mapping it to the nearest answer would change a version field the user never
+      // touched: saving a reason would append a version and stale the assessment.
+      const imported = aRecord({ date_confidence: "EXACT", review_state: "UNCERTAIN" });
+      mockGet({ trips: [imported] });
+      client.PATCH.mockResolvedValue({ data: imported });
+      render(<TravelHistory caseId="c1" />);
+
+      fireEvent.click(await screen.findByRole("button", { name: /^edit$/i }));
+      const dialog = within(screen.getByRole("dialog"));
+      const question = dialog.getByLabelText(
+        "How sure are you about this trip?",
+      ) as HTMLSelectElement;
+      expect(question.selectedOptions[0]!.textContent).toBe(
+        "As recorded: exact dates, trip unsure",
+      );
+
+      fireEvent.change(dialog.getByLabelText("Reason for trip"), { target: { value: "Holiday" } });
+      fireEvent.click(dialog.getByRole("button", { name: /save changes/i }));
+      await waitFor(() => expect(client.PATCH).toHaveBeenCalled());
+      expect(client.PATCH.mock.calls.at(-1)![1].body).toEqual(
+        expect.objectContaining({ date_confidence: "EXACT", review_state: "UNCERTAIN" }),
+      );
+    });
   });
 
   it("links to the travel list once there are trips", async () => {

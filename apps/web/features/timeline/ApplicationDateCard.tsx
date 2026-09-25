@@ -33,8 +33,8 @@ import {
 // longer make. Found during the M8 gate on a case set to 10 January 2026 with the window
 // running 11 Jan 2021 to 10 Jan 2026, eight months stale, everything green.
 //
-// Deliberately **only the floor**, and only here. `TravelRecordForm` keeps the -20y bound
-// because travel is historical by nature. And this stops a *new* bad selection; it cannot
+// Deliberately **only the floor**, and only here. `TravelRecordForm` keeps a floor years
+// back because travel is historical by nature. And this stops a *new* bad selection; it cannot
 // help a saved date that drifts into the past as time passes, which needs a derived
 // signal in the rules rather than an input attribute — see RULES_SPEC.
 const MIN_DATE = todayISO();

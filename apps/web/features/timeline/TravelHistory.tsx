@@ -14,6 +14,7 @@ import { countryCodeFor } from "./countries";
 import { CsvImport } from "./CsvImport";
 import { Dialog } from "@/components/Dialog";
 import { TravelRecordForm } from "./TravelRecordForm";
+import { useTimeline } from "./useTimeline";
 import type { TravelFormValues } from "./TravelRecordForm";
 import {
   StatusBadge,
@@ -152,6 +153,12 @@ export function TravelHistory({
 }) {
   const api = useApiClient();
   const client = useQueryClient();
+  // The qualifying period, as the server computed it, so the trip form can say where trips
+  // count. Absent without an application date, and the form then says nothing.
+  const { data: timeline } = useTimeline(caseId);
+  const period = timeline?.qualifying_period_start
+    ? { start: timeline.qualifying_period_start, end: timeline.qualifying_period_end }
+    : undefined;
   const [records, setRecords] = useState<Travel[]>([]);
   const [state, setState] = useState<LoadState>("loading");
   const [mode, setMode] = useState<Mode>({ kind: "none" });
@@ -650,6 +657,7 @@ export function TravelHistory({
               serverError={formError}
               onSubmit={(values) => submitEdit(mode.id, values)}
               onCancel={cancelForm}
+              period={period}
             />
           ) : mode.kind === "add" ? (
             <TravelRecordForm
@@ -659,6 +667,7 @@ export function TravelHistory({
               serverError={formError}
               onSubmit={submitAdd}
               onCancel={cancelForm}
+              period={period}
             />
           ) : null}
         </div>

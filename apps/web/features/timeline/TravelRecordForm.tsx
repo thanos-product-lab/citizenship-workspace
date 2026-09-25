@@ -6,15 +6,35 @@ import { useState } from "react";
 import { Combobox } from "./Combobox";
 import { COUNTRY_NAMES } from "./countries";
 import { yearsFromTodayISO } from "./dates";
+import { formatDate } from "@/features/requirements/dates";
 import { Field, buttonStyle, errorTextStyle, inputStyle, secondaryButtonStyle } from "@/components/ui";
 
 type DateConfidence = components["schemas"]["DateConfidence"];
 type ReviewState = components["schemas"]["TravelReviewState"];
 
-// Typo-guard bounds for the native date inputs: generous enough never to reject a real
-// past trip or a forward-planned one, tight enough to keep a mistyped year out.
-const MIN_DATE = yearsFromTodayISO(-20);
+// Typo-guard bounds for the native date inputs, not business rules.
+//
+// The floor is six years back. The application date cannot be in the past, so the
+// qualifying period never starts more than five years before today, and a trip ending
+// before that can affect nothing. The sixth year is for a trip that leaves before the
+// period and comes back inside it, which counts in part and has to be enterable. It was
+// twenty years, which only made a mistyped year easier to keep.
+//
+// An existing trip older than the floor lowers it for its own edit form (`floorFor`), or
+// the browser would refuse to save that trip at all, even to change its reason.
+const MIN_DATE = yearsFromTodayISO(-6);
 const MAX_DATE = yearsFromTodayISO(10);
+
+function floorFor(initial: TravelFormValues): string {
+  return [MIN_DATE, initial.departure_date, initial.return_date]
+    .filter((d) => d !== "")
+    .sort()[0]!;
+}
+
+/** Whether a date input's value is a whole, plausible date rather than one mid-typing. */
+function isPlausible(value: string, floor: string): boolean {
+  return value !== "" && value >= floor && value <= MAX_DATE;
+}
 
 export interface TravelFormValues {
   destination_label: string;
@@ -36,19 +56,68 @@ export const EMPTY_TRAVEL_FORM: TravelFormValues = {
   reason: "",
 };
 
-// CONFLICTING/DRAFT are system states (they arise from evidence review, not manual
-// entry), so they are not offered here — a user marks a trip Exact/Estimated/Unknown
-// and Confirmed/Uncertain, the two independent trust dimensions (§11.4–11.5).
-const CONFIDENCE_OPTIONS: { value: DateConfidence; label: string }[] = [
-  { value: "EXACT", label: "Exact dates" },
-  { value: "ESTIMATED", label: "Estimated" },
-  { value: "UNKNOWN", label: "Not sure" },
+/**
+ * One question for two fields.
+ *
+ * `date_confidence` and `review_state` are independent in the model (§11.4, §11.5) and stay
+ * so: the system sets states of its own (DRAFT, and CONFLICTING when a document disputes a
+ * trip), the CSV import has a column for each, and the travel list marks them differently.
+ * But to someone typing in a trip they were two dropdowns doing one job, since either one
+ * off its default holds the trip back from the confirmed totals (RULES_SPEC §6.1). The
+ * combinations a person can actually mean are three, so the form asks one question with
+ * three answers and writes both fields.
+ */
+const CERTAINTY_OPTIONS: { key: string; label: string; confidence: DateConfidence; review: ReviewState }[] = [
+  { key: "EXACT:CONFIRMED", label: "I have the exact dates", confidence: "EXACT", review: "CONFIRMED" },
+  {
+    key: "ESTIMATED:CONFIRMED",
+    label: "The dates are approximate",
+    confidence: "ESTIMATED",
+    review: "CONFIRMED",
+  },
+  {
+    key: "UNKNOWN:UNCERTAIN",
+    label: "I'm not sure about this trip",
+    confidence: "UNKNOWN",
+    review: "UNCERTAIN",
+  },
 ];
 
-const REVIEW_OPTIONS: { value: ReviewState; label: string }[] = [
-  { value: "CONFIRMED", label: "Confirmed" },
-  { value: "UNCERTAIN", label: "Uncertain" },
-];
+const CONFIDENCE_WORDS: Record<string, string> = {
+  EXACT: "exact dates",
+  ESTIMATED: "approximate dates",
+  UNKNOWN: "dates not known",
+  CONFLICTING: "dates in conflict",
+};
+const REVIEW_WORDS: Record<string, string> = {
+  CONFIRMED: "confirmed",
+  UNCERTAIN: "trip unsure",
+  DRAFT: "not yet confirmed",
+};
+
+const certaintyKey = (confidence: string, review: string) => `${confidence}:${review}`;
+
+/**
+ * A combination the three answers do not cover, kept as an answer of its own.
+ *
+ * A trip imported from a CSV can hold, say, exact dates and UNCERTAIN. Mapping it to the
+ * nearest answer would change a version field the user never touched, so saving only a
+ * reason would append a version and stale the assessment (ADR-0035). So the stored
+ * combination is offered as it is, and kept unless the user picks another answer.
+ */
+function recordedOption(initial: TravelFormValues) {
+  const key = certaintyKey(initial.date_confidence, initial.review_state);
+  if (CERTAINTY_OPTIONS.some((o) => o.key === key)) return null;
+  const words = `${CONFIDENCE_WORDS[initial.date_confidence] ?? initial.date_confidence}, ${
+    REVIEW_WORDS[initial.review_state] ?? initial.review_state
+  }`;
+  return {
+    key,
+    label: `As recorded: ${words}`,
+    confidence: initial.date_confidence,
+    review: initial.review_state,
+  };
+}
 
 /**
  * Controlled add/edit form for one travel record. Owns its field values and the one
@@ -64,8 +133,12 @@ export function TravelRecordForm({
   serverError,
   onSubmit,
   onCancel,
+  period,
 }: {
   idPrefix: string;
+  /** The qualifying period, from the server, to say where trips count. Absent without an
+   *  application date. */
+  period?: { start: string; end: string } | undefined;
   initial?: TravelFormValues;
   submitLabel: string;
   submitting: boolean;
@@ -75,6 +148,12 @@ export function TravelRecordForm({
 }) {
   const [values, setValues] = useState<TravelFormValues>(initial);
   const [orderError, setOrderError] = useState(false);
+  // Whether the return date is the user's own choice. Until it is, it follows the
+  // departure date. An edit opens with one already chosen.
+  const [returnChosen, setReturnChosen] = useState(initial.return_date !== "");
+  const floor = floorFor(initial);
+  const recorded = recordedOption(initial);
+  const certaintyOptions = recorded ? [...CERTAINTY_OPTIONS, recorded] : CERTAINTY_OPTIONS;
 
   function set<K extends keyof TravelFormValues>(key: K, v: TravelFormValues[K]) {
     setValues((prev) => ({ ...prev, [key]: v }));
@@ -108,7 +187,13 @@ export function TravelRecordForm({
     setValues((prev) => ({
       ...prev,
       departure_date: value,
-      return_date: prev.return_date === "" ? value : prev.return_date,
+      // **Follows until chosen, and only a whole date.** Typing "10 12 2021" into a native
+      // date input passes through year 0002 after the first digit of the year: a valid
+      // date, so it fired a change. The first version copied the departure only into an
+      // *empty* return date, so the return date kept 10 December 0002 while the departure
+      // went on to 2021. Found by typing into the form in Chrome; the test set the value
+      // in one step and never saw the in-between state.
+      return_date: returnChosen ? prev.return_date : isPlausible(value, floor) ? value : "",
     }));
     setOrderError(false);
   }
@@ -138,13 +223,21 @@ export function TravelRecordForm({
         />
       </Field>
 
-      <Field id={id("departure")} label="Departure date">
+      <Field
+        id={id("departure")}
+        label="Departure date"
+        hint={
+          period
+            ? `Trips between ${formatDate(period.start)} and ${formatDate(period.end)} count towards your application.`
+            : undefined
+        }
+      >
         <input
           id={id("departure")}
           type="date"
           value={values.departure_date}
           required
-          min={MIN_DATE}
+          min={floor}
           max={MAX_DATE}
           className="cw-date-input"
           onChange={(e) => setDeparture(e.target.value)}
@@ -170,38 +263,38 @@ export function TravelRecordForm({
           // and the user gets an unstyled native bubble instead. The existing test caught
           // it immediately. The ordering check belongs in `handleSubmit`, where it can
           // produce a message this app controls, and on the server after that.
-          min={MIN_DATE}
+          min={floor}
           max={MAX_DATE}
           className="cw-date-input"
-          onChange={(e) => set("return_date", e.target.value)}
+          onChange={(e) => {
+            setReturnChosen(true);
+            set("return_date", e.target.value);
+          }}
           style={inputStyle}
         />
       </Field>
 
-      <Field id={id("confidence")} label="Date certainty">
+      <Field
+        id={id("certainty")}
+        label="How sure are you about this trip?"
+        hint="Only trips you are sure of, with exact dates, count towards your confirmed totals. The rest are kept separate until you firm them up."
+      >
         <select
-          id={id("confidence")}
-          value={values.date_confidence}
-          onChange={(e) => set("date_confidence", e.target.value as DateConfidence)}
+          id={id("certainty")}
+          value={certaintyKey(values.date_confidence, values.review_state)}
+          onChange={(e) => {
+            const chosen = certaintyOptions.find((o) => o.key === e.target.value);
+            if (!chosen) return;
+            setValues((prev) => ({
+              ...prev,
+              date_confidence: chosen.confidence,
+              review_state: chosen.review,
+            }));
+          }}
           style={inputStyle}
         >
-          {CONFIDENCE_OPTIONS.map((o) => (
-            <option key={o.value} value={o.value}>
-              {o.label}
-            </option>
-          ))}
-        </select>
-      </Field>
-
-      <Field id={id("review")} label="Status" hint="Uncertain trips are kept separate from confirmed ones.">
-        <select
-          id={id("review")}
-          value={values.review_state}
-          onChange={(e) => set("review_state", e.target.value as ReviewState)}
-          style={inputStyle}
-        >
-          {REVIEW_OPTIONS.map((o) => (
-            <option key={o.value} value={o.value}>
+          {certaintyOptions.map((o) => (
+            <option key={o.key} value={o.key}>
               {o.label}
             </option>
           ))}
