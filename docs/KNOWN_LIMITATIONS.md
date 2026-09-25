@@ -458,7 +458,7 @@ available for a real case.
 
 ### 19. The review split view is the one screen whose reflow was never measured
 
-**Status:** verified by reading rather than by looking · **See:** `security/ACCESSIBILITY_PASS.md`
+**Status:** verified by reading rather than by looking · **See:** `design/DESIGN_SYSTEM_FOUNDATIONS.md` §12
 
 Every other destination was measured at 320px and at 640px by loading it in a frame of that
 width, which is a genuine viewport because media queries evaluate against the frame. Six

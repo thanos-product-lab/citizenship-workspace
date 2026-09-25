@@ -31,9 +31,8 @@ Maintained and authoritative. If the code disagrees with one of these, the code 
 | [Known limitations](KNOWN_LIMITATIONS.md) | Open gaps, deliberate boundaries, and resolved entries (numbers are stable) |
 | [Deployment](DEPLOYMENT.md) | Environments, services, secrets and how a deploy happens |
 | [Demo script](DEMO_SCRIPT.md) | Running and showing the canonical demo locally |
-| [Threat model](security/SECURITY_AND_PRIVACY_THREAT_MODEL.md) | Security and privacy controls, and what each one defends against |
-| [Accessibility pass](security/ACCESSIBILITY_PASS.md) | What was verified on the core flows, how, and what was not |
-| [Design](design/DESIGN_SYSTEM_FOUNDATIONS.md) | The one design document: tokens, themes and contrast, and how the interface behaves (§11) |
+| [Security and privacy](security/SECURITY_AND_PRIVACY_THREAT_MODEL.md) | The one security document: a two-minute summary at the top, then every threat and its control |
+| [Design](design/DESIGN_SYSTEM_FOUNDATIONS.md) | The one design document: tokens, themes and contrast, how the interface behaves (§11), and the accessibility pass (§12) |
 | [AI evaluation](evaluations/EVAL_REPORT.md) | The one evaluation document: the false-reassurance rate, what the corpus does not cover, the release gates, the spike, and every run |
 
 ## Reference

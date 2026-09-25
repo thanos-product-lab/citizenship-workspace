@@ -2,9 +2,36 @@
 
 ## Security and Privacy Threat Model
 
-**Status:** Proposed for implementation\
-**Version:** 0.1\
-**Scope:** MVP --- UK naturalisation, Section 6(1) standard route
+**Status:** current. The one security document; the code cites it by section number, so
+sections are never renumbered and new material is appended.
+**Scope:** the standard five-year route (Section 6(1))
+
+## At a glance
+
+**What is protected.** A person's immigration status, travel history and the documents
+behind them. Each case belongs to one person, and nobody else, including another signed-in
+user who guesses an identifier, can read, change or delete it.
+
+**The controls that matter most:**
+
+| Risk | Control | Where |
+|---|---|---|
+| Someone reads another person's case | Ownership checked on every request, and PostgreSQL row level security as a second line, so a forgotten check returns nothing | §6.1, §11, §13 |
+| A document leaks from storage | Private bucket, random keys, short-lived signed URLs issued only after an ownership check; a deleted document cannot be fetched with an old URL | §6.2, §12 |
+| A model's reading becomes a fact unchecked | Suggestions are stored separately and count only after a person confirms them | §6.3, §8, §9 |
+| A document's text steers the AI | Document text is data, never instructions; output is schema-validated; injection fixtures are release-blocking | §8, §9 |
+| Personal data ends up in logs | Logs, traces and events carry identifiers and counts, never document text or personal values | §6.4 |
+| Runaway model cost | Per-request timeout, per-task deadline, retry cap and a daily spend ceiling | §15 |
+| Deletion that does not really delete | Deleting a document or a case removes the files and case records, keeping only a non-identifying audit | §18, §19 |
+
+**Where it stands.** Every release gate on ownership, private storage, expiring URLs, clean
+logs, prompt injection and case deletion passes, each with named tests
+([release gate audit](../RELEASE_GATE_AUDIT.md)). The prototype uses **synthetic data only**;
+the gate for testing with real documents (§21) has not been attempted. What is deliberately
+left out, such as malware scanning, a penetration test or formal certification, is listed in
+§28.
+
+**The rules that must never break** are in §26.
 
 ## 1. Purpose
 

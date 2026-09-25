@@ -120,7 +120,7 @@ never goes in a query string.
 | 5 | AI proposed values require explicit confirmation | **Pass** |
 | 6 | Fact changes create stale assessments and new immutable results | **Pass** |
 | 7 | At least four document categories can be processed or safely rejected | **Pass**. Three go end to end; immigration status is classified and safely handled without an extractor (ADR-0029). The classifier also has fixtures for declining, covering unsupported and ambiguous. |
-| 8 | Core screens meet the accessibility and responsive standard | **Pass**. `ACCESSIBILITY_PASS.md`: five flows audited, skip link added, both findings now closed. Reflow measured at 320px and 640px across seven destinations, which found and fixed a real overflow on the Evidence page. |
+| 8 | Core screens meet the accessibility and responsive standard | **Pass**. The accessibility pass (design document §12): five flows audited, skip link added, both findings now closed. Reflow measured at 320px and 640px across seven destinations, which found and fixed a real overflow on the Evidence page. |
 | 9 | The full demo flow works reliably in the deployed environment | **Partial**. Driven once end to end after the CSP and CORS fixes. One clean run is evidence; it is not yet reliability. |
 | 10 | CI, observability, security controls and evaluation reporting are operational | **Partial**. CI, security controls and evaluation reporting yes. Observability is structured logging with a per request trace id and nothing else: no OpenTelemetry and no Sentry, both of which `CLAUDE.md` §3 names. |
 | 11 | All explicit quality gates pass | **No**, by this audit |
