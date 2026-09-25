@@ -1,5 +1,10 @@
 # Evidence-First Citizenship Workspace
 
+> **Reference, not a read-through.** Start with the
+> [architecture overview](ARCHITECTURE_OVERVIEW.md), which explains the system in about
+> fifteen minutes and says which section here answers which question. The code cites this
+> document by section number, so sections are never renumbered; new material is appended.
+
 ## Domain Model RFC
 
 ### Status

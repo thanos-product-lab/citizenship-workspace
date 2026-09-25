@@ -8,8 +8,8 @@ their structure is stable: they are indexed here rather than rewritten.
 
 Four documents, in this order, give an accurate picture of the product in under an hour.
 
-1. [Architecture overview](architecture/ARCHITECTURE_OVERVIEW.md): what runs where, and how a
-   model's proposal becomes a confirmed fact only after a person decides.
+1. [Architecture overview](architecture/ARCHITECTURE_OVERVIEW.md): how the system works, from
+   what runs where to how the rules count days, and where to look up the details.
 2. [MVP scope and acceptance criteria](product/MVP_SCOPE_AND_ACCEPTANCE_CRITERIA.md): who it
    is for, the supported route, and what is explicitly out of scope.
 3. [Known limitations](KNOWN_LIMITATIONS.md): what it does not do, which gaps are deliberate,
@@ -23,10 +23,10 @@ Maintained and authoritative. If the code disagrees with one of these, the code 
 
 | Document | Answers |
 |---|---|
-| [Architecture overview](architecture/ARCHITECTURE_OVERVIEW.md) | How the system fits together and where the trust boundary sits |
-| [Deterministic rules spec](architecture/DETERMINISTIC_RULES_SPEC.md) | Date semantics, day counting, thresholds, banding: everything a conclusion is computed from |
-| [Domain model RFC](architecture/DOMAIN_MODEL_RFC.md) | Entities, enums, invariants and state machines: claims, facts, results, issues |
-| [Evidence and claim lifecycle RFC](architecture/EVIDENCE_AND_CLAIM_LIFECYCLE_RFC.md) | How a document is stored, read, proposed from, reviewed and deleted |
+| [Architecture overview](architecture/ARCHITECTURE_OVERVIEW.md) | **The one to read.** How the system works end to end, and which spec section answers which question |
+| [Deterministic rules spec](architecture/DETERMINISTIC_RULES_SPEC.md) | Look-up reference: date semantics, day counting, thresholds, banding |
+| [Domain model RFC](architecture/DOMAIN_MODEL_RFC.md) | Look-up reference: entities, enums, invariants and state machines |
+| [Evidence and claim lifecycle RFC](architecture/EVIDENCE_AND_CLAIM_LIFECYCLE_RFC.md) | Look-up reference: how a document is stored, read, proposed from, reviewed and deleted |
 | [MVP scope and acceptance criteria](product/MVP_SCOPE_AND_ACCEPTANCE_CRITERIA.md) | Supported users and route, the journey, the exclusions, the release gates |
 | [Synthetic demo case](product/SYNTHETIC_DEMO_CASE.md) | The canonical case the seed builds and the tests assert against |
 | [Known limitations](KNOWN_LIMITATIONS.md) | Open gaps, deliberate boundaries, and resolved entries (numbers are stable) |
@@ -44,7 +44,6 @@ the reasoning behind a decision, not as a description of the current build.
 
 | Document | Why it is kept |
 |---|---|
-| [Technical architecture RFC](architecture/Evidence_First_Citizenship_Workspace_Technical_Architecture_RFC.md) | The original stack and boundary decisions, with the alternatives rejected |
 | [UI/UX direction](design/Evidence_First_Citizenship_Workspace_UI_UX.md) | Interaction principles; the requirement explanation (§7) is kept current |
 | [Product thesis](product/Evidence_First_Citizenship_Workspace_Product_Thesis.md) | Why the product exists and what signal it is meant to send |
 | [AI evaluation plan](evaluations/AI_EVALUATION_PLAN.md) | Fixture classes, metrics and methodology the harness implements |
@@ -115,6 +114,7 @@ New decisions start from the [template](decisions/000-adr-template.md).
 
 Development history that no longer describes the product lives in git history, not here:
 the walkthrough scenarios and their findings, the milestone notes (M0 to the release slice),
-the July 2026 reconciliation, and the per-milestone demo captures with their shot list (the
+the July 2026 reconciliation, the original technical architecture RFC (its lasting content
+is in the architecture overview), and the per-milestone demo captures with their shot list (the
 demo will be one video recorded at the end). Read any of them with, for example,
 `git show a37b05a:docs/decisions/milestone-notes.md`.

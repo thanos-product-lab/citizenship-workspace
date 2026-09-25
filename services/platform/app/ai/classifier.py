@@ -1,6 +1,6 @@
 """DocumentClassifier: which of the four supported kinds of document is this?
 
-Architecture RFC §19's first capability, and deliberately the first one built. It is
+The first capability in architecture overview §8, and deliberately the first one built. It is
 the lowest-stakes model output in the system: it proposes nothing a user could confirm
 into a fact, so the whole boundary — run records, cost accounting, timeout, retry,
 injection resistance — is exercised with nothing trusted downstream.

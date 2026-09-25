@@ -61,7 +61,7 @@ class EvidenceProcessingStatus(StrEnum):
     """Domain §14.4, verbatim — and the *only* vocabulary the API may project.
 
     These are domain states. Raw Celery states (`PENDING`, `STARTED`, `RETRY`, …) are
-    never shown to a user (Technical Architecture RFC §18, MVP §8.9), and
+    never shown to a user (architecture overview §8, MVP §8.9), and
     `tests/evidence/test_processing_states.py` asserts none of them can reach a
     response.
 
@@ -544,7 +544,7 @@ class ProcessingFailureCode(StrEnum):
       succeed in ten seconds.
     """
 
-    # Terminal — Technical Architecture RFC §18, "do not automatically retry".
+    # Terminal: architecture overview §8, these are not retried.
     UNSUPPORTED_MEDIA_TYPE = "UNSUPPORTED_MEDIA_TYPE"
     CONTENT_DOES_NOT_MATCH_TYPE = "CONTENT_DOES_NOT_MATCH_TYPE"
     CORRUPT_FILE = "CORRUPT_FILE"

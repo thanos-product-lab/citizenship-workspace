@@ -1,7 +1,7 @@
 """The provider boundary. One SDK, called directly, behind a narrow protocol.
 
-Architecture RFC §19: *"The provider abstraction exists to preserve control and
-testability, not to build a multi-model platform."* So this is a `Protocol` with one
+Architecture overview §8: the provider adapter exists for control and testing, not to
+build a multi-model platform. So this is a `Protocol` with one
 method and two implementations — the real one and a fake for tests — rather than a
 plugin system.
 

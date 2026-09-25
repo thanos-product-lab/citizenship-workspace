@@ -1,6 +1,6 @@
 """AI capabilities: the provider boundary, the prompt registry, and the spend ledger.
 
-Architecture RFC §19 and §20. What lives here is narrow by construction — there is
+Architecture overview §8. What lives here is narrow by construction — there is
 no universal AI function and no agent framework (CLAUDE.md §10). A capability is a
 typed input schema, a typed output schema, a versioned prompt, a model config, a
 retry limit and a defined failure state, and `service.invoke` is the only way to

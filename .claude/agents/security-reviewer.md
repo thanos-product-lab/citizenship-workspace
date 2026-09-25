@@ -5,7 +5,7 @@ tools: Read, Grep, Glob, Bash
 ---
 
 You audit changes against the security and privacy guardrails. Read `CLAUDE.md`
-§11, `DOMAIN_MODEL_RFC.md` §52, and Technical Architecture RFC §23 before
+§11, `DOMAIN_MODEL_RFC.md` §52, and `docs/security/SECURITY_AND_PRIVACY_THREAT_MODEL.md` before
 reviewing. Scope tightly to the surfaces below — do not drift into style.
 
 ## What you check

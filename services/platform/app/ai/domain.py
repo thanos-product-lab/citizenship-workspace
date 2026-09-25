@@ -2,8 +2,8 @@
 
 Two tables, both deliberately outside the tenant.
 
-**`ModelRun` has no `case_id`, and that is the design.** Technical Architecture RFC
-§20 asks for a record of *every model invocation*; RFC §8's `ExtractionRun` (M8
+**`ModelRun` has no `case_id`, and that is the design.** Architecture overview §8
+asks for a record of *every model invocation*; RFC §8's `ExtractionRun` (M8
 slice 2) is the case-scoped domain record of "capability X ran against evidence
 file Y". They are different things and the difference matters: a single extraction
 run that retries twice makes three invocations, and the ceiling has to see all
@@ -46,12 +46,12 @@ def utcnow() -> datetime:
 
 
 class Capability(StrEnum):
-    """The narrow capabilities of Architecture RFC §19.
+    """The narrow capabilities of architecture overview §8.
 
     `PROVIDER_PROBE` is not one of them and is not a product capability: it is the
     fixed, tiny call `/health/ai-probe` makes so the deployed smoke can tell a
     working key from a well-formed one. It appears here because it is a real model
-    invocation and §20 says *every* invocation gets a record — including the one we
+    invocation and every invocation gets a record — including the one we
     make on purpose to check the wiring, whose cost is as real as any other.
     """
 

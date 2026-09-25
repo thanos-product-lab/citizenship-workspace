@@ -1,6 +1,6 @@
 """Per-capability model configuration, and the schema versions that go with it.
 
-Architecture RFC §19: each capability defines its own model, prompt version, schema
+Architecture overview §8: each capability defines its own model, prompt version, schema
 version and retry policy. A registry keyed by capability rather than one global
 model setting, because "which model does the classifier use" and "which model does
 the extractor use" are questions that will have different answers as soon as
@@ -126,5 +126,5 @@ def config_for(capability: Capability) -> CapabilityConfig:
         raise RuntimeError(
             f"{capability.value} has no entry in app/ai/config.py REGISTRY. A capability "
             "must declare its model, prompt version and schema version before it can be "
-            "invoked (Architecture RFC §19)."
+            "invoked (architecture overview §8)."
         ) from None

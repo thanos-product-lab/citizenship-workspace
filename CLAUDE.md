@@ -129,7 +129,7 @@ guidelines. If a task appears to require breaking one, stop and raise it.
 
 > **Next.js workspace → FastAPI modular monolith → async Celery worker →
 > PostgreSQL + private object storage.** One deployable backend, strong internal
-> module boundaries. See `docs/architecture/` (Technical Architecture RFC).
+> module boundaries. See `docs/architecture/ARCHITECTURE_OVERVIEW.md`.
 
 - **Frontend:** Next.js (App Router) · TypeScript · React · Tailwind (layout
   utilities only) · a hand-built design system of domain components, **not** Radix or

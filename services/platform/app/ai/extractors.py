@@ -1,7 +1,7 @@
 """The extraction schemas: what a document says about itself.
 
-`TravelRecordExtractor` (Architecture RFC §19's third capability) plus the two test-result
-extractors added in slice 5. Everything the classifier could get wrong was routing;
+`TravelRecordExtractor` (a capability in architecture overview §8) plus the two
+test-result extractors added in slice 5. Everything the classifier could get wrong was routing;
 everything these can get wrong reaches a person as a proposal about their own case.
 
 **One schema per document kind, chosen before the call.** The classifier's constrained

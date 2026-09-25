@@ -7,8 +7,8 @@ storage key has to come from.
     (client PUTs the bytes straight to private storage)
     POST .../evidence/{id}/complete  confirm  -> HEAD the object, record what it says
 
-The alternative — create the record *after* the upload, as the Architecture RFC §18
-step list reads — would need the client to hand back the key it uploaded to. A
+The alternative — create the record *after* the upload, as the original design's
+step list read — would need the client to hand back the key it uploaded to. A
 client-supplied key is a client-supplied storage path, and threat model §12 requires
 server-generated ones. So the key is minted and recorded first, and the presigned URL is
 signed for that key alone.

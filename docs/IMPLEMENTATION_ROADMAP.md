@@ -64,7 +64,7 @@ docs/product/MVP_SCOPE_AND_ACCEPTANCE_CRITERIA.md
 docs/product/SYNTHETIC_DEMO_CASE.md
 docs/design/Evidence_First_Citizenship_Workspace_UI_UX.md
 docs/design/DESIGN_SYSTEM_FOUNDATIONS.md
-docs/architecture/Evidence_First_Citizenship_Workspace_Technical_Architecture_RFC.md
+docs/architecture/ARCHITECTURE_OVERVIEW.md (replaced the technical architecture RFC)
 docs/architecture/DOMAIN_MODEL_RFC.md
 docs/architecture/DETERMINISTIC_RULES_SPEC.md
 docs/architecture/EVIDENCE_AND_CLAIM_LIFECYCLE_RFC.md
@@ -83,7 +83,7 @@ whole project. Write documents just in time, immediately before their milestone.
 | Product Thesis | — | ✅ exists |
 | MVP Scope | — | ✅ exists |
 | UI/UX Direction | — | ✅ exists |
-| Technical Architecture RFC | — | ✅ exists |
+| Technical Architecture RFC | — | retired; its lasting content is in `architecture/ARCHITECTURE_OVERVIEW.md` |
 | Domain Model RFC | — | ✅ exists |
 | `CLAUDE.md` | M1 | ✅ exists |
 | `SYNTHETIC_DEMO_CASE.md` | **M3A** | ⬜ write in week 1 |
