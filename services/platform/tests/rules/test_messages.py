@@ -399,3 +399,13 @@ def test_every_next_step_renders_without_its_parameters() -> None:
         assert render_next_step_title(code, {}) and render_next_step_body(code, {})
     for done in DoneCode:
         assert render_next_step_done(done, {})
+
+
+def test_every_export_caution_and_marker_has_wording() -> None:
+    """ADR-0035. Keyed to the enums, so a new caution fails here rather than reaching the
+    travel list page as a bare code."""
+    from app.requirements.messages import EXPORT_CAUTION_TEMPLATES, EXPORT_MARKER_TEMPLATES
+    from app.residence.export import ExportCaution, TripMarker
+
+    assert set(EXPORT_CAUTION_TEMPLATES) == {c.value for c in ExportCaution}
+    assert set(EXPORT_MARKER_TEMPLATES) == {m.value for m in TripMarker}

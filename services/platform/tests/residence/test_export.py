@@ -37,7 +37,8 @@ def _trip(
     return_: date,
     *,
     label: str = "Spain",
-    reason: str | None = None,
+    # A reason by default, as a finished list has; tests about a missing one pass None.
+    reason: str | None = "Holiday",
     review_state: str = "CONFIRMED",
     date_confidence: str = "EXACT",
 ) -> ExportTripInput:
@@ -176,6 +177,24 @@ def test_trips_meeting_on_a_travel_day_do_not_overlap() -> None:
     assert _export(a, b).cautions == ()
 
 
+def test_trips_without_a_reason_are_named_before_handing_the_list_over() -> None:
+    """The application form asks for a reason for every trip (ADR-0035). The list says how
+    many are missing; it does not leave them out, and it does not refuse to be built."""
+    export = _export(
+        _trip(date(2023, 1, 1), date(2023, 1, 9), reason=None),
+        _trip(date(2023, 3, 1), date(2023, 3, 9), reason=""),
+        _trip(date(2023, 5, 1), date(2023, 5, 9)),
+    )
+    assert len(export.trips) == 3
+    assert [(c.code, c.count) for c in export.cautions] == [(ExportCaution.MISSING_REASONS, 2)]
+
+
+def test_a_trip_outside_the_period_is_not_counted_as_missing_a_reason() -> None:
+    """Only the listed trips need one: a trip before the period is not on the list."""
+    before = _trip(date(2019, 1, 1), date(2019, 1, 5), reason=None)
+    assert _export(before).cautions == ()
+
+
 def test_documents_awaiting_review_are_named() -> None:
     cautions = _export(awaiting=2).cautions
     assert [(x.code, x.count) for x in cautions] == [(ExportCaution.DOCUMENTS_AWAITING_REVIEW, 2)]
@@ -192,7 +211,7 @@ def _rows(text: str) -> list[list[str]]:
 def test_the_csv_is_shaped_like_the_form() -> None:
     export = _export(
         _trip(date(2023, 1, 1), date(2023, 1, 9), label="France", reason="Holiday"),
-        _trip(date(2023, 3, 1), date(2023, 3, 9), date_confidence="ESTIMATED"),
+        _trip(date(2023, 3, 1), date(2023, 3, 9), date_confidence="ESTIMATED", reason=None),
     )
     rows = _rows(to_csv(export, lambda m: m.value))
     assert tuple(rows[0]) == CSV_HEADERS
@@ -299,6 +318,7 @@ def test_a_case_with_no_application_date_lists_every_trip_and_says_why(api: Api)
         destination_label="Italy",
         departure_date="2019-05-01",
         return_date="2019-05-05",
+        reason="Holiday",
     )
     body = api("user_a").get(f"/api/v1/cases/{case_id}/travel-records/export").json()
     assert body["scope"] == "ALL"

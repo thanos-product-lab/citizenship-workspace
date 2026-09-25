@@ -97,6 +97,33 @@ describe("TravelExport", () => {
     expect(screen.queryByRole("radio")).toBeNull();
   });
 
+  it("marks a trip with no reason on screen only, and links to where it is added", async () => {
+    get.mockResolvedValue({
+      data: anExport({
+        cautions: [
+          {
+            code: "MISSING_REASONS",
+            count: 1,
+            text: "1 trip has no reason. The application form asks for one for every trip, so add them on Case data before you hand this over.",
+          },
+        ],
+      }),
+      error: undefined,
+    });
+    render(<TravelExport caseId="c1" />);
+
+    const spain = within(await screen.findByRole("table")).getByRole("row", { name: /Spain/ });
+    const marker = within(spain).getByText("No reason yet");
+    // The printout leaves the cell empty rather than telling a caseworker it is missing.
+    expect(marker).toHaveClass("cw-no-print");
+
+    const cautions = screen.getByRole("list", { name: "Before you rely on this list" });
+    expect(within(cautions).getByRole("link", { name: "Add reasons on Case data" })).toHaveAttribute(
+      "href",
+      "/cases/c1/data",
+    );
+  });
+
   it("drops the Note column when no trip needs one", async () => {
     get.mockResolvedValue({
       data: anExport({ trips: [anExport().trips[0]] }),

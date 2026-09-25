@@ -129,7 +129,10 @@ export function CsvImport({ caseId, onImported }: { caseId: string; onImported: 
           <dt>destination_country_code, notes</dt>
           <dd>Optional. A two-letter country code such as FR, and anything you want to note.</dd>
           <dt>reason</dt>
-          <dd>Optional. Why you travelled, for example Holiday. It appears on your travel list.</dd>
+          <dd>
+            Why you travelled, for example Holiday. The application form asks for one for every
+            trip, so fill it in if you can; a blank one can be added later.
+          </dd>
           <dt>review_state</dt>
           <dd>
             Optional. Leave it blank and each trip is recorded as confirmed by you, the same as

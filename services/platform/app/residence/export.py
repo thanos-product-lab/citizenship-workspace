@@ -53,6 +53,10 @@ class ExportCaution(StrEnum):
     """Something to know before relying on the list."""
 
     NO_APPLICATION_DATE = "NO_APPLICATION_DATE"
+    #: Listed trips with no reason. The application form asks for one for every trip, so
+    #: the list is not ready to hand over; saving a trip without one stays allowed, because
+    #: a trip left out for want of a reason would under-count absences (ADR-0035).
+    MISSING_REASONS = "MISSING_REASONS"
     OVERLAPPING_TRIPS = "OVERLAPPING_TRIPS"
     DOCUMENTS_AWAITING_REVIEW = "DOCUMENTS_AWAITING_REVIEW"
 
@@ -133,6 +137,9 @@ def build_export(
     cautions: list[CautionItem] = []
     if window is None:
         cautions.append(CautionItem(ExportCaution.NO_APPLICATION_DATE, 0))
+    missing_reasons = sum(1 for trip in included if not trip.reason)
+    if missing_reasons:
+        cautions.append(CautionItem(ExportCaution.MISSING_REASONS, missing_reasons))
     overlapping = _overlapping_count(included)
     if overlapping:
         cautions.append(CautionItem(ExportCaution.OVERLAPPING_TRIPS, overlapping))

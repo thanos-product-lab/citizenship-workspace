@@ -500,7 +500,15 @@ export function TravelHistory({
                             `ResidenceTimeline` already do this; this table had diverged. */}
                         <th role="rowheader" scope="row" className="cw-trips__destination">
                           {r.destination_label}
-                          {r.reason ? <span className="cw-trips__reason">{r.reason}</span> : null}
+                          {/* A gap shown where it is filled. Quiet, because it is not a
+                              problem with the trip, only with the list handed over later. */}
+                          {r.reason ? (
+                            <span className="cw-trips__reason">{r.reason}</span>
+                          ) : (
+                            <span className="cw-trips__reason" data-missing="true">
+                              No reason yet
+                            </span>
+                          )}
                           {/* Confirmed is the quiet default; only uncertain trips are
                               flagged — the exception is what needs the user's attention. */}
                           {!t.confirmed && (

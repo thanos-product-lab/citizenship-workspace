@@ -116,7 +116,16 @@ export function TravelExport({ caseId }: { caseId: string }): JSX.Element {
         {data && data.cautions.length > 0 ? (
           <ul className="cw-travel-export__cautions" aria-label="Before you rely on this list">
             {data.cautions.map((caution) => (
-              <li key={caution.code}>{caution.text}</li>
+              <li key={caution.code}>
+                {caution.text}
+                {/* The one caution the user fixes elsewhere, so it carries the way there. */}
+                {caution.code === "MISSING_REASONS" ? (
+                  <>
+                    {" "}
+                    <a href={`/cases/${caseId}/data`}>Add reasons on Case data</a>
+                  </>
+                ) : null}
+              </li>
             ))}
           </ul>
         ) : null}
@@ -198,7 +207,13 @@ export function TravelExport({ caseId }: { caseId: string }): JSX.Element {
                 {data.trips.map((trip) => (
                   <tr key={trip.travel_record_id}>
                     <th scope="row">{trip.destination_label}</th>
-                    <td>{trip.reason ?? ""}</td>
+                    <td>
+                      {trip.reason ?? (
+                        // On screen only. The printout leaves the cell empty rather than
+                        // telling a caseworker something is missing from it.
+                        <span className="cw-travel-list__missing cw-no-print">No reason yet</span>
+                      )}
+                    </td>
                     <td className="cw-travel-list__date">{formatDate(trip.departure_date)}</td>
                     <td className="cw-travel-list__date">{formatDate(trip.return_date)}</td>
                     {hasNotes ? (

@@ -864,6 +864,10 @@ EXPORT_CAUTION_TEMPLATES: dict[str, _Template] = {
         "There is no application date yet, so this lists every trip rather than the five "
         "years before one."
     ),
+    "MISSING_REASONS": lambda p: (
+        f"{_count(p.get('count'), 'trip has', 'trips have')} no reason. The application form "
+        "asks for one for every trip, so add them on Case data before you hand this over."
+    ),
     "OVERLAPPING_TRIPS": lambda p: (
         f"{_count(p.get('count'), 'trip shares', 'trips share')} days abroad with another. "
         "One of them is probably wrong; check them on Issues before relying on this list."

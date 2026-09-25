@@ -45,6 +45,16 @@ An `ExtractedClaim` is never a trip, so a value proposed by a document and never
 cannot appear (directive 1). If documents are waiting for review, the page says they may hold
 trips not listed yet.
 
+**The reason is expected, and enforced only where the list is made.** The application form
+asks for a reason for every trip. Saving a trip without one stays allowed: absence totals are
+only as complete as the trips people record, and a trip left out because a reason was
+refused under-counts absences (CLAUDE.md §2.7), where a missing reason matters only when the
+list is handed over. Trips also arrive without one by design, from a CSV without the column,
+from a confirmed booking, and from before the field existed. So the trip form says the reason
+is expected, the travel history shows "No reason yet", and the list names the count
+(`MISSING_REASONS`) with a way back to Case data. The printout itself leaves the cell empty,
+never saying "missing" to a caseworker.
+
 **The period is not a choice.** The list covers the five years before the application date,
 because that is what the form asks about. A first version also offered "every trip you have
 recorded", which added a decision to a one-click page for a list nobody uploads, and it was

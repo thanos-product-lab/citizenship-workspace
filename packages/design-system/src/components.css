@@ -822,6 +822,12 @@ a.cw-button--secondary:hover {
   color: var(--cw-text-muted);
 }
 
+/* A trip with no reason yet: italic, so it never reads as a reason. Muted rather than
+   subtle, which is too faint for text this small (WCAG 1.4.3). */
+.cw-trips__reason[data-missing="true"] {
+  font-style: italic;
+}
+
 .cw-trips__flag {
   display: block;
   margin-top: var(--cw-space-2);
@@ -3294,6 +3300,12 @@ select {
 
 .cw-travel-list__table tbody th {
   font-weight: var(--cw-weight-semibold);
+}
+
+/* Marks an empty reason on screen; the sheet's colours are fixed, so this is too. */
+.cw-travel-list__missing {
+  color: #6b6b6b;
+  font-style: italic;
 }
 
 .cw-travel-list__prepared {

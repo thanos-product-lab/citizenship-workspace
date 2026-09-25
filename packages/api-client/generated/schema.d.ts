@@ -1171,7 +1171,7 @@ export interface components {
          * @description Something to know before relying on the list.
          * @enum {string}
          */
-        ExportCaution: "NO_APPLICATION_DATE" | "OVERLAPPING_TRIPS" | "DOCUMENTS_AWAITING_REVIEW";
+        ExportCaution: "NO_APPLICATION_DATE" | "MISSING_REASONS" | "OVERLAPPING_TRIPS" | "DOCUMENTS_AWAITING_REVIEW";
         /** ExportCautionResponse */
         ExportCautionResponse: {
             code: components["schemas"]["ExportCaution"];

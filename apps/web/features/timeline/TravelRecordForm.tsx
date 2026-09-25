@@ -307,7 +307,11 @@ export function TravelRecordForm({
       <Field
         id={id("reason")}
         label="Reason for trip"
-        hint="Optional. For example Holiday, or Visiting family. Shown on your travel list."
+        // Expected, not enforced (ADR-0035). The application form asks for a reason for
+        // every trip, so the label no longer says optional. Saving without one stays
+        // allowed: a trip left out for want of a reason under-counts absences, where a
+        // missing reason only matters when the list is handed over, and it says so there.
+        hint="The application form asks for a reason for every trip, for example Holiday, Visiting family or Business trip."
       >
         <input
           id={id("reason")}

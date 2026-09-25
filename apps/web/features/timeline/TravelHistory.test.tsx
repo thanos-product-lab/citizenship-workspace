@@ -383,6 +383,26 @@ describe("TravelHistory", () => {
     });
   });
 
+  it("shows a trip with no reason as a gap to fill", async () => {
+    // ADR-0035: the application form asks for a reason for every trip. The gap is shown
+    // where it is filled, and saving without one stays allowed.
+    mockGet({ trips: [aRecord({ reason: null })] });
+    render(<TravelHistory caseId="c1" />);
+    expect(await screen.findByRole("rowheader", { name: /Spain/ })).toHaveTextContent(
+      "No reason yet",
+    );
+  });
+
+  it("says the application form expects a reason, without refusing to save without one", async () => {
+    mockGet();
+    render(<TravelHistory caseId="c1" />);
+    fireEvent.click(await screen.findByRole("button", { name: /add a trip/i }));
+    const reason = screen.getByLabelText("Reason for trip");
+    expect(reason).not.toBeRequired();
+    expect(screen.getByText(/asks for a reason for every trip/)).toBeInTheDocument();
+    expect(screen.queryByText(/^Optional\. For example Holiday/)).toBeNull();
+  });
+
   it("links to the travel list once there are trips", async () => {
     mockGet({ trips: [aRecord()] });
     render(<TravelHistory caseId="c1" />);

@@ -812,7 +812,8 @@ TravelExport
 ├── trips            (every ACTIVE record whose calendar dates overlap the period)
 │   ├── destination_label · reason · departure_date · return_date
 │   └── markers      (DISPUTED · NOT_CONFIRMED · ESTIMATED; why §11.7 would not count it)
-├── cautions         (NO_APPLICATION_DATE · OVERLAPPING_TRIPS · DOCUMENTS_AWAITING_REVIEW)
+├── cautions         (NO_APPLICATION_DATE · MISSING_REASONS · OVERLAPPING_TRIPS ·
+│                     DOCUMENTS_AWAITING_REVIEW)
 └── prepared_on
 ```
 
