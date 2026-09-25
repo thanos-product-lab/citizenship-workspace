@@ -144,6 +144,9 @@
      dark page hardly at all, which left a dark-mode dialog on almost the same shade as
      the page behind it. */
   --cw-backdrop: rgba(12, 16, 18, 0.45);
+  /* The chevron drawn on every select. An image, so it cannot use `currentColor`; it is a
+     token for the same reason the backdrop is, one per theme, in the muted text colour. */
+  --cw-select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16' fill='none' stroke='%23505a60' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='4 6 8 10 12 6'/%3E%3C/svg%3E");
 
   --cw-focus-ring: 0 0 0 2px var(--cw-surface), 0 0 0 4px var(--cw-focus);
 }
@@ -190,6 +193,7 @@
     --cw-accent-contrast: var(--cw-neutral-950);
     --cw-focus: var(--cw-primary-400);
     --cw-backdrop: rgba(0, 0, 0, 0.72);
+    --cw-select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16' fill='none' stroke='%2398a3a8' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='4 6 8 10 12 6'/%3E%3C/svg%3E");
   }
 }
 
@@ -230,4 +234,5 @@
   --cw-accent-contrast: var(--cw-neutral-950);
   --cw-focus: var(--cw-primary-400);
   --cw-backdrop: rgba(0, 0, 0, 0.72);
+  --cw-select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16' fill='none' stroke='%2398a3a8' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='4 6 8 10 12 6'/%3E%3C/svg%3E");
 }

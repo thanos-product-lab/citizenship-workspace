@@ -7,7 +7,7 @@ import { Combobox } from "./Combobox";
 import { COUNTRY_NAMES } from "./countries";
 import { yearsFromTodayISO } from "./dates";
 import { formatDate } from "@/features/requirements/dates";
-import { Field, buttonStyle, errorTextStyle, inputStyle, secondaryButtonStyle } from "@/components/ui";
+import { Field, buttonStyle, errorTextStyle, inputStyle, secondaryButtonStyle, selectStyle } from "@/components/ui";
 
 type DateConfidence = components["schemas"]["DateConfidence"];
 type ReviewState = components["schemas"]["TravelReviewState"];
@@ -277,7 +277,7 @@ export function TravelRecordForm({
       <Field
         id={id("certainty")}
         label="How sure are you about this trip?"
-        hint="Only trips you are sure of, with exact dates, count towards your confirmed totals. The rest are kept separate until you firm them up."
+        hint="Only trips you are sure of, with exact dates, count towards your confirmed totals."
       >
         <select
           id={id("certainty")}
@@ -291,7 +291,7 @@ export function TravelRecordForm({
               review_state: chosen.review,
             }));
           }}
-          style={inputStyle}
+          style={selectStyle}
         >
           {certaintyOptions.map((o) => (
             <option key={o.key} value={o.key}>

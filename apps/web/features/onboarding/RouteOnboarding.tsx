@@ -255,7 +255,7 @@ export function RouteOnboarding({ caseId }: { caseId: string }) {
                 value={answers.status_type}
                 aria-invalid={invalid("status_type")}
                 onChange={(e) => update("status_type", e.target.value as StatusType | "")}
-                style={inputStyle}
+                style={selectStyle}
               >
                 <option value="">Select…</option>
                 {STATUS_OPTIONS.map((o) => (
@@ -537,7 +537,7 @@ function YesNoSelect({
       id={id}
       value={value}
       onChange={(e) => onChange(e.target.value as TriState)}
-      style={inputStyle}
+      style={selectStyle}
       {...rest}
     >
       <option value="">Select…</option>
@@ -554,6 +554,16 @@ const inputStyle: React.CSSProperties = {
   background: "var(--cw-surface)",
   color: "inherit",
   maxWidth: "24rem",
+};
+
+// Room for the chevron every select draws (components.css), which inline padding would
+// otherwise overlap; `backgroundColor` because the `background` shorthand would reset the
+// chevron image. See `selectStyle` in components/ui.tsx.
+const selectStyle: React.CSSProperties = {
+  ...inputStyle,
+  background: undefined,
+  backgroundColor: "var(--cw-surface)",
+  paddingRight: "2.5rem",
 };
 
 const buttonStyle: React.CSSProperties = {

@@ -22,6 +22,7 @@ import {
   cardStyle,
   errorTextStyle,
   secondaryButtonStyle,
+  selectStyle,
 } from "@/components/ui";
 
 type Travel = components["schemas"]["TravelRecordResponse"];
@@ -712,7 +713,7 @@ export function TravelHistory({
               // changes. Left standing, it would keep describing a selection the user has
               // already moved on from.
               onChange={() => setAttachError(undefined)}
-              style={{ width: "100%", padding: "0.5rem" }}
+              style={{ ...selectStyle, width: "100%", maxWidth: "none" }}
             >
               {attachable.map((d) => (
                 <option key={d.id} value={d.id}>

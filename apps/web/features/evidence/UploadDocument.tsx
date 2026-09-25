@@ -2,7 +2,7 @@
 
 import { type FormEvent, type JSX, useRef, useState } from "react";
 
-import { buttonStyle, cardStyle, errorTextStyle, Field, inputStyle } from "@/components/ui";
+import { buttonStyle, cardStyle, errorTextStyle, Field, inputStyle, selectStyle } from "@/components/ui";
 
 import { CATEGORY_LABELS, formatBytes, UPLOADABLE_CATEGORIES } from "./library";
 import { useUploadEvidence } from "./useUploadEvidence";
@@ -161,7 +161,7 @@ export function UploadDocument({
       >
         <select
           id="upload-category"
-          style={inputStyle}
+          style={selectStyle}
           value={category}
           onChange={(event) => setCategory(event.currentTarget.value)}
           aria-disabled={busy}

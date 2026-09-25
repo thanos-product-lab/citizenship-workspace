@@ -24,6 +24,19 @@ export const inputStyle: React.CSSProperties = {
   maxWidth: "24rem",
 };
 
+/** `inputStyle` for a select, around the chevron every select draws (components.css).
+ *
+ *  Two differences, both because inline styles beat the stylesheet. Room on the right, or
+ *  the text runs under the chevron. And `backgroundColor`, not the `background` shorthand:
+ *  the shorthand resets `background-image`, which is the chevron, so the first version
+ *  drew a select with no arrow at all. */
+export const selectStyle: React.CSSProperties = {
+  ...inputStyle,
+  background: undefined,
+  backgroundColor: "var(--cw-surface)",
+  paddingRight: "2.5rem",
+};
+
 export const buttonStyle: React.CSSProperties = {
   padding: "var(--cw-space-2) var(--cw-space-4)",
   background: "var(--cw-accent)",

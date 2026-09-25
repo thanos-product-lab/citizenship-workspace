@@ -137,3 +137,14 @@ describe("every token referenced is a token that exists", () => {
     expect(references().size).toBeGreaterThan(30);
   });
 });
+
+describe("select chevron", () => {
+  it("is defined in every theme, light and dark drawn differently", () => {
+    // An image cannot use `currentColor`, so each theme carries its own. A dark block
+    // without it would draw the light-mode grey on a dark field.
+    const values = valuesOf("cw-select-chevron");
+    expect(values).toHaveLength(3);
+    expect(values[1]).not.toBe(values[0]);
+    expect(values[2]).toBe(values[1]);
+  });
+});

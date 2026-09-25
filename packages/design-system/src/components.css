@@ -2643,6 +2643,30 @@ a.cw-button--secondary:hover {
   color: var(--cw-text-muted);
 }
 
+/* --- Select -------------------------------------------------------------------
+   Every select draws the same chevron, with room for it. The native one sat against the
+   right padding while macOS indented the text inside, so the arrow looked jammed into
+   the edge and the text looked pushed in. Padding-right is reserved in `selectStyle`
+   (inline styles beat this sheet) and in the review select's own rule. */
+select {
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: var(--cw-select-chevron);
+  background-repeat: no-repeat;
+  background-position: right 0.75rem center;
+  background-size: 16px 16px;
+  cursor: pointer;
+}
+
+/* Windows high-contrast replaces colours and drops background images, so the native
+   arrow comes back there rather than leaving a select with no affordance at all. */
+@media (forced-colors: active) {
+  select {
+    appearance: auto;
+    -webkit-appearance: auto;
+  }
+}
+
 .cw-field-review__input,
 .cw-field-review__select {
   padding: var(--cw-space-2) var(--cw-space-3);
@@ -2657,6 +2681,13 @@ a.cw-button--secondary:hover {
      escape hatch for the same reason. */
   border: 1px solid var(--cw-neutral-500);
   border-radius: var(--cw-radius-sm);
+}
+
+/* After the shared rule above, whose `padding` and `background` shorthands would
+   otherwise reset the room for the chevron and the chevron itself. */
+.cw-field-review__select {
+  padding-right: 2.5rem;
+  background-image: var(--cw-select-chevron);
 }
 
 /* The visual half of `aria-disabled`. Without it a sighted user saw an unchanged box
