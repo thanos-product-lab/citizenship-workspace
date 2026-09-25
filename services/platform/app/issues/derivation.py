@@ -345,7 +345,7 @@ def _conflict_issues(
     one disagreement to resolve, and one action resolves it; two items would double the
     queue for one problem and make adopting the document look half-done.
 
-    **`ACTION_REQUIRED` and not dismissible.** MVP §8.11: *"conflicting claims remain
+    **`ACTION_REQUIRED` and not dismissible.** *"conflicting claims remain
     unresolved until the user chooses or provides another source."* A Dismiss control would
     let the queue go quiet while two sources still disagree — and while a trip is being
     held back from the confirmed total because of it, which is the part a quiet queue would
@@ -508,7 +508,7 @@ def _missing_evidence_issues(
     acting on. Once one document exists, the user is evidencing the case and the gaps
     become actionable — so they appear.
 
-    INFORMATION and dismissible, per SYNTHETIC_DEMO_CASE §10. A trip with no booking is
+    INFORMATION and dismissible, by design. A trip with no booking is
     not a defect: people take trips they have no paperwork for, and no figure moves either
     way. This is the second dismissible-by-design issue in the product, beside
     out-of-window `UNCERTAIN_TRAVEL_DATE`.

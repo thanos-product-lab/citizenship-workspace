@@ -95,7 +95,7 @@ discoveries in two days, the first thing worth building after the release.
 
 **Status:** deferred to the guidance registry (M9) · **Affects:** every requirement detail
 
-MVP §8.8 wants a guidance version and a retrieval date on every source link. Every rule view
+The product wants a guidance version and a retrieval date on every source link. Every rule view
 the API returns carries `guidance_version_recorded: false`, and the screen says so in as many
 words rather than leaving the field blank.
 
@@ -156,7 +156,7 @@ evidencing separately, and what a user does with a document that supports two of
 
 ### 5. There is no preparation summary
 
-**Status:** not built · **Related:** MVP §14 step 15, M10
+**Status:** not built · **Related:** the last step of the demo journey, M10
 
 The last of the fifteen demo steps has no screen. Every figure it would show already exists
 on the requirement pages: what each requirement concluded, the facts behind it, what is still

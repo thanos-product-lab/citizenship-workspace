@@ -4,8 +4,8 @@ Two rules this module exists to hold:
 
 - **`processing_status` is typed to the §14.4 enum**, not to `str`. A raw Celery state
   cannot be serialised through a field whose type does not contain it, which is the
-  structural half of "domain processing states shown - never raw Celery states"
-  (MVP §8.9). The grep test in `tests/evidence/test_processing_states.py` is the other
+  structural half of "domain processing states shown - never raw Celery states".
+  The grep test in `tests/evidence/test_processing_states.py` is the other
   half, for the paths that do not go through a schema.
 - **No document content crosses this boundary in M7.** Not the extracted text, not an
   excerpt, not a page of it. Slice 3 adds `page_count` and `character_count` and a short

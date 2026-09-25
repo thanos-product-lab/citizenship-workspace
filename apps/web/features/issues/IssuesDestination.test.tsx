@@ -1142,7 +1142,7 @@ describe("resolving a conflict", () => {
   });
 
   it("offers no Dismiss, because a conflict cannot be set aside", async () => {
-    // MVP §8.11: conflicting claims remain unresolved until the user chooses or provides
+    // Conflicting claims remain unresolved until the user chooses or provides
     // another source.
     withConflict();
     renderWithQuery(<IssuesDestination caseId={CASE} />);

@@ -271,7 +271,7 @@ def disputed_record_ids(session: Session, *, case_id: uuid.UUID) -> frozenset[uu
 
 
 def list_travel_records(session: Session, *, case: ApplicationCase) -> list[TravelRecordOutcome]:
-    """Active travel records with their current version, chronological (MVP §8.4)."""
+    """Active travel records with their current version, chronological."""
     disputed = disputed_record_ids(session, case_id=case.id)
     return [
         TravelRecordOutcome.of(record, version, disputed)

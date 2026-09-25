@@ -340,7 +340,7 @@ def test_the_document_text_is_what_reaches_the_model(api: Api) -> None:
 
 
 def test_the_filename_does_not_reach_the_model(api: Api) -> None:
-    """MVP §8.10's misleading-filename criterion. The document is uploaded under a name
+    """The misleading-filename criterion. The document is uploaded under a name
     that asserts the wrong category; the model never sees it."""
     provider = _answering(ClassifiedCategory.TRAVEL_SUPPORT)
     item_id = _uploaded(

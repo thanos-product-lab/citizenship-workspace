@@ -20,7 +20,7 @@ path exists without shipping something that half-resembles it.
 
 **What the model sees.** The text M7's parser read, bounded, and the page count.
 Not the filename, not the user's declared category, not anything about the case.
-The filename omission is deliberate and is what MVP §8.10's misleading-filename
+The filename omission is deliberate and is what the misleading-filename
 criterion asks for: a document named `settled-status.pdf` containing a restaurant menu
 must be classified on the menu.
 """
@@ -96,7 +96,7 @@ class ClassificationOutput(BaseModel):
     """The capability's whole output surface.
 
     `extra="forbid"`, so a model returning a field nobody asked for fails validation
-    rather than having it quietly ignored (MVP §8.10: *"Unknown fields are not
+    rather than having it quietly ignored (*"Unknown fields are not
     accepted"*).
 
     **No field here can carry authority.** There is no `confirmed`, `eligible`,

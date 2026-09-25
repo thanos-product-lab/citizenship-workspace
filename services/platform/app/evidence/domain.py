@@ -61,7 +61,7 @@ class EvidenceProcessingStatus(StrEnum):
     """Domain §14.4, verbatim — and the *only* vocabulary the API may project.
 
     These are domain states. Raw Celery states (`PENDING`, `STARTED`, `RETRY`, …) are
-    never shown to a user (architecture overview §8, MVP §8.9), and
+    never shown to a user (architecture overview §8), and
     `tests/evidence/test_processing_states.py` asserts none of them can reach a
     response.
 

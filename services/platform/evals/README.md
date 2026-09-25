@@ -19,7 +19,7 @@ and its numbers are in `docs/evaluations/EVAL_REPORT.md` §12.
 
 ## Fixtures
 
-Six documents, all synthetic, all consistent with `SYNTHETIC_DEMO_CASE.md`. No
+Six documents, all synthetic, all consistent with the demo case in `app/seed/demo_case.py`. No
 real personal data appears here or anywhere else public (CLAUDE.md §2.9).
 
 **Generated, not committed** — the same rule `scripts/make_fixtures.py` follows,

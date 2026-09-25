@@ -47,7 +47,7 @@ def _upload(storage: S3Storage, *, key: str | None = None) -> str:
 
 
 def test_an_object_is_not_readable_without_a_signature(minio_storage: S3Storage) -> None:
-    """The property the whole milestone rests on: MVP §8.9, "Documents are not publicly
+    """The property the whole milestone rests on: "Documents are not publicly
     accessible." An unsigned GET at the object's own address must be refused."""
     key = _upload(minio_storage)
 
@@ -56,7 +56,7 @@ def test_an_object_is_not_readable_without_a_signature(minio_storage: S3Storage)
 
 
 def test_a_presigned_url_stops_working_when_it_expires(minio_storage: S3Storage) -> None:
-    """MVP §8.9: "Upload URLs expire." A presigned URL cannot be revoked (ADR-0018), so
+    """Upload URLs expire. A presigned URL cannot be revoked (ADR-0018), so
     its TTL is the entire bound on its life — which makes the TTL actually elapsing the
     only thing standing between an issued URL and an indefinite one."""
     key = _upload(minio_storage)
@@ -68,7 +68,7 @@ def test_a_presigned_url_stops_working_when_it_expires(minio_storage: S3Storage)
 
 
 def test_an_old_signed_url_cannot_reach_a_deleted_object(minio_storage: S3Storage) -> None:
-    """MVP §8.9: "Old signed URLs cannot access deleted files." Not because the URL is
+    """Old signed URLs cannot access deleted files. Not because the URL is
     revoked — it is not — but because there is nothing behind it once the purge runs.
     This is the assertion that makes Domain §51.1 step 3 mean something."""
     key = _upload(minio_storage)

@@ -14,7 +14,7 @@ server-generated ones. So the key is minted and recorded first, and the presigne
 signed for that key alone.
 
 **Validation is split, deliberately.** Media type and declared size are refused at
-presign, before a byte is written — MVP §8.9's "rejected before processing". Actual size
+presign, before a byte is written — the product's "rejected before processing". Actual size
 comes from the store at completion, because what a client declares is not what it
 uploads. Magic-byte verification needs the content itself and belongs to the worker's
 `VALIDATING` state in slice 2; until then a file whose bytes contradict its declared
@@ -68,7 +68,7 @@ from app.shared.unit_of_work import UnitOfWork
 # The document types this product can actually read. PDF is the real target; the image
 # types exist because a phone photo of a letter is what people have. Anything else is
 # refused at presign rather than accepted and then failed, so the user finds out before
-# waiting for an upload (MVP §8.9).
+# waiting for an upload.
 SUPPORTED_MEDIA_TYPES: tuple[str, ...] = (
     "application/pdf",
     "image/jpeg",
@@ -105,7 +105,7 @@ def start_upload(
 ) -> UploadGrant:
     """Mint a storage key and sign a URL and a token for it. Writes nothing.
 
-    Refusing the media type and the declared size here is MVP §8.9's "unsupported file
+    Refusing the media type and the declared size here is the product's "unsupported file
     types are rejected before processing" in its strongest form: the user finds out
     before uploading, and no object is ever written for a type this product cannot read.
     The type is also bound into the presigned URL's signature, so it is the only type

@@ -22,7 +22,7 @@ Source docs read:
 Then:
 
 1. **Read the source docs.** Always `CLAUDE.md`. Plus whichever apply:
-   `MVP_SCOPE_AND_ACCEPTANCE_CRITERIA.md` for the boundary,
+   `docs/product/PRODUCT.md` for the product boundary,
    `DOMAIN_MODEL_RFC.md` for entities and invariants,
    `DETERMINISTIC_RULES_SPEC.md` for anything touching rules or dates,
    `Evidence_First_Citizenship_Workspace_UI_UX.md` for anything visual.

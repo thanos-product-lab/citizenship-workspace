@@ -32,7 +32,7 @@ export interface ReviewClaim {
  * Not `GET /claims`, which is the case-wide queue and returns pending claims only. This
  * screen is a document's own history: dropping a field the moment it was decided would
  * leave the user watching a list shrink with no record of what they had just done, and
- * MVP §8.11 asks the split view to show confirmation history.
+ * The product asks the split view to show confirmation history.
  *
  * No polling. Nothing changes these rows except this screen's own mutation, which
  * invalidates the key — unlike the library, where a worker is moving underneath.

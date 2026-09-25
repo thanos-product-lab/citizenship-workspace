@@ -10,7 +10,7 @@ claim it already holds and works out which decision that was.
 screen that fetched the proposal could render it beside the empty input, which is a
 pre-filled confirm with extra steps. `proposed_value` is `None` for those.
 
-**Once a decision exists, the proposal is returned.** MVP §8.11 requires that correcting
+**Once a decision exists, the proposal is returned.** The product requires that correcting
 a value preserves the original proposal and Design §11.6 requires the split view to show it
 in history — neither is visible if the proposal is never returned at all. The nudge blind
 entry exists to remove is gone by then: the decision is immutable, `OPEN_STATUSES` is
@@ -84,7 +84,7 @@ class ClaimView(BaseModel):
     status: str
     created_at: datetime
     #: Null while the claim is pending. Present afterwards, which is what makes the
-    #: split view able to show a document's confirmation history (MVP §8.11).
+    #: split view able to show a document's confirmation history.
     decision: DecisionView | None
 
     @classmethod
@@ -96,7 +96,7 @@ class ClaimView(BaseModel):
         # `INVALIDATED`, states nobody decided anything in, so the proposal would have
         # been revealed on the strength of the claim having been *closed*.
         #
-        # What justifies showing it is the decision — MVP §8.11 asks the split view to
+        # What justifies showing it is the decision: the product asks the split view to
         # show a correction as a correction, and it is the decision that makes the value
         # safe to show, because there is no longer anything for it to influence. It also
         # makes this the same predicate the screen renders on (`decision === null`

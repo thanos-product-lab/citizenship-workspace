@@ -1,7 +1,7 @@
 /**
  * The rule that produced a conclusion, and the guidance it cites.
  *
- * **The gap is stated, not filled.** MVP §8.8 requires every source link to display a
+ * **The gap is stated, not filled.** The product requires every source link to display a
  * source version and a retrieval date. Neither is recorded until the `GuidanceVersion`
  * tables arrive with Migration 5 (ADR-0007). The nearest available substitutes — the
  * rule's own `effective_from`, or today's date — would both be fabricated provenance,

@@ -141,7 +141,7 @@ def test_a_timeout_is_reported_as_a_timeout() -> None:
 
 
 def test_invalid_structured_output_is_retried_and_never_accepted() -> None:
-    """MVP §8.10: invalid structured output creates no claim. The adapter retries —
+    """Invalid structured output creates no claim. The adapter retries —
     this is the one failure a second attempt genuinely fixes — but a `parsed` of None
     is never dressed up as a result."""
     client = _StubClient([_Completion(None), _Completion(None), _Completion(None)])

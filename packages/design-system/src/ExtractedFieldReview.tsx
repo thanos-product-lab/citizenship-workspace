@@ -241,7 +241,7 @@ function Settled({
     <div className="cw-field-review__settled">
       <p className="cw-field-review__value cw-figure">{decision.value}</p>
       {corrected && proposedValue ? (
-        // The original proposal, preserved and shown — MVP §8.11 requires the record to
+        // The original proposal, preserved and shown: the product requires the record to
         // keep it, and §9.4 requires the split view to show it. A correction the user
         // cannot see the shape of is a correction they have to take on trust.
         <BeforeAfterValue

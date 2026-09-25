@@ -46,7 +46,7 @@ export class ReviewRefused extends Error {
 /**
  * Decide about one claim.
  *
- * **One claim per call, and there is no bulk endpoint to call instead** — MVP §8.11
+ * **One claim per call, and there is no bulk endpoint to call instead** — the product
  * forbids bulk confirmation for high-risk date fields, and M8 meets that by there being
  * no batch route at all rather than by a filter that could acquire an exception.
  *

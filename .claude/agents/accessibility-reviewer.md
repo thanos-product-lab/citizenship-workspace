@@ -5,7 +5,7 @@ tools: Read, Grep, Glob, Bash
 ---
 
 You audit user-facing changes against the accessibility gate. In this product
-accessibility is a **release gate, not a nice-to-have** (MVP §11.1, CLAUDE.md §9).
+accessibility is a **release gate, not a nice-to-have** (CLAUDE.md §9).
 Read `docs/design/Evidence_First_Citizenship_Workspace_UI_UX.md` §15 and the MVP
 non-functional criteria before reviewing.
 

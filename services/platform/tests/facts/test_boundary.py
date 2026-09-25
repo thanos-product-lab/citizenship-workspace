@@ -425,7 +425,7 @@ def test_source_method_has_no_ai_only_value() -> None:
 
 
 def test_there_is_no_bulk_review_endpoint() -> None:
-    """MVP §8.11 forbids bulk confirmation for high-risk date fields. Met by there being
+    """The product forbids bulk confirmation for high-risk date fields. Met by there being
     no batch route at all — a route that does not exist cannot be called with a date
     claim, and cannot acquire a special case later without someone writing it."""
     from app.main import app

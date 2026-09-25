@@ -1,4 +1,4 @@
-"""The canonical synthetic demo case (SYNTHETIC_DEMO_CASE.md), seeded through the real
+"""The canonical synthetic demo case, seeded through the real
 command path — the same service commands a request goes through, never raw SQL, so the
 seed exercises real validation and versioning and cannot drift from product behaviour.
 
@@ -63,7 +63,7 @@ class DemoTrip:
     destination_country_code: str | None = None
 
 
-# The twelve trips (SYNTHETIC_DEMO_CASE.md §4), in order. Trip 11 returns 10 May 2026 at
+# The twelve trips, in order. Trip 11 returns 10 May 2026 at
 # M3B (EXACT); the stale demo edits it to 11 May. Raw endpoints — the rules clip and count.
 DEMO_TRIPS: tuple[DemoTrip, ...] = (
     DemoTrip("Spain", date(2022, 4, 14), date(2022, 4, 26), "ES"),
@@ -84,7 +84,7 @@ DEMO_TRIPS: tuple[DemoTrip, ...] = (
 TRIP_11_INDEX = 10
 
 # Zero-based index of trip 6 (Greece), the one trip deliberately left with no document
-# attached (SYNTHETIC_DEMO_CASE §10). Named because the fixture's meaning now depends on
+# attached. Named because the fixture's meaning now depends on
 # it: a hole in otherwise complete coverage, rather than an artefact of an empty library.
 TRIP_6_INDEX = 5
 
@@ -264,7 +264,7 @@ def _run() -> None:
 
     Requires the DB to be up and migrated (`just up` / `just migrate`). Not idempotent:
     each run creates a new case (the service commands commit per step), and a mid-seed failure
-    leaves a partial case — a `SYNTHETIC_DEMO_CASE` reset is a distinct operation (M-later).
+    leaves a partial case. A reset of the demo case is a distinct operation (M-later).
 
     The case data itself is synthetic regardless of owner (CLAUDE.md §2.9); only the owning
     account changes.

@@ -1173,14 +1173,14 @@ produce two claims of the same type that nothing could tell apart.
 
 ### 41.3 `HIGH_RISK_CLAIM_TYPES`
 
-The claim types marked HIGH above: every `date.v1` field. MVP §8.11 singles out
+The claim types marked HIGH above: every `date.v1` field. The product singles out
 "immigration-status grant dates and travel dates" and forbids bulk confirmation for
 them; this is that set, named once so the two rules that key off it cannot drift.
 
 Two rules key off it, and only these two:
 
 1. **Blind confirmation** (§41.4).
-2. **No bulk confirm.** MVP §8.11. In M8 this is met by there being *no bulk endpoint
+2. **No bulk confirm.** In M8 this is met by there being *no bulk endpoint
    at all* — every remaining field is low enough value that a batch route earns
    nothing, and a route that does not exist cannot be called with a date claim.
 

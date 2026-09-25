@@ -273,7 +273,7 @@ while focusing it still announces how the group stands.
 
 ### 10.1 `SourceReference` cannot show a guidance version or retrieval date (M4)
 
-MVP §8.8 requires that "source links display source version and retrieval date".
+The product requires that "source links display source version and retrieval date".
 Neither value exists in the data at M4: `RuleVersion.configuration["guidance"]`
 holds a citation string only (`{"source": "GUIDE_AN", "section": "…"}`), and the
 `GuidanceVersion` / `GuidanceSection` tables that would carry a version and a

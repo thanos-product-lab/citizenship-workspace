@@ -247,7 +247,7 @@ def validate_evidence(
     return {
         "run_id": str(outcome.run_id),
         # The *domain* state, never the Celery one. The API projects this vocabulary and
-        # nothing else (MVP §8.9).
+        # nothing else.
         "processing_status": outcome.processing_status.value if outcome.processing_status else None,
         "failure_code": outcome.failure_code.value if outcome.failure_code else None,
         "already_done": outcome.already_done,

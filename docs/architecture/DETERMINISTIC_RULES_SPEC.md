@@ -368,7 +368,7 @@ lawful residence and freedom from time restrictions.
 | `UNKNOWN` / absent | `NOT_YET_ASSESSED` |
 
 **[PRODUCT]** Pre-settled status is explicitly out of scope and must stop
-onboarding, per MVP §4.2. Withdrawal Agreement automatic permanent residence is
+onboarding. Withdrawal Agreement automatic permanent residence is
 also unsupported — `GUIDE_AN` notes such applicants must still evidence lawful
 residence across the whole period, which the MVP does not model.
 
@@ -871,7 +871,7 @@ other independently meets its own requirement). Failure →
 
 **[PRODUCT]** The MVP does not adjudicate what constitutes a "professional
 person" — it records the user's answer. Anything ambiguous escalates rather than
-concludes. This is a deliberate boundary; MVP §5.4 excludes a full referee
+concludes. This is a deliberate boundary: the product excludes a full referee
 eligibility engine.
 
 Summary codes: `REFEREE_COMPLETE`, `REFEREE_MISSING`,

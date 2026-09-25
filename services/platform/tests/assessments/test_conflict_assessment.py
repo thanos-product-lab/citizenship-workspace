@@ -331,7 +331,7 @@ def test_the_queue_names_both_values_and_the_document(api: Api, db_session: Sess
 
 
 def test_a_conflict_cannot_be_dismissed(api: Api, db_session: Session) -> None:
-    """**Mutation-table row 19.** MVP §8.11: *"conflicting claims remain unresolved until
+    """**Mutation-table row 19.** *"conflicting claims remain unresolved until
     the user chooses or provides another source."*
 
     A Dismiss control would let the queue go quiet while two sources still disagree — and
@@ -380,7 +380,7 @@ def _adopt(api: Api, case_id: str, trip_id: str) -> Any:
 def test_adopting_the_document_date_resolves_the_conflict_and_moves_the_total(
     api: Api, db_session: Session
 ) -> None:
-    """SYNTHETIC_DEMO_CASE §7, in miniature: the whole sequence the milestone exists to show.
+    """The demo case's conflict, in miniature: the whole sequence the milestone exists to show.
 
     Confirm → held back → adopt → recalculate → the figure moves and the conclusion does
     not. The one-day change is the point: `conclusion` and `currency` are separate

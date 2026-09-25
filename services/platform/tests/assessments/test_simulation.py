@@ -5,7 +5,7 @@ stale"* — and §42.2, which requires a provisional result to be structurally i
 being read as current. Both are invariants rather than features, so they are asserted
 directly rather than inferred from a happy path.
 
-The expected figures are transcribed by hand from `SYNTHETIC_DEMO_CASE.md` §8 and the
+The expected figures are derived by hand from the demo case's trips and the
 `RULES_SPEC` §5 working, never recomputed from the code under test. **429** is derived
 here for the first time and belongs in the fixture doc: moving the application date to
 25 Apr 2027 starts the window on 26 Apr 2022, and trip 1's absent set (15-25 Apr 2022)
@@ -40,7 +40,7 @@ pytestmark = pytest.mark.integration
 Api = Callable[[str], TestClient]
 
 CURRENT_DATE = "2027-04-15"
-RESOLVING_DATE = "2027-04-25"  # SYNTHETIC_DEMO_CASE.md §8, derived from trip 1's return
+RESOLVING_DATE = "2027-04-25"  # hand-derived from trip 1's return
 LAST_FAILING_DATE = "2027-04-24"  # anchor 25 Apr 2022 — still the last day of trip 1's set
 
 
@@ -232,7 +232,7 @@ def test_a_simulation_covers_every_requirement_an_application_date_change_invali
 def test_moving_to_the_resolving_date_flips_presence_and_shifts_the_window(
     api: Api, db_session: Session
 ) -> None:
-    """SYNTHETIC_DEMO_CASE.md §8, as an interaction. Hand-derived values only."""
+    """The resolving date, as an interaction. Hand-derived values only."""
     case_id = _assessed_case(api, db_session)
     body = _simulate(api, case_id, RESOLVING_DATE).json()
 

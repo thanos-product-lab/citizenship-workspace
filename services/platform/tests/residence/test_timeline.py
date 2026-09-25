@@ -1,7 +1,7 @@
 """The residence timeline projection (Domain §44.3).
 
-Expected values are transcribed from `SYNTHETIC_DEMO_CASE.md` §3/§4/§8 by hand, never
-recomputed from the code under test — the per-trip counted days are the §4 table's own
+Expected values are derived by hand from the rules spec, never recomputed from the code
+under test — the per-trip counted days are the hand-worked table's own
 "Absent days" column, which the doc derived from the rules spec.
 
 The distinction this suite is really pinning: the timeline describes **inputs**, and the
@@ -23,7 +23,7 @@ pytestmark = pytest.mark.integration
 
 Api = Callable[[str], TestClient]
 
-# SYNTHETIC_DEMO_CASE.md §4, "Absent days" — the count falling inside the qualifying
+# Absent days, hand-derived: the count falling inside the qualifying
 # window, in seed order. Trip 1 is the boundary case: 11 days abroad, 10 of them counted.
 COUNTED_DAYS = (10, 40, 25, 66, 29, 39, 55, 51, 56, 51, 5, 12)
 

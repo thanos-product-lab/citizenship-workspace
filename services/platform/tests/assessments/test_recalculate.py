@@ -377,7 +377,7 @@ def test_detail_names_the_rule_that_produced_the_result(api: Api) -> None:
 
 
 def test_the_guidance_version_gap_is_declared_not_faked(api: Api) -> None:
-    """MVP §8.8 wants a guidance version and retrieval date on every source link. Neither
+    """The product wants a guidance version and retrieval date on every source link. Neither
     exists until Migration 5 (ADR-0007). The API must say so rather than supplying the
     rule's own effective_from dressed as a retrieval date — fabricated provenance is the
     worst defect this product could ship."""

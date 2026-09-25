@@ -283,7 +283,7 @@ class EvidenceNotFound(DomainError):
 
 class UnsupportedEvidenceType(DomainError):
     """An upload declared a media type outside the supported set. Refused at presign,
-    before a byte is written — MVP §8.9, "unsupported file types are rejected before
+    before a byte is written: "unsupported file types are rejected before
     processing". The declared type is also bound into the presigned URL's signature, so
     it is the only type the store will accept for that URL."""
 

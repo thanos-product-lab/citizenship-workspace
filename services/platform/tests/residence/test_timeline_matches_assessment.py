@@ -10,7 +10,7 @@ a case with a conflict the timeline reported the trip as counted and the assessm
 it held back. **The whole backend suite stayed green**, because no test compared the two.
 
 That is what this file is: not a second oracle, but an equality. `test_timeline.py` asserts
-figures transcribed by hand from `SYNTHETIC_DEMO_CASE.md`, which is right and which passed
+figures derived by hand from the rules spec, which is right and which passed
 throughout the divergence — a hand-transcribed number cannot notice that a *different*
 surface disagrees with it. Asserting the two surfaces against each other catches the next
 divergence without anyone remembering to add a case for it.

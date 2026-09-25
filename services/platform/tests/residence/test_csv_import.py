@@ -1,6 +1,6 @@
 """CSV travel-history import: dry-run validation, atomic commit, per-row diagnostics.
 
-Covers the Slice 3 acceptance (MVP §8.4): import errors identify the exact affected
+Covers the Slice 3 acceptance: import errors identify the exact affected
 rows; a user can correct before committing; the commit is all-or-nothing (one bad row
 writes nothing); imported rows become CSV_IMPORT versions; and the write is gated on an
 ACTIVE case and the case owner.

@@ -98,7 +98,7 @@ api:
 dev:
     pnpm --filter @cw/web dev
 
-# Load the canonical synthetic demo case (§13 of MVP RFC) via the real command path.
+# Load the canonical synthetic demo case (`app/seed/demo_case.py`) via the real command path.
 # Pass a signed-in user id to seed it into an account you can open in the browser;
 # the default `demo-user` is what the CLI walkthroughs use.
 #

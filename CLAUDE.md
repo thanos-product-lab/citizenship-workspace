@@ -199,7 +199,7 @@ module's internals.
 just up            # docker compose up: postgres, redis, minio, api, worker
 just dev           # run Next.js (pnpm) against local API
 just migrate       # alembic upgrade head
-just seed          # load canonical synthetic demo case (§13 of MVP RFC)
+just seed          # load the canonical synthetic demo case (app/seed/demo_case.py)
 
 just test          # all tests (fe + be)
 just test-be       # pytest (unit + integration + property-based)
@@ -351,8 +351,9 @@ Introducing any of these without an approved RFC change is a defect:
 - A chatbot as the primary interface
 - A Next.js-only backend (Python owns document/AI/temporal work)
 - Real personal data anywhere public
-- Any feature on the MVP "Out of Scope" list (spouse route, children's
-  registration, submission, good-character/criminal analysis, payments, etc.)
+- Anything listed under "What it does not do" in `docs/product/PRODUCT.md` (spouse
+  route, children's registration, submission, good-character/criminal analysis,
+  payments, etc.)
 
 **Scope discipline:** the default answer to scope expansion is *no*. Any addition
 must justify the core problem it solves, why it's needed for the MVP story, which
@@ -386,8 +387,7 @@ consulted most during implementation:
 2. `docs/architecture/DETERMINISTIC_RULES_SPEC.md`: date semantics, day counting,
    thresholds, banding. **Authoritative for anything touching rules or dates.**
 3. `docs/architecture/EVIDENCE_AND_CLAIM_LIFECYCLE_RFC.md`: documents, claims, review.
-4. `docs/product/MVP_SCOPE_AND_ACCEPTANCE_CRITERIA.md`: the boundary and acceptance
-   criteria.
+4. `docs/product/PRODUCT.md`: who it is for, what it does, and what it does not do.
 5. `docs/KNOWN_LIMITATIONS.md`: open gaps, deliberate boundaries, resolved entries.
 6. `docs/IMPLEMENTATION_ROADMAP.md` (reference): milestone numbering, the task pattern
    (§9) and the Definition of Done (§10).
@@ -397,7 +397,7 @@ docs/
 ├── README.md       the map: current, reference, decisions, retired
 ├── KNOWN_LIMITATIONS.md · DEPLOYMENT.md · DEMO_SCRIPT.md
 ├── IMPLEMENTATION_ROADMAP.md · MILESTONE_GATES.md · RELEASE_GATE_AUDIT.md   (reference)
-├── product/        MVP scope · synthetic demo case · thesis · case study outline
+├── product/        the product guide · case study outline
 ├── design/         the design document: visual system and interface rules
 ├── architecture/   overview · rules spec · domain model · evidence lifecycle · technical RFC
 ├── evaluations/    the evaluation report: results, principles, gates, the spike, run history

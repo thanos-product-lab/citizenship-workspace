@@ -578,7 +578,7 @@ def test_a_documents_claims_include_the_ones_already_decided(api: Api, db_sessio
     """The queue answers "what is still open"; a document answers "what happened to it".
 
     `GET /claims` is `PENDING_REVIEW` only, deliberately — a decided claim in a queue
-    invites a second decision. The split view needs the opposite: MVP §8.11 asks it to
+    invites a second decision. The split view needs the opposite: the product asks it to
     show confirmation history, and a screen that dropped a field the moment it was
     decided would leave the user looking at a shrinking list with no record of what they
     had just done.
@@ -608,7 +608,7 @@ def test_a_proposal_is_withheld_until_it_is_decided_and_shown_afterwards(
     """Both halves of the conditional reveal, in one test on purpose.
 
     Withholding is the blind-entry guarantee: a client that received the model's date
-    could render it beside the empty box. Revealing afterwards is MVP §8.11's *"correcting
+    could render it beside the empty box. Revealing afterwards is the product's rule, *"correcting
     a value preserves the original proposal"* — a promise nobody can see kept if the
     proposal is never returned at all.
 

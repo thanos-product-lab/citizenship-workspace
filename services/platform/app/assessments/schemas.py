@@ -228,7 +228,7 @@ class RuleView(BaseModel):
     """The rule version that produced the displayed result, and its guidance citations.
 
     `guidance_version_recorded` is deliberately present and deliberately false at M4.
-    MVP §8.8 wants a guidance version and retrieval date on every source link; the
+    The product wants a guidance version and retrieval date on every source link; the
     `GuidanceVersion` tables that would carry them arrive with Migration 5 (ADR-0007).
     Rather than omit the question or fill it with the rule's own `effective_from` dressed
     up as a retrieval date, the API states that the value is not recorded yet and the UI

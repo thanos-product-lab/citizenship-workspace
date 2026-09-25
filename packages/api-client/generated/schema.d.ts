@@ -1068,7 +1068,7 @@ export interface components {
          * @description Domain §14.4, verbatim — and the *only* vocabulary the API may project.
          *
          *     These are domain states. Raw Celery states (`PENDING`, `STARTED`, `RETRY`, …) are
-         *     never shown to a user (architecture overview §8, MVP §8.9), and
+         *     never shown to a user (architecture overview §8), and
          *     `tests/evidence/test_processing_states.py` asserts none of them can reach a
          *     response.
          *
@@ -1989,7 +1989,7 @@ export interface components {
          * @description The rule version that produced the displayed result, and its guidance citations.
          *
          *     `guidance_version_recorded` is deliberately present and deliberately false at M4.
-         *     MVP §8.8 wants a guidance version and retrieval date on every source link; the
+         *     The product wants a guidance version and retrieval date on every source link; the
          *     `GuidanceVersion` tables that would carry them arrive with Migration 5 (ADR-0007).
          *     Rather than omit the question or fill it with the rule's own `effective_from` dressed
          *     up as a retrieval date, the API states that the value is not recorded yet and the UI

@@ -33,7 +33,7 @@ Every one of these has a home already. A capability missing any of them is not
 finished.
 
 1. **Output schema** — a Pydantic model with `extra="forbid"`. Unknown fields are
-   rejected (MVP §8.10). **No field may carry authority**: no `confirmed`,
+   rejected. **No field may carry authority**: no `confirmed`,
    `eligible`, `approved`, `status` or `conclusion`. A document instructing the model
    to mark an applicant eligible must have nowhere to put the answer.
 2. **Prompt** — a file in `app/ai/prompts/` and a member of `PromptVersion`. Never a

@@ -87,7 +87,7 @@ class TravelRecordRepository:
         session: Session, case_id: uuid.UUID
     ) -> list[tuple[TravelRecord, TravelRecordVersion]]:
         """Active (non-tombstoned) records with their current version, in departure
-        order — the accessible chronological table (MVP §8.4). Tombstones are excluded."""
+        order — the accessible chronological table. Tombstones are excluded."""
         stmt = (
             select(TravelRecord, TravelRecordVersion)
             .join(

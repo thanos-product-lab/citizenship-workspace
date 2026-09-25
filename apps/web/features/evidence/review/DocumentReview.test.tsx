@@ -242,7 +242,7 @@ describe("blind confirmation", () => {
   });
 
   it("shows what the model had read once the correction is recorded", async () => {
-    // MVP §8.11: correcting preserves the original proposal. The record keeps it either
+    // Correcting preserves the original proposal. The record keeps it either
     // way; this is whether the person can *see* that theirs won. Only reachable after the
     // decision — the API withholds the proposal until then, which is the test above.
     serve({

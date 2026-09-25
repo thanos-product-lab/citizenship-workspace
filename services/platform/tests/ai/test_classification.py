@@ -265,7 +265,7 @@ def test_the_input_is_capped(db_session: Session, ai_settings: Settings) -> None
 
 
 def test_the_filename_is_never_sent(ai_settings: Settings) -> None:
-    """MVP §8.10's misleading-filename criterion, met by omission rather than by
+    """The misleading-filename criterion, met by omission rather than by
     instructing the model to ignore it. A document named `settled-status.pdf` containing
     a restaurant menu must be classified on the menu."""
     signature = inspect.signature(classify).parameters

@@ -1,6 +1,6 @@
 # Running the canonical demo locally
 
-MVP §14's fifteen steps, in Chrome, against the local stack. Written to be followed while
+The fifteen-step demo journey, in Chrome, against the local stack. Written to be followed while
 clicking, not read once.
 
 **Two of the fifteen need something the seed does not create, and one does not exist.**
@@ -185,8 +185,8 @@ dates — Did not count towards the confirmed figure"*, and the fact that caused
 Open **Assessment history** to see both earlier runs with their rule versions.
 
 > **Known gap, visible here:** the Rule layer declares that no guidance version was
-> recorded (`guidance_version_recorded: false`). MVP §8.8 wants a version and a retrieval
-> date on every source link. It says so rather than filling it in — deferred to M9.
+> recorded (`guidance_version_recorded: false`). The product wants a version and a
+> retrieval date on every source link. It says so rather than filling it in — deferred to M9.
 
 ### 12–13. Change the application date and watch presence change
 

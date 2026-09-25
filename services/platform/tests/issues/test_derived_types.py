@@ -628,7 +628,7 @@ def test_the_gaps_appear_when_the_document_is_uploaded_not_when_one_is_attached(
 
 
 def test_an_unevidenced_trip_is_information_the_user_may_set_aside(api: Api) -> None:
-    """SYNTHETIC_DEMO_CASE §10: INFORMATION, dismissible. A trip with no booking is not a
+    """INFORMATION, dismissible. A trip with no booking is not a
     defect — people take trips they have no paperwork for, and no figure moves either
     way."""
     case_id = _case(api)

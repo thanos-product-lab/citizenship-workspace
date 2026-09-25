@@ -4,7 +4,7 @@ Under `/api/v1/cases/{case_id}/…` like every case-scoped aggregate — the pre
 keeps one from being addressable outside its case, asserted by
 `test_no_case_scoped_aggregate_is_addressable_outside_a_case_prefix`.
 
-**There is no bulk endpoint, and that is the implementation of MVP §8.11's ban on bulk
+**There is no bulk endpoint, and that is the implementation of the ban on bulk
 confirmation for high-risk date fields.** Not a filter that rejects date claims from a
 batch — no batch route exists, so there is nothing to call with one. Every remaining
 field is low enough value that a batch would earn nothing, and a route that does not

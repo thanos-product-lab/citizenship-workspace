@@ -5,7 +5,7 @@ the dry-run `validate` endpoint and the atomic `import` commit, and cannot diver
 between them. Structural problems (missing columns, empty file) raise `CsvImportMalformed`
 (the whole file is unusable); per-row problems are returned as `RowDiagnostic`s carrying
 the exact 1-based file line and stable field/error codes so the UI can bind each error to
-its cell (MVP §8.4: "import errors identify the exact affected rows").
+its cell ("import errors identify the exact affected rows").
 
 Dates are parsed strictly as `YYYY-MM-DD` (`%Y-%m-%d`), so an ambiguous `14/04/2022` is
 rejected rather than guessed — date ambiguity is exactly the kind of silent error this

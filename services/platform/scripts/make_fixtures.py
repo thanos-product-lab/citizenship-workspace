@@ -5,7 +5,7 @@ is about what reaches anything public. With a generator, every value in every do
 visible in reviewable source — you can read this file and know exactly what is in them.
 
 Everything here is fictional. "Amara Okonkwo" is the existing synthetic demo applicant
-(SYNTHETIC_DEMO_CASE); reference numbers use an obviously fake prefix; no real test
+(`app/seed/demo_case.py`); reference numbers use an obviously fake prefix; no real test
 centre, Home Office reference format, or person appears.
 
     uv run python -m scripts.make_fixtures [output-dir]

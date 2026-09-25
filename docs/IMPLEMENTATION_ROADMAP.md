@@ -59,9 +59,7 @@ Implementation must remain aligned with:
 
 ```
 CLAUDE.md
-docs/product/Evidence_First_Citizenship_Workspace_Product_Thesis.md
-docs/product/MVP_SCOPE_AND_ACCEPTANCE_CRITERIA.md
-docs/product/SYNTHETIC_DEMO_CASE.md
+docs/product/PRODUCT.md (replaced the product thesis)
 docs/design/DESIGN_SYSTEM_FOUNDATIONS.md (replaced the UI/UX direction document)
 docs/design/DESIGN_SYSTEM_FOUNDATIONS.md
 docs/architecture/ARCHITECTURE_OVERVIEW.md (replaced the technical architecture RFC)
@@ -80,13 +78,13 @@ whole project. Write documents just in time, immediately before their milestone.
 
 | Document | Blocks | Status |
 |---|---|---|
-| Product Thesis | — | ✅ exists |
+| Product Thesis | — | retired; its content is in `product/PRODUCT.md` |
 | MVP Scope | — | ✅ exists |
 | UI/UX Direction | — | retired; its lasting rules are in `design/DESIGN_SYSTEM_FOUNDATIONS.md` §11 |
 | Technical Architecture RFC | — | retired; its lasting content is in `architecture/ARCHITECTURE_OVERVIEW.md` |
 | Domain Model RFC | — | ✅ exists |
 | `CLAUDE.md` | M1 | ✅ exists |
-| `SYNTHETIC_DEMO_CASE.md` | **M3A** | ⬜ write in week 1 |
+| the synthetic demo case (now `app/seed/demo_case.py`) | **M3A** | retired; the case is defined by `app/seed/demo_case.py` |
 | `DETERMINISTIC_RULES_SPEC.md` | **M3B** | ⬜ write in week 1 — *critical path* |
 | `DESIGN_SYSTEM_FOUNDATIONS.md` | **M4** | ⬜ write in week 1 (tokens can be thin) |
 | `SECURITY_AND_PRIVACY_THREAT_MODEL.md` | **M7** (lightweight) / M11 (full) | ⬜ |
@@ -184,7 +182,7 @@ write all remaining RFCs before coding.
 
 ## Deliverables
 
-- `SYNTHETIC_DEMO_CASE.md`: canonical applicant, five-year travel history,
+- the synthetic demo case (now `app/seed/demo_case.py`): canonical applicant, five-year travel history,
   expected absence totals, expected requirement states, the expected stale
   transition, and the alternative application date that resolves physical presence.
 - `DETERMINISTIC_RULES_SPEC.md`: absence-counting semantics (inclusive/exclusive
@@ -324,7 +322,7 @@ no rules engine yet.
 
 ## Blocking Documents
 
-`SYNTHETIC_DEMO_CASE.md`
+the synthetic demo case (now `app/seed/demo_case.py`)
 
 ## Domain Scope
 

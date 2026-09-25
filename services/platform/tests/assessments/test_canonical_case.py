@@ -1,10 +1,12 @@
 """The canonical synthetic case as the integration oracle (M3B hard gate).
 
-Every expected value here is a **literal transcribed by hand** from
-`docs/product/SYNTHETIC_DEMO_CASE.md` — which derived them by hand from the rules spec —
-never computed by the evaluator under test. That independence is the whole point: a test
-that recomputed its expected value from the same code would prove nothing. The seed runs
-through the real command path (`seed_demo_case`), so seed-vs-product drift is caught too.
+Every expected value here is a **literal derived by hand** from the rules spec for the
+demo case the seed builds (`app/seed/demo_case.py`), never computed by the evaluator
+under test. The worked derivations are in git history
+(`git show 90c6868:docs/product/SYNTHETIC_DEMO_CASE.md`). That independence is the whole
+point: a test that recomputed its expected value from the same code would prove nothing.
+The seed runs through the real command path (`seed_demo_case`), so seed-vs-product drift
+is caught too.
 
 M3B scope: the route, status, and residence requirements. `knowledge.*`, `referees.*`,
 `character.review`, and `preparation.case_complete` need input models that arrive at M4,
@@ -42,7 +44,7 @@ def test_canonical_case_produces_the_documented_oracle(api: Api, db_session: Ses
     assert resp.status_code == 200
 
     conclusions = _conclusions(api, case_id)
-    # Conclusions — SYNTHETIC_DEMO_CASE.md §5 (M3B rows).
+    # Conclusions (M3B rows).
     assert conclusions["route.adult_applicant"] == "SUPPORTED"
     assert conclusions["route.supported_status"] == "SUPPORTED"
     assert conclusions["route.standard_section_6_1"] == "SUPPORTED"
@@ -128,7 +130,7 @@ def test_canonical_stale_transition_moves_439_to_440(api: Api, db_session: Sessi
 def test_the_canonical_case_shows_exactly_two_standing_issues(
     api: Api, db_session: Session
 ) -> None:
-    """SYNTHETIC_DEMO_CASE §10's oracle, from M7 slice 4a.
+    """The expected open issues, from M7 slice 4a.
 
     `NEAR_THRESHOLD` on the absence total, and one `MISSING_EVIDENCE` on trip 6 (Greece).
     The seed attaches a document to the other eleven trips, so the bare one is a

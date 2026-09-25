@@ -697,7 +697,7 @@ def test_neither_extraction_schema_has_a_field_that_could_carry_authority() -> N
 
 
 def test_an_unknown_field_is_rejected_rather_than_ignored() -> None:
-    """MVP §8.10. A model returning a field nobody asked for fails validation, so it
+    """A model returning a field nobody asked for fails validation, so it
     cannot smuggle a value past the claim mapping — `ENGLISH_FIELDS` would never read it,
     and a silently ignored field is one nobody notices is being sent."""
     import pydantic

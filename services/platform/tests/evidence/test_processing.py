@@ -365,7 +365,7 @@ def test_a_user_retry_gets_a_new_run(api: Api, db_session: Session) -> None:
 
 
 def test_a_terminal_failure_leaves_the_uploaded_file_alone(api: Api, db_session: Session) -> None:
-    """MVP §8.9 and Domain §16.2: processing failure never deletes the uploaded evidence.
+    """Domain §16.2: processing failure never deletes the uploaded evidence.
 
     Structural rather than careful — nothing in `processing.py` can delete a stored
     object — but asserted, because "no code path does X" is exactly the claim that

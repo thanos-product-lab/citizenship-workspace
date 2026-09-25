@@ -115,7 +115,7 @@ def test_starting_an_upload_writes_nothing(api: Api) -> None:
 
 
 def test_an_unsupported_media_type_is_refused_before_anything_is_uploaded(api: Api) -> None:
-    """MVP §8.9: unsupported file types are rejected *before* processing. Refusing here
+    """Unsupported file types are rejected *before* processing. Refusing here
     means the user finds out before waiting for an upload, and no object is ever written
     for a type this product cannot read."""
     case_id = _active_case(api, "user_a")

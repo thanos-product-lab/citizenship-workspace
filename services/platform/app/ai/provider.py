@@ -270,7 +270,7 @@ class OpenAIProvider:
             if message.parsed is None:
                 # Output that would not satisfy the schema. Worth retrying — this is
                 # the one failure a second attempt genuinely fixes — but never worth
-                # accepting: MVP §8.10 requires invalid structured output to create
+                # accepting: the product requires invalid structured output to create
                 # no claim.
                 status = ModelRunStatus.INVALID_OUTPUT
                 failure_class = "SchemaValidationFailed"

@@ -115,7 +115,7 @@ class CefrLevel(StrEnum):
 
 
 class EnglishLanguageExtraction(BaseModel):
-    """What an English-language certificate says. `extra="forbid"` (MVP §8.10).
+    """What an English-language certificate says. `extra="forbid"`.
 
     Every field is optional except the date, which is always the two-field `ExtractedDate`
     — absent is `as_written: null`, which is different from present-but-unreadable and the
