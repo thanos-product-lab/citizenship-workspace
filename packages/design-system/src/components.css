@@ -822,6 +822,53 @@ a.cw-button--secondary:hover {
   color: var(--cw-text-muted);
 }
 
+/* --- Trip form ------------------------------------------------------------------ */
+
+/* The two dates under one hint. A fieldset for the grouping, stripped of its default
+   frame, which would draw a box around two fields and nothing else. */
+.cw-trip-dates {
+  display: grid;
+  gap: var(--cw-space-3);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.cw-trip-dates__hint {
+  margin: 0;
+  font-size: var(--cw-text-sm);
+  color: var(--cw-text-muted);
+}
+
+/* Side by side, and stacked once they would be narrower than a date needs. */
+.cw-trip-dates__pair {
+  /* A grid item keeps its content's width unless told otherwise, which kept both dates
+     side by side, off the dialog's edge, at 320px. */
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: var(--cw-space-3) var(--cw-space-4);
+  max-width: 24rem;
+}
+
+.cw-trip-form__disclosure {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: var(--cw-text-sm);
+  font-weight: var(--cw-weight-medium);
+  color: var(--cw-accent);
+  cursor: pointer;
+  min-height: 24px;
+}
+
+.cw-trip-form__disclosure:hover {
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
 /* A trip with no reason yet: italic, so it never reads as a reason. Muted rather than
    subtle, which is too faint for text this small (WCAG 1.4.3). */
 .cw-trips__reason[data-missing="true"] {

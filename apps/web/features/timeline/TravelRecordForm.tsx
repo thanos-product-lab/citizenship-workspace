@@ -1,7 +1,7 @@
 "use client";
 
 import type { components } from "@cw/api-client";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { Combobox } from "./Combobox";
 import { COUNTRY_NAMES } from "./countries";
@@ -151,6 +151,14 @@ export function TravelRecordForm({
   // Whether the return date is the user's own choice. Until it is, it follows the
   // departure date. An edit opens with one already chosen.
   const [returnChosen, setReturnChosen] = useState(initial.return_date !== "");
+  const [notesOpen, setNotesOpen] = useState(initial.notes !== "");
+  // Set by "Add a note" only, so an edit that opens with a note does not steal focus.
+  const focusNotes = useRef(false);
+  useEffect(() => {
+    if (!notesOpen || !focusNotes.current) return;
+    focusNotes.current = false;
+    document.getElementById(`${idPrefix}-notes`)?.focus();
+  }, [notesOpen, idPrefix]);
   const floor = floorFor(initial);
   const recorded = recordedOption(initial);
   const certaintyOptions = recorded ? [...CERTAINTY_OPTIONS, recorded] : CERTAINTY_OPTIONS;
@@ -211,8 +219,14 @@ export function TravelRecordForm({
   const id = (name: string) => `${idPrefix}-${name}`;
 
   return (
-    <form onSubmit={handleSubmit} style={{ display: "grid", gap: "var(--cw-space-4)" }}>
-      <Field id={id("destination")} label="Destination" hint="Start typing a country, or enter your own.">
+    // `minmax(0, 1fr)`: a bare grid column sizes to its widest child's min-content, and the
+    // certainty select's longest option made every field 14px wider than a 320px dialog.
+    <form
+      onSubmit={handleSubmit}
+      style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr)", gap: "var(--cw-space-4)" }}
+    >
+      {/* No hint: the suggestions appearing as you type say what the old one did. */}
+      <Field id={id("destination")} label="Destination">
         <Combobox
           id={id("destination")}
           value={values.destination_label}
@@ -223,61 +237,68 @@ export function TravelRecordForm({
         />
       </Field>
 
-      <Field
-        id={id("departure")}
-        label="Departure date"
-        hint={
-          period
-            ? `Trips between ${formatDate(period.start)} and ${formatDate(period.end)} count towards your application.`
-            : undefined
-        }
-      >
-        <input
-          id={id("departure")}
-          type="date"
-          value={values.departure_date}
-          required
-          min={floor}
-          max={MAX_DATE}
-          className="cw-date-input"
-          onChange={(e) => setDeparture(e.target.value)}
-          style={inputStyle}
-        />
-      </Field>
+      {/* The two dates side by side, under the one hint that is about both. It sat under
+          Departure alone, and a hint per date was a second copy of the same sentence. The
+          group is named for assistive technology, and the hint is also bound to Departure
+          directly, since not every screen reader reads a group's description. */}
+      <fieldset className="cw-trip-dates">
+        <legend className="cw-visually-hidden">Trip dates</legend>
+        {period ? (
+          <p id={id("period")} className="cw-trip-dates__hint">
+            Trips between {formatDate(period.start)} and {formatDate(period.end)} count
+            towards your application.
+          </p>
+        ) : null}
+        <div className="cw-trip-dates__pair">
+          <Field id={id("departure")} label="Departure date">
+            <input
+              id={id("departure")}
+              type="date"
+              value={values.departure_date}
+              required
+              min={floor}
+              max={MAX_DATE}
+              className="cw-date-input"
+              onChange={(e) => setDeparture(e.target.value)}
+              aria-describedby={period ? id("period") : undefined}
+              style={{ ...inputStyle, width: "100%" }}
+            />
+          </Field>
 
-      <Field
-        id={id("return")}
-        label="Return date"
-        error={orderError ? "Return date can’t be before the departure date." : undefined}
-        errorIsLive={false} // focus moves here on error, which announces the bound message
-      >
-        <input
-          id={id("return")}
-          type="date"
-          value={values.return_date}
-          required
-          // **Deliberately not `min={values.departure_date}`**, which is the obvious thing
-          // and is wrong here. A `min` the value falls below makes the field
-          // `rangeUnderflow`, so the browser blocks submission itself — our bound,
-          // focus-managed "Return date can’t be before the departure date." never renders
-          // and the user gets an unstyled native bubble instead. The existing test caught
-          // it immediately. The ordering check belongs in `handleSubmit`, where it can
-          // produce a message this app controls, and on the server after that.
-          min={floor}
-          max={MAX_DATE}
-          className="cw-date-input"
-          onChange={(e) => {
-            setReturnChosen(true);
-            set("return_date", e.target.value);
-          }}
-          style={inputStyle}
-        />
-      </Field>
+          <Field
+            id={id("return")}
+            label="Return date"
+            error={orderError ? "Return date can’t be before the departure date." : undefined}
+            errorIsLive={false} // focus moves here on error, which announces the bound message
+          >
+            <input
+              id={id("return")}
+              type="date"
+              value={values.return_date}
+              required
+              // **Deliberately not `min={values.departure_date}`**, which is the obvious thing
+              // and is wrong here. A `min` the value falls below makes the field
+              // `rangeUnderflow`, so the browser blocks submission itself, and our bound,
+              // focus-managed "Return date can’t be before the departure date." never renders.
+              // The ordering check belongs in `handleSubmit`, where it can produce a message
+              // this app controls, and on the server after that.
+              min={floor}
+              max={MAX_DATE}
+              className="cw-date-input"
+              onChange={(e) => {
+                setReturnChosen(true);
+                set("return_date", e.target.value);
+              }}
+              style={{ ...inputStyle, width: "100%" }}
+            />
+          </Field>
+        </div>
+      </fieldset>
 
       <Field
         id={id("certainty")}
         label="How sure are you about this trip?"
-        hint="Only trips you are sure of, with exact dates, count towards your confirmed totals."
+        hint="Only exact dates you're sure of count towards your totals."
       >
         <select
           id={id("certainty")}
@@ -311,7 +332,7 @@ export function TravelRecordForm({
         // every trip, so the label no longer says optional. Saving without one stays
         // allowed: a trip left out for want of a reason under-counts absences, where a
         // missing reason only matters when the list is handed over, and it says so there.
-        hint="The application form asks for a reason for every trip, for example Holiday, Visiting family or Business trip."
+        hint="The application form asks for one, for example Holiday or Visiting family."
       >
         <input
           id={id("reason")}
@@ -322,14 +343,36 @@ export function TravelRecordForm({
         />
       </Field>
 
-      <Field id={id("notes")} label="Notes" hint="Optional.">
-        <input
-          id={id("notes")}
-          value={values.notes}
-          onChange={(e) => set("notes", e.target.value)}
-          style={inputStyle}
-        />
-      </Field>
+      {/* Behind a disclosure: the least used field, and optional, so it no longer takes a
+          row from every trip. Open from the start on a trip that already has a note, so an
+          edit never hides what is there. */}
+      {notesOpen ? (
+        <Field id={id("notes")} label="Notes" hint="Optional. Kept in the workspace, not on your travel list.">
+          <input
+            id={id("notes")}
+            value={values.notes}
+            onChange={(e) => set("notes", e.target.value)}
+            style={inputStyle}
+          />
+        </Field>
+      ) : (
+        <p style={{ margin: 0 }}>
+          <button
+            type="button"
+            className="cw-trip-form__disclosure"
+            aria-expanded={false}
+            onClick={() => {
+              // Focus follows in the effect above, once the field has mounted. A frame
+              // callback raced the dialog's own focus handling in Chrome and lost, leaving
+              // focus nowhere; jsdom passed either way.
+              focusNotes.current = true;
+              setNotesOpen(true);
+            }}
+          >
+            Add a note
+          </button>
+        </p>
+      )}
 
       <div style={{ display: "flex", gap: "var(--cw-space-3)", alignItems: "center", flexWrap: "wrap" }}>
         <button type="submit" disabled={submitting} style={buttonStyle}>

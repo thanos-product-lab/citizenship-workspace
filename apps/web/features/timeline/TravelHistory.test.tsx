@@ -399,8 +399,65 @@ describe("TravelHistory", () => {
     fireEvent.click(await screen.findByRole("button", { name: /add a trip/i }));
     const reason = screen.getByLabelText("Reason for trip");
     expect(reason).not.toBeRequired();
-    expect(screen.getByText(/asks for a reason for every trip/)).toBeInTheDocument();
+    expect(screen.getByText(/application form asks for one/)).toBeInTheDocument();
     expect(screen.queryByText(/^Optional\. For example Holiday/)).toBeNull();
+  });
+
+  describe("the trip dialog's layout", () => {
+    it("groups the dates under the one hint about both, bound to the departure date", async () => {
+      mockGet({
+        timeline: { qualifying_period_start: "2021-11-13", qualifying_period_end: "2026-11-12" },
+      });
+      render(<TravelHistory caseId="c1" />);
+      fireEvent.click(await screen.findByRole("button", { name: /add a trip/i }));
+
+      const group = await screen.findByRole("group", { name: "Trip dates" });
+      expect(within(group).getByLabelText("Departure date")).toHaveAccessibleDescription(
+        "Trips between 13 November 2021 and 12 November 2026 count towards your application.",
+      );
+      expect(within(group).getByLabelText("Return date")).toBeInTheDocument();
+    });
+
+    it("keeps the dates' error message when the order is wrong", async () => {
+      // The group's hint must not displace the return date's bound error.
+      mockGet();
+      render(<TravelHistory caseId="c1" />);
+      fireEvent.click(await screen.findByRole("button", { name: /add a trip/i }));
+      fireEvent.change(screen.getByLabelText("Destination"), { target: { value: "Spain" } });
+      fireEvent.change(screen.getByLabelText("Departure date"), { target: { value: "2023-05-09" } });
+      fireEvent.change(screen.getByLabelText("Return date"), { target: { value: "2023-05-01" } });
+      fireEvent.click(screen.getByRole("button", { name: /add trip/i }));
+      expect(screen.getByLabelText("Return date")).toHaveAccessibleDescription(
+        "Return date can’t be before the departure date.",
+      );
+    });
+
+    it("drops the destination hint the suggestions already give", async () => {
+      mockGet();
+      render(<TravelHistory caseId="c1" />);
+      fireEvent.click(await screen.findByRole("button", { name: /add a trip/i }));
+      expect(screen.queryByText(/Start typing a country/)).toBeNull();
+    });
+
+    it("keeps notes behind a disclosure, and opens it into the field", async () => {
+      mockGet();
+      render(<TravelHistory caseId="c1" />);
+      fireEvent.click(await screen.findByRole("button", { name: /add a trip/i }));
+      expect(screen.queryByLabelText("Notes")).toBeNull();
+
+      fireEvent.click(screen.getByRole("button", { name: "Add a note" }));
+      const notes = screen.getByLabelText("Notes");
+      await waitFor(() => expect(notes).toHaveFocus());
+    });
+
+    it("shows an existing note on edit rather than hiding it", async () => {
+      mockGet({ trips: [aRecord({ notes: "Left a day early" })] });
+      render(<TravelHistory caseId="c1" />);
+      fireEvent.click(await screen.findByRole("button", { name: /^edit$/i }));
+      expect(within(screen.getByRole("dialog")).getByLabelText("Notes")).toHaveValue(
+        "Left a day early",
+      );
+    });
   });
 
   it("links to the travel list once there are trips", async () => {
