@@ -172,7 +172,7 @@ export function DocumentReview({
             .refetch()
             .then(() =>
               announce(
-                `${fieldLabel(claim)} had already been decided, so what you typed was not recorded.`,
+                `${fieldLabel(claim)} was already decided, so your answer wasn’t saved.`,
               ),
             );
           return;
@@ -195,8 +195,7 @@ export function DocumentReview({
     return (
       <div role="alert" className="cw-empty">
         <p>
-          This document is no longer in your case, so there is nothing left to
-          confirm.
+          This document is no longer in your case, so there is nothing to review.
         </p>
         <Link
           className="cw-button cw-button--secondary"
@@ -212,9 +211,7 @@ export function DocumentReview({
     return (
       <div role="alert" className="cw-empty">
         <p>
-          We could not load what this document proposed. That is a problem
-          reaching the server, not a statement about your document — nothing has
-          changed.
+          We couldn’t load the values from this document. Nothing has changed.
         </p>
         <button
           type="button"
@@ -294,7 +291,7 @@ export function DocumentReview({
                 <iframe
                   className="cw-review__frame"
                   src={preview.data.url}
-                  title={`${documentName} — the document as uploaded`}
+                  title={`${documentName}, as uploaded`}
                 />
               ) : (
                 <p role="status" className="cw-review__text">
@@ -334,8 +331,8 @@ export function DocumentReview({
               </>
             ) : (
               <p role="status" className="cw-review__text">
-                There is no text to show: this looks like a scan or a photo, so
-                a parser found nothing to read. Use the Document view instead.
+                No text to show. This looks like a scan or a photo, so use the Document
+                view instead.
               </p>
             )}
           </div>

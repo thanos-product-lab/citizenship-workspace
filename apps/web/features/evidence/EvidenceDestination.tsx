@@ -256,9 +256,9 @@ export function EvidenceDestination({ caseId }: { caseId: string }): JSX.Element
             version said "nothing here has been read yet", which slice 3 made false; the
             second said "their text has been read", which is false on a case with no
             documents. A sentence about the capability is true in both. */}
-        Documents you upload to support this case. Reading one extracts its text; it
-        does not check anything against your case, so every figure in your assessment
-        still rests on dates you entered yourself.
+        Documents that support your case. We read each one and suggest values for you to
+        confirm, but reading a document does not check it. Your figures still use the
+        dates you entered.
       </p>
 
       <div aria-live="polite" className="cw-visually-hidden">
@@ -281,8 +281,7 @@ export function EvidenceDestination({ caseId }: { caseId: string }): JSX.Element
       {status === "error" ? (
         <div role="alert" style={{ ...cardStyle, display: "grid", gap: "var(--cw-space-3)" }}>
           <p style={{ margin: 0, ...errorTextStyle }}>
-            Your documents could not be loaded, so this list is not a statement about what
-            the case holds.
+            We couldn’t load your documents.
           </p>
           <div>
             {/* `aria-disabled` with a guard, never `disabled`: disabling the focused
@@ -352,7 +351,7 @@ export function EvidenceDestination({ caseId }: { caseId: string }): JSX.Element
 
           {data.items.length === 0 ? (
             <p style={{ color: "var(--cw-text-muted)" }} data-testid="evidence-empty">
-              No documents yet. Uploading one stores it privately against this case.
+              No documents yet. Anything you upload is stored privately.
             </p>
           ) : (
             <EvidenceList

@@ -140,7 +140,7 @@ export function UploadDocument({
       <Field
         id="upload-file"
         label="Document file"
-        hint={`A PDF or a photo, up to ${formatBytes(maxBytes)}. It is stored privately against this case and is never publicly reachable.`}
+        hint={`A PDF or a photo, up to ${formatBytes(maxBytes)}. It is stored privately.`}
         error={fileError}
       >
         <input
@@ -177,7 +177,7 @@ export function UploadDocument({
       <Field
         id="upload-name"
         label="Display name"
-        hint="How it will appear in your library."
+        hint="How it appears in your list of documents."
       >
         <input
           id="upload-name"
@@ -196,8 +196,7 @@ export function UploadDocument({
 
       {upload.isError ? (
         <p role="alert" style={{ margin: 0, ...errorTextStyle }}>
-          That document was not uploaded, so nothing has been added to your case. You can try
-          again.
+          That document wasn’t uploaded. Please try again.
         </p>
       ) : null}
 

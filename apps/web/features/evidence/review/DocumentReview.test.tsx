@@ -430,8 +430,8 @@ describe("when the server refuses", () => {
     // with it — so the outcome is said out loud instead. Without it the user watches the
     // field turn into a decision and concludes theirs was the one recorded.
     await waitFor(() =>
-      expect(screen.getByText(/had already been decided/).textContent).toMatch(
-        /what you typed was not recorded/,
+      expect(screen.getByText(/was already decided/).textContent).toMatch(
+        /your answer wasn’t saved/,
       ),
     );
     // And the field stops offering to decide it: the decision that won is shown, and the
@@ -477,7 +477,7 @@ describe("the two ways to read the document", () => {
     render();
 
     const frame = await screen.findByTitle(
-      /Athens booking — the document as uploaded/,
+      /Athens booking, as uploaded/,
     );
     expect(frame).toHaveAttribute("src", "https://store.example/doc.pdf?sig=x");
   });
@@ -720,7 +720,7 @@ describe("what the screen says about itself", () => {
     render();
 
     const alert = await within(await screen.findByRole("alert")).findByText(
-      /not a statement about your document/,
+      /couldn’t load the values from this document. Nothing has changed/,
     );
     expect(alert).toBeTruthy();
     expect(screen.getByRole("button", { name: "Try again" })).toBeTruthy();

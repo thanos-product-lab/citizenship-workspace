@@ -35,16 +35,15 @@ export function ReviewDestination({
       <p style={{ color: "var(--cw-text-muted)" }}>
         {document ? (
           <>
-            <strong>{document.display_name}</strong>. Read the document and say
-            what it says. Nothing below counts towards your case until you do —
-            and where a value matters enough to be worth checking, we ask you to
-            type it rather than offering ours to accept. Each decision is saved as
-            you make it, so you can leave and come back.
+            <strong>{document.display_name}</strong>. Check each value against the
+            document. Nothing counts until you confirm it, and for the values that
+            matter most we ask you to type what the document says. Each answer saves
+            as you go, so you can leave and come back.
           </>
         ) : (
           <>
-            Read the document and say what it says. Nothing below counts towards
-            your case until you do. Each decision is saved as you make it.
+            Check each value against the document. Nothing counts until you confirm
+            it. Each answer saves as you go.
           </>
         )}
       </p>

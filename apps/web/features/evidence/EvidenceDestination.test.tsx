@@ -94,9 +94,9 @@ describe("EvidenceDestination", () => {
     // typed.
     // Said once, at the top of the page. It used to be said three times: in this
     // sentence, in the table's caption and again on every row awaiting confirmation.
-    expect(await screen.findByText(/does not check anything against your case/)).toBeTruthy();
-    expect(screen.getByText(/rests on dates you entered yourself/)).toBeTruthy();
-    expect(screen.getAllByText(/against your case/)).toHaveLength(1);
+    expect(await screen.findByText(/reading a document does not check it/)).toBeTruthy();
+    expect(screen.getByText(/figures still use the dates you entered/)).toBeTruthy();
+    expect(screen.getAllByText(/does not check it/)).toHaveLength(1);
   });
 
   it("draws no path through the stages", async () => {
@@ -271,7 +271,9 @@ describe("EvidenceDestination", () => {
     renderWithQuery(<EvidenceDestination caseId={CASE_ID} />);
 
     const alert = await screen.findByRole("alert");
-    expect(alert.textContent).toMatch(/not a statement about what the case holds/);
+    expect(alert.textContent).toMatch(/couldn’t load your documents/);
+    // A failed load never shows the empty library's "No documents yet".
+    expect(screen.queryAllByTestId("evidence-empty")).toHaveLength(1);
     expect(screen.getAllByRole("button", { name: "Try again" }).length).toBeGreaterThan(0);
   });
 });
@@ -411,7 +413,7 @@ describe("uploading", () => {
     // Not optimistic: nothing exists server-side until the third call succeeds, so the
     // library must not show a document the case does not hold.
     const alert = await screen.findByRole("alert");
-    expect(alert.textContent).toMatch(/nothing has been added to your case/);
+    expect(alert.textContent).toMatch(/wasn’t uploaded/);
     expect(screen.getByTestId("evidence-empty")).toBeTruthy();
 
     vi.unstubAllGlobals();
@@ -689,7 +691,7 @@ describe("copy that must hold in every state", () => {
     renderWithQuery(<EvidenceDestination caseId={CASE_ID} />);
 
     await screen.findByTestId("evidence-empty");
-    expect(screen.getByText(/does not check anything against your case/)).toBeTruthy();
+    expect(screen.getByText(/reading a document does not check it/)).toBeTruthy();
     expect(screen.queryByText(/has been read/)).toBeNull();
   });
 });

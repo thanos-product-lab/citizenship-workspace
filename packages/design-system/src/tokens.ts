@@ -239,19 +239,19 @@ export const evidenceProcessingTokens: Record<
     // reads a document's contents, so "stored and checked" and "stored" say the same
     // thing to a user — and claiming more would be the false reassurance the product
     // exists to avoid.
-    meaning: "Stored, and not yet read by anything.",
+    meaning: "Stored, not read yet.",
   },
   validating: {
     colorVar: "--cw-currency-provisional",
     glyph: "clock",
     label: "Validating",
-    meaning: "Checking the file is the kind of document it says it is.",
+    meaning: "Checking the file.",
   },
   extracting_text: {
     colorVar: "--cw-currency-provisional",
     glyph: "clock",
     label: "Reading",
-    meaning: "Reading the text out of the document.",
+    meaning: "Reading the text.",
   },
   analysing: {
     colorVar: "--cw-currency-provisional",
@@ -260,7 +260,7 @@ export const evidenceProcessingTokens: Record<
     // "Looking at", not "understanding" or "checking": the model is reading the text and
     // proposing values, and nothing it proposes is true until a person says so. A
     // transient state, but a user who refreshes at the wrong moment still sees it.
-    meaning: "Looking at what this document says. Nothing is decided yet.",
+    meaning: "Finding values to suggest. Nothing is decided yet.",
   },
   awaiting_confirmation: {
     // `--cw-provenance-ai-proposed`, not `--cw-currency-provisional`. The two are the
@@ -280,7 +280,7 @@ export const evidenceProcessingTokens: Record<
     // The rule is worth keeping when this file is next edited: an imperative label is a
     // promise that something on the same row will honour it.
     label: "Needs your confirmation",
-    meaning: "We read some values out of this. None of them counts until you confirm it.",
+    meaning: "We found values in this document. None counts until you confirm it.",
   },
   completed: {
     colorVar: "--cw-status-supported",
@@ -308,7 +308,7 @@ export const evidenceProcessingTokens: Record<
     colorVar: "--cw-status-incomplete",
     glyph: "minus-circle",
     label: "Unsupported",
-    meaning: "This file is not a document the product can read.",
+    meaning: "We can’t read this kind of file.",
   },
   failed: {
     colorVar: "--cw-status-not-satisfied",

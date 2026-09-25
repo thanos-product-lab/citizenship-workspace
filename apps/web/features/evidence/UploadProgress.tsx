@@ -48,8 +48,8 @@ export function UploadProgress({ displayName }: { displayName: string }): JSX.El
       </ol>
 
       <p className="cw-upload-progress__note">
-        If it finds values like travel dates, they will be ready for you to review in the
-        list below. You can leave this page; reading carries on.
+        Any values it finds, like travel dates, will be ready to review in the list below.
+        You can leave this page while it reads.
       </p>
     </section>
   );

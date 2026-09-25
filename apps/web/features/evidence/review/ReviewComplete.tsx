@@ -122,8 +122,7 @@ export function ReviewComplete({
       </p>
       {recalculate.isError ? (
         <p role="alert" className="cw-case-header__error">
-          That recalculation didn’t finish. The screen has been refreshed with what the
-          server recorded.
+          The update didn’t finish. The page shows what was saved before it.
         </p>
       ) : null}
     </section>
