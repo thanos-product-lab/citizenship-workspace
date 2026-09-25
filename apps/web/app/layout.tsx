@@ -11,7 +11,7 @@ import { Providers } from "./providers";
 
 export const metadata: Metadata = {
   title: "Citizenship Workspace",
-  description: "Prepare a UK naturalisation readiness case with clarity.",
+  description: "Prepare your UK citizenship application.",
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {

@@ -22,28 +22,27 @@ export function AuthShell({ children }: { children: ReactNode }): JSX.Element {
       <div className="cw-auth__intro">
         <p className="cw-auth__brand">Citizenship Workspace</p>
         <p className="cw-auth__statement">
-          Prepare your UK citizenship case, with the working shown.
+          Prepare your UK citizenship application, with the reasons behind every result.
         </p>
         <p className="cw-auth__lead">
-          A private workspace for adults with settled status preparing a naturalisation
-          application on the standard five-year route.
+          For adults with settled status applying on the standard five-year route.
         </p>
         <ul className="cw-auth__points">
           <li>
             <StatusGlyph name="check" size={16} />
-            <span>Nothing read from a document counts until you confirm it.</span>
+            <span>Nothing read from your documents counts until you confirm it.</span>
           </li>
           <li>
             <StatusGlyph name="scale" size={16} />
-            <span>Every conclusion shows the dates, rule and sources behind it.</span>
+            <span>Every result shows the dates and rules behind it.</span>
           </li>
           <li>
             <StatusGlyph name="clock" size={16} />
-            <span>A conclusion that is out of date says so, and is never shown as current.</span>
+            <span>Out-of-date results are marked, never shown as current.</span>
           </li>
         </ul>
         <p className="cw-auth__note">
-          This prototype helps you prepare. It does not give legal advice or predict a
+          This is a prototype to help you prepare. It is not legal advice and cannot predict a
           decision.
         </p>
       </div>

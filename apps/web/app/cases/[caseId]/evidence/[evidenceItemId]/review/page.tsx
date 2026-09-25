@@ -13,7 +13,7 @@ type Params = Promise<{ caseId: string; evidenceItemId: string }>;
  * and tab lists, which is a poor place for a user's own words about their document.
  */
 export const metadata: Metadata = {
-  title: "Confirm what we read — Citizenship Workspace",
+  title: "Review document · Citizenship Workspace",
 };
 
 export default async function DocumentReviewPage({ params }: { params: Params }) {

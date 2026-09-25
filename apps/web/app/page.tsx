@@ -21,8 +21,8 @@ export default function HomePage() {
       <section style={{ paddingTop: "var(--cw-space-8)" }}>
         <h1 style={{ fontSize: "var(--cw-text-2xl)", margin: 0 }}>Your workspace</h1>
         <p style={{ color: "var(--cw-text-muted)", marginTop: "var(--cw-space-2)" }}>
-          Each case prepares one UK naturalisation readiness assessment. Route onboarding,
-          requirements, and evidence arrive as you build the case.
+          Each case is one citizenship application: your answers, your trips and your
+          documents.
         </p>
         <CasesPanel />
       </section>

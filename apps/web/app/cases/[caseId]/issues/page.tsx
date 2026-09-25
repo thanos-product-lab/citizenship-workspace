@@ -4,7 +4,7 @@ import type { JSX } from "react";
 import { IssuesDestination } from "@/features/issues/IssuesDestination";
 
 export const metadata: Metadata = {
-  title: "Issues — Citizenship Workspace",
+  title: "Issues · Citizenship Workspace",
 };
 
 export default async function IssuesPage({

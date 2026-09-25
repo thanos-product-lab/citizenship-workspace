@@ -154,7 +154,7 @@ function CaseCurrency({ caseId }: { caseId: string }): JSX.Element | null {
       {updating ? (
         <p className="cw-updating" aria-live="polite">
           <StatusGlyph name="clock" size={14} />
-          <span>Updating — the figures and conclusions shown are from before your last change.</span>
+          <span>Updating. The results shown are from before your last change.</span>
         </p>
       ) : null}
 
@@ -163,9 +163,9 @@ function CaseCurrency({ caseId }: { caseId: string }): JSX.Element | null {
           <StatusGlyph name="clock" size={16} />
           <span>
             {overview.stale === 1
-              ? "1 conclusion has not been rechecked"
-              : `${overview.stale} conclusions have not been rechecked`}{" "}
-            since your inputs changed. They are shown as they were reached, marked stale.
+              ? "1 result is out of date because something it depends on changed."
+              : `${overview.stale} results are out of date because something they depend on changed.`}{" "}
+            Update your assessment to recheck.
           </span>
         </p>
       ) : null}
@@ -236,8 +236,7 @@ function RecalculateButton({ caseId }: { caseId: string }): JSX.Element | null {
           already showing whatever the server has. */}
       {recalculate.isError ? (
         <p role="alert" className="cw-case-header__error">
-          That recalculation didn’t finish. The screen has been refreshed with what the
-          server recorded.
+          The update didn’t finish. The page shows what was saved before it.
         </p>
       ) : null}
     </>

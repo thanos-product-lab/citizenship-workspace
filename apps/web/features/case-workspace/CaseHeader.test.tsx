@@ -171,11 +171,11 @@ describe("CaseHeader", () => {
   });
 
   describe("currency follows the user across destinations", () => {
-    it("states unrechecked conclusions without claiming they still hold", async () => {
+    it("states out-of-date results without claiming they still hold", async () => {
       mock({ stale: 5 });
       renderHeader();
-      expect(await screen.findByText(/5 conclusions have not been rechecked/)).toBeInTheDocument();
-      expect(screen.getByText(/shown as they were reached, marked stale/)).toBeInTheDocument();
+      expect(await screen.findByText(/5 results are out of date/)).toBeInTheDocument();
+      expect(screen.getByText(/Update your assessment to recheck/)).toBeInTheDocument();
       // The one thing a stale result cannot tell us is that its conclusion still stands.
       expect(screen.queryByText(/still (stands|holds|applies)/i)).not.toBeInTheDocument();
     });
@@ -186,20 +186,22 @@ describe("CaseHeader", () => {
       pathname.current = "/cases/c1/data";
       mock({ stale: 5 });
       renderHeader();
-      expect(await screen.findByText(/5 conclusions have not been rechecked/)).toBeInTheDocument();
+      expect(await screen.findByText(/5 results are out of date/)).toBeInTheDocument();
     });
 
     it("says nothing about staleness when nothing is stale", async () => {
       mock({ stale: 0 });
       renderHeader();
       await screen.findByText("Standard five-year route");
-      expect(screen.queryByText(/have not been rechecked/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/out of date/)).not.toBeInTheDocument();
     });
 
-    it("uses the singular for one stale conclusion", async () => {
+    it("uses the singular for one out-of-date result", async () => {
       mock({ stale: 1 });
       renderHeader();
-      expect(await screen.findByText(/1 conclusion has not been rechecked/)).toBeInTheDocument();
+      expect(
+        await screen.findByText(/1 result is out of date because something it depends on/),
+      ).toBeInTheDocument();
     });
   });
 

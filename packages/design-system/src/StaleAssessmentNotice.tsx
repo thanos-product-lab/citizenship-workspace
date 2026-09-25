@@ -32,8 +32,8 @@ export function StaleAssessmentNotice({
     <p className="cw-stale-notice">
       <StatusGlyph name="clock" size={16} />
       <span>
-        {reason ?? "An input changed after this was worked out."} This is the conclusion from
-        before that change; it has not been rechecked.
+        {reason ?? "Something changed after this was worked out."} This result is from before
+        that change and has not been rechecked.
         {detail ? ` ${detail}` : ""}
       </span>
     </p>

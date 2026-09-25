@@ -18,7 +18,7 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
   const { requirementKey } = await params;
   const key = decodeURIComponent(requirementKey);
   const title = REQUIREMENT_TITLES[key];
-  return { title: title ? `${title} — Citizenship Workspace` : "Citizenship Workspace" };
+  return { title: title ? `${title} · Citizenship Workspace` : "Citizenship Workspace" };
 }
 
 // Next 15 delivers route params as a promise; unwrap before use. The requirement key
