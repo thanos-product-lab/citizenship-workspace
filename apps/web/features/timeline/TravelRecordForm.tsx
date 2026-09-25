@@ -95,6 +95,11 @@ const REVIEW_WORDS: Record<string, string> = {
   DRAFT: "not yet confirmed",
 };
 
+/** The trip form lives in a dialog, so its fields fill it: one clean edge for labels,
+ *  hints, inputs and buttons. The 24rem field width is for full pages, where a date
+ *  stretched across the column would look empty. */
+const FULL: React.CSSProperties = { width: "100%", maxWidth: "none" };
+
 const certaintyKey = (confidence: string, review: string) => `${confidence}:${review}`;
 
 /**
@@ -226,7 +231,7 @@ export function TravelRecordForm({
       style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr)", gap: "var(--cw-space-4)" }}
     >
       {/* No hint: the suggestions appearing as you type say what the old one did. */}
-      <Field id={id("destination")} label="Destination">
+      <Field id={id("destination")} label="Destination" fullWidth>
         <Combobox
           id={id("destination")}
           value={values.destination_label}
@@ -234,6 +239,7 @@ export function TravelRecordForm({
           onChange={(v) => set("destination_label", v)}
           required
           maxLength={120}
+          fullWidth
         />
       </Field>
 
@@ -250,7 +256,7 @@ export function TravelRecordForm({
           </p>
         ) : null}
         <div className="cw-trip-dates__pair">
-          <Field id={id("departure")} label="Departure date">
+          <Field id={id("departure")} label="Departure date" fullWidth>
             <input
               id={id("departure")}
               type="date"
@@ -261,11 +267,12 @@ export function TravelRecordForm({
               className="cw-date-input"
               onChange={(e) => setDeparture(e.target.value)}
               aria-describedby={period ? id("period") : undefined}
-              style={{ ...inputStyle, width: "100%" }}
+              style={{ ...inputStyle, ...FULL }}
             />
           </Field>
 
           <Field
+        fullWidth
             id={id("return")}
             label="Return date"
             error={orderError ? "Return date can’t be before the departure date." : undefined}
@@ -289,13 +296,14 @@ export function TravelRecordForm({
                 setReturnChosen(true);
                 set("return_date", e.target.value);
               }}
-              style={{ ...inputStyle, width: "100%" }}
+              style={{ ...inputStyle, ...FULL }}
             />
           </Field>
         </div>
       </fieldset>
 
       <Field
+        fullWidth
         id={id("certainty")}
         label="How sure are you about this trip?"
         hint="Only exact dates you're sure of count towards your totals."
@@ -312,7 +320,7 @@ export function TravelRecordForm({
               review_state: chosen.review,
             }));
           }}
-          style={selectStyle}
+          style={{ ...selectStyle, ...FULL }}
         >
           {certaintyOptions.map((o) => (
             <option key={o.key} value={o.key}>
@@ -326,6 +334,7 @@ export function TravelRecordForm({
           for trip" column of the travel list handed over with an application. Changing it
           alone changes no conclusion and makes nothing out of date (ADR-0035). */}
       <Field
+        fullWidth
         id={id("reason")}
         label="Reason for trip"
         // Expected, not enforced (ADR-0035). The application form asks for a reason for
@@ -339,7 +348,7 @@ export function TravelRecordForm({
           value={values.reason}
           maxLength={200}
           onChange={(e) => set("reason", e.target.value)}
-          style={inputStyle}
+          style={{ ...inputStyle, ...FULL }}
         />
       </Field>
 
@@ -347,12 +356,12 @@ export function TravelRecordForm({
           row from every trip. Open from the start on a trip that already has a note, so an
           edit never hides what is there. */}
       {notesOpen ? (
-        <Field id={id("notes")} label="Notes" hint="Optional. Kept in the workspace, not on your travel list.">
+        <Field id={id("notes")} label="Notes" fullWidth hint="Optional. Kept in the workspace, not on your travel list.">
           <input
             id={id("notes")}
             value={values.notes}
             onChange={(e) => set("notes", e.target.value)}
-            style={inputStyle}
+            style={{ ...inputStyle, ...FULL }}
           />
         </Field>
       ) : (

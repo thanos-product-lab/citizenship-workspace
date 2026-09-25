@@ -24,6 +24,7 @@ export function Combobox({
   maxLength,
   "aria-describedby": ariaDescribedBy,
   "aria-invalid": ariaInvalid,
+  fullWidth = false,
 }: {
   id: string;
   value: string;
@@ -33,6 +34,8 @@ export function Combobox({
   maxLength?: number;
   "aria-describedby"?: string | undefined;
   "aria-invalid"?: true | undefined;
+  /** Fill the container instead of the usual field width, as inside a dialog. */
+  fullWidth?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
@@ -100,7 +103,7 @@ export function Combobox({
           setActiveIndex(-1);
         }
       }}
-      style={{ position: "relative", maxWidth: "24rem" }}
+      style={{ position: "relative", maxWidth: fullWidth ? "none" : "24rem" }}
     >
       <input
         id={id}

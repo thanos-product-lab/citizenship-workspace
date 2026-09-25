@@ -142,6 +142,7 @@ export function Field({
   hint,
   error,
   errorIsLive = true,
+  fullWidth = false,
   children,
 }: {
   id: string;
@@ -151,6 +152,8 @@ export function Field({
   // When the caller moves focus to this field on error, set false: the control
   // announces its described-by error on focus, so role="alert" would double-speak.
   errorIsLive?: boolean | undefined;
+  /** Hint and error fill the container, for a form whose controls do (a dialog). */
+  fullWidth?: boolean | undefined;
   children: ReactNode;
 }) {
   const hintId = hint ? `${id}-hint` : undefined;
@@ -178,7 +181,7 @@ export function Field({
           id={hintId}
           style={{
             margin: 0,
-            maxWidth: FIELD_WIDTH,
+            maxWidth: fullWidth ? "none" : FIELD_WIDTH,
             fontSize: "var(--cw-text-sm)",
             color: "var(--cw-text-muted)",
           }}
@@ -190,7 +193,7 @@ export function Field({
         <p
           id={errorId}
           role={errorIsLive ? "alert" : undefined}
-          style={{ margin: 0, maxWidth: FIELD_WIDTH, fontSize: "var(--cw-text-sm)", ...errorTextStyle }}
+          style={{ margin: 0, maxWidth: fullWidth ? "none" : FIELD_WIDTH, fontSize: "var(--cw-text-sm)", ...errorTextStyle }}
         >
           {error}
         </p>
