@@ -163,7 +163,7 @@
 }
 
 /*
- * The stale notice. Amber left rule plus a clock glyph plus the word "Stale" — three
+ * The stale notice. Amber left rule plus a clock glyph plus the words "out of date": three
  * signals, so it survives greyscale and does not depend on the border colour alone.
  */
 .cw-stale-notice {
@@ -216,7 +216,7 @@
 /* --- Section shell --------------------------------------------------------- */
 
 .cw-section {
-  margin-top: var(--cw-space-10);
+  margin-top: var(--cw-space-1);
 }
 
 .cw-section__header {
@@ -734,10 +734,15 @@ a.cw-button--secondary:hover {
   overflow-wrap: anywhere;
 }
 
+/* Top-aligned, and the rule under the row header too. With `middle`, a row holding two
+   documents left the destination, the dates and the actions floating at different
+   heights beside the stacked list, and the divider started at the dates column because
+   only the cells drew it. Every cell now starts on the row's first line. */
+.cw-trips tbody th,
 .cw-trips td {
   padding: var(--cw-space-3);
   border-bottom: 1px solid var(--cw-border);
-  vertical-align: middle;
+  vertical-align: top;
 }
 
 /* The first column aligns with the card edge rather than being inset by cell padding. */
@@ -779,6 +784,18 @@ a.cw-button--secondary:hover {
   color: var(--cw-text);
 }
 
+/* The documents column takes the room, so a document name fits on one line beside its
+   paperclip instead of wrapping word by word while the actions column sits half empty.
+   Percentages are a hint under automatic layout: the dates and actions keep their
+   no-wrap widths, and nothing overflows at narrow widths, where the table reflows. */
+.cw-trips thead th:nth-child(1) {
+  width: 24%;
+}
+
+.cw-trips thead th:nth-child(3) {
+  width: 44%;
+}
+
 /* Block, not inline: the attached case puts its list above the Attach control because a
    <ul> is block-level, so an inline "None attached" left the two run together as
    "None attachedAttach". Matching the layouts keeps the control in the same place
@@ -790,27 +807,66 @@ a.cw-button--secondary:hover {
 }
 
 .cw-trips__document-list {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--cw-space-2);
   margin: 0 0 var(--cw-space-2);
   padding: 0;
   list-style: none;
 }
 
-.cw-trips__document-list li {
-  display: flex;
-  align-items: baseline;
-  gap: var(--cw-space-3);
+/* One attached document: a quiet chip holding a paperclip, the name and a cross that
+   removes it from the trip. Neutral on purpose, with no tick and no colour: attaching is
+   the user's assertion, not a verdict that anything was checked (ADR-0021). */
+.cw-trips__document {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--cw-space-2);
+  max-width: 100%;
   /* A flex item's default `min-width: auto` refuses to shrink below its content's
      min-content width, and a document name has no spaces to break at. The upload form
      defaults the display name to the filename, so `Ryanair_booking_confirmation_ATH_
-     20220414` is the ordinary case rather than an exotic one — it pushed the page to
-     400px wide at a 320px viewport and carried the Remove control off-screen entirely.
-     The destination cell already needed exactly this treatment (see below). */
+     20220414` is the ordinary case rather than an exotic one. */
   min-width: 0;
+  padding: 2px 2px 2px var(--cw-space-2);
+  border: 1px solid var(--cw-border);
+  border-radius: var(--cw-radius-md);
+  background: var(--cw-surface);
+  font-size: var(--cw-text-sm);
+  color: var(--cw-text-muted);
 }
 
-.cw-trips__document-list li > span {
+.cw-trips__document-name {
   min-width: 0;
   overflow-wrap: anywhere;
+  color: var(--cw-text);
+}
+
+/* 24px square: the WCAG 2.2 minimum target (2.5.8), with the glyph centred inside. */
+.cw-trips__detach {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: var(--cw-text-subtle);
+  cursor: pointer;
+}
+
+.cw-trips__detach:hover {
+  background: var(--cw-surface-sunken);
+  color: var(--cw-text);
+}
+
+.cw-trips__detach:focus-visible {
+  outline: none;
+  box-shadow: var(--cw-focus-ring);
 }
 
 /* The trip's reason, under its destination: quieter than the name it qualifies. */
@@ -930,6 +986,11 @@ a.cw-button--secondary:hover {
 
   .cw-trips td {
     padding: 0;
+    border-bottom: 0;
+  }
+
+  /* The record draws one rule, on the row. The row header's own rule is for the table. */
+  .cw-trips tbody th {
     border-bottom: 0;
   }
 
@@ -1274,20 +1335,17 @@ a.cw-button--secondary:hover {
 }
 
 .cw-source__citations li {
-  display: flex;
-  gap: var(--cw-space-3);
-  align-items: baseline;
-  flex-wrap: wrap;
+  display: grid;
+  gap: 2px;
   font-size: var(--cw-text-sm);
-  line-height: var(--cw-leading-snug);
 }
 
-.cw-source__code {
-  flex: none;
-  padding: 1px var(--cw-space-2);
-  border-radius: var(--cw-radius-sm);
-  background: var(--cw-surface-sunken);
-  border: 1px solid var(--cw-border);
+.cw-source__section {
+  color: var(--cw-text);
+}
+
+/* Where the section is found: the booklet or the Act, by the name a reader knows it by. */
+.cw-source__title {
   font-size: var(--cw-text-xs);
   color: var(--cw-text-muted);
 }
@@ -1449,7 +1507,7 @@ a.cw-button--secondary:hover {
    follow it on the same page. Requirements is its own destination now, so the rule
    would divide the summary from nothing. */
 .cw-overview {
-  margin-top: var(--cw-space-5);
+  margin-top: var(--cw-space-1);
 }
 
 /*
@@ -2767,6 +2825,13 @@ select {
   color: var(--cw-status-not-satisfied);
 }
 
+/* The glyph keeps its size. As a flex item it shrank to a sliver beside a two-line
+   message, leaving a stray mark instead of an icon. */
+.cw-field-review__error > svg {
+  flex: none;
+  margin-top: 0.15em;
+}
+
 .cw-field-review__conflict {
   display: flex;
   gap: var(--cw-space-2);
@@ -2813,6 +2878,18 @@ select {
   display: grid;
   gap: var(--cw-space-3);
   min-width: 0;
+}
+
+/* Side by side, the document stays in view while the fields scroll past it. The screen's
+   whole task is reading a value off the page into an empty box, and a booking's return
+   date sits several cards down: without this the page had scrolled away by the time the
+   box was reached. The pane is shorter than the viewport (the frame is at most 70vh), so
+   nothing inside it is ever out of reach. One column keeps normal flow. */
+@media (min-width: 60.0625rem) {
+  .cw-review > .cw-review__pane:first-child {
+    position: sticky;
+    top: var(--cw-space-4);
+  }
 }
 
 .cw-review__tabs {

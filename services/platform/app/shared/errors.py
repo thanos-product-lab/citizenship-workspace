@@ -112,10 +112,9 @@ class UnreadableEnteredValue(DomainError):
         # things it cannot support should not tell someone their unambiguous date was
         # ambiguous.
         super().__init__(
-            "this field only accepts a date written with the month's name — the day, the "
-            "month and the year — or the form YYYY-MM-DD. Dates written only in numbers "
-            "are refused, because the same three numbers mean different days in different "
-            "countries."
+            # The instruction leads, so the message stays true for an empty field too.
+            "Write the month as a word, or use the form YYYY-MM-DD. Dates written only "
+            "in numbers are refused."
         )
 
 

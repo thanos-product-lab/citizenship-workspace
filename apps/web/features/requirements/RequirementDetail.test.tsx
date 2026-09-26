@@ -264,7 +264,7 @@ describe("RequirementDetail", () => {
     ).toBeInTheDocument();
     // The conclusion is preserved, not withdrawn.
     expect(screen.getByText("Near threshold")).toBeInTheDocument();
-    expect(screen.getByText("Stale")).toBeInTheDocument();
+    expect(screen.getByText("Out of date")).toBeInTheDocument();
   });
 
   it("never claims a stale conclusion still stands", async () => {

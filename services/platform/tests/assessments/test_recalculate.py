@@ -395,6 +395,22 @@ def test_the_guidance_version_gap_is_declared_not_faked(api: Api) -> None:
         assert "version" not in citation
 
 
+def test_every_cited_guidance_source_has_a_readable_name(api: Api) -> None:
+    """A source id such as `GUIDE_AN` is a key for code. The page shows the name a reader
+    knows the document by, so every source any rule cites must have one."""
+    from app.requirements.messages import GUIDANCE_SOURCE_TITLES
+
+    case_id = _case_with_date(api, "user_a")
+    api("user_a").post(f"/api/v1/cases/{case_id}/assessments/recalculate")
+    rule = (
+        api("user_a")
+        .get(f"/api/v1/cases/{case_id}/requirements/residence.total_absences")
+        .json()["rule"]
+    )
+    for citation in rule["guidance"]:
+        assert citation["title"] == GUIDANCE_SOURCE_TITLES[citation["source"]]
+
+
 def test_history_carries_the_figures_so_a_change_is_legible(api: Api) -> None:
     """The canonical demo moment. Without parameters on history rows, 439 → 440 renders as
     "NEAR_THRESHOLD → NEAR_THRESHOLD" — a real change looking like nothing happened."""

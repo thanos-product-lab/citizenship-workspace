@@ -265,8 +265,10 @@ describe("blind confirmation", () => {
 
     expect(await screen.findByText(MODEL_READ)).toBeTruthy();
     // Twice: once as the value now recorded, once as the "after" half of the before/after
-    // pair that shows the correction. Both are wanted.
-    expect(screen.getAllByText("2026-05-11").length).toBe(2);
+    // pair that shows the correction. Both are wanted, and both read as a date a person
+    // reads ("11 May 2026"), not as the ISO string the API stores.
+    expect(screen.getAllByText("11 May 2026").length).toBe(2);
+    expect(screen.queryByText("2026-05-11")).toBeNull();
     expect(screen.getByText("Corrected")).toBeTruthy();
     // And no control to decide it again: `OPEN_STATUSES` is PENDING_REVIEW alone, so an
     // offer to re-decide is an offer the server refuses.
@@ -332,8 +334,8 @@ describe("when the server refuses", () => {
         // The server's real copy, kept in step: it states the policy rather than
         // claiming the input was ambiguous, because `30/09/2025` is not.
         detail:
-          "this field only accepts a date written with the month's name — the day, the " +
-          "month and the year — or the form YYYY-MM-DD.",
+          "Write the month as a word, or use the form YYYY-MM-DD. Dates written only " +
+          "in numbers are refused.",
       },
       response: { status: 422 },
     });
@@ -346,7 +348,7 @@ describe("when the server refuses", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
     const error = await screen.findByRole("alert");
-    expect(error.textContent).toMatch(/only accepts a date written/);
+    expect(error.textContent).toMatch(/Dates written only in numbers are refused/);
     expect(input).toHaveAttribute("aria-invalid", "true");
     expect(input.getAttribute("aria-describedby")).toContain("error");
     expect(input).toHaveValue("03/04/2025");

@@ -201,7 +201,7 @@ export function RequirementDetail({
                 ruleSet={detail.rule.rule_set}
                 lifecycleStatus={detail.rule.lifecycle_status}
                 effectiveFrom={detail.rule.effective_from}
-                guidance={detail.rule.guidance as { source: string; section?: string }[]}
+                guidance={detail.rule.guidance as { source: string; title?: string; section?: string }[]}
                 guidanceVersionRecorded={detail.rule.guidance_version_recorded}
                 formatDate={formatDate}
               />
@@ -378,7 +378,7 @@ export function RequirementDetail({
                 ruleSet={detail.rule.rule_set}
                 lifecycleStatus={detail.rule.lifecycle_status}
                 effectiveFrom={detail.rule.effective_from}
-                guidance={detail.rule.guidance as { source: string; section?: string }[]}
+                guidance={detail.rule.guidance as { source: string; title?: string; section?: string }[]}
                 guidanceVersionRecorded={detail.rule.guidance_version_recorded}
                 formatDate={formatDate}
               />

@@ -33,6 +33,8 @@ export const glyphNames = [
   "equals",
   "paperclip",
   "slash",
+  // controls
+  "close",
 ] as const;
 
 export type GlyphName = (typeof glyphNames)[number];
@@ -129,7 +131,7 @@ export interface CurrencyToken {
 
 export const currencyTokens: Record<CurrencyState, CurrencyToken> = {
   current: { colorVar: null, glyph: "dot", label: "Current" },
-  stale: { colorVar: "--cw-currency-stale", glyph: "clock", label: "Stale" },
+  stale: { colorVar: "--cw-currency-stale", glyph: "clock", label: "Out of date" },
   superseded: { colorVar: "--cw-currency-superseded", glyph: "history", label: "Superseded" },
   // Labelled "Preview", not "Provisional". The domain uses "provisional" for two unrelated
   // things: the currency of an unsaved simulation (Domain §42.2) and, in RULES_SPEC §6.2,
@@ -178,7 +180,7 @@ export const provenanceTokens: Record<ProvenanceKind, ProvenanceToken> = {
     label: "Evidence",
   },
   conflicting: { colorVar: "--cw-provenance-conflicting", glyph: "conflict", label: "Conflicting" },
-  stale: { colorVar: "--cw-provenance-stale", glyph: "clock", label: "Stale" },
+  stale: { colorVar: "--cw-provenance-stale", glyph: "clock", label: "Out of date" },
   unavailable: { colorVar: "--cw-provenance-unavailable", glyph: "slash", label: "Unavailable" },
 };
 

@@ -97,7 +97,7 @@ Currency is **orthogonal** to conclusion (CLAUDE.md §2.4): a result can be
 | Currency | Glyph | Colour var |
 |---|---|---|
 | Current | `dot` | — (no adornment) |
-| Stale | `clock` | `--cw-currency-stale` (amber) |
+| Stale (shown as "Out of date") | `clock` | `--cw-currency-stale` (amber) |
 | Superseded | `history` | `--cw-currency-superseded` (grey) |
 | Provisional | `preview` | `--cw-currency-provisional` (teal) |
 
@@ -116,7 +116,7 @@ each, so an AI proposal is never mistaken for a confirmed fact.
 | System calculated | `equals` | `--cw-provenance-system-calculated` |
 | Evidence supported | `paperclip` | `--cw-provenance-evidence-supported` |
 | Conflicting | `conflict` | `--cw-provenance-conflicting` |
-| Stale | `clock` | `--cw-provenance-stale` |
+| Stale (shown as "Out of date") | `clock` | `--cw-provenance-stale` |
 | Unavailable | `slash` | `--cw-provenance-unavailable` |
 
 AI-proposed values additionally carry a dashed treatment in M4 components, so the

@@ -22,6 +22,7 @@ from app.assessments.provenance import ResolvedInput
 from app.requirements.domain import Conclusion, Currency
 from app.requirements.evaluation import LinkInputKind
 from app.requirements.messages import (
+    guidance_source_title,
     render_limitation,
     render_next_action,
     render_next_step_body,
@@ -249,7 +250,12 @@ class RuleView(BaseModel):
             rule_set=rule.rule_set,
             lifecycle_status=rule.lifecycle_status,
             effective_from=rule.effective_from,
-            guidance=guidance,
+            # Each citation gains the source's readable name beside its id, rendered here
+            # like every other sentence the product shows.
+            guidance=[
+                {**citation, "title": guidance_source_title(citation["source"])}
+                for citation in guidance
+            ],
         )
 
 

@@ -101,7 +101,7 @@ describe("RequirementsList", () => {
 
     // Conclusion preserved, currency shown separately, reason spelled out.
     expect(await screen.findByText("Near threshold")).toBeInTheDocument();
-    expect(screen.getByText("Stale")).toBeInTheDocument();
+    expect(screen.getByText("Out of date")).toBeInTheDocument();
     expect(
       screen.getByText(/Your travel records changed after this was worked out/),
     ).toBeInTheDocument();
@@ -263,7 +263,7 @@ describe("RequirementsList", () => {
       ],
     });
     await client.invalidateQueries({ queryKey: ["cases", "c1"] });
-    await waitFor(() => expect(screen.getByText("Stale")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("Out of date")).toBeInTheDocument());
   });
 
   it("still lists a stored NOT_YET_ASSESSED result that has a currency", async () => {

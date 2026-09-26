@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 
 import { useQueryClient } from "@tanstack/react-query";
+import { StatusGlyph } from "@cw/design-system";
 
 import { useApiClient } from "@/lib/api";
 import { assessmentTouched } from "@/lib/queries";
@@ -534,9 +535,9 @@ export function TravelHistory({
                               must expose its support state"). Attached documents are
                               named; nothing attached says so in words.
 
-                              No badge and no colour. A tick beside an attached document
-                              would read as "checked", and nothing has read it — the link
-                              is the user's assertion, not a verdict (ADR-0021). "None
+                              No colour and no tick. A tick would read as "checked", and
+                              attaching checks nothing: the link is the user's assertion,
+                              not a verdict (ADR-0021). "None
                               attached" is a statement of fact, not a warning, so it is
                               styled as ordinary muted text rather than as a problem. */}
                           {r.supporting_evidence_item_ids.length === 0 ? (
@@ -558,17 +559,23 @@ export function TravelHistory({
                                   named ??
                                   `document ${index + 1} of ${r.supporting_evidence_item_ids.length}`;
                                 return (
-                                <li key={id}>
-                                  <span>{named ?? "A document"}</span>
+                                <li key={id} className="cw-trips__document">
+                                  <StatusGlyph name="paperclip" size={14} />
+                                  <span className="cw-trips__document-name">
+                                    {named ?? "A document"}
+                                  </span>
+                                  {/* A cross inside the chip, not a second "Remove" word:
+                                      beside the trip's own Remove it read as one control
+                                      repeated three times. The accessible name still says
+                                      exactly what it does, and names the document, so
+                                      three of these in one row stay distinguishable. */}
                                   <button
                                     type="button"
-                                    className="cw-action cw-action--muted"
+                                    className="cw-trips__detach"
+                                    title="Remove from this trip"
                                     onClick={() => void detach(r.id, id)}
                                   >
-                                    {/* Names the document, so a screen-reader user
-                                        hearing three of these in one row can tell them
-                                        apart. The visible word stays "Remove". */}
-                                    <span aria-hidden="true">Remove</span>
+                                    <StatusGlyph name="close" size={12} />
                                     <span className="cw-visually-hidden">
                                       Remove {label} from your trip to {r.destination_label}
                                     </span>

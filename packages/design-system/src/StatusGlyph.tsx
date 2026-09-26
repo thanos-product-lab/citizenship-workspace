@@ -112,6 +112,16 @@ const PATHS: Record<GlyphName, JSX.Element> = {
   ),
   paperclip: <path d="M11.5 7.2 7.4 11.3a2.6 2.6 0 0 1-3.7-3.7l4.6-4.6a1.7 1.7 0 0 1 2.4 2.4L6.1 10a.9.9 0 0 1-1.2-1.2l4-4" />,
   slash: <path d="M3.5 12.5 12.5 3.5" />,
+
+  // --- controls ---
+  // A small cross that closes or removes. Deliberately not `conflict`, which is the same
+  // shape at status weight and means "two things disagree".
+  close: (
+    <>
+      <path d="M4.5 4.5 11.5 11.5" />
+      <path d="M11.5 4.5 4.5 11.5" />
+    </>
+  ),
 };
 
 export interface StatusGlyphProps {

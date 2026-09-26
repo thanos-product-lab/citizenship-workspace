@@ -331,11 +331,25 @@ def _resolve_evidence_link(session: Session, link: AssessmentInputLink) -> Resol
 
     found = TravelRecordRepository.get(session, evidence_link.travel_record_id)
     label = "Attached document"
-    detail = "A document you attached to this trip. Nothing has read it to check it."
+    # What this row can truthfully say. It used to read "Nothing has read it to check it",
+    # written before the worker read documents; once it did, the sentence sat beside a
+    # document the user had just confirmed a date from. What the rule reads is the link:
+    # that a document is attached, not what it says. A value confirmed from the document
+    # is its own input, listed with the answers used.
+    detail = (
+        # "only that it is attached", not "the fact that": a fact is something else here.
+        "You attached this document to the trip. This result uses only that it is "
+        "attached, not what it says."
+    )
     if found is not None and found.current_version_id is not None:
         version = TravelRecordRepository.get_version(session, found.current_version_id)
         if version is not None:
-            label = f"Document for {version.destination_label}"
+            # The trip's start date as well as its place: a case often visits a country
+            # twice, and "Document for Italy" twice over could be either trip.
+            label = (
+                f"Document for {version.destination_label}, "
+                f"trip from {format_date(version.departure_date)}"
+            )
 
     available = evidence_link.is_available
     if not available:

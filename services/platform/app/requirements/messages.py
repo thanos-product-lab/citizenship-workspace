@@ -553,6 +553,21 @@ def _render(
     return template(parameters or {})
 
 
+#: The name a reader knows each guidance source by, keyed by the source id the rule
+#: versions cite (DETERMINISTIC_RULES_SPEC.md §2). The id is a stable key for code; a
+#: person reading "GUIDE_AN" on a requirement page learns nothing from it.
+GUIDANCE_SOURCE_TITLES: dict[str, str] = {
+    "GUIDE_AN": "Guide AN, the Home Office naturalisation booklet",
+    "DISCRETION": "Home Office policy on naturalisation by discretion",
+    "BNA_1981_SCH1": "British Nationality Act 1981, Schedule 1",
+}
+
+
+def guidance_source_title(source: str) -> str:
+    """A source's readable name. An id with no entry is shown as it is, never dropped."""
+    return GUIDANCE_SOURCE_TITLES.get(source, source)
+
+
 def render_summary(code: str | None, parameters: Parameters | None = None) -> str | None:
     return _render(SUMMARY_TEMPLATES, code, parameters)
 

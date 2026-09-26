@@ -353,7 +353,7 @@ describe("CaseOverviewPanel", () => {
       ],
     });
     render(<CaseOverviewPanel overview={overview} />);
-    expect(screen.getByText("Stale")).toBeInTheDocument();
+    expect(screen.getByText("Out of date")).toBeInTheDocument();
     expect(screen.getByText("Not currently satisfied")).toBeInTheDocument();
   });
 
@@ -373,7 +373,7 @@ describe("CaseOverviewPanel", () => {
       ],
     });
     render(<CaseOverviewPanel overview={overview} />);
-    expect(screen.queryByText("Stale")).not.toBeInTheDocument();
+    expect(screen.queryByText("Out of date")).not.toBeInTheDocument();
   });
 
   it("scopes the attention claim when requirements remain unassessed", () => {

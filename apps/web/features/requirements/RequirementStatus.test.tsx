@@ -23,7 +23,7 @@ describe("RequirementStatus", () => {
     // The canonical ADR-0001 case: the conclusion still stands, but its inputs moved.
     render(<RequirementStatus conclusion="SUPPORTED" currency="STALE" />);
     expect(screen.getByText("Supported")).toBeInTheDocument();
-    expect(screen.getByText("Stale")).toBeInTheDocument();
+    expect(screen.getByText("Out of date")).toBeInTheDocument();
   });
 
   it("does not alter the conclusion when the result goes stale", () => {
@@ -45,7 +45,7 @@ describe("RequirementStatus", () => {
     render(<RequirementStatus conclusion="NOT_YET_ASSESSED" currency={null} />);
     expect(screen.getByText("Not yet assessed")).toBeInTheDocument();
     expect(screen.queryByText("Current")).not.toBeInTheDocument();
-    expect(screen.queryByText("Stale")).not.toBeInTheDocument();
+    expect(screen.queryByText("Out of date")).not.toBeInTheDocument();
   });
 
   it("does not adorn a current result", () => {

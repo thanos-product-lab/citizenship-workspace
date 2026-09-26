@@ -39,6 +39,7 @@ import {
   type RejectionCode,
 } from "./useReviewClaim";
 import { claimLabel } from "./claimLabels";
+import { formatDate } from "@/features/requirements/dates";
 import { REVIEW_COMPLETE_ID, ReviewComplete } from "./ReviewComplete";
 
 /** RFC §10's reasons, in the words a person would use. */
@@ -68,6 +69,11 @@ const REJECTION_OPTIONS: readonly RejectionOption[] = [
  * of chrome accumulated above one empty box. What is left is the part the label cannot
  * carry: which formats are accepted, and why the slashed one is not.
  */
+/** A stored ISO date, formatted for reading; any other value exactly as stored. */
+function displayValue(value: string | null): string | null {
+  return value !== null && /^\d{4}-\d{2}-\d{2}$/.test(value) ? formatDate(value) : value;
+}
+
 const DATE_HINT =
   "Use the month's name (day, month, year) or the form YYYY-MM-DD. A slashed date such " +
   "as 03/04/2025 can be read two ways, so it is refused.";
@@ -376,7 +382,9 @@ export function DocumentReview({
                         ? {
                             decision: claim.decision.decision,
                             reviewMode: claim.decision.review_mode,
-                            value: claim.decision.value,
+                            // A confirmed date comes back as ISO. It reads as "11 May
+                            // 2026" here, like every other date in the product.
+                            value: displayValue(claim.decision.value),
                             reasonCode: claim.decision.reason_code,
                             reviewedAt: claim.decision.reviewed_at,
                           }

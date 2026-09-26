@@ -105,8 +105,12 @@ dev:
 # Needs MinIO up (`just up`) as well as Postgres: from M7 slice 4a the seed uploads eleven
 # travel documents through the real upload path, so eleven trips have evidence attached and
 # trip 6 (Greece) deliberately does not.
-seed user_id="demo-user":
-    cd services/platform && {{storage_env}} uv run python -m app.seed.demo_case {{user_id}}
+#
+# `just seed <user_id> --review-documents` also waits for the worker to read the documents
+# and answers every value it proposes, as an applicant who has reviewed them would. That is
+# the state the demo video starts from.
+seed user_id="demo-user" *flags:
+    cd services/platform && {{storage_env}} uv run python -m app.seed.demo_case {{user_id}} {{flags}}
 
 # Recalculate a case and print its requirement conclusions (dev walkthrough helper).
 recalc case_id user_id="demo-user":

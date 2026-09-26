@@ -19,6 +19,8 @@ import { StatusGlyph } from "./StatusGlyph";
 
 export interface GuidanceCitation {
   source: string;
+  /** The source's readable name, from the server. The id is shown when it is absent. */
+  title?: string;
   section?: string;
 }
 
@@ -67,8 +69,11 @@ export function SourceReference({
         <ul className="cw-source__citations">
           {guidance.map((citation) => (
             <li key={`${citation.source}-${citation.section ?? ""}`}>
-              <span className="cw-source__code cw-figure">{citation.source}</span>
-              {citation.section ? <span>{citation.section}</span> : null}
+              {/* The section is what the rule relies on; the source says where it is. */}
+              {citation.section ? (
+                <span className="cw-source__section">{citation.section}</span>
+              ) : null}
+              <span className="cw-source__title">{citation.title ?? citation.source}</span>
             </li>
           ))}
         </ul>
