@@ -397,7 +397,8 @@ docs/
 ```
 
 When you complete a meaningful decision or deviation, record it in
-`docs/decisions/` (short ADR) and update this file if conventions change.
+`docs/decisions/` (short ADR), add its one-line decision to `docs/decisions/README.md`,
+and update this file if conventions change.
 
 ---
 
