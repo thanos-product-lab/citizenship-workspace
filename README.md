@@ -1,54 +1,61 @@
-# citizenship-workspace
+# Citizenship Workspace
 
-A prototype that helps someone with ILR, indefinite leave to enter, or EU settled status
-work out whether they are ready to apply for UK naturalisation on the standard Section
-6(1) five-year route.
+I built this to answer one question: how do you put AI inside a product where being wrong
+matters, without letting its output quietly become the truth?
 
-It is not legal advice, it does not predict whether an application would succeed, and it
-submits nothing. It runs on synthetic data only and is not open to users.
+The product is a private workspace for preparing a UK citizenship application. It is for
+people who already have settled status (ILR, indefinite leave to enter or EU settled status)
+and are applying on the standard five-year route. It rebuilds five years of travel, checks
+each requirement, and shows exactly how every result was worked out.
 
-I built it to answer one question: how do you put a language model inside a product where
-being wrong matters, without letting its output quietly become the truth? The short answer
-is that model output is stored as a *claim* and never used for anything until a person
-confirms it. All the arithmetic (qualifying periods, absence totals, thresholds) is
-ordinary Python with tests. Prompts decide nothing.
+The answer to the question, in short: when the AI reads a document, what it finds is stored
+as a suggestion and used for nothing until you confirm it. For the dates that matter, you
+aren't even shown its answer; you type what the document says. All the arithmetic
+(qualifying periods, absence totals, thresholds) is ordinary Python with tests. The AI
+decides nothing.
+
+It is not legal advice, it doesn't predict whether an application would succeed, and it
+submits nothing. It runs on synthetic data only and isn't open to users.
+
+**Built with** Next.js and TypeScript, FastAPI and Python, PostgreSQL, Celery and Redis,
+S3-compatible storage, Clerk, and OpenAI structured outputs.
 
 ## Start here
 
-1. **See it working.** [The demo video](https://www.loom.com/share/37e9a02e63bf42aeb975a9aa968a5af4) (2½ minutes, no sound, synthetic data). A
-   booking says a trip ended on 11 May, the applicant's record says 10 May, and the product
-   refuses to let the AI settle it.
-2. **Read the story.** The case study is not published yet; its
-   [outline](docs/product/CASE_STUDY_OUTLINE.md) holds the decisions and evidence it will draw on.
-3. **Inspect the engineering.**
-   [Architecture overview](docs/architecture/ARCHITECTURE_OVERVIEW.md) (three diagrams: what
-   runs where, and the path model output takes before it can affect anything), the
-   [decision records](docs/README.md#decisions) (ADR-0001 and ADR-0014 shape everything
-   else), the [rules spec](docs/architecture/DETERMINISTIC_RULES_SPEC.md) (the date
-   arithmetic, where the real difficulty is), the
-   [evaluation report](docs/evaluations/EVAL_REPORT.md) and the
-   [known limitations](docs/KNOWN_LIMITATIONS.md).
-4. **Run it.** [Running it](#running-it), below.
+1. **See it working.** [The demo video](https://www.loom.com/share/37e9a02e63bf42aeb975a9aa968a5af4) runs 2½ minutes, with no sound and synthetic
+   data. A booking says a trip ended on 11 May, the applicant's record says 10 May, and the
+   product won't let the AI settle it.
+2. **Read the story.** The case study isn't published yet. Its
+   [outline](docs/product/CASE_STUDY_OUTLINE.md) has the decisions and evidence it will use.
+3. **Look at the engineering.**
+   - [Architecture overview](docs/architecture/ARCHITECTURE_OVERVIEW.md): what runs where,
+     and the path the AI's output takes before it can affect anything.
+   - [Decisions](docs/decisions/README.md): one line each, with the five that shape the rest.
+   - [Rules spec](docs/architecture/DETERMINISTIC_RULES_SPEC.md): the date arithmetic, which
+     is where the real difficulty is.
+   - [Evaluation report](docs/evaluations/EVAL_REPORT.md) and
+     [known limitations](docs/KNOWN_LIMITATIONS.md): how the AI is tested, and what the
+     product doesn't do yet.
+4. **Run it.** See [Running it](#running-it) below.
 
 Every document, and which ones describe the product as it is today:
 [`docs/README.md`](docs/README.md).
 
 ## What it does
 
-You enter your travel history and the date you plan to apply. The rules engine works out
-your qualifying period and your absence totals, and says what each requirement concludes
-and why. Every conclusion links back to the exact facts, records and rule version behind
-it.
+You enter your trips abroad and the date you plan to apply. The rules work out your
+qualifying period and how many days you spent outside the UK, and give each requirement a
+result, such as Supported or Near threshold. Every result links back to the exact trips,
+answers and rule version behind it.
 
-You can upload a document. It gets read, and whatever the model finds is proposed rather
-than applied. For anything a wrong value would change, which mostly means dates, the
-proposal is hidden and you type what the document says yourself. If your answer disagrees
-with a record you entered earlier, that becomes a conflict you have to resolve, and the
-assessments that depended on it go stale until you recalculate.
+You can upload a document, such as a booking. The AI reads it and suggests what it found, but
+nothing counts until you check it. For values that would change a result, mostly dates, its
+suggestion is hidden and you type what the document says. If the document then disagrees
+with a trip you entered, the product flags it, marks the results that depended on that trip
+as out of date, and waits for you to resolve it.
 
-Nothing is scored. There is no percentage and no progress bar. A requirement is supported,
-or near threshold, or not currently satisfied, or one of a handful of other named states,
-and a conclusion can be current or stale independently of what it concluded.
+Nothing is scored. There is no percentage and no progress bar. Each requirement has a named
+result, and whether a result is up to date is shown separately from what it says.
 
 ## Repository layout
 
@@ -144,5 +151,5 @@ Document AI needs `OPENAI_API_KEY`. Without it everything works except reading d
 bound a runaway loop, not ordinary use.
 
 Deployment is web to Vercel, everything else to Railway. See
-[`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md), which is mostly a list of the ways object
-storage and CORS can fail quietly.
+[`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) for the setup order and the mistakes that fail
+without an error.

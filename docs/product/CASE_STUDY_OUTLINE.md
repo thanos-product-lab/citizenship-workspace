@@ -1,255 +1,168 @@
 # Case study outline
 
-**This is scaffolding, not a draft.** Each section gives what it has to establish, the
-evidence to hang it on, and the trap to avoid. The words are yours, because a case study
-written in someone else's voice is the one thing a reader can always tell.
+A plan for the case study, not the case study itself. Each part says what it needs to get
+across, what to point to, and the mistake to avoid. The writing should be yours: readers can
+always tell when a case study is written in someone else's voice.
 
-**Target: 1,800 to 2,500 words.** Long enough to show judgement, short enough to be read.
-Suggested lengths per section below add to about 2,100.
+**Length:** about 2,000 words. Long enough to show judgement, short enough to finish.
 
-**The angle worth taking.** Most portfolio case studies say what was built. The strongest
-material here is different and harder to fake: four separate occasions where the
-verification was lying, and what changed each time. Section 5 is where that lives, and the
-rest of the piece exists to make it land.
+**The angle:** most portfolio case studies describe what was built. The stronger story here
+is harder to fake: four times the checks said everything was fine and it was not, and what
+changed each time (part 5). Everything else sets that up.
 
----
-
-## 0. Opening (150 words)
-
-**Establish:** what the product is, who it is for, and the one sentence that makes it
-interesting.
-
-The one sentence is roughly: model output is stored as a proposal and never affects a
-conclusion until a person confirms it, and all the arithmetic is ordinary Python with tests.
-
-**Evidence:** `README.md` opening, which already carries this framing.
-
-**Trap:** do not open with the immigration domain. A reader does not need to understand
-Section 6(1) to understand the problem, and three paragraphs of context loses them before
-the point.
+**Link, don't embed:** the [demo video](https://www.loom.com/share/37e9a02e63bf42aeb975a9aa968a5af4)
+and the [architecture overview](../architecture/ARCHITECTURE_OVERVIEW.md). Timestamps below
+refer to the video.
 
 ---
 
-## 1. Why this is hard (250 words)
+## 1. Opening (about 150 words)
 
-**Establish:** the failure mode the product is built against. A naturalisation readiness
-tool that is confidently wrong is worse than no tool, because the user acts on it.
+**Get across:** what it is, who it is for, and the one idea. The AI's reading of a document
+is stored as a suggestion and never affects a result until a person confirms it, and all the
+arithmetic is ordinary, tested Python.
 
-Name the specific shape: a model reads a date off a booking, the date is wrong, the total
-absences figure is wrong, the product says "supported", and the user submits.
+**Point to:** the README's first paragraphs, which already say this.
 
-**Evidence:**
+**Avoid:** opening with immigration law. A reader doesn't need Section 6(1) to understand
+the problem, and three paragraphs of background will lose them.
 
-- CLAUDE.md directive 7: stopping or escalating is a successful outcome.
-- The false reassurance rate as the headline metric rather than accuracy, and why: a model
-  that abstains more has a worse pass rate and a better false reassurance rate.
-  `EVAL_REPORT.md` §1.
-- The M8 gate finding where a past application date produced every requirement green
-  against a five year window that had closed eight months earlier. `milestone-notes.md`,
-  M8 gate, finding 2. This is the failure happening, in your own product, found by driving
-  it.
+## 2. Why this is hard (about 250 words)
 
-**Trap:** do not claim the product prevents bad applications. It prevents the product from
-being the thing that misled you.
+**Get across:** a readiness tool that is confidently wrong is worse than no tool, because
+people act on it. Make it concrete: the AI misreads a date on a booking, the absence total is
+wrong, the product says "supported", and the person applies.
 
----
+**Point to:**
+- The safety measure is the false-reassurance rate, not accuracy. A model that says "I'm not
+  sure" more often scores worse on accuracy and better on safety
+  ([evaluation report](../evaluations/EVAL_REPORT.md) §1).
+- It happened here: a past application date once showed every requirement as fine, against
+  a five-year window that had closed months earlier. It was found by using the product, not
+  by a test ([known limitations](../KNOWN_LIMITATIONS.md) entry 11).
 
-## 2. The one idea (300 words)
+**Avoid:** claiming the product prevents bad applications. It stops the product from being
+the thing that misled you.
 
-**Establish:** claims versus facts, and blind entry as its sharpest expression.
+## 3. The one idea, shown (about 300 words)
 
-Two moves. Model output becomes an `ExtractedClaim`, which no rule can read. And for a
-high risk field, the proposal is **not sent to the browser at all**, so the person reads
-the document and types what it says.
+**Get across:** suggestions versus facts, and the empty box as the sharpest example. For the
+dates that matter, the AI's answer is not even sent to the browser. You read the document and
+type what it says. If the AI's answer sat next to the box, most people would copy it without
+looking, and the confirmation would mean nothing.
 
-Explain why the second follows from the first: if the model's reading sits beside an empty
-box, most people type it without looking, and the confirmation means nothing.
+**Point to:**
+- The video at 0:36 (the empty box) and 0:52 (`11/05/2026` refused, because it means
+  different days in different countries).
+- The rules engine has no way to receive a suggestion at all
+  ([architecture overview](../architecture/ARCHITECTURE_OVERVIEW.md), the trust boundary
+  diagram).
+- One small story worth a sentence: the first version of the refusal message used the demo
+  booking's real return date as its example, handing back exactly the value the empty box
+  withholds. Found by using the screen.
 
-**Evidence:**
+**Avoid:** over-explaining. The empty box does most of the work.
 
-- `m8/m8-slice3b-blind-entry.jpg`, the empty box beside the document.
-- `m8/m8-slice3b-your-value-won.jpg`, a correction recorded with the model's original kept
-  beside it.
-- `m8/m8-slice3b-ambiguous-refused.jpg`, `03/04/2025` refused from a person for the same
-  reason it is refused from a model.
-- The invariant is structural: the rules engine has no parameter a claim could arrive
-  through. `ARCHITECTURE_OVERVIEW.md`, the trust boundary diagram.
-- The detail worth one sentence: the first version of the refusal message used the demo
-  booking's real return date as its example, handing back the exact value blind entry
-  withholds. Found by driving the screen, not by a test.
+## 4. Four decisions, and what was rejected (about 500 words)
 
-**Trap:** do not over-explain the mechanism. The screenshot of an empty box next to a
-document does most of the work.
+**Get across:** the design has reasons, and the rejected options were taken seriously.
+Roughly 125 words each, and no more than four.
 
----
+- **A result and whether it is up to date are separate.** A result can be Supported and out
+  of date at the same time. One combined status would force you to either rewrite the result
+  or pretend nothing changed. Video at 1:16; ADR-0001.
+- **One place decides whether a trip counts.** It used to be worked out in three places,
+  including the browser, and all three compiled. The fix was to publish the answer instead
+  of the ingredients. ADR-0028.
+- **The date preview tells you when things don't improve.** An early design suggested moving
+  the date one day would fix a failing check. It wouldn't, and the screen now says "still not
+  satisfied on this date". Video at 2:04 to 2:10; ADR-0002.
+- **JavaScript inside a PDF is allowed to run in the preview.** Sandboxing the preview was
+  tried and stopped PDFs rendering at all, on the one screen whose job is reading a
+  document. The risk is contained in other ways. ADR-0026.
 
-## 3. Four decisions, each with the alternative rejected (500 words, roughly 125 each)
+**Avoid:** a longer list. Ten decisions reads like a changelog.
 
-**Establish:** that the design has reasons, and that the rejected option was considered
-seriously rather than strawmanned.
+## 5. Where the checks were wrong (about 450 words)
 
-### Conclusion and currency are separate fields
+**The strongest part. Give it room.**
 
-A result can be `SUPPORTED` and `STALE` at once. The rejected alternative was one status
-field, which forces you either to lie about the conclusion or to pretend nothing changed.
+**Get across:** four times the checks passed and the thing was wrong, and the change each
+one led to. Not war stories: each fix makes the whole kind of mistake harder.
 
-**Evidence:** ADR-0001, `m4-supported-and-stale.jpg`.
+1. **The trust decision, made three times.** The same "does this trip count?" logic lived in
+   a rule, an API view and a React component. All type-checked; they disagreed. Fixed by
+   making the API publish the decision, so recombining it is now a type error (ADR-0028).
+2. **The AI tests, wrong four times.** Four apparent model failures were bugs in the test
+   harness. The worst: a prompt-injection test checked nothing, because the assertion that
+   would have caught it had been removed while tidying the test. The measuring tool had been
+   loosened to fit what it measured, by the person who built it
+   ([evaluation report](../evaluations/EVAL_REPORT.md) §6).
+3. **One walkthrough.** Three defects found in minutes, on a case the test data
+   never created. Over a thousand tests, four review passes and a green AI test suite had
+   all missed them, because every automated check used the same seeded case with everything
+   running.
+4. **Breaking the code to test the tests.** Replacing a "this case only" condition in case
+   deletion with "every case", a change that would delete everyone's documents, still
+   passed. The database's row-level security was catching it instead, so the test was
+   measuring the wrong thing.
 
-### The trust gate has one implementation
+**The thread:** none of these was caught by a failing test. They were caught by using the
+product, by looking at what it actually showed, and by deliberately breaking it.
 
-Whether a trip counts towards the confirmed total was re-derived in three places. All three
-type checked. The fix was not a corrected expression but a changed signature: the API
-publishes the decision rather than the ingredients.
-
-**Evidence:** ADR-0028, `m8/m8-timeline-agrees-with-the-assessment.txt`,
-`m8/m8-case-data-shows-the-dispute.txt`. The commit messages for `49b59db` and `cfb9d30`
-tell the story compactly.
-
-### Simulation follows the rules, including when that is inconvenient
-
-A mockup once taught that moving the application date one day would fix a failing presence
-check. It would not: clearing an absent anchor means moving past the whole trip covering
-it. The screen now says "still not satisfied on this date" rather than listing only what
-improved.
-
-**Evidence:** ADR-0002, `m5/m5-date-simulation.gif`. The earlier version reported only
-improvements, which is the false reassurance shape arriving through a UI decision.
-
-### A hostile PDF's JavaScript runs, and that is accepted
-
-`sandbox` on the iframe was measured: with it, the viewer is blocked entirely and the PDF
-does not render, for every token combination tried. So the choice was a working preview or
-no preview, on the one screen whose task is reading a document.
-
-**Evidence:** ADR-0026, and the compensating controls: strict `frame-src`, `object-src
-'none'`, private bucket, short lived signed URLs, inline disposition withheld until the
-bytes are verified.
-
-**Trap:** four is the limit. A list of ten decisions reads as a changelog.
-
----
-
-## 4. How I know it works (250 words)
-
-**Establish:** three layers of verification that check different things, and what each
-cannot see.
-
-- **Property tests** for the arithmetic. Hypothesis generates the leap years and boundary
-  cases nobody writes by hand. 21 property tests.
-- **An evaluation suite** for the model, reporting false reassurance rather than accuracy.
-  0.0% over 16 measured fixtures, and the report names the three fixture classes the corpus
-  omits, which are the ones most likely to produce a false reassurance.
-- **Driving it in a browser**, which is what actually found the defects.
-
-**Evidence:** `EVAL_REPORT.md`, `just test-rules`, `RELEASE_GATE_AUDIT.md` for the measured
-figures (p50 927ms, p95 2837ms, $0.0169 over 98 runs; 276,952 log lines searched for PII
-with zero hits).
-
-**Trap:** do not lead with test counts. 1,128 backend tests is a number, not an argument,
-and section 5 is about to undercut it deliberately.
-
----
-
-## 5. Where the verification lied (450 words)
-
-**The strongest section. Give it room.**
-
-**Establish:** four occasions where the checks passed and the thing was wrong, and the
-structural change each one produced. Not anecdotes. Each has a fix that makes the class of
-error harder.
-
-1. **The trust gate, three times.** The same decision re-derived in a rule, a projection and
-   a React component. Every version type checked. Fixed by changing what the API publishes,
-   so recombining the ingredients is now a type error. ADR-0028.
-
-2. **The eval harness, four times.** Four apparent model failures were defects in the
-   instrument. The worst: an injection fixture graded no authority channel at all, because
-   the assertion that would have caught it existed and was deleted while "generalising" a
-   test. That is the instrument being loosened to accommodate the thing it measures, by the
-   person who built it. `EVAL_REPORT.md` §6.
-
-3. **The M8 gate walkthrough.** Three defects and a workflow hazard in minutes, on a case
-   the seed does not create. 1,114 backend tests, 381 frontend tests, four reviewer passes
-   and a green eval suite had all missed them, because every automated check used the seeded
-   case with the stack healthy. `milestone-notes.md`, M8 gate.
-
-4. **Mutation testing my own tests.** Substituting `1 = 1` for a `case_id` predicate in the
-   case purge, a change that would destroy every evidence item in the database, passed.
-   Row level security had absorbed it, because the bystander case belonged to a different
-   tenant. The test was measuring the policy, not the predicate it claimed to test.
-   `milestone-notes.md`, release slice.
-
-**The thread:** none of these was found by a failing test. They were found by driving it,
-by looking at the rendered artefact rather than the source, and by deliberately breaking
-the implementation to see whether the tests noticed.
-
-**Trap:** resist making this humble. It is the most senior thing in the piece. The point is
-not that mistakes happened; it is that each one produced a structural change rather than a
+**Avoid:** making this humble. It is the most senior part of the piece. The point is not
+that mistakes happened; it is that each one changed the structure rather than getting a
 patch.
 
----
+## 6. What I left out, and why (about 200 words)
 
-## 6. What I cut, and why that was right (200 words)
+**Get across:** scope discipline you can see, not just claim. Pick three that show different
+kinds of judgement:
 
-**Establish:** scope discipline as a demonstrated behaviour rather than a claim.
+- **Guidance versions.** Rather than invent a version and retrieval date, the product says
+  it doesn't record them yet. Made-up provenance would be the worst thing it could ship.
+- **Reading immigration status documents.** Held back, because nothing would compare them
+  with what the applicant already entered, so it would add a new way to be falsely
+  reassured (ADR-0029).
+- **Spotting the same document across different people's cases.** Not a gap: it would mean
+  reading other people's data.
 
-Pick three:
+**Point to:** [known limitations](../KNOWN_LIMITATIONS.md) entries 2, 6 and 8.
 
-- **The guidance registry** (M9). Rather than fabricate a version and retrieval date, the
-  API ships `guidance_version_recorded: false` and the screen says so. Fabricated
-  provenance would be the worst defect this product could ship.
-- **The immigration status extractor.** Deferred because nothing compares a confirmed fact
-  to the route profile, so it would have added a false reassurance path knowingly.
-  ADR-0029.
-- **Cross case duplicate detection.** Not a gap. Matching across cases means reading another
-  user's rows, and a checksum is a fingerprint.
+**Avoid:** listing everything that was cut.
 
-**Evidence:** `KNOWN_LIMITATIONS.md` entries 2, 6 and 8. The retired roadmap's §7.3 cut order
-(`git show aad44b0:docs/IMPLEMENTATION_ROADMAP.md`).
+## 7. What is still wrong (about 150 words)
 
-**Trap:** do not list everything cut. Three that show different kinds of judgement beats ten
-that show one.
+**Get across:** that you know, and said so first. Lead with the gap that connects to others:
+the product cross-checks dates and nothing else, though the AI also reads names and
+destinations. That one gap is why immigration documents aren't read, why the AI tests have
+no wrong-name case, and why an Italy booking attached to a Greece trip is only reported as a
+date problem.
 
----
+**Point to:** [known limitations](../KNOWN_LIMITATIONS.md) entry 1.
 
-## 7. What is still wrong (150 words)
-
-**Establish:** that you know, and said so first.
-
-Lead with the one that connects: the product cross checks dates and nothing else, though it
-extracts names and destinations too. That single gap is why immigration status documents are
-never read, why the eval corpus has no wrong applicant fixture, and why an Italy booking
-attached to a trip to Greece is reported only as a date disagreement.
-
-**Evidence:** `KNOWN_LIMITATIONS.md` entry 1, and the link it draws to entries 6 and 14.
-
-**Trap:** do not end apologetically. A visible limitation reads as judgement; the same gap
-found by a reader reads as an oversight. That sentence is already in the limitations file
-and is worth reusing.
+**Avoid:** ending on an apology. A limitation you state reads as judgement; the same gap
+found by a reader reads as an oversight.
 
 ---
 
-## Material you have not used yet
+## Numbers you can use
 
-Worth knowing it is there.
+- 1,230 backend tests and 517 frontend tests, including property-based tests for every date
+  rule (`just test-rules`). Don't lead with these; part 5 deliberately undercuts them.
+- AI safety: 0% false reassurance over 16 test documents, all legible. Say "on legible
+  documents": the report names the harder cases it does not cover yet.
+- Speed and cost of the AI calls: median 927ms, 95th percentile 2.8s, $0.0169 across 98
+  calls.
 
-- `milestone-notes.md`, 1,800 lines of what went wrong per milestone, written at the time.
-  Retired from the working tree in the September 2026 docs review; read it with
-  `git show a37b05a:docs/decisions/milestone-notes.md`.
-- The captures cited as evidence above (`m4-*.jpg`, `m5/*.gif`, `m8/*` and the rest) were
-  retired the same way; they show an earlier design, and the case study will use the final
-  demo video. Retrieve one with, for example,
-  `git show a37b05a:docs/demo-assets/m8/m8-slice3b-blind-entry.jpg > blind-entry.jpg`.
-  This is the richest source in the repository and almost none of it is in the outline
-  above.
-- The three hard gates from the retired milestone gates §3 (M3B, M6, M8;
-  `git show aad44b0:docs/MILESTONE_GATES.md`) are written as an
-  interviewer would ask them. Answering them in writing is the fastest route to a draft.
-- The M9 to M12 gate questions are unanswered and double as a closing section: "what in this
-  product is most likely to be wrong, and how would a user find out?"
+## Where the raw material is
 
-## Formats
+Development notes and screenshots from the build were retired from the working tree but
+remain in git history, and they are the richest source for parts 2 and 5:
 
-A written case study is the deliverable. Two things it should link rather than contain: the
-demo video, and `ARCHITECTURE_OVERVIEW.md`. Screenshots earn their place in sections 2 and
-3 and nowhere else.
+- The milestone notes, written as things went wrong:
+  `git show a37b05a:docs/decisions/milestone-notes.md`
+- The interview-style questions from the milestone gates, which make a fast first draft if
+  answered in writing: `git show aad44b0:docs/MILESTONE_GATES.md`
+- Older screenshots, for example:
+  `git show a37b05a:docs/demo-assets/m8/m8-slice3b-blind-entry.jpg > blind-entry.jpg`
