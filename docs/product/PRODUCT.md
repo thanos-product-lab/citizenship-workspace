@@ -116,4 +116,4 @@ data only. What it does not do yet is listed openly in
 |---|---|
 | How it is built | [Architecture overview](../architecture/ARCHITECTURE_OVERVIEW.md) |
 | How the AI is tested | [AI evaluation](../evaluations/EVAL_REPORT.md) |
-| A walkthrough of the demo | [Demo script](../DEMO_SCRIPT.md) |
+| To see it working | [Demo video](https://www.loom.com/share/37e9a02e63bf42aeb975a9aa968a5af4) |

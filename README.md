@@ -15,8 +15,9 @@ ordinary Python with tests. Prompts decide nothing.
 
 ## Start here
 
-1. **See it working.** [`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md) walks the canonical demo
-   in fifteen steps. A recorded video will replace this link once it exists.
+1. **See it working.** [The demo video](https://www.loom.com/share/37e9a02e63bf42aeb975a9aa968a5af4) (2½ minutes, no sound, synthetic data). A
+   booking says a trip ended on 11 May, the applicant's record says 10 May, and the product
+   refuses to let the AI settle it.
 2. **Read the story.** The case study is not published yet; its
    [outline](docs/product/CASE_STUDY_OUTLINE.md) holds the decisions and evidence it will draw on.
 3. **Inspect the engineering.**
@@ -87,13 +88,24 @@ just seed <user-id>     # the canonical synthetic case
 ```
 
 `just seed` takes a Clerk user id. Every read is scoped by owner, so a case seeded to the
-default `demo-user` will not show up when you sign in as yourself.
+default `demo-user` will not show up when you sign in as yourself. Add
+`--review-documents` to start from the state the demo video starts from: it waits for the
+worker to read the eleven seeded documents and answers what it proposes. Each run creates a
+new case; there is no reset.
 
 Then open `http://localhost:3000/sign-in`. The root path returns 404 to a cold tab, which
 is Clerk's dev instance rather than a bug in the app.
 
-[`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md) walks the whole journey and says which steps
-need a manual setup step.
+For a production build locally (`pnpm build && pnpm start` in `apps/web`), set
+`STORAGE_ORIGIN=http://localhost:9000` for the build as well as the start. It is read at build
+time, and without it the review screen refuses to show the document.
+
+| Symptom | Cause |
+|---|---|
+| Signed in, no cases | Seeded to `demo-user` instead of your Clerk id. Seed again. |
+| Document stuck at "Not read yet" | The worker is not running. `docker compose start worker`. |
+| Upload fails, API logs look clean | MinIO is down, or `STORAGE_PUBLIC_ENDPOINT_URL` is unset, so the signed URL names `minio:9000`. |
+| Review screen shows a broken-page icon | `STORAGE_ORIGIN` was unset when the web app was built. |
 
 ### Checks
 
@@ -134,22 +146,3 @@ bound a runaway loop, not ordinary use.
 Deployment is web to Vercel, everything else to Railway. See
 [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md), which is mostly a list of the ways object
 storage and CORS can fail quietly.
-
-## Status
-
-M0 to M8 are built. The release slice is in progress.
-
-Working: versioned case inputs with immutable history; a deterministic rules engine for
-the Section 6(1) route; assessments that are never edited in place, each carrying a
-conclusion, a separate currency, the exact input versions behind it and structured
-limitations; selective invalidation, so changing an input stales only the conclusions that
-declared a dependency on it; a durable issue queue that opens when a cause appears and
-closes when it is fixed, including when a recalculation itself fails; a residence timeline
-with an application-date simulator that writes nothing; private evidence storage with
-asynchronous processing; document classification and extraction behind human confirmation;
-and case deletion that actually destroys the data.
-
-Not built: the preparation summary, guidance source versioning, and an extractor for
-immigration status documents. [`docs/KNOWN_LIMITATIONS.md`](docs/KNOWN_LIMITATIONS.md) has
-twenty entries covering those and the rest, each with the reason it was left and what
-closing it would take.

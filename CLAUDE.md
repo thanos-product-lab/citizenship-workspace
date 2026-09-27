@@ -386,7 +386,7 @@ consulted most during implementation:
 ```
 docs/
 ├── README.md       the map: current, reference, decisions, retired
-├── KNOWN_LIMITATIONS.md · DEPLOYMENT.md · DEMO_SCRIPT.md
+├── KNOWN_LIMITATIONS.md · DEPLOYMENT.md
 ├── RELEASE_GATE_AUDIT.md   (reference: the record of the release decision)
 ├── product/        the product guide · case study outline
 ├── design/         the design document: visual system and interface rules

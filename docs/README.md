@@ -14,8 +14,7 @@ Four documents, in this order, give an accurate picture of the product in under 
    what runs where to how the rules count days, and where to look up the details.
 3. [Known limitations](KNOWN_LIMITATIONS.md): what it does not do, which gaps are deliberate,
    and which are still open.
-4. [Demo script](DEMO_SCRIPT.md): the canonical demonstration, step by step, on the local
-   stack.
+4. [Demo video](https://www.loom.com/share/37e9a02e63bf42aeb975a9aa968a5af4): the product in 2½ minutes, on synthetic data.
 
 ## Current
 
@@ -30,7 +29,6 @@ Maintained and authoritative. If the code disagrees with one of these, the code 
 | [Evidence and claim lifecycle RFC](architecture/EVIDENCE_AND_CLAIM_LIFECYCLE_RFC.md) | Look-up reference: how a document is stored, read, proposed from, reviewed and deleted |
 | [Known limitations](KNOWN_LIMITATIONS.md) | Open gaps, deliberate boundaries, and resolved entries (numbers are stable) |
 | [Deployment](DEPLOYMENT.md) | Environments, services, secrets and how a deploy happens |
-| [Demo script](DEMO_SCRIPT.md) | Running and showing the canonical demo locally |
 | [Security and privacy](security/SECURITY_AND_PRIVACY_THREAT_MODEL.md) | The one security document: a two-minute summary at the top, then every threat and its control |
 | [Design](design/DESIGN_SYSTEM_FOUNDATIONS.md) | The one design document: tokens, themes and contrast, how the interface behaves (§11), and the accessibility pass (§12) |
 | [AI evaluation](evaluations/EVAL_REPORT.md) | The one evaluation document: the false-reassurance rate, what the corpus does not cover, the release gates, the spike, and every run |
@@ -64,7 +62,8 @@ synthetic demo case specification (the product guide replaces the first two; the
 demo will be one video recorded at the end). Read any of them with, for example,
 `git show a37b05a:docs/decisions/milestone-notes.md`.
 
-The implementation roadmap and the milestone gates were retired once the build finished.
+The demo script was retired once the demo video existed; the setup notes it held are in the
+repository README. The implementation roadmap and the milestone gates were retired once the build finished.
 Code, docs and ADRs still use their milestone labels (M0 to M12) to say when something was
 built; read the originals with `git show aad44b0:docs/IMPLEMENTATION_ROADMAP.md` and
 `git show aad44b0:docs/MILESTONE_GATES.md`.
