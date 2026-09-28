@@ -117,7 +117,7 @@ services:
     # relay never ran: uploads sat in UPLOADED forever and deleted documents were never
     # purged, both silently. Two services locally and one deployed is exactly how that
     # goes unnoticed.
-    command: uv run celery -A worker.celery_app.celery_app worker --beat --loglevel info
+    command: /app/.venv/bin/celery -A worker.celery_app.celery_app worker --beat --loglevel info
     # Same file as the API. The worker is where every model call happens from M8 slice 2
     # on, so a worker without a key is a stack whose documents reach the analysis stage
     # and stop there — the failure `check_ai_configuration` refuses to boot into when

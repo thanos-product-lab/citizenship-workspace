@@ -65,10 +65,14 @@ something does not work.
    before the first deploy, because the health check needs Postgres and Redis.
 
 4. **Worker service.** Add a second service from the same repo.
-   - **Start command** (Settings → Deploy):
+   - **Start command:** set in `railway.worker.json`, so leave the dashboard field empty:
      ```
-     uv run celery -A worker.celery_app.celery_app worker --beat --loglevel info
+     /app/.venv/bin/celery -A worker.celery_app.celery_app worker --beat --loglevel info
      ```
+     It calls Celery directly rather than through `uv run`, which stayed resident as a
+     parent process holding about 170 MB. The worker runs one child process
+     (`WORKER_CONCURRENCY`, default 1); left to Celery, it started one per CPU the container
+     could see and held a flat 4 GB, most of the first month's bill.
      `--beat` runs the scheduler, which drives the outbox relay (the job that turns saved
      events into work). Without it nothing is read or purged, and nothing on screen says
      so. Keep the worker at **one replica** while `--beat` is on; if you ever need more

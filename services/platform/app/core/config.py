@@ -129,6 +129,15 @@ class Settings(BaseSettings):
     # in ordinary use is a workflow constraint wearing a safety label.
     max_cases_per_user: int = 10
 
+    # How many child processes the Celery worker runs. Left unset, Celery starts one per
+    # CPU the container can *see*, and on Railway that is the host's CPUs, not the share
+    # the service is billed for: the worker sat at a flat 4 GB with every child idle, which
+    # was nearly the whole of the first month's bill. One child reads one document at a
+    # time, which is plenty for this workload, and keeps the per-child time limit and
+    # memory cap, which the prefork pool is what enforces. Raise it with
+    # `WORKER_CONCURRENCY` if documents ever queue.
+    worker_concurrency: int = 1
+
     # Shared secret for `POST /health/ai-probe`, which makes a real (tiny) model call
     # so the deployed smoke can tell a working key from a well-formed one. Unset
     # disables the endpoint entirely — an unauthenticated route that spends money is

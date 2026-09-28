@@ -5,6 +5,7 @@
     "dockerfilePath": "infra/docker/platform.Dockerfile"
   },
   "deploy": {
+    "startCommand": "/app/.venv/bin/celery -A worker.celery_app.celery_app worker --beat --loglevel info",
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 10
   }

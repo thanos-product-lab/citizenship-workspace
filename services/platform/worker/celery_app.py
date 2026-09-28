@@ -47,6 +47,8 @@ celery_app.conf.task_track_started = True
 celery_app.conf.task_acks_late = True
 celery_app.conf.task_reject_on_worker_lost = True
 celery_app.conf.worker_prefetch_multiplier = 1
+# Explicit, never the CPU count: see `Settings.worker_concurrency`.
+celery_app.conf.worker_concurrency = settings.worker_concurrency
 
 # A broker that is not there at boot is a configuration error, not a slow dependency.
 #
