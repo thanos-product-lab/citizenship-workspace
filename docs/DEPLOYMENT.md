@@ -93,12 +93,15 @@ something does not work.
      This happened once: the worker ran against a Redis that did not exist for fifteen
      minutes while showing Online. It now fails at startup instead.
 
-5. **Migrations run on every API deploy.** `railway.json` runs `uv run alembic upgrade head`
+5. **Migrations run on every API deploy.** `railway.json` runs `alembic upgrade head`
    before the new version takes traffic, so a failed migration fails the deploy. This also
    creates the `app_rls` database role (ADR-0006). To run them by hand:
    ```
    railway run --service <api-service> uv run alembic upgrade head
    ```
+   (That one runs on your machine with the service's variables, so `uv run` is right there.
+   Inside the image, commands call the venv's binaries directly, and the image runs as an
+   unprivileged user, `app`, rather than root.)
 
 ## B. Vercel: web
 

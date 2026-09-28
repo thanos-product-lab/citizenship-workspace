@@ -19,16 +19,20 @@ RUN if [ -f uv.lock ]; then uv sync --frozen --no-dev; else uv sync --no-dev; fi
 # Then the application code.
 COPY services/platform/ ./
 
+# Run as an unprivileged user. Celery warned about root on every boot, and rightly: the
+# worker parses attacker-supplied PDFs with a C library, and a process that escaped a
+# parser would otherwise own the container. The app only reads /app; anything it writes
+# (Celery beat's schedule, temporary files) goes to /tmp.
+RUN useradd --create-home --uid 10001 app
+USER app
+
+# The venv's binaries directly, never `uv run`. `uv run` re-resolves the environment at
+# start and, without `--no-sync`, installed the dev group on every boot (~28MB of test
+# tooling, over the network, before the app could start). With `--no-sync` it still stayed
+# resident as a parent process holding ~170MB, and it wants a writable cache the
+# unprivileged user does not have. The image was built with `--no-dev`; calling the
+# binaries is how the runtime honours that.
+ENV PATH="/app/.venv/bin:$PATH"
+
 EXPOSE 8000
-# `--no-sync` is load-bearing, not a micro-optimisation. Plain `uv run` re-resolves the
-# environment against pyproject.toml at *start* time and installs the dev group, so
-# every container boot downloaded mypy, ruff, hypothesis and pygments — ~28MB of test
-# tooling into a production image, on every restart, over the network. Visible in the
-# deploy log as "Installed 18 packages" seconds before the app starts.
-#
-# Three costs, and the third is the one that matters: it is slow, it puts developer
-# tooling in production, and it makes a *network fetch* a prerequisite for a process
-# that has already been built. A registry outage would then stop a container that has
-# everything it needs on disk. The image was built with `--no-dev` above; this makes
-# the runtime honour that rather than quietly undo it.
-CMD ["sh", "-c", "uv run --no-sync uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]

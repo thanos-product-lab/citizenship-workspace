@@ -5,7 +5,7 @@
     "dockerfilePath": "infra/docker/platform.Dockerfile"
   },
   "deploy": {
-    "preDeployCommand": "uv run --no-sync alembic upgrade head",
+    "preDeployCommand": "/app/.venv/bin/alembic upgrade head",
     "healthcheckPath": "/health/ready",
     "healthcheckTimeout": 100,
     "restartPolicyType": "ON_FAILURE",

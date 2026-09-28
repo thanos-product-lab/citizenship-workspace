@@ -58,7 +58,7 @@ services:
     build:
       context: .
       dockerfile: infra/docker/platform.Dockerfile
-    command: uv run uvicorn app.main:app --host 0.0.0.0 --port 8000
+    command: /app/.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000
     # The same file `just api` reads, so the local stack and a locally-run API are
     # configured identically. Without it `just up` produced a stack that could not run a
     # single AI capability — no key, so every uploaded document died at the classifier —

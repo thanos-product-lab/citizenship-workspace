@@ -17,9 +17,18 @@ Three configuration choices carry weight:
   setting here that exists because of a production incident rather than a design choice.
 """
 
+import logging
+import sys
+
 from celery import Celery
 from celery.schedules import crontab  # noqa: F401  (kept for the M8 spend-report task)
-from celery.signals import beat_init, worker_init, worker_process_init
+from celery.signals import (
+    after_setup_logger,
+    after_setup_task_logger,
+    beat_init,
+    worker_init,
+    worker_process_init,
+)
 
 from app.ai.boot import check_ai_configuration
 from app.core.config import check_backing_services, get_settings
@@ -95,6 +104,15 @@ celery_app.conf.worker_max_tasks_per_child = 100
 #: doing meaningful work.
 OUTBOX_POLL_SECONDS = 1.0
 
+# The image runs as an unprivileged user that cannot write to /app, where beat would
+# otherwise keep its schedule file. The schedule is a single interval task, so losing the
+# file on restart loses nothing.
+celery_app.conf.beat_schedule_filename = "/tmp/celerybeat-schedule"
+
+# What a task prints (the app's structlog lines) is captured by Celery and re-logged.
+# The default level for that is WARNING, which is why every AI call read as a warning.
+celery_app.conf.worker_redirect_stdouts_level = "INFO"
+
 celery_app.conf.beat_schedule = {
     "outbox-relay": {
         "task": "worker.outbox.relay",
@@ -122,3 +140,21 @@ def _configure_worker_logging(**_kwargs: object) -> None:
     environment where you were not looking.
     """
     configure_logging(get_settings())
+
+
+@after_setup_logger.connect
+@after_setup_task_logger.connect
+def _log_to_stdout(logger: logging.Logger, **_kwargs: object) -> None:
+    """Send Celery's own log lines to stdout.
+
+    Celery writes them to stderr, and Railway labels everything on stderr as an error, so a
+    healthy worker showed thousands of `[err]` lines a day and a real error had nowhere to
+    stand out. Python warnings and tracebacks still go to stderr, where they belong.
+    """
+    # The real streams, not `sys.stdout`: by the time this runs Celery may have replaced
+    # `sys.stdout` with its logging proxy, and a handler writing into that proxy loops back
+    # through the logger and lands on stderr anyway, so every line appeared twice.
+    stderr = (sys.stderr, sys.__stderr__)
+    for handler in logger.handlers:
+        if isinstance(handler, logging.StreamHandler) and handler.stream in stderr:
+            handler.setStream(sys.__stdout__)
